@@ -30,6 +30,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Relations entre communautés qui ne sont pas indifférentes.</summary>
     public IReadOnlyList<RelationCommunautes>? Relations { get; init; }
+
+    /// <summary>Dernière offense entre deux communautés (cause d'une éventuelle hostilité).</summary>
+    public IReadOnlyList<OffenseCommunautes>? Offenses { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -65,7 +68,7 @@ public sealed class MondeSimule
     private Objectif? _objectif;
     private readonly List<EvenementJournal> _journalNonEnregistre = [];
     private readonly Queue<EvenementJournal> _journalRecent = new();
-    private long _prochainIdJournal;
+    private readonly Numeroteur _numeros = new();
 
     /// <summary>Nombre d'événements récents gardés en mémoire pour les navigateurs (hors événements fréquents).</summary>
     public const int TailleJournalRecent = 500;
@@ -91,11 +94,12 @@ public sealed class MondeSimule
         _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
-        _social = new VieSociale(_alea) { Communautes = _communautes };
+        _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
+        _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros };
         _social.ChargerRelations(etat.Relations ?? []);
-        _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social };
+        _social.ChargerOffenses(etat.Offenses ?? []);
+        _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social, Numeros = _numeros };
         _noms = _humains.Select(x => x.Nom).ToHashSet();
-        _prochainIdJournal = Math.Max(1, etat.ProchainIdJournal);
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
 
         for (var i = 0; i < _humains.Count; i++)
@@ -141,10 +145,11 @@ public sealed class MondeSimule
                     Plantes = _ecosysteme.Plantes.ToArray(),
                     Alea = _alea.Etat,
                     JournalNonEnregistre = _journalNonEnregistre.ToList(),
-                    ProchainIdJournal = _prochainIdJournal,
+                    ProchainIdJournal = _numeros.Prochain,
                     Communautes = _communautes.Select(c => c.Copier()).ToList(),
                     Pluies = _ecosysteme.Pluies.ToArray(),
                     Relations = _social.Relations,
+                    Offenses = _social.Offenses,
                 };
             }
         }
@@ -162,10 +167,19 @@ public sealed class MondeSimule
         lock (_verrou) return _journalRecent.Where(e => e.Id > apresId).ToList();
     }
 
+    /// <summary>Événement du journal pas encore enregistré ou encore récent, par son numéro (null sinon).</summary>
+    public EvenementJournal? EvenementEnMemoire(long id)
+    {
+        lock (_verrou)
+        {
+            return _journalNonEnregistre.FirstOrDefault(e => e.Id == id) ?? _journalRecent.FirstOrDefault(e => e.Id == id);
+        }
+    }
+
     private void Ajouter(EvenementJournal evenement)
     {
-        var numerote = evenement.Id > 0 ? evenement : evenement with { Id = _prochainIdJournal };
-        _prochainIdJournal = Math.Max(_prochainIdJournal, numerote.Id + 1);
+        var numerote = evenement.Id > 0 ? evenement : evenement with { Id = _numeros.Suivant() };
+        _numeros.Prochain = Math.Max(_numeros.Prochain, numerote.Id + 1);
         _journalNonEnregistre.Add(numerote);
         if (TypesEvenement.EstFrequent(numerote.Type)) return;
         _journalRecent.Enqueue(numerote);
@@ -374,7 +388,7 @@ public sealed class MondeSimule
             _humains.Add(bebe);
             var fils = bebe.Sexe == Sexe.Femme ? "fille" : "fils";
             _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
-                $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}."));
+                $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}.") { Id = _numeros.Suivant() });
             // Une naissance réjouit la mère, et le père s'il est là et attaché à ses enfants.
             VieSociale.Rejouir(mere, 20 * mere.Personnalite.Attachement);
             if (pere is { EstVivant: true }) VieSociale.Rejouir(pere, 15 * pere.Personnalite.Attachement);
@@ -386,7 +400,7 @@ public sealed class MondeSimule
 
         if (nouveauJour)
         {
-            _comportement.Journal.AddRange(_comportement.Routine.Resumer(_humains, _secondes));
+            _comportement.Journal.AddRange(_comportement.Routine.Resumer(_humains, _secondes).Select(e => e with { Id = _numeros.Suivant() }));
             _social.Journee(_humains, _secondes);
             Oublier();
             _social.Humeurs(_humains, _secondes);
@@ -396,9 +410,9 @@ public sealed class MondeSimule
                 _social.Territoires(_humains, _communautes, _ecosysteme, Carte, _secondes);
             }
         }
-        foreach (var e in _comportement.Journal) Ajouter(e);
+        // Tous les événements sont numérotés dès leur création : versés dans l'ordre des numéros, le journal suit l'ordre des faits.
+        foreach (var e in _comportement.Journal.Concat(_social.Journal).OrderBy(e => e.Id)) Ajouter(e);
         _comportement.Journal.Clear();
-        foreach (var e in _social.Journal) Ajouter(e);
         _social.Journal.Clear();
     }
 
@@ -445,7 +459,7 @@ public sealed class MondeSimule
                     _ => "un abri",
                 };
                 _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Souvenir, h.Id, 0,
-                    $"{h.Nom} a oublié {quoi} (en {l.X}, {l.Y}){(l.Rappels > 0 ? $", où {Pronom(h)} était allé{(h.Sexe == Sexe.Femme ? "e" : "")} {l.Rappels + 1} fois" : "")}."));
+                    $"{h.Nom} a oublié {quoi} (en {l.X}, {l.Y}){(l.Rappels > 0 ? $", où {Pronom(h)} était allé{(h.Sexe == Sexe.Femme ? "e" : "")} {l.Rappels + 1} fois" : "")}.") { Id = _numeros.Suivant() });
             }
         }
     }

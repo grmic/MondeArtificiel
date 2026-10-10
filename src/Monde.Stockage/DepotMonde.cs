@@ -13,7 +13,7 @@ namespace Monde.Stockage;
 public sealed class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 8;
+    public const int VersionSchema = 9;
 
     private readonly string _connexion;
 
@@ -276,6 +276,51 @@ public sealed class DepotMonde
                 );
                 """);
         }
+        if (actuelle < 9)
+        {
+            // Version 9 : causes des événements, raisons de l'humeur, colère et rancunes, usages des communautés,
+            // offenses entre communautés.
+            Executer(connexion, transaction, """
+                ALTER TABLE journal ADD COLUMN cause INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN faim_soif_jour REAL NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN froid_jour REAL NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN jours_seul INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN colere REAL NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN deuil_evenement INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN depression_evenement INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN mort_evenement INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN meurtrier INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN tolerance REAL NOT NULL DEFAULT 0.5;
+                ALTER TABLE communautes ADD COLUMN usage INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN derniere_affaire INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN disette_evenement INTEGER NOT NULL DEFAULT 0;
+                CREATE TABLE IF NOT EXISTS griefs (
+                    humain    INTEGER NOT NULL,
+                    rang      INTEGER NOT NULL,
+                    contre    INTEGER NOT NULL,
+                    motif     INTEGER NOT NULL,
+                    intensite REAL    NOT NULL,
+                    initiale  REAL    NOT NULL,
+                    evenement INTEGER NOT NULL,
+                    victime   INTEGER NOT NULL,
+                    PRIMARY KEY (humain, rang)
+                );
+                CREATE TABLE IF NOT EXISTS raisons (
+                    humain INTEGER NOT NULL,
+                    rang   INTEGER NOT NULL,
+                    type   INTEGER NOT NULL,
+                    autre  INTEGER NOT NULL,
+                    poids  REAL    NOT NULL,
+                    PRIMARY KEY (humain, rang)
+                );
+                CREATE TABLE IF NOT EXISTS offenses_communautes (
+                    a         INTEGER NOT NULL,
+                    b         INTEGER NOT NULL,
+                    evenement INTEGER NOT NULL,
+                    PRIMARY KEY (a, b)
+                );
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -320,7 +365,8 @@ public sealed class DepotMonde
                    attachement, puberte, fin_fertilite, fertilite, terme_grossesse,
                    agreabilite, nevrosisme, transcendance, qi, qi_verbal, qi_spatial, qi_manuel, qi_memoire, qi_art,
                    humeur, chagrin, deuil_de, jours_sombres, deprime_depuis, communaute, inconfort, compagnie,
-                   reserves, metabolisme
+                   reserves, metabolisme,
+                   faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -373,13 +419,22 @@ public sealed class DepotMonde
                     InconfortDuJour = lecteur.GetDouble(51),
                     CompagnieDuJour = lecteur.GetInt32(52),
                     Reserves = lecteur.GetDouble(53),
+                    FaimSoifDuJour = lecteur.GetDouble(55),
+                    FroidDuJour = lecteur.GetDouble(56),
+                    JoursSeul = lecteur.GetInt32(57),
+                    Colere = lecteur.GetDouble(58),
+                    DeuilEvenementId = lecteur.GetInt64(59),
+                    DepressionEvenementId = lecteur.GetInt64(60),
+                    MortEvenementId = lecteur.GetInt64(61),
+                    MeurtrierId = lecteur.GetInt32(62),
                 });
             }
         }
         if (humains.Count > 0) LireMemoires(connexion, humains);
 
         commande.CommandText = """
-            SELECT id, nom, fondee_le, dispersee_le, figure, centre_x, centre_y, rayon, abondance, disette, destination_x, destination_y
+            SELECT id, nom, fondee_le, dispersee_le, figure, centre_x, centre_y, rayon, abondance, disette, destination_x, destination_y,
+                   tolerance, usage, derniere_affaire, disette_evenement
             FROM communautes ORDER BY id;
             """;
         var communautes = new List<Communaute>();
@@ -393,6 +448,8 @@ public sealed class DepotMonde
                     DisperseeLe = l.IsDBNull(3) ? null : l.GetInt64(3), FigureId = l.GetInt32(4),
                     CentreX = l.GetInt32(5), CentreY = l.GetInt32(6), Rayon = l.GetInt32(7), Abondance = l.GetDouble(8),
                     Disette = l.GetBoolean(9), DestinationX = l.GetInt32(10), DestinationY = l.GetInt32(11),
+                    Tolerance = l.GetDouble(12), Usage = (UsageFidelite)l.GetInt32(13), DerniereAffaireId = l.GetInt64(14),
+                    DisetteEvenementId = l.GetInt64(15),
                 });
             }
         }
@@ -405,6 +462,14 @@ public sealed class DepotMonde
             while (l.Read()) relations.Add(new RelationCommunautes(l.GetInt32(0), l.GetInt32(1), (EtatRelation)l.GetByte(2)));
         }
         if (relations.Count > 0) etat = etat with { Relations = relations };
+
+        commande.CommandText = "SELECT a, b, evenement FROM offenses_communautes ORDER BY a, b;";
+        var offenses = new List<OffenseCommunautes>();
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read()) offenses.Add(new OffenseCommunautes(l.GetInt32(0), l.GetInt32(1), l.GetInt64(2)));
+        }
+        if (offenses.Count > 0) etat = etat with { Offenses = offenses };
 
         commande.CommandText = "SELECT coalesce(max(id), 0) + 1 FROM journal;";
         etat = etat with { ProchainIdJournal = Convert.ToInt64(commande.ExecuteScalar()) };
@@ -456,6 +521,20 @@ public sealed class DepotMonde
         {
             while (l.Read()) Trouver(l.GetInt64(0))?.Memoire.Pensees.Add(new Pensee(l.GetInt64(1), l.GetString(2)));
         }
+        commande.CommandText = "SELECT humain, contre, motif, intensite, initiale, evenement, victime FROM griefs ORDER BY humain, rang;";
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read())
+            {
+                Trouver(l.GetInt64(0))?.Griefs.Add(new Grief(l.GetInt32(1), (MotifGrief)l.GetByte(2), l.GetDouble(3), l.GetDouble(4),
+                    l.GetInt64(5), l.GetInt32(6)));
+            }
+        }
+        commande.CommandText = "SELECT humain, type, autre, poids FROM raisons ORDER BY humain, rang;";
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read()) Trouver(l.GetInt64(0))?.Raisons.Add(new Raison((TypeRaison)l.GetByte(1), l.GetInt32(2), l.GetDouble(3)));
+        }
     }
 
     /// <summary>
@@ -471,7 +550,8 @@ public sealed class DepotMonde
             Executer(connexion, transaction,
                 "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; " +
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
-                "DELETE FROM climat; DELETE FROM relations_communautes;");
+                "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
+                "DELETE FROM offenses_communautes;");
         }
 
         using (var commande = connexion.CreateCommand())
@@ -532,7 +612,8 @@ public sealed class DepotMonde
                     attachement, puberte, fin_fertilite, fertilite, terme_grossesse,
                     agreabilite, nevrosisme, transcendance, qi, qi_verbal, qi_spatial, qi_manuel, qi_memoire, qi_art,
                     humeur, chagrin, deuil_de, jours_sombres, deprime_depuis, communaute, inconfort, compagnie,
-                    reserves, metabolisme)
+                    reserves, metabolisme,
+                    faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -541,7 +622,8 @@ public sealed class DepotMonde
                     $attachement, $puberte, $fin_fertilite, $fertilite, $terme_grossesse,
                     $agreabilite, $nevrosisme, $transcendance, $qi, $qi_verbal, $qi_spatial, $qi_manuel, $qi_memoire, $qi_art,
                     $humeur, $chagrin, $deuil_de, $jours_sombres, $deprime_depuis, $communaute, $inconfort, $compagnie,
-                    $reserves, $metabolisme);
+                    $reserves, $metabolisme,
+                    $faim_soif_jour, $froid_jour, $jours_seul, $colere, $deuil_evenement, $depression_evenement, $mort_evenement, $meurtrier);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -551,7 +633,8 @@ public sealed class DepotMonde
                 "$attachement", "$puberte", "$fin_fertilite", "$fertilite", "$terme_grossesse",
                 "$agreabilite", "$nevrosisme", "$transcendance", "$qi", "$qi_verbal", "$qi_spatial", "$qi_manuel", "$qi_memoire", "$qi_art",
                 "$humeur", "$chagrin", "$deuil_de", "$jours_sombres", "$deprime_depuis", "$communaute", "$inconfort", "$compagnie",
-                "$reserves", "$metabolisme"];
+                "$reserves", "$metabolisme",
+                "$faim_soif_jour", "$froid_jour", "$jours_seul", "$colere", "$deuil_evenement", "$depression_evenement", "$mort_evenement", "$meurtrier"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -574,6 +657,8 @@ public sealed class DepotMonde
                     h.Humeur, h.Chagrin, h.DeuilDeId, h.JoursSombres, h.DeprimeDepuis is { } dd ? dd : DBNull.Value,
                     h.CommunauteId, h.InconfortDuJour, h.CompagnieDuJour,
                     h.Reserves, h.Biologie.Metabolisme,
+                    h.FaimSoifDuJour, h.FroidDuJour, h.JoursSeul, h.Colere, h.DeuilEvenementId, h.DepressionEvenementId,
+                    h.MortEvenementId, h.MeurtrierId,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
@@ -583,6 +668,7 @@ public sealed class DepotMonde
         if (etat.Humains is { } tous) EnregistrerMemoires(connexion, transaction, tous);
         if (etat.Communautes is { } communautes) EnregistrerCommunautes(connexion, transaction, communautes);
         if (etat.Relations is { } relations) EnregistrerRelations(connexion, transaction, relations);
+        if (etat.Offenses is { } offensesAEnregistrer) EnregistrerOffenses(connexion, transaction, offensesAEnregistrer);
         if (etat.JournalNonEnregistre is { Count: > 0 } journal) EnregistrerJournal(connexion, transaction, journal);
 
         transaction.Commit();
@@ -590,7 +676,12 @@ public sealed class DepotMonde
 
     private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
     {
-        Executer(connexion, transaction, "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees;");
+        Executer(connexion, transaction, "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM griefs; DELETE FROM raisons;");
+        using var griefs = Preparer(connexion, transaction,
+            "INSERT INTO griefs (humain, rang, contre, motif, intensite, initiale, evenement, victime) VALUES ($h, $r, $c, $m, $i, $n, $e, $v);",
+            "$h", "$r", "$c", "$m", "$i", "$n", "$e", "$v");
+        using var raisons = Preparer(connexion, transaction,
+            "INSERT INTO raisons (humain, rang, type, autre, poids) VALUES ($h, $r, $t, $a, $p);", "$h", "$r", "$t", "$a", "$p");
         using var lieux = Preparer(connexion, transaction,
             "INSERT INTO memoire_lieux (humain, rang, type, x, y, vu_le, rappels, decu_le) VALUES ($h, $r, $t, $x, $y, $v, $n, $d);",
             "$h", "$r", "$t", "$x", "$y", "$v", "$n", "$d");
@@ -616,6 +707,16 @@ public sealed class DepotMonde
             {
                 Lancer(pensees, h.Id, r, m.Pensees[r].Secondes, m.Pensees[r].Texte);
             }
+            for (var r = 0; r < h.Griefs.Count; r++)
+            {
+                var g = h.Griefs[r];
+                Lancer(griefs, h.Id, r, g.ContreId, (int)g.Motif, g.Intensite, g.Initiale, g.EvenementId, g.VictimeId);
+            }
+            for (var r = 0; r < h.Raisons.Count; r++)
+            {
+                var x = h.Raisons[r];
+                Lancer(raisons, h.Id, r, (int)x.Type, x.AutreId, x.Poids);
+            }
         }
     }
 
@@ -623,13 +724,14 @@ public sealed class DepotMonde
     {
         using var commande = Preparer(connexion, transaction, """
             INSERT OR REPLACE INTO communautes (id, nom, fondee_le, dispersee_le, figure, centre_x, centre_y, rayon, abondance, disette,
-                destination_x, destination_y)
-            VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy);
-            """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy");
+                destination_x, destination_y, tolerance, usage, derniere_affaire, disette_evenement)
+            VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy, $to, $u, $da, $de);
+            """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy", "$to", "$u", "$da", "$de");
         foreach (var c in communautes)
         {
             Lancer(commande, c.Id, c.Nom, c.FondeeLe, c.DisperseeLe is { } d ? d : DBNull.Value, c.FigureId,
-                c.CentreX, c.CentreY, c.Rayon, c.Abondance, c.Disette, c.DestinationX, c.DestinationY);
+                c.CentreX, c.CentreY, c.Rayon, c.Abondance, c.Disette, c.DestinationX, c.DestinationY,
+                c.Tolerance, (int)c.Usage, c.DerniereAffaireId, c.DisetteEvenementId);
         }
     }
 
@@ -640,15 +742,23 @@ public sealed class DepotMonde
         foreach (var r in relations) Lancer(commande, r.A, r.B, (int)r.Etat);
     }
 
+    private static void EnregistrerOffenses(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<OffenseCommunautes> offenses)
+    {
+        Executer(connexion, transaction, "DELETE FROM offenses_communautes;");
+        using var commande = Preparer(connexion, transaction,
+            "INSERT INTO offenses_communautes (a, b, evenement) VALUES ($a, $b, $e);", "$a", "$b", "$e");
+        foreach (var o in offenses) Lancer(commande, o.A, o.B, o.EvenementId);
+    }
+
     private static void EnregistrerJournal(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<EvenementJournal> journal)
     {
         // INSERT OR IGNORE : un événement déjà enregistré (même numéro) n'est pas dupliqué.
         using var commande = Preparer(connexion, transaction,
-            "INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine) VALUES ($i, $s, $t, $h, $a, $x, $o);",
-            "$i", "$s", "$t", "$h", "$a", "$x", "$o");
+            "INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause) VALUES ($i, $s, $t, $h, $a, $x, $o, $c);",
+            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c");
         foreach (var e in journal)
         {
-            Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, e.Texte, (int)e.Origine);
+            Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, e.Texte, (int)e.Origine, e.CauseId);
         }
     }
 
@@ -704,13 +814,28 @@ public sealed class DepotMonde
         }
         commande.Parameters.AddWithValue("$limite", limite);
         var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
-        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine FROM journal {where} ORDER BY id DESC LIMIT $limite;";
+        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause FROM journal {where} ORDER BY id DESC LIMIT $limite;";
+        return LireEvenements(commande);
+    }
+
+    /// <summary>Un événement du journal enregistré, par son numéro (null s'il n'existe pas).</summary>
+    public EvenementJournal? LireEvenement(long id)
+    {
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause FROM journal WHERE id = $id;";
+        commande.Parameters.AddWithValue("$id", id);
+        return LireEvenements(commande).FirstOrDefault();
+    }
+
+    private static List<EvenementJournal> LireEvenements(SqliteCommand commande)
+    {
         var resultat = new List<EvenementJournal>();
         using var l = commande.ExecuteReader();
         while (l.Read())
         {
             resultat.Add(new EvenementJournal(l.GetInt64(1), (TypeEvenement)l.GetByte(2), l.GetInt32(3), l.GetInt32(4), l.GetString(5),
-                (Origine)l.GetByte(6)) { Id = l.GetInt64(0) });
+                (Origine)l.GetByte(6)) { Id = l.GetInt64(0), CauseId = l.GetInt64(7) });
         }
         return resultat;
     }

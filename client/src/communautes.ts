@@ -19,6 +19,8 @@ interface Communaute {
   faim: number;
   reserves: number;
   relations: { id: number; nom: string; etat: string }[];
+  /** Usage du groupe envers ceux qui s'unissent hors de leur couple. */
+  usage: string;
 }
 
 /**
@@ -129,6 +131,7 @@ export class PanneauCommunautes {
       });
       bloc.append(rel);
     }
+    if (!c.disperseeLe) bloc.append(el("p", "usage", `Usage : ${c.usage}.`));
     const figure = el("p");
     const lien = el("button", "lien", c.nomFigure);
     lien.type = "button";

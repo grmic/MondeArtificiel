@@ -39,8 +39,16 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>Liens, humeur et partages (fourni par le monde).</summary>
     public VieSociale? Social { get; set; }
 
-    private void Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte) =>
-        Journal.Add(new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte));
+    /// <summary>Numéros des événements (partagés avec tout le monde simulé).</summary>
+    public Numeroteur Numeros { get; set; } = new();
+
+    /// <summary>Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause.</summary>
+    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0)
+    {
+        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte) { Id = Numeros.Suivant(), CauseId = cause };
+        Journal.Add(e);
+        return e.Id;
+    }
 
     public void Vivre(Humain h, IReadOnlyList<Humain> tous, long maintenant)
     {
@@ -62,6 +70,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (h.EstEnfant(maintenant)) NourrirEnfant(h, Vivant(tous, h.MereId), Vivant(tous, h.PereId));
         PartagerAvecProches(h, tous);
         Grossesse(h, tous, maintenant);
+        if (!h.EstVivant) return;
+        if (h.Activite != Activite.Dormir) Affronter(h, tous, maintenant);
         if (!h.EstVivant) return;
         var avant = h.Activite;
         (_motif, _autre) = (Motif.Aucun, null);
@@ -162,8 +172,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         h.Soif = Math.Clamp(h.Soif, 0, 100);
         h.Fatigue = Math.Clamp(h.Fatigue, 0, 100);
         h.Froid = Math.Clamp(h.Froid, 0, 100);
-        h.InconfortDuJour += (Math.Max(0, h.Faim - 50) + Math.Max(0, h.Soif - 50) + Math.Max(0, h.Froid - 40)) / 50
-                             + (h.EstMalade(maintenant) ? 0.6 : 0);
+        var faimSoif = (Math.Max(0, h.Faim - 50) + Math.Max(0, h.Soif - 50)) / 50;
+        var froid = Math.Max(0, h.Froid - 40) / 50;
+        h.FaimSoifDuJour += faimSoif;
+        h.FroidDuJour += froid;
+        h.InconfortDuJour += faimSoif + froid + (h.EstMalade(maintenant) ? 0.6 : 0);
 
         Souffrir(h, maintenant, 1);
     }
@@ -266,11 +279,22 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
     }
 
-    private void Mourir(Humain h, long maintenant, CauseDeMort cause)
+    /// <summary>
+    /// Mort d'un humain. Le suicide a pour cause la dépression ; un meurtre, les coups qui l'ont précédé
+    /// (<paramref name="causeId"/>) et son auteur (<paramref name="meurtrier"/>).
+    /// </summary>
+    private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null)
     {
-        Noter(maintenant, TypeEvenement.Mort, h, null, cause == CauseDeMort.Desespoir
-            ? $"{h.Nom}, accablé{(h.Sexe == Sexe.Femme ? "e" : "")} de tristesse, met fin à ses jours, à {AgeEnMots(h, maintenant)}."
-            : $"{h.Nom} meurt {Libelles.Cause(cause)}, à {AgeEnMots(h, maintenant)}.");
+        h.MortEvenementId = cause switch
+        {
+            CauseDeMort.Desespoir => Noter(maintenant, TypeEvenement.Mort, h, null,
+                $"{h.Nom}, accablé{(h.Sexe == Sexe.Femme ? "e" : "")} de tristesse, met fin à ses jours, à {AgeEnMots(h, maintenant)}.",
+                h.DepressionEvenementId),
+            CauseDeMort.Meurtre when meurtrier is not null => Noter(maintenant, TypeEvenement.Mort, h, meurtrier,
+                $"{h.Nom} meurt sous les coups de {meurtrier.Nom}, à {AgeEnMots(h, maintenant)}.", causeId),
+            _ => Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}, à {AgeEnMots(h, maintenant)}.", causeId),
+        };
+        h.MeurtrierId = meurtrier?.Id ?? 0;
         Deces.Add(h);
         h.Sante = 0;
         h.MortLe = maintenant;

@@ -5,7 +5,9 @@ using Monde.Simulation.Temps;
 namespace Monde.Serveur;
 
 /// <summary>Un événement du journal tel qu'envoyé au navigateur.</summary>
-public sealed record EvenementDto(long Id, long Secondes, string Date, string Type, int Humain, int Autre, string Texte, string Origine)
+/// <param name="Cause">Numéro de l'événement qui l'a provoqué (0 : aucune cause notée).</param>
+public sealed record EvenementDto(long Id, long Secondes, string Date, string Type, int Humain, int Autre, string Texte, string Origine,
+    long Cause)
 {
     /// <summary>Clés des types, dans l'ordre de l'énumération (le navigateur filtre avec ces clés).</summary>
     public static readonly IReadOnlyDictionary<TypeEvenement, string> Cles = new Dictionary<TypeEvenement, string>
@@ -28,12 +30,13 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Partage] = "partage",
         [TypeEvenement.Journee] = "journee",
         [TypeEvenement.Nature] = "nature",
+        [TypeEvenement.Conflit] = "conflit",
     };
 
 
     public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, Calendrier.Decomposer(e.Secondes).ToString(),
         Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, e.Texte,
-        e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle");
+        e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId);
 
     /// <summary>Traduit les clés reçues ; une clé inconnue rend la demande invalide (null).</summary>
     public static List<TypeEvenement>? TypesDepuis(IEnumerable<string>? cles)
@@ -61,7 +64,12 @@ public sealed record TraitDto(string Nom, double Valeur, string Mots, string Aid
 
 public sealed record LienDto(int Id, string Nom, int Familiarite, int Affection, string Statut, bool Vivant);
 
-public sealed record AmeDto(string Etat, int Humeur, int Chagrin, int DeuilDe, string? DeprimeDepuis);
+/// <summary>Une rancune : contre qui, pourquoi, avec quelle force (0 à 100), et l'événement qui l'a fait naître.</summary>
+public sealed record RancuneDto(int Id, string Nom, string Motif, int Intensite, long Evenement);
+
+/// <param name="Raisons">Ce qui pèse sur son humeur, en mots, du plus lourd au plus léger.</param>
+public sealed record AmeDto(string Etat, int Humeur, int Chagrin, int DeuilDe, string? DeprimeDepuis, IReadOnlyList<string> Raisons,
+    int Colere, IReadOnlyList<RancuneDto> Rancunes, long DepressionEvenement);
 
 public sealed record CommunauteRefDto(int Id, string Nom);
 
@@ -127,7 +135,12 @@ public sealed record FicheDto(
             },
             h.EstVivant && !h.EstBebe(maintenant)
                 ? new AmeDto(Libelles.Humeur(h), (int)Math.Round(h.Humeur), (int)Math.Round(h.Chagrin), h.DeuilDeId,
-                    h.DeprimeDepuis is { } d ? Date(d) : null)
+                    h.DeprimeDepuis is { } d ? Date(d) : null, VieSociale.Phrases(h, humains, maintenant),
+                    (int)Math.Round(h.Colere),
+                    h.Griefs.OrderByDescending(g => g.Intensite)
+                        .Select(g => new RancuneDto(g.ContreId, Nom(g.ContreId), Motif(g, Nom), (int)Math.Round(g.Intensite), g.EvenementId))
+                        .ToList(),
+                    h.DepressionEvenementId)
                 : null,
             communaute is null ? null : new CommunauteRefDto(communaute.Id, communaute.Nom),
             humains.Where(e => e.MereId == id || e.PereId == id).Select(e => e.Id).ToList(),
@@ -140,6 +153,14 @@ public sealed record FicheDto(
                     Statut(l), humains[l.Id - 1].EstVivant)).ToList(),
             Journal(service, new FiltreJournal(Humain: id, Limite: 200), types).Select(EvenementDto.Depuis).ToList());
     }
+
+    private static string Motif(Grief g, Func<int, string> nom) => g.Motif switch
+    {
+        MotifGrief.Infidelite => "trahison",
+        MotifGrief.Rival => "rivalité amoureuse",
+        MotifGrief.Coups => "coups",
+        _ => g.VictimeId > 0 ? $"a tué {nom(g.VictimeId)}" : "meurtre d'un proche",
+    };
 
     private static string Statut(Lien l) => l switch
     {
@@ -175,7 +196,7 @@ public sealed record RelationDto(int Id, string Nom, string Etat);
 /// <param name="Destination">Direction vers laquelle elle part, ou null si elle reste.</param>
 public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? DisperseeLe, int Figure, string NomFigure,
     IReadOnlyList<MembreDto> Membres, int X, int Y, int Rayon, int Abondance, bool Disette, string? Destination,
-    int Faim, int Reserves, IReadOnlyList<RelationDto> Relations)
+    int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage)
 {
     private static string Etat(EtatRelation e) => e switch
     {
@@ -211,7 +232,13 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     relations.Where(r => r.A == c.Id || r.B == c.Id)
                         .Select(r => (Autre: r.A == c.Id ? r.B : r.A, r.Etat))
                         .Select(r => new RelationDto(r.Autre, toutes[r.Autre - 1].Nom, Etat(r.Etat)))
-                        .ToList());
+                        .ToList(),
+                    c.Usage switch
+                    {
+                        UsageFidelite.MalVu => "s'unir hors de son couple y est mal vu",
+                        UsageFidelite.Indifferent => "nul ne s'y offusque qu'on s'unisse hors de son couple",
+                        _ => "pas d'usage établi sur la fidélité",
+                    });
             }).ToList();
     }
 }

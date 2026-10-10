@@ -13,6 +13,7 @@ const TYPES: [string, string][] = [
   ["delaissement", "Délaissements"],
   ["lien", "Amitiés et hostilités"],
   ["humeur", "Deuils et humeur"],
+  ["conflit", "Jalousie et conflits"],
   ["communaute", "Communautés"],
   ["nature", "Nature"],
   ["partage", "Partages"],

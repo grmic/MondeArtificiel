@@ -16,7 +16,28 @@ public sealed class DepotMondeTests : IDisposable
     }
 
     /// <summary>Ramène un fichier au schéma 7 (avant les réserves, les pluies et les territoires).</summary>
-    internal const string RetourVersion7 = """
+    /// <summary>Ramène un fichier au schéma 8 (avant les causes, les rancunes et les usages).</summary>
+    internal const string RetourVersion8 = """
+        ALTER TABLE journal DROP COLUMN cause;
+        ALTER TABLE humains DROP COLUMN faim_soif_jour;
+        ALTER TABLE humains DROP COLUMN froid_jour;
+        ALTER TABLE humains DROP COLUMN jours_seul;
+        ALTER TABLE humains DROP COLUMN colere;
+        ALTER TABLE humains DROP COLUMN deuil_evenement;
+        ALTER TABLE humains DROP COLUMN depression_evenement;
+        ALTER TABLE humains DROP COLUMN mort_evenement;
+        ALTER TABLE humains DROP COLUMN meurtrier;
+        ALTER TABLE communautes DROP COLUMN tolerance;
+        ALTER TABLE communautes DROP COLUMN usage;
+        ALTER TABLE communautes DROP COLUMN derniere_affaire;
+        ALTER TABLE communautes DROP COLUMN disette_evenement;
+        DROP TABLE griefs;
+        DROP TABLE raisons;
+        DROP TABLE offenses_communautes;
+        PRAGMA user_version = 8;
+        """;
+
+    internal const string RetourVersion7 = RetourVersion8 + """
         ALTER TABLE humains DROP COLUMN reserves;
         ALTER TABLE humains DROP COLUMN metabolisme;
         ALTER TABLE communautes DROP COLUMN centre_x;

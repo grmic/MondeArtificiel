@@ -109,3 +109,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .relation-rivale, .relation-hostile { color: #ffb3b3; }
 .graine button.actif { background: #2f6f4a; border-color: #4ac26b; }
 .evenement.pensee, .evenement.journee, .evenement.souvenir { color: var(--discret); }
+
+/* Chaîne des causes : « pourquoi ? » ouvre l'événement à l'origine, en retrait sous le premier. */
+button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; padding: 0 2px; font-size: 0.8rem; text-decoration: underline; }
+.chaine-cause { margin: 2px 0 2px 14px; font-size: 0.85rem; color: var(--discret); }
+.chaine-cause .chaine-cause { margin-left: 10px; }
+.evenement.conflit { color: #f0a070; }
+.communaute-carte .usage { color: var(--discret); font-size: 0.85rem; }

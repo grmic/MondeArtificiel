@@ -63,15 +63,13 @@ public sealed partial class Comportement
         }
         else
         {
-            // Avec un humain d'un autre couple : plus probable si son propre compagnon est loin ou mort.
-            var ouverture = partenaire is null || Distance(h.X, h.Y, partenaire.X, partenaire.Y) > 8 ? 0.6 : 0.1;
             foreach (var autre in tous)
             {
                 if (autre.Id == h.Id || autre.Sexe == h.Sexe || !autre.EstVivant) continue;
                 if (Distance(h.X, h.Y, autre.X, autre.Y) > 1 || !EstDispose(autre, maintenant) || SontParents(h, autre)) continue;
-                // On ne s'unit pas à qui l'on déteste ; l'affection rend l'union plus probable.
-                var affection = h.AffectionPour(autre.Id);
-                if (affection > VieSociale.SeuilHostilite && alea.Reel() < Math.Clamp(ouverture + affection / 200, 0, 1)) choisi = autre;
+                // On ne s'unit pas à qui l'on déteste ; il faut que les deux le veuillent.
+                if (h.AffectionPour(autre.Id) > VieSociale.SeuilHostilite
+                    && alea.Reel() < Math.Min(Ouverture(h, autre, tous), Ouverture(autre, h, tous))) choisi = autre;
                 break;
             }
         }
@@ -101,6 +99,24 @@ public sealed partial class Comportement
         return true;
     }
 
+    /// <summary>
+    /// Envie de <paramref name="h"/> de s'unir à <paramref name="autre"/>. Seul (ou avec son propre compagnon), volontiers,
+    /// d'autant plus qu'il l'aime. En couple avec un autre, rarement : les relations hors du couple restent minoritaires dans
+    /// les sociétés étudiées (quelques pour cent des naissances en moyenne ; Anderson, 2006), avec de grands écarts d'une
+    /// société à l'autre (Scelza et al., 2020). Elles sont plus probables quand le compagnon est loin, moins fréquentes chez
+    /// les consciencieux (Schmitt, 2004), chez ceux qui sont attachés à leur compagnon (Allen et al., 2005) et là où
+    /// l'usage les réprouve.
+    /// </summary>
+    private double Ouverture(Humain h, Humain autre, IReadOnlyList<Humain> tous)
+    {
+        var attirance = Math.Max(0, h.AffectionPour(autre.Id)) / 100;
+        var compagnon = Vivant(tous, h.PartenaireId);
+        if (compagnon is null || compagnon.Id == autre.Id) return Math.Clamp(0.6 + attirance / 2, 0, 1);
+        var occasion = Distance(h.X, h.Y, compagnon.X, compagnon.Y) > 8 ? 0.04 : 0.01;
+        return (occasion + 0.02 * attirance) * (0.4 + 0.6 * (Social?.ToleranceDe(h) ?? 0.5)) * (1.4 - 0.8 * h.Personnalite.Conscience)
+               * Math.Clamp(1.2 - h.AffectionPour(compagnon.Id) / 100, 0.2, 1.2);
+    }
+
     private static bool EstDispose(Humain a, long maintenant) =>
         a.EstVivant && a.EstFecond(maintenant) && a.Activite != Activite.Dormir && a.Desir >= 25
         && a.Faim < 80 && a.Soif < 80;
@@ -121,7 +137,8 @@ public sealed partial class Comportement
         var homme = a.Sexe == Sexe.Femme ? b : a;
         var infidele = Vivant(tous, a.PartenaireId) is { } pa && pa.Id != b.Id || Vivant(tous, b.PartenaireId) is { } pb && pb.Id != a.Id;
         var hors = infidele ? " (hors de leur couple)" : "";
-        Noter(maintenant, TypeEvenement.Accouplement, femme, homme, $"{femme.Nom} et {homme.Nom} s'accouplent{hors}.");
+        var accouplement = Noter(maintenant, TypeEvenement.Accouplement, femme, homme, $"{femme.Nom} et {homme.Nom} s'accouplent{hors}.");
+        if (infidele) Ebruiter(a, b, accouplement, tous, maintenant);
         if (alea.Reel() < ChanceConception(femme, homme, tous, maintenant))
         {
             var jours = Math.Clamp(JoursDeGrossesseMoyens + Biologie.Normale(alea) * EcartJoursDeGrossesse, 230, 300);
@@ -129,7 +146,7 @@ public sealed partial class Comportement
             femme.TermeGrossesse = maintenant + (long)(jours * Calendrier.SecondesParJour);
             femme.PereEnfantId = homme.Id;
             Noter(maintenant, TypeEvenement.Grossesse, femme, homme,
-                $"{femme.Nom} attend un enfant de {homme.Nom}. Elle ne le sait pas encore.");
+                $"{femme.Nom} attend un enfant de {homme.Nom}. Elle ne le sait pas encore.", accouplement);
         }
 
         // Deux humains seuls qui s'accouplent forment un couple.

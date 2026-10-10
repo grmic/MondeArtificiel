@@ -43,9 +43,26 @@ public sealed class Communaute
     /// <summary>Vrai tant que le groupe manque de nourriture (réserves de ses membres basses ou terres épuisées).</summary>
     public bool Disette { get; set; }
 
+    /// <summary>Événement du journal qui a marqué le début de la disette en cours (cause des départs et des rivalités).</summary>
+    public long DisetteEvenementId { get; set; }
+
     /// <summary>Terres vers lesquelles le groupe se déplace (−1 : il reste où il est).</summary>
     public int DestinationX { get; set; } = -1;
     public int DestinationY { get; set; } = -1;
+
+    /// <summary>
+    /// Tolérance du groupe envers ceux qui s'unissent hors de leur couple, de 0 (inacceptable) à 1 (indifférent).
+    /// Elle naît du tempérament de ses membres et se forge avec les affaires qui le traversent : une trahison qui finit
+    /// en drame rend le groupe plus sévère, une infidélité sans suite l'habitue (Buunk et Hupka, 1987 : la jalousie
+    /// est universelle, mais ce qui la déclenche et ce qu'on en pense varient d'une société à l'autre).
+    /// </summary>
+    public double Tolerance { get; set; } = 0.5;
+
+    /// <summary>Usage constaté : l'infidélité est mal vue, sans usage établi, ou indifférente.</summary>
+    public UsageFidelite Usage { get; set; }
+
+    /// <summary>Dernière affaire d'infidélité qui a marqué le groupe (événement du journal), cause des changements d'usage.</summary>
+    public long DerniereAffaireId { get; set; }
 
     public Communaute Copier() => (Communaute)MemberwiseClone();
 }
@@ -76,8 +93,13 @@ public sealed partial class VieSociale(Alea alea)
     /// <summary>Partages de nourriture du jour (donneur, receveur), notés une fois par jour au journal.</summary>
     public HashSet<(int Donneur, int Receveur)> PartagesDuJour { get; } = [];
 
-    private void Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte) =>
-        Journal.Add(new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte));
+    /// <summary>Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause.</summary>
+    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0)
+    {
+        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte) { Id = Numeros.Suivant(), CauseId = cause };
+        Journal.Add(e);
+        return e.Id;
+    }
 
     private static string E(Humain h) => h.Sexe == Sexe.Femme ? "e" : "";
 
@@ -259,23 +281,65 @@ public sealed partial class VieSociale(Alea alea)
 
     /// <summary>
     /// Humeur du jour : elle tend vers un niveau propre à chacun (plus haut chez les extravertis,
-    /// plus bas chez les anxieux), abaissé par l'inconfort et le chagrin, relevé par la compagnie de ceux qu'on aime.
+    /// plus bas chez les anxieux), abaissé par l'inconfort, le chagrin, la solitude, le rejet, la trahison et la colère,
+    /// relevé par la compagnie de ceux qu'on aime. Chaque poids est gardé comme raison de l'humeur : on sait toujours
+    /// pourquoi un humain va mal. La solitude ressentie pèse sur l'humeur et mène à la dépression (Cacioppo et al., 2006),
+    /// davantage chez les extravertis ; l'exclusion par les autres blesse, surtout les plus sensibles (Williams, 2007).
     /// </summary>
     public void Humeurs(List<Humain> humains, long maintenant)
     {
+        const double pasParJour = Calendrier.SecondesParJour / MondeSimule.SecondesParPas;
         foreach (var h in humains)
         {
             if (!h.EstVivant) continue;
             var p = h.Personnalite;
-            var inconfort = h.InconfortDuJour / (Calendrier.SecondesParJour / MondeSimule.SecondesParPas);
-            h.InconfortDuJour = 0;
+            var inconfort = h.InconfortDuJour / pasParJour;
+            var faimSoif = h.FaimSoifDuJour / pasParJour;
+            var froid = h.FroidDuJour / pasParJour;
+            h.InconfortDuJour = h.FaimSoifDuJour = h.FroidDuJour = 0;
             if (h.EstBebe(maintenant)) continue;
+
+            Rancunes(h, humains, maintenant);
+            h.JoursSeul = h.CompagnieDuJour > 0 ? 0 : h.JoursSeul + 1;
 
             var base_ = 50 + 25 * (p.Extraversion - 0.5) - 40 * (p.Nevrosisme - 0.5);
             var compagnie = 3 * Math.Min(4, h.CompagnieDuJour);
-            // Le chagrin pèse plus lourd chez les plus sensibles.
-            var cible = base_ - 25 * inconfort + compagnie - (0.2 + 0.4 * p.Nevrosisme) * h.Chagrin;
+            var hostiles = Hostiles(h, maintenant);
+            var trahison = h.Griefs.Where(g => g.Motif == MotifGrief.Infidelite).MaxBy(g => g.Intensite);
+            Span<double> poids =
+            [
+                45 - base_,                                                        // tempérament (déjà dans base_)
+                25 * faimSoif,
+                25 * froid,
+                25 * Math.Max(0, inconfort - faimSoif - froid),
+                (0.2 + 0.4 * p.Nevrosisme) * h.Chagrin,                            // le chagrin pèse plus chez les sensibles
+                Math.Min(8, 0.25 * h.JoursSeul) * (0.3 + 1.0 * p.Extraversion),
+                Math.Min(12, 2.5 * hostiles.Count) * (0.6 + 0.8 * p.Nevrosisme),
+                0.25 * (trahison?.Intensite ?? 0),
+                0.25 * h.Colere,
+            ];
+            TypeRaison[] types = [TypeRaison.Temperament, TypeRaison.FaimSoif, TypeRaison.Froid, TypeRaison.Maladie, TypeRaison.Deuil,
+                TypeRaison.Solitude, TypeRaison.Rejet, TypeRaison.Trahison, TypeRaison.Colere];
+            var peines = 0.0;
+            for (var i = 1; i < poids.Length; i++) peines += poids[i];
+            var cible = base_ + compagnie - peines;
             h.Humeur = Math.Clamp(h.Humeur + (cible - h.Humeur) * 0.3, 0, 100);
+
+            h.Raisons.Clear();
+            for (var i = 0; i < poids.Length; i++)
+            {
+                if (poids[i] < 3) continue;
+                var autre = types[i] switch
+                {
+                    TypeRaison.Deuil => h.DeuilDeId,
+                    TypeRaison.Rejet => hostiles[0],
+                    TypeRaison.Trahison => trahison!.ContreId,
+                    _ => 0,
+                };
+                h.Raisons.Add(new Raison(types[i], autre, Math.Round(poids[i], 1)));
+            }
+            h.Raisons.Sort((a, b) => b.Poids.CompareTo(a.Poids));
+            if (h.Raisons.Count > 4) h.Raisons.RemoveRange(4, h.Raisons.Count - 4);
 
             // Le chagrin s'apaise : en un mois environ pour la plupart, en des mois voire des années chez les plus
             // sensibles (trajectoires du deuil de Bonanno, 2004 : résilience majoritaire, deuil chronique pour 10 à 15 %).
@@ -285,6 +349,7 @@ public sealed partial class VieSociale(Alea alea)
             {
                 h.Chagrin = 0;
                 h.DeuilDeId = 0;
+                h.DeuilEvenementId = 0;
             }
 
             if (h.Humeur < 20) h.JoursSombres++;
@@ -294,14 +359,17 @@ public sealed partial class VieSociale(Alea alea)
             if (!h.EstDeprime && h.JoursSombres >= 21 && !h.EstEnfant(maintenant))
             {
                 h.DeprimeDepuis = maintenant;
-                Noter(maintenant, TypeEvenement.Humeur, h, null, $"{h.Nom} sombre dans une profonde tristesse.");
+                var raisons = Expliquer(h, humains, maintenant);
+                h.DepressionEvenementId = Noter(maintenant, TypeEvenement.Humeur, h, null,
+                    $"{h.Nom} sombre dans une profonde tristesse{(raisons.Length > 0 ? " : " + raisons : "")}.", CauseDe(h, h.Raisons.FirstOrDefault()));
             }
             // Un épisode dépressif dure au moins deux semaines (critère du DSM-5) et ne cède qu'à un vrai mieux.
             else if (h.EstDeprime && h.Humeur > 35 && maintenant - h.DeprimeDepuis >= 14 * Calendrier.SecondesParJour)
             {
                 h.DeprimeDepuis = null;
                 h.JoursSombres = 0;
-                Noter(maintenant, TypeEvenement.Humeur, h, null, $"{h.Nom} reprend goût à la vie.");
+                Noter(maintenant, TypeEvenement.Humeur, h, null, $"{h.Nom} reprend goût à la vie.", h.DepressionEvenementId);
+                h.DepressionEvenementId = 0;
             }
         }
     }
@@ -339,10 +407,23 @@ public sealed partial class VieSociale(Alea alea)
             if (k <= 0) continue;
 
             k *= 0.6 + 0.8 * h.Personnalite.Nevrosisme; // les plus sensibles souffrent davantage
-            if (k > h.Chagrin) h.DeuilDeId = mort.Id;
+            if (k > h.Chagrin)
+            {
+                h.DeuilDeId = mort.Id;
+                h.DeuilEvenementId = mort.MortEvenementId;
+            }
             h.Chagrin = Math.Min(100, h.Chagrin + k);
             h.Humeur = Math.Max(0, h.Humeur - k / 2);
-            if (k >= 25) Noter(maintenant, TypeEvenement.Humeur, h, mort, $"{h.Nom} pleure {mort.Nom}.");
+            if (k >= 25) Noter(maintenant, TypeEvenement.Humeur, h, mort, $"{h.Nom} pleure {Parente(h, mort)}.", mort.MortEvenementId);
+
+            // Un proche tué : la peine se double d'une soif de vengeance contre le meurtrier (Daly et Wilson, 1988).
+            if (mort.CauseDeMort == CauseDeMort.Meurtre && mort.MeurtrierId > 0 && mort.MeurtrierId != h.Id && k >= 20
+                && humains[mort.MeurtrierId - 1] is { EstVivant: true } meurtrier)
+            {
+                var soif = Math.Min(100, 1.2 * k);
+                AjouterGrief(h, new Grief(meurtrier.Id, MotifGrief.Meurtre, soif, soif, mort.MortEvenementId, mort.Id));
+                h.Colere = Math.Max(h.Colere, k);
+            }
         }
     }
 
@@ -423,12 +504,15 @@ public sealed partial class VieSociale(Alea alea)
                 var figure = Figure(g, maintenant);
                 var nom = $"Communauté de {figure.Nom}";
                 var homonymes = communautes.Count(c => c.Nom == nom || c.Nom.StartsWith(nom + " (", StringComparison.Ordinal));
+                var tolerance = ToleranceInitiale(g, communautes, maintenant);
                 communaute = new Communaute
                 {
                     Id = communautes.Count + 1,
                     Nom = homonymes == 0 ? nom : $"{nom} ({homonymes + 1})",
                     FondeeLe = maintenant,
                     FigureId = figure.Id,
+                    Tolerance = tolerance,
+                    Usage = Classer(tolerance, UsageFidelite.Neutre),
                 };
                 communautes.Add(communaute);
                 reprises.Add(communaute.Id);
@@ -473,6 +557,7 @@ public sealed partial class VieSociale(Alea alea)
                 Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} quitte la {Minuscule(communautes[avant - 1].Nom)}.");
             }
         }
+        Usages(humains, communautes, maintenant);
     }
 
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];

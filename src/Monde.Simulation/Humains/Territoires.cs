@@ -101,7 +101,7 @@ public sealed partial class VieSociale
         if (!c.Disette && (reserves < ReservesDisette || c.Abondance < AbondanceDisette))
         {
             c.Disette = true;
-            Noter(maintenant, TypeEvenement.Communaute, figure, null, c.Abondance < AbondanceDisette
+            c.DisetteEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null, c.Abondance < AbondanceDisette
                 ? $"La disette gagne la {Minuscule(c.Nom)} : le gibier et les plantes se font rares alentour ({c.Abondance:P0} de ce que la terre donne d'ordinaire)."
                 : $"La disette gagne la {Minuscule(c.Nom)} : ses membres maigrissent et ont faim.");
         }
@@ -109,7 +109,7 @@ public sealed partial class VieSociale
         {
             c.Disette = false;
             c.DestinationX = c.DestinationY = -1;
-            Noter(maintenant, TypeEvenement.Communaute, figure, null, $"La disette prend fin pour la {Minuscule(c.Nom)}.");
+            Noter(maintenant, TypeEvenement.Communaute, figure, null, $"La disette prend fin pour la {Minuscule(c.Nom)}.", c.DisetteEvenementId);
             return;
         }
 
@@ -139,7 +139,8 @@ public sealed partial class VieSociale
         {
             (c.DestinationX, c.DestinationY) = (meilleur.X, meilleur.Y);
             Noter(maintenant, TypeEvenement.Communaute, guide, null,
-                $"La {Minuscule(c.Nom)} part vers {Lieux.Vers(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)}, vers des terres plus riches dont se souvient {guide.Nom}.");
+                $"La {Minuscule(c.Nom)} part vers {Lieux.Vers(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)}, vers des terres plus riches dont se souvient {guide.Nom}.",
+                c.DisetteEvenementId);
             return;
         }
 
@@ -153,7 +154,8 @@ public sealed partial class VieSociale
             if (!Climat.EstPraticable(carte.BiomeEn(x, y)) || carte.Plantes[carte.Indice(x, y)] + carte.Gibier[carte.Indice(x, y)] < 40) continue;
             (c.DestinationX, c.DestinationY) = (x, y);
             Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                $"La {Minuscule(c.Nom)} quitte ses terres épuisées et part à l'aventure vers {Lieux.Vers(c.CentreX, c.CentreY, x, y)}.");
+                $"La {Minuscule(c.Nom)} quitte ses terres épuisées et part à l'aventure vers {Lieux.Vers(c.CentreX, c.CentreY, x, y)}.",
+                c.DisetteEvenementId);
             return;
         }
     }
@@ -163,6 +165,7 @@ public sealed partial class VieSociale
     {
         var ids = actives.Select(c => c.Id).ToHashSet();
         foreach (var cle in _relations.Keys.Where(k => !ids.Contains(k.A) || !ids.Contains(k.B)).ToList()) _relations.Remove(cle);
+        foreach (var cle in _offenses.Keys.Where(k => !ids.Contains(k.A) || !ids.Contains(k.B)).ToList()) _offenses.Remove(cle);
 
         // Somme et nombre des liens entre membres de deux communautés.
         var sommes = new Dictionary<(int, int), (double Somme, int Nombre)>();
@@ -221,7 +224,14 @@ public sealed partial class VieSociale
                         _ => $"L'hostilité entre la {na} et la {nb} s'apaise.",
                     },
                 };
-                Noter(maintenant, TypeEvenement.Communaute, figureA, figureB, texte);
+                // Une hostilité qui suit une violence entre les deux groupes cite cette violence comme cause.
+                Noter(maintenant, TypeEvenement.Communaute, figureA, figureB, texte,
+                    apres switch
+                    {
+                        EtatRelation.Hostiles => _offenses.GetValueOrDefault(cle),
+                        EtatRelation.Rivales => a.Disette ? a.DisetteEvenementId : b.DisetteEvenementId,
+                        _ => 0,
+                    });
             }
         }
     }

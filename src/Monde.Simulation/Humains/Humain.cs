@@ -43,6 +43,8 @@ public enum CauseDeMort : byte
     Accouchement = 7,
     /// <summary>Suicide, au terme d'une longue détresse.</summary>
     Desespoir = 8,
+    /// <summary>Tué par un autre humain (voir <see cref="Humain.MeurtrierId"/>).</summary>
+    Meurtre = 9,
 }
 
 /// <summary>
@@ -178,6 +180,34 @@ public sealed class Humain
     /// <summary>Inconfort cumulé depuis le début de la journée (faim, soif, froid, maladie), pour l'humeur.</summary>
     public double InconfortDuJour { get; set; }
 
+    /// <summary>Part de l'inconfort du jour due à la faim et à la soif, puis au froid (le reste vient de la maladie).</summary>
+    public double FaimSoifDuJour { get; set; }
+    public double FroidDuJour { get; set; }
+
+    /// <summary>Jours d'affilée passés sans la compagnie d'un être aimé.</summary>
+    public int JoursSeul { get; set; }
+
+    /// <summary>Colère, de 0 à 100 : elle flambe à l'offense et retombe en quelques jours, mais se ranime à la vue de l'offenseur.</summary>
+    public double Colere { get; set; }
+
+    /// <summary>Rancunes : ce que l'humain reproche à d'autres (trahison, coups, meurtre d'un proche). Elles s'effacent avec le temps, ou non.</summary>
+    public List<Grief> Griefs { get; set; } = [];
+
+    /// <summary>Raisons de l'humeur du jour, de la plus lourde à la plus légère (calculées chaque jour).</summary>
+    public List<Raison> Raisons { get; set; } = [];
+
+    /// <summary>Événement du journal à l'origine du deuil en cours (la mort pleurée), 0 sinon.</summary>
+    public long DeuilEvenementId { get; set; }
+
+    /// <summary>Événement du journal qui a marqué le début de la dépression en cours, 0 sinon.</summary>
+    public long DepressionEvenementId { get; set; }
+
+    /// <summary>Événement du journal qui rapporte sa mort, 0 s'il est vivant.</summary>
+    public long MortEvenementId { get; set; }
+
+    /// <summary>Humain qui l'a tué (0 si sa mort n'est pas un meurtre).</summary>
+    public int MeurtrierId { get; set; }
+
     /// <summary>Humains aimés côtoyés aujourd'hui, pour l'humeur.</summary>
     public int CompagnieDuJour { get; set; }
 
@@ -230,6 +260,8 @@ public sealed class Humain
         var copie = (Humain)MemberwiseClone();
         copie.Memoire = Memoire.Copier();
         copie.Liens = [.. Liens];
+        copie.Griefs = [.. Griefs];
+        copie.Raisons = [.. Raisons];
         return copie;
     }
 }

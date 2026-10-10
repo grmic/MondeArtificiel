@@ -135,20 +135,28 @@ public sealed class PsycheEtSocialTests
         Assert.True(sensible.Chagrin > resiliente.Chagrin);
         Assert.True(detachee.Chagrin < 20);
         Assert.Equal(4, resiliente.DeuilDeId);
-        Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Humeur && e.Texte == "H1 pleure H4.");
+        Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Humeur && e.Texte is "H1 pleure son fils H4." or "H1 pleure sa fille H4.");
 
-        for (var j = 1; j <= 90; j++) social.Humeurs(tous, maintenant + j * Jour);
+        for (var j = 1; j <= 90; j++) Journee(social, tous, maintenant + j * Jour);
         // Trois mois plus tard : la résiliente a presque surmonté ; la sensible souffre encore beaucoup.
         Assert.True(resiliente.Chagrin < 10);
         Assert.True(sensible.Chagrin > 35);
         Assert.False(resiliente.EstDeprime);
         Assert.True(sensible.EstDeprime);
-        Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Humeur && e.Texte == "H2 sombre dans une profonde tristesse.");
+        Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Humeur
+            && e.Texte.StartsWith("H2 sombre dans une profonde tristesse : elle pleure", StringComparison.Ordinal));
 
         // Le chagrin finit par s'apaiser et la dépression par passer.
-        for (var j = 91; j <= 3 * 365; j++) social.Humeurs(tous, maintenant + j * Jour);
+        for (var j = 91; j <= 3 * 365; j++) Journee(social, tous, maintenant + j * Jour);
         Assert.False(sensible.EstDeprime);
         Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Humeur && e.Texte == "H2 reprend goût à la vie.");
+    }
+
+    /// <summary>Une journée d'humeur pour des humains qui vivent entourés d'au moins un proche (ils ne souffrent pas de solitude).</summary>
+    private static void Journee(VieSociale social, List<Humain> tous, long maintenant)
+    {
+        foreach (var h in tous) h.CompagnieDuJour = 1;
+        social.Humeurs(tous, maintenant);
     }
 
     [Fact]

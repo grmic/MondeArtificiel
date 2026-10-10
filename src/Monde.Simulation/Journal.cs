@@ -29,6 +29,8 @@ public enum TypeEvenement : byte
     Journee = 16,
     /// <summary>Sécheresse, année d'abondance : ce que fait la nature, région par région.</summary>
     Nature = 17,
+    /// <summary>Jalousie, querelle, coups, séparation, pardon, réprobation : les offenses et leurs suites.</summary>
+    Conflit = 18,
 }
 
 /// <summary>
@@ -41,11 +43,27 @@ public enum Origine : byte
     Entite = 1,
 }
 
-/// <summary>Un événement du journal. <see cref="Id"/> vaut 0 tant qu'il n'est pas enregistré.</summary>
+/// <summary>
+/// Un événement du journal. <see cref="Id"/> vaut 0 tant qu'il n'est pas numéroté.
+/// <see cref="CauseId"/> désigne l'événement qui l'a provoqué (0 : aucune cause notée) : en remontant les causes,
+/// on suit l'enchaînement des faits (une trahison, la jalousie, des coups, une mort, un deuil, une vengeance…).
+/// </summary>
 public sealed record EvenementJournal(long Secondes, TypeEvenement Type, int HumainId, int AutreId, string Texte,
     Origine Origine = Origine.Naturelle)
 {
     public long Id { get; init; }
+    public long CauseId { get; init; }
+}
+
+/// <summary>
+/// Distribue les numéros des événements du journal dès leur création, pour qu'un événement puisse citer sa cause
+/// avant même d'être enregistré. Un seul numéroteur est partagé par tout le monde simulé.
+/// </summary>
+public sealed class Numeroteur
+{
+    public long Prochain { get; set; } = 1;
+
+    public long Suivant() => Prochain++;
 }
 
 public static class TypesEvenement
@@ -71,6 +89,7 @@ public static class Libelles
         Humains.CauseDeMort.Vieillesse => "de vieillesse",
         Humains.CauseDeMort.Accouchement => "en couches",
         Humains.CauseDeMort.Desespoir => "de sa propre main",
+        Humains.CauseDeMort.Meurtre => "sous les coups d'un autre",
         _ => "",
     };
 
@@ -78,6 +97,7 @@ public static class Libelles
     public static string Humeur(Humains.Humain h) => h switch
     {
         { EstDeprime: true } => "déprimé" + (h.Sexe == Humains.Sexe.Femme ? "e" : ""),
+        { Colere: > 60 } => h.Sexe == Humains.Sexe.Femme ? "furieuse" : "furieux",
         { Chagrin: > 30 } => "en deuil",
         { Humeur: > 75 } => h.Sexe == Humains.Sexe.Femme ? "joyeuse" : "joyeux",
         { Humeur: > 60 } => "content" + (h.Sexe == Humains.Sexe.Femme ? "e" : ""),

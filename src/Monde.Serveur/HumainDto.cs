@@ -69,7 +69,9 @@ public sealed record HumainDto(
         return new HumainDto(
             h.Id, h.Nom, h.Sexe == Simulation.Humains.Sexe.Femme ? "femme" : "homme", h.PartenaireId, h.Emplacement,
             Math.Round(h.AgeEnAnnees(instant), 1), h.X, h.Y,
-            Activites.GetValueOrDefault(h.Activite, "?"), h.EstVivant, h.EstVivant && h.EstMalade(maintenant),
+            h.Activite == Simulation.Humains.Activite.RejoindrePartenaire && h.Sexe == Simulation.Humains.Sexe.Homme
+                ? "rejoint sa compagne"
+                : Activites.GetValueOrDefault(h.Activite, "?"), h.EstVivant, h.EstVivant && h.EstMalade(maintenant),
             Math.Round(h.Faim), Math.Round(h.Soif), Math.Round(h.Fatigue), Math.Round(h.Froid), Math.Round(h.Sante, 1),
             h.EstVivant ? null : Libelles.Cause(h.CauseDeMort),
             h.MereId, h.PereId, h.EstEnceinte,

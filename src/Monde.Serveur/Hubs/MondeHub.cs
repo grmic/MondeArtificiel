@@ -124,6 +124,14 @@ public sealed class MondeHub(ServiceMonde service) : Hub
         return FicheDto.Journal(service, filtre, types).Select(EvenementDto.Depuis).ToList();
     }
 
+    /// <summary>Un événement par son numéro (pour remonter la chaîne des causes), ou null s'il n'existe pas.</summary>
+    public EvenementDto? Evenement(long id)
+    {
+        if (id < 1) return null;
+        var e = service.Monde.EvenementEnMemoire(id) ?? service.Depot.LireEvenement(id);
+        return e is null ? null : EvenementDto.Depuis(e);
+    }
+
     private async Task<HorlogeDto> DiffuserHorloge()
     {
         var horloge = HorlogeDto.Depuis(service);

@@ -10,6 +10,20 @@ interface Evenement {
   autre: number;
   texte: string;
   origine: "naturelle" | "entite";
+  /** Numéro de l'événement qui l'a provoqué (0 : aucune cause notée). */
+  cause: number;
+}
+
+interface Ame {
+  etat: string;
+  humeur: number;
+  chagrin: number;
+  deuilDe: number;
+  deprimeDepuis: string | null;
+  raisons: string[];
+  colere: number;
+  rancunes: { id: number; nom: string; motif: string; intensite: number; evenement: number }[];
+  depressionEvenement: number;
 }
 
 interface Trait {
@@ -24,7 +38,7 @@ interface Fiche {
   caractere: Trait[];
   intelligence: Trait[];
   biologie: Record<string, number>;
-  ame: { etat: string; humeur: number; chagrin: number; deuilDe: number; deprimeDepuis: string | null } | null;
+  ame: Ame | null;
   communaute: { id: number; nom: string } | null;
   enfants: number[];
   pensees: { date: string; texte: string }[];
@@ -118,8 +132,24 @@ export class PanneauFiche {
         ame.append(` · chagrin ${f.ame.chagrin}/100`);
         if (f.ame.deuilDe) ame.append(" (", this.lien(f.ame.deuilDe), ")");
       }
-      if (f.ame.deprimeDepuis) ame.append(el("br"), `Déprimé${h.sexe === "femme" ? "e" : ""} depuis ${f.ame.deprimeDepuis}`);
+      if (f.ame.colere >= 10) ame.append(` · colère ${f.ame.colere}/100`);
+      if (f.ame.deprimeDepuis) {
+        ame.append(el("br"), `Déprimé${h.sexe === "femme" ? "e" : ""} depuis ${f.ame.deprimeDepuis}`);
+        if (f.ame.depressionEvenement > 0) ame.append(" ", boutonCause(ame, f.ame.depressionEvenement, "pourquoi ?"));
+      }
+      if (f.ame.raisons.length > 0) ame.append(el("br"), `Ce qui pèse sur son humeur : ${f.ame.raisons.join(" ; ")}.`);
       corps.append(ame);
+      if (f.ame.rancunes.length > 0) {
+        corps.append(el("h3", undefined, "Rancunes"));
+        const rancunes = el("ul", "liste");
+        for (const g of f.ame.rancunes) {
+          const li = el("li");
+          li.append(this.lien(g.id, g.nom), ` — ${g.motif} (${g.intensite}/100) `);
+          if (g.evenement > 0) li.append(boutonCause(li, g.evenement, "ce qui s'est passé"));
+          rancunes.append(li);
+        }
+        corps.append(rancunes);
+      }
     }
     if (f.communaute) {
       const c = el("p", "communaute");
@@ -234,5 +264,31 @@ export function ligneEvenement(e: Evenement): HTMLElement {
   const li = el("li", `evenement ${e.type}`);
   li.append(el("span", "date", e.date), ` ${e.texte}`);
   if (e.origine === "entite") li.append(el("span", "entite", " ✦ soufflé par l'Entité"));
+  if (e.cause > 0) li.append(" ", boutonCause(li, e.cause, "pourquoi ?"));
   return li;
+}
+
+/**
+ * Bouton qui va chercher l'événement à l'origine d'un autre et l'affiche juste en dessous, avec à son tour
+ * son propre bouton : on remonte ainsi la chaîne des causes aussi loin qu'elle va.
+ */
+export function boutonCause(parent: HTMLElement, causeId: number, libelle: string): HTMLElement {
+  const bouton = el("button", "cause", libelle);
+  bouton.type = "button";
+  bouton.title = "Afficher l'événement qui en est la cause";
+  bouton.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    bouton.disabled = true;
+    const cause = await connexion.invoke<Evenement | null>("Evenement", causeId).catch(() => null);
+    const bloc = el("div", "chaine-cause");
+    if (cause) {
+      bloc.append("↳ ", el("span", "date", cause.date), ` ${cause.texte}`);
+      if (cause.cause > 0) bloc.append(" ", boutonCause(bloc, cause.cause, "pourquoi ?"));
+    } else {
+      bloc.append("↳ cause introuvable");
+    }
+    bouton.remove();
+    parent.append(bloc);
+  });
+  return bouton;
 }
