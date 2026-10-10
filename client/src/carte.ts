@@ -113,6 +113,10 @@ export interface HumainVue {
   froid: number;
   sante: number;
   causeDeMort: string | null;
+  mere: number;
+  pere: number;
+  enceinte: boolean;
+  etape: "bébé" | "enfant" | "adulte";
 }
 
 export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement; humains: HumainVue[] } | null;
@@ -172,15 +176,31 @@ export class VueCarte {
   /** Place les humains : un point par vivant (orange : femme, bleu : homme), une croix grise par mort. */
   afficherHumains(humains: HumainVue[]): void {
     this.humains = humains;
+    // Retire les points des humains qui ne sont plus envoyés (morts depuis plus d'un an).
+    const presents = new Set(humains.map((h) => h.id));
+    for (const [id, point] of this.pointsHumains) {
+      if (!presents.has(id)) {
+        point.destroy();
+        this.pointsHumains.delete(id);
+      }
+    }
     for (const h of humains) {
       let point = this.pointsHumains.get(h.id);
-      const etat = h.vivant ? h.sexe : "mort";
+      // Les bébés sont portés par leur mère : on ne les dessine pas à part.
+      const etat = !h.vivant ? "mort" : `${h.sexe}-${h.etape}-${h.enceinte}`;
+      if (h.vivant && h.etape === "bébé") {
+        point?.destroy();
+        this.pointsHumains.delete(h.id);
+        continue;
+      }
       if (!point || point.label !== etat) {
         point?.destroy();
         point = new Graphics();
         point.label = etat;
         if (h.vivant) {
-          point.circle(0, 0, 3.5).fill({ color: h.sexe === "femme" ? COULEUR_FEMME : COULEUR_HOMME }).stroke({ width: 1, color: 0x000000 });
+          const rayon = h.etape === "enfant" ? 2.3 : 3.5;
+          point.circle(0, 0, rayon).fill({ color: h.sexe === "femme" ? COULEUR_FEMME : COULEUR_HOMME })
+            .stroke({ width: h.enceinte ? 2 : 1, color: h.enceinte ? 0xffffff : 0x000000 });
         } else {
           point.moveTo(-3, -3).lineTo(3, 3).moveTo(3, -3).lineTo(-3, 3).stroke({ width: 1.5, color: 0x9aa7b8 });
         }
@@ -190,7 +210,7 @@ export class VueCarte {
         else this.calqueHumains.addChildAt(point, 0);
       }
       // Léger décalage pour distinguer les deux membres d'un couple sur la même tuile.
-      const decalage = h.sexe === "femme" ? 0.3 : 0.7;
+      const decalage = h.etape === "enfant" ? 0.5 : h.sexe === "femme" ? 0.3 : 0.7;
       point.position.set(h.x + decalage, h.y + 0.5);
     }
     this.ajusterMarqueurs();

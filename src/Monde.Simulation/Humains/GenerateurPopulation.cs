@@ -38,4 +38,34 @@ public static class GenerateurPopulation
         }
         return humains;
     }
+
+    /// <summary>
+    /// Un nouveau-né. Son caractère mêle ceux de ses parents, avec une part de hasard.
+    /// </summary>
+    public static Humain Naissance(int id, Humain mere, Humain? pere, long maintenant, Alea alea, ISet<string> nomsPris)
+    {
+        double Herite(Func<Personnalite, double> trait)
+        {
+            var moyenne = pere is null ? trait(mere.Personnalite) : (trait(mere.Personnalite) + trait(pere.Personnalite)) / 2;
+            return Math.Clamp(moyenne + (alea.Reel() - 0.5) * 0.4, 0, 1);
+        }
+
+        return new Humain
+        {
+            Id = id,
+            Nom = Noms.Nouveau(alea, nomsPris),
+            Sexe = alea.Entier(2) == 0 ? Sexe.Femme : Sexe.Homme,
+            PartenaireId = 0,
+            MereId = mere.Id,
+            PereId = pere?.Id ?? 0,
+            Emplacement = mere.Emplacement,
+            Naissance = maintenant,
+            Personnalite = new Personnalite(
+                Herite(p => p.Curiosite), Herite(p => p.Prudence), Herite(p => p.Sociabilite),
+                Herite(p => p.Endurance), Herite(p => p.Adresse)),
+            X = mere.X,
+            Y = mere.Y,
+            Activite = Activite.PorteParSaMere,
+        };
+    }
 }

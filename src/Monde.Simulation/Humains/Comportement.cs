@@ -8,7 +8,7 @@ namespace Monde.Simulation.Humains;
 /// les besoins évoluent, la santé en dépend, puis l'humain choisit une action.
 /// Les seuils sont des réglages de départ, à ajuster en observant le monde.
 /// </summary>
-public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
+public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
 {
     // Évolution des besoins par pas de 10 minutes.
     private const double FaimParPas = 0.23;     // affamé en 3 jours environ
@@ -18,54 +18,87 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
     private const double TemperatureConfort = 15;
     private const double ChaleurCorporelle = 0.5;
 
-    private const double ProbabiliteMaladieDeBase = 0.00004;
+    private const double ProbabiliteMaladieDeBase = 0.000012; // environ une maladie tous les deux ans
 
     private static readonly (int Dx, int Dy)[] Voisins8 =
         [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)];
 
+    /// <summary>Instant du pas en cours.</summary>
+    private long _maintenant;
+
     public void Vivre(Humain h, IReadOnlyList<Humain> tous, long maintenant)
     {
         if (!h.EstVivant) return;
-        var partenaire = tous[h.PartenaireId - 1];
-        Metaboliser(h, partenaire, maintenant);
+        _maintenant = maintenant;
+        if (h.EstBebe(maintenant))
+        {
+            VivreBebe(h, Vivant(tous, h.MereId), maintenant);
+            return;
+        }
+        // Pour un enfant, le « compagnon » à rejoindre (pour dormir, se tenir chaud) est un parent.
+        var partenaire = h.EstEnfant(maintenant)
+            ? Vivant(tous, h.MereId) ?? Vivant(tous, h.PereId)
+            : Vivant(tous, h.PartenaireId);
+        var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId));
+        Metaboliser(h, chaleurPartagee, maintenant);
         if (!h.EstVivant) return;
-        Decider(h, partenaire, maintenant);
+        Grossesse(h, tous, maintenant);
+        if (!h.EstVivant) return;
+        Decider(h, partenaire, tous, maintenant);
     }
 
-    private void Metaboliser(Humain h, Humain partenaire, long maintenant)
+    private static bool AuMemeEndroit(Humain h, Humain? autre) => autre is not null && autre.X == h.X && autre.Y == h.Y;
+
+    private static Humain? Vivant(IReadOnlyList<Humain> tous, int id) =>
+        id > 0 && id <= tous.Count && tous[id - 1].EstVivant ? tous[id - 1] : null;
+
+    private void Metaboliser(Humain h, bool chaleurPartagee, long maintenant)
     {
         var p = h.Personnalite;
-        h.Faim += FaimParPas;
+        var enceinte = h.EstEnceinte;
+        h.Faim += FaimParPas + (enceinte ? 0.05 : 0);
         h.Soif += SoifParPas;
         h.Fatigue += h.Activite == Activite.Dormir
             ? -RecuperationSommeil
-            : FatigueParPas * (1.2 - 0.4 * p.Endurance) * (h.Activite == Activite.Repos ? 0.5 : 1);
+            : FatigueParPas * (1.2 - 0.4 * p.Endurance) * (h.Activite == Activite.Repos ? 0.5 : 1) * (enceinte ? 1.2 : 1);
 
         // Froid : la perte de chaleur dépend de l'écart au confort et de l'abri ; le corps en produit un peu.
         var temperature = Climat.Temperature(carte, h.X, h.Y, maintenant);
         var abri = Climat.Abri(carte.BiomeEn(h.X, h.Y));
-        if (partenaire.EstVivant && partenaire.X == h.X && partenaire.Y == h.Y) abri += 0.3; // se tenir chaud à deux
+        if (chaleurPartagee) abri += 0.3; // se tenir chaud avec son compagnon ou sa famille
         var perte = Math.Max(0, TemperatureConfort - temperature) * 0.05 * Math.Max(0, 1 - abri);
         h.Froid += perte - ChaleurCorporelle;
+
+        // Le désir monte chez les adultes en âge d'avoir des enfants, s'ils ne sont pas en détresse.
+        if (h.EstFecond(maintenant) && !h.EstMalade(maintenant) && h.Faim < 70 && h.Soif < 70)
+        {
+            h.Desir = Math.Min(100, h.Desir + DesirParPas);
+        }
 
         h.Faim = Math.Clamp(h.Faim, 0, 100);
         h.Soif = Math.Clamp(h.Soif, 0, 100);
         h.Fatigue = Math.Clamp(h.Fatigue, 0, 100);
         h.Froid = Math.Clamp(h.Froid, 0, 100);
 
-        // Dégâts sur la santé : on retient la cause la plus lourde.
-        Span<double> degats = stackalloc double[6];
+        Souffrir(h, maintenant, 1);
+    }
+
+    /// <summary>Dégâts sur la santé selon les besoins, mort éventuelle, puis risque de tomber malade.</summary>
+    private void Souffrir(Humain h, long maintenant, double fragilite)
+    {
+        var p = h.Personnalite;
+        Span<double> degats = stackalloc double[8];
         if (h.Faim >= 85) degats[(int)CauseDeMort.Faim] = 0.06;
         if (h.Soif >= 85) degats[(int)CauseDeMort.Soif] = 0.25;
         if (h.Froid >= 70) degats[(int)CauseDeMort.Froid] = 0.05 + 0.15 * (h.Froid - 70) / 30;
         if (h.Fatigue >= 95) degats[(int)CauseDeMort.Epuisement] = 0.05;
-        if (h.EstMalade(maintenant)) degats[(int)CauseDeMort.Maladie] = 0.04 * (1.3 - 0.6 * p.Endurance);
+        if (h.EstMalade(maintenant)) degats[(int)CauseDeMort.Maladie] = 0.03 * (1.3 - 0.6 * p.Endurance);
 
         double total = 0, pire = 0;
         var cause = CauseDeMort.Aucune;
         for (var i = 1; i < degats.Length; i++)
         {
-            total += degats[i];
+            total += degats[i] * fragilite;
             if (degats[i] > pire) (pire, cause) = (degats[i], (CauseDeMort)i);
         }
 
@@ -73,10 +106,7 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
         h.Sante -= total;
         if (h.Sante <= 0)
         {
-            h.Sante = 0;
-            h.MortLe = maintenant;
-            h.CauseDeMort = cause;
-            h.Activite = Activite.Mort;
+            Mourir(h, maintenant, cause);
             return;
         }
 
@@ -84,14 +114,23 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
         if (!h.EstMalade(maintenant))
         {
             var risque = ProbabiliteMaladieDeBase * (1 + (100 - h.Sante) / 25 + h.Faim / 50 + h.Froid / 50) * (1.3 - 0.6 * p.Endurance);
-            if (alea.Reel() < risque)
+            if (alea.Reel() < risque * fragilite)
             {
                 h.MaladeJusqua = maintenant + (3 + alea.Entier(8)) * Calendrier.SecondesParJour;
             }
         }
     }
 
-    private void Decider(Humain h, Humain partenaire, long maintenant)
+    private static void Mourir(Humain h, long maintenant, CauseDeMort cause)
+    {
+        h.Sante = 0;
+        h.MortLe = maintenant;
+        h.CauseDeMort = cause;
+        h.Activite = Activite.Mort;
+        h.EnceinteDepuis = null;
+    }
+
+    private void Decider(Humain h, Humain? partenaire, IReadOnlyList<Humain> tous, long maintenant)
     {
         var p = h.Personnalite;
         var date = Calendrier.Decomposer(maintenant);
@@ -125,9 +164,23 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
             }
         }
 
-        // Aucun besoin pressant : rester près de l'autre, explorer ou se reposer selon le caractère.
-        var distance = Distance(h.X, h.Y, partenaire.X, partenaire.Y);
-        if (partenaire.EstVivant && distance > 2 + (1 - p.Sociabilite) * 8)
+        // Aucun besoin pressant. Un enfant suit ses parents.
+        if (h.EstEnfant(maintenant))
+        {
+            var parent = Vivant(tous, h.MereId) ?? Vivant(tous, h.PereId);
+            if (parent is not null && Distance(h.X, h.Y, parent.X, parent.Y) > 1) Avancer(h, parent.X, parent.Y, Activite.SuivreParent);
+            else
+            {
+                h.Activite = Activite.Repos;
+                h.CibleX = h.CibleY = -1;
+            }
+            return;
+        }
+
+        // Un adulte : l'instinct de reproduction, puis rester près de l'autre, explorer ou se reposer.
+        if (h.Desir >= SeuilDesir && ChercherAccouplement(h, partenaire, tous, maintenant)) return;
+
+        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) > 2 + (1 - p.Sociabilite) * 8)
         {
             Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
         }
@@ -145,7 +198,8 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
     /// <summary>Urgence d'un besoin : croît avec lui, et beaucoup plus vite au-delà de 70 (danger).</summary>
     private static double Urgence(double besoin) => besoin / 100 + (besoin > 70 ? (besoin - 70) / 30 * 0.8 : 0);
 
-    private int RayonPerception(Humain h) => 6 + (int)(h.Personnalite.Curiosite * 8);
+    private int RayonPerception(Humain h) =>
+        h.EstEnfant(_maintenant) ? 5 : 6 + (int)(h.Personnalite.Curiosite * 8);
 
     private void AllerBoire(Humain h)
     {
@@ -172,7 +226,7 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
             h.CibleX = h.CibleY = -1;
             return;
         }
-        if (ecosysteme.Gibier[i] >= 2000)
+        if (ecosysteme.Gibier[i] >= 2000 && !h.EstEnfant(_maintenant))
         {
             // Chasse à mains nues : réussite rare, meilleure pour les adroits et là où le gibier abonde.
             var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * ecosysteme.Gibier[i] / 10_000.0;
@@ -196,12 +250,12 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
         else Explorer(h, Activite.ChercherNourriture);
     }
 
-    private void AllerDormir(Humain h, Humain partenaire)
+    private void AllerDormir(Humain h, Humain? partenaire)
     {
         // Les prudents cherchent d'abord un abri, ou rejoignent l'autre pour dormir ensemble.
         if (Climat.Abri(carte.BiomeEn(h.X, h.Y)) < 0.3 && h.Fatigue < 85 && h.Personnalite.Prudence > 0.4)
         {
-            if (partenaire.EstVivant && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 4)
+            if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 4)
             {
                 Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
                 return;
@@ -217,9 +271,9 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
         h.CibleX = h.CibleY = -1;
     }
 
-    private void AllerSAbriter(Humain h, Humain partenaire, long maintenant)
+    private void AllerSAbriter(Humain h, Humain? partenaire, long maintenant)
     {
-        if (partenaire.EstVivant && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 6)
+        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 6)
         {
             Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
             return;
@@ -295,13 +349,15 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
     {
         var meilleure = Distance2(x, y, cibleX, cibleY);
         var (bx, by) = (-1, -1);
+        var egalites = 0;
         foreach (var (dx, dy) in Voisins8)
         {
             int nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
             if (!Climat.EstPraticable(carte.BiomeEn(nx, ny))) continue;
             var d = Distance2(nx, ny, cibleX, cibleY);
-            if (d < meilleure) (meilleure, bx, by) = (d, nx, ny);
+            if (d < meilleure) (meilleure, bx, by, egalites) = (d, nx, ny, 1);
+            else if (d == meilleure && bx >= 0 && alea.Entier(++egalites) == 0) (bx, by) = (nx, ny);
         }
         return (bx, by);
     }
@@ -353,6 +409,7 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
         file.Enqueue((debut, 0));
         (int X, int Y)? meilleur = null;
         var meilleurScore = int.MinValue;
+        var egalites = 0;
 
         while (file.Count > 0)
         {
@@ -360,7 +417,15 @@ public sealed class Comportement(Carte carte, Ecosysteme ecosysteme, Alea alea)
             if (i != debut && convient(i))
             {
                 var s = score(i) - d * 300;
-                if (s > meilleurScore) (meilleurScore, meilleur) = (s, (i % carte.Largeur, i / carte.Largeur));
+                if (s > meilleurScore)
+                {
+                    (meilleurScore, meilleur, egalites) = (s, (i % carte.Largeur, i / carte.Largeur), 1);
+                }
+                else if (s == meilleurScore && alea.Entier(++egalites) == 0)
+                {
+                    // Égalité : tirage équitable, sinon le sens du parcours favoriserait toujours le nord-ouest.
+                    meilleur = (i % carte.Largeur, i / carte.Largeur);
+                }
             }
             if (d >= rayon) continue;
             int x = i % carte.Largeur, y = i / carte.Largeur;

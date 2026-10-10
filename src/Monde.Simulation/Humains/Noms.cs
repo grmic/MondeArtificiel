@@ -11,9 +11,14 @@ public static class Noms
 
     public static List<string> Generer(Alea alea, int nombre)
     {
-        var noms = new List<string>(nombre);
         var deja = new HashSet<string>();
-        while (noms.Count < nombre)
+        return Enumerable.Range(0, nombre).Select(_ => Nouveau(alea, deja)).ToList();
+    }
+
+    /// <summary>Un nom qui n'est pas encore dans <paramref name="deja"/> (il y est ajouté).</summary>
+    public static string Nouveau(Alea alea, ISet<string> deja)
+    {
+        while (true)
         {
             var syllabes = 2 + alea.Entier(2);
             var nom = "";
@@ -23,8 +28,7 @@ public static class Noms
             }
             nom += Finales[alea.Entier(Finales.Length)];
             nom = char.ToUpperInvariant(nom[0]) + nom[1..];
-            if (deja.Add(nom)) noms.Add(nom);
+            if (deja.Add(nom)) return nom;
         }
-        return noms;
     }
 }

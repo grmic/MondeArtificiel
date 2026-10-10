@@ -90,6 +90,27 @@ public sealed class DepotMondeTests : IDisposable
     }
 
     [Fact]
+    public void EnfantEtGrossesse_SontRelus()
+    {
+        var monde = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42));
+        var etat = monde.Etat;
+        var mere = etat.Humains![0];
+        mere.EnceinteDepuis = 12_345;
+        mere.PereEnfantId = 4;
+        mere.Desir = 42.5;
+        var bebe = Simulation.Humains.GenerateurPopulation.Naissance(67, mere, etat.Humains[1], 20_000,
+            new Simulation.Monde.Alea(1), new HashSet<string>());
+        var avecBebe = etat with { Humains = [.. etat.Humains, bebe] };
+        new DepotMonde(Fichier).Enregistrer(avecBebe);
+
+        var relu = new DepotMonde(Fichier).Charger()!.Humains!;
+
+        Assert.Equal(67, relu.Count);
+        Assert.Equivalent(mere, relu[0], strict: true);
+        Assert.Equivalent(bebe, relu[66], strict: true);
+    }
+
+    [Fact]
     public void SchemaPlusRecent_EstRefuse()
     {
         new DepotMonde(Fichier);

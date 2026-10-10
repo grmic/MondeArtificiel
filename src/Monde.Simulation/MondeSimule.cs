@@ -27,12 +27,14 @@ public sealed class MondeSimule
 {
     public const long SecondesParPas = 600;
     private const long PasParHeure = Calendrier.SecondesParHeure / SecondesParPas;
+    private const long PasParJour = Calendrier.SecondesParJour / SecondesParPas;
 
     private readonly object _verrou = new();
     private readonly List<Humain> _humains;
     private readonly Ecosysteme _ecosysteme;
     private readonly Alea _alea;
     private readonly Comportement _comportement;
+    private readonly HashSet<string> _noms;
     private long _secondes;
     private long _pas;
     private Vitesse _vitesse;
@@ -58,6 +60,7 @@ public sealed class MondeSimule
         _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
         _comportement = new Comportement(carte, _ecosysteme, _alea);
+        _noms = _humains.Select(x => x.Nom).ToHashSet();
 
         for (var i = 0; i < _humains.Count; i++)
         {
@@ -155,9 +158,22 @@ public sealed class MondeSimule
     {
         _pas++;
         if (_pas % PasParHeure == 0) _ecosysteme.Repousser();
-        foreach (var humain in _humains)
+        var nouveauJour = _pas % PasParJour == 0;
+
+        // La liste peut grandir pendant le pas : on ne fait vivre que ceux qui existaient au début.
+        var nombre = _humains.Count;
+        for (var i = 0; i < nombre; i++)
         {
+            var humain = _humains[i];
             _comportement.Vivre(humain, _humains, _secondes);
+            if (nouveauJour) _comportement.Vieillir(humain, _secondes);
         }
+
+        foreach (var (mere, pereId) in _comportement.Accouchements)
+        {
+            var pere = pereId > 0 ? _humains[pereId - 1] : null;
+            _humains.Add(GenerateurPopulation.Naissance(_humains.Count + 1, mere, pere, _secondes, _alea, _noms));
+        }
+        _comportement.Accouchements.Clear();
     }
 }

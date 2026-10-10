@@ -21,6 +21,9 @@ public enum Activite : byte
     RejoindrePartenaire = 9,
     Explorer = 10,
     Mort = 11,
+    SAccoupler = 12,
+    SuivreParent = 13,
+    PorteParSaMere = 14,
 }
 
 public enum CauseDeMort : byte
@@ -31,6 +34,8 @@ public enum CauseDeMort : byte
     Froid = 3,
     Maladie = 4,
     Epuisement = 5,
+    Vieillesse = 6,
+    Accouchement = 7,
 }
 
 /// <summary>Traits de caractère, chacun entre 0 et 1, tirés au hasard à la naissance.</summary>
@@ -51,7 +56,12 @@ public sealed class Humain
     public required string Nom { get; init; }
 
     public required Sexe Sexe { get; init; }
-    public required int PartenaireId { get; init; }
+    /// <summary>Compagnon ou compagne (0 si aucun). Un couple peut se former plus tard entre deux humains seuls.</summary>
+    public required int PartenaireId { get; set; }
+
+    /// <summary>Parents (0 pour les humains de départ, créés par l'Entité).</summary>
+    public int MereId { get; init; }
+    public int PereId { get; init; }
     public required int Emplacement { get; init; }
 
     /// <summary>Date de naissance en secondes du monde (négative si avant l'an 1).</summary>
@@ -78,12 +88,38 @@ public sealed class Humain
     /// <summary>Fin de la maladie en secondes du monde (0 si en bonne santé).</summary>
     public long MaladeJusqua { get; set; }
 
+    /// <summary>Désir, de 0 à 100 : un instinct qui monte avec le temps chez les adultes.</summary>
+    public double Desir { get; set; }
+
+    /// <summary>Début de la grossesse en secondes du monde, ou null.</summary>
+    public long? EnceinteDepuis { get; set; }
+
+    /// <summary>Père de l'enfant attendu (0 si aucune grossesse).</summary>
+    public int PereEnfantId { get; set; }
+
+    /// <summary>Date du dernier accouchement (l'allaitement rend peu fertile pendant un an).</summary>
+    public long? DernierAccouchement { get; set; }
+
     public long? MortLe { get; set; }
     public CauseDeMort CauseDeMort { get; set; }
 
     public bool EstVivant => MortLe is null;
 
     public bool EstMalade(long maintenant) => MaladeJusqua > maintenant;
+
+    public bool EstEnceinte => EnceinteDepuis is not null;
+
+    /// <summary>Bébé (moins de 2 ans) : vit dans les bras de sa mère.</summary>
+    public bool EstBebe(long maintenant) => AgeEnAnnees(maintenant) < 2;
+
+    /// <summary>Enfant ou bébé (moins de 14 ans) : suit ses parents, ne se reproduit pas.</summary>
+    public bool EstEnfant(long maintenant) => AgeEnAnnees(maintenant) < 14;
+
+    public bool EstFecond(long maintenant)
+    {
+        var age = AgeEnAnnees(maintenant);
+        return Sexe == Sexe.Femme ? age is >= 15 and < 45 : age is >= 15 and < 60;
+    }
 
     public double AgeEnAnnees(long maintenant) => (maintenant - Naissance) / (double)Temps.Calendrier.SecondesParAn;
 

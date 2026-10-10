@@ -78,30 +78,84 @@ public sealed class HumainsTests
     }
 
     [Fact]
-    public void SurDeuxAns_CertainsSurviventEtDAutresMeurent()
+    public void SurDeuxAns_NaissancesMortsEtRegles()
     {
         var monde = NouveauMonde();
         for (var jour = 0; jour < 2 * Calendrier.JoursParAn; jour++)
         {
             monde.AvancerDe(Calendrier.SecondesParJour);
-            var (_, humains) = monde.InstantaneHumains();
+            var (maintenant, humains) = monde.InstantaneHumains();
             Assert.All(humains, h =>
             {
                 Assert.True(Climat.EstPraticable(Carte.BiomeEn(h.X, h.Y)), $"{h.Nom} est dans l'eau en ({h.X}, {h.Y})");
                 Assert.InRange(h.Sante, 0, 100);
                 Assert.InRange(h.Faim, 0, 100);
+                // Un bébé vivant est dans les bras de sa mère vivante.
+                if (h.EstVivant && h.EstBebe(maintenant) && humains[h.MereId - 1].EstVivant)
+                {
+                    var mere = humains[h.MereId - 1];
+                    Assert.Equal((mere.X, mere.Y), (h.X, h.Y));
+                }
             });
         }
 
         var final = monde.Etat.Humains!;
         var vivants = final.Count(h => h.EstVivant);
-        Assert.InRange(vivants, 1, 65);
+        Assert.InRange(vivants, 1, final.Count - 1);
         Assert.All(final.Where(h => !h.EstVivant), h =>
         {
             Assert.NotEqual(CauseDeMort.Aucune, h.CauseDeMort);
             Assert.Equal(Activite.Mort, h.Activite);
             Assert.Equal(0, h.Sante);
         });
+
+        // Des enfants sont nés, de parents adultes de sexes différents qui ne sont pas apparentés.
+        var enfants = final.Where(h => h.MereId != 0).ToList();
+        Assert.NotEmpty(enfants);
+        Assert.All(enfants, e =>
+        {
+            var mere = final[e.MereId - 1];
+            var pere = final[e.PereId - 1];
+            Assert.Equal(Sexe.Femme, mere.Sexe);
+            Assert.Equal(Sexe.Homme, pere.Sexe);
+            Assert.InRange(mere.AgeEnAnnees(e.Naissance), 15, 46);
+            Assert.InRange(e.Personnalite.Curiosite, 0, 1);
+            Assert.Same(e, final[e.Id - 1]);
+        });
+    }
+
+    [Fact]
+    public void HumainsDeCouplesDifferents_PeuventAvoirUnEnfant()
+    {
+        // Règle de zem : une femme et un homme de deux couples différents, dont les compagnons sont morts,
+        // se retrouvent au même endroit.
+        var depart = NouveauMonde().Etat;
+        var e = Carte.Emplacements[0];
+        Humain Copie(int index, int x, int y, long? mort = null)
+        {
+            var h = depart.Humains![index].Copier();
+            (h.X, h.Y, h.Desir, h.MortLe) = (x, y, 100, mort);
+            if (mort is not null) (h.Sante, h.CauseDeMort, h.Activite) = (0, CauseDeMort.Faim, Activite.Mort);
+            return h;
+        }
+        var femme = Copie(0, e.X, e.Y);        // couple n° 1
+        var sonCompagnon = Copie(1, e.X, e.Y, mort: 1);
+        var homme = Copie(3, e.X, e.Y);        // couple n° 2
+        var saCompagne = Copie(2, e.X, e.Y, mort: 1);
+        Assert.NotEqual(femme.Emplacement, homme.Emplacement);
+
+        var monde = new MondeSimule(Carte, depart with { Humains = [femme, sonCompagnon, saCompagne, homme] });
+        var enceinte = false;
+        for (var jour = 0; jour < 240 && !enceinte; jour++)
+        {
+            monde.AvancerDe(Calendrier.SecondesParJour);
+            var f = monde.Etat.Humains![0];
+            enceinte = f.EstEnceinte && f.PereEnfantId == homme.Id;
+        }
+
+        Assert.True(enceinte, "la femme aurait dû attendre un enfant de l'homme de l'autre couple");
+        var final = monde.Etat.Humains!;
+        Assert.Equal(homme.Id, final[0].PartenaireId); // deux humains seuls forment un nouveau couple
     }
 
     [Fact]

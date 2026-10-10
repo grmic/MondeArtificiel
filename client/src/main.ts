@@ -13,11 +13,16 @@ const GRAINE_MAX = 4_294_967_295;
 let nomsParId = new Map<number, string>();
 
 function decrireHumain(h: HumainVue): string {
-  const compagnon = nomsParId.get(h.partenaire) ?? "?";
-  const qui = `${h.nom} (${h.sexe}, ${Math.floor(h.age)} ans, couple n° ${h.emplacement} avec ${compagnon})`;
+  const nom = (id: number) => nomsParId.get(id) ?? "?";
+  const age = h.age < 2 ? `${Math.round(h.age * 12)} mois` : `${Math.floor(h.age)} ans`;
+  const liens: string[] = [];
+  if (h.mere) liens.push(`enfant de ${nom(h.mere)} et ${h.pere ? nom(h.pere) : "?"}`);
+  else liens.push(`couple de départ n° ${h.emplacement}`);
+  if (h.partenaire) liens.push(`avec ${nom(h.partenaire)}`);
+  const qui = `${h.nom} (${h.sexe}, ${age}, ${liens.join(", ")})`;
   if (!h.vivant) return `✝ ${qui}, mort ${h.causeDeMort ?? ""}`;
-  const malade = h.malade ? " · malade" : "";
-  return `${qui} ${h.activite}${malade}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante}`;
+  const etat = [h.activite, h.enceinte ? "enceinte" : "", h.malade ? "malade" : ""].filter(Boolean).join(" · ");
+  return `${qui} ${etat}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante}`;
 }
 
 function decrire(info: InfoTuile): void {
@@ -30,7 +35,7 @@ function decrire(info: InfoTuile): void {
     `Altitude ${altitude} · gibier ${carte.gibier[i]} · plantes ${carte.plantes[i]}`,
   ];
   if (emplacement) lignes.unshift(`Emplacement de départ n° ${emplacement.numero}`);
-  if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 4).map(decrireHumain));
+  if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 5).map(decrireHumain));
   infos.textContent = lignes.join("\n");
 }
 
@@ -45,7 +50,11 @@ async function demarrer(): Promise<void> {
   const montrerHumains = (humains: HumainVue[]) => {
     nomsParId = new Map(humains.map((h) => [h.id, h.nom]));
     vue.afficherHumains(humains);
-    population.textContent = `Vivants : ${humains.filter((h) => h.vivant).length} / ${humains.length}`;
+    const vivants = humains.filter((h) => h.vivant);
+    const enfants = vivants.filter((h) => h.etape !== "adulte").length;
+    const enceintes = vivants.filter((h) => h.enceinte).length;
+    const naissances = Math.max(0, Math.max(...humains.map((h) => h.id)) - 66);
+    population.textContent = `Vivants : ${vivants.length} (dont ${enfants} enfants) · enceintes : ${enceintes} · naissances : ${naissances}`;
   };
   connexion.on("Humains", montrerHumains);
   demarrerConnexion(element("#statut"), async () => {

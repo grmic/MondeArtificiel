@@ -13,7 +13,7 @@ namespace Monde.Stockage;
 public sealed class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 2;
+    public const int VersionSchema = 3;
 
     private readonly string _connexion;
 
@@ -119,6 +119,18 @@ public sealed class DepotMonde
                 );
                 """);
         }
+        if (actuelle < 3)
+        {
+            // Version 3 : filiation, désir et grossesse.
+            Executer(connexion, transaction, """
+                ALTER TABLE humains ADD COLUMN mere INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN pere INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN desir REAL NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN enceinte_depuis INTEGER;
+                ALTER TABLE humains ADD COLUMN pere_enfant INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN dernier_accouchement INTEGER;
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -156,7 +168,8 @@ public sealed class DepotMonde
             SELECT id, nom, sexe, partenaire, emplacement, naissance,
                    curiosite, prudence, sociabilite, endurance, adresse,
                    x, y, faim, soif, fatigue, froid, sante, activite,
-                   cible_x, cible_y, detour, malade_jusqua, mort_le, cause_mort
+                   cible_x, cible_y, detour, malade_jusqua, mort_le, cause_mort,
+                   mere, pere, desir, enceinte_depuis, pere_enfant, dernier_accouchement
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -188,6 +201,12 @@ public sealed class DepotMonde
                     MaladeJusqua = lecteur.GetInt64(22),
                     MortLe = lecteur.IsDBNull(23) ? null : lecteur.GetInt64(23),
                     CauseDeMort = (CauseDeMort)lecteur.GetByte(24),
+                    MereId = lecteur.GetInt32(25),
+                    PereId = lecteur.GetInt32(26),
+                    Desir = lecteur.GetDouble(27),
+                    EnceinteDepuis = lecteur.IsDBNull(28) ? null : lecteur.GetInt64(28),
+                    PereEnfantId = lecteur.GetInt32(29),
+                    DernierAccouchement = lecteur.IsDBNull(30) ? null : lecteur.GetInt64(30),
                 });
             }
         }
@@ -243,16 +262,19 @@ public sealed class DepotMonde
                 INSERT OR REPLACE INTO humains (id, nom, sexe, partenaire, emplacement, naissance,
                     curiosite, prudence, sociabilite, endurance, adresse,
                     x, y, faim, soif, fatigue, froid, sante, activite,
-                    cible_x, cible_y, detour, malade_jusqua, mort_le, cause_mort)
+                    cible_x, cible_y, detour, malade_jusqua, mort_le, cause_mort,
+                    mere, pere, desir, enceinte_depuis, pere_enfant, dernier_accouchement)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
-                    $cible_x, $cible_y, $detour, $malade_jusqua, $mort_le, $cause_mort);
+                    $cible_x, $cible_y, $detour, $malade_jusqua, $mort_le, $cause_mort,
+                    $mere, $pere, $desir, $enceinte_depuis, $pere_enfant, $dernier_accouchement);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
                 "$x", "$y", "$faim", "$soif", "$fatigue", "$froid", "$sante", "$activite",
-                "$cible_x", "$cible_y", "$detour", "$malade_jusqua", "$mort_le", "$cause_mort"];
+                "$cible_x", "$cible_y", "$detour", "$malade_jusqua", "$mort_le", "$cause_mort",
+                "$mere", "$pere", "$desir", "$enceinte_depuis", "$pere_enfant", "$dernier_accouchement"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -264,6 +286,8 @@ public sealed class DepotMonde
                     h.Personnalite.Endurance, h.Personnalite.Adresse,
                     h.X, h.Y, h.Faim, h.Soif, h.Fatigue, h.Froid, h.Sante, (int)h.Activite,
                     h.CibleX, h.CibleY, h.Detour, h.MaladeJusqua, h.MortLe is { } m ? m : DBNull.Value, (int)h.CauseDeMort,
+                    h.MereId, h.PereId, h.Desir, h.EnceinteDepuis is { } e ? e : DBNull.Value, h.PereEnfantId,
+                    h.DernierAccouchement is { } d ? d : DBNull.Value,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();

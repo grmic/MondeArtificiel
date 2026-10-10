@@ -28,6 +28,8 @@ Au redémarrage, le monde reprend à la date enregistrée, en pause. Pour repart
 
 Les 66 humains (33 couples) apparaissent sur la carte : point orange pour une femme, bleu pour un homme, croix grise pour un mort. Le compteur « Vivants » est en haut. Survoler un humain affiche son nom, son âge, ce qu'il fait et ses besoins (faim, soif, fatigue, froid, santé). Les noms sont tirés au hasard pour l'observateur : les humains n'ont pas encore de langage.
 
+Les adultes de 15 ans et plus ressentent un désir qui monte avec le temps (un instinct : ils ne savent pas qu'il mène à une naissance). Ils s'accouplent avec leur compagnon ou avec un humain d'un autre couple. Une grossesse dure 270 jours. Les bébés restent dans les bras de leur mère jusqu'à 2 ans, puis les enfants suivent leurs parents jusqu'à 14 ans. Le caractère d'un enfant mêle ceux de ses parents. Sur la carte, un enfant est un petit point et une femme enceinte a un contour blanc.
+
 Sur la carte : molette pour zoomer, glisser pour se déplacer, double-clic pour recadrer, survol pour voir une tuile. Le bouton « Aperçu » montre le continent d'une autre graine sans changer le monde courant. La graine d'un nouveau monde se règle dans `src/Monde.Serveur/appsettings.json` (`Monde:Graine`). Une même graine donne toujours la même carte, sur toutes les plateformes.
 
 ## Tester
