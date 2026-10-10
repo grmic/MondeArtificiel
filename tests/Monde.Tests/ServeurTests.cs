@@ -60,4 +60,46 @@ public sealed class ServeurTests(WebApplicationFactory<Program> usine) : IClassF
         Assert.Equal("Monde artificiel", reponse.Monde);
         Assert.True(reponse.HeureServeur > DateTimeOffset.UtcNow.AddMinutes(-1));
     }
+
+    private sealed record EmplacementLu(int Numero, int X, int Y);
+
+    private sealed record CarteLue(uint Graine, int Largeur, int Hauteur, string[] NomsBiomes, byte[] Biomes, EmplacementLu[] Emplacements);
+
+    [Fact]
+    public async Task ApiCarte_RenvoieLaCarteParDefaut()
+    {
+        using var client = usine.CreateClient();
+
+        var carte = await client.GetFromJsonAsync<CarteLue>("/api/carte");
+
+        Assert.NotNull(carte);
+        Assert.Equal(42u, carte.Graine);
+        Assert.Equal(carte.Largeur * carte.Hauteur, carte.Biomes.Length);
+        Assert.Equal(33, carte.Emplacements.Length);
+        Assert.Equal(12, carte.NomsBiomes.Length);
+    }
+
+    [Fact]
+    public async Task ApiCarte_AccepteUneAutreGraine()
+    {
+        using var client = usine.CreateClient();
+
+        var carte = await client.GetFromJsonAsync<CarteLue>("/api/carte?graine=7");
+
+        Assert.Equal(7u, carte!.Graine);
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("abc")]
+    [InlineData("99999999999")]
+    [InlineData("1%27%20OR%201=1")]
+    public async Task ApiCarte_RefuseUneGraineInvalide(string graine)
+    {
+        using var client = usine.CreateClient();
+
+        var reponse = await client.GetAsync($"/api/carte?graine={graine}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, reponse.StatusCode);
+    }
 }

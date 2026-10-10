@@ -4,13 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
   </head>
   <body>
-    <main>
+    <div id="scene"></div>
+    <header class="barre">
       <h1>Monde artificiel</h1>
-      <p id="statut" class="statut">Connexion au serveur…</p>
-      <p id="details" class="details"></p>
-    </main>
+      <span id="statut" class="statut">Connexion au serveur…</span>
+      <form id="formGraine" class="graine">
+        <label for="graine">Graine</label>
+        <input id="graine" type="number" min="0" max="4294967295" step="1" required />
+        <button type="submit">Générer</button>
+      </form>
+    </header>
+    <aside id="infos" class="infos">Survole la carte pour voir une tuile. Molette : zoom · glisser : déplacer.</aside>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

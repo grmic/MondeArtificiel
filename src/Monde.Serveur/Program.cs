@@ -1,3 +1,4 @@
+using Monde.Serveur;
 using Monde.Serveur.Hubs;
 using Monde.Simulation;
 
@@ -9,6 +10,8 @@ builder.Services.AddSignalR(options =>
     // Limite la taille des messages reçus du navigateur (32 Ko, valeur par défaut explicite).
     options.MaximumReceiveMessageSize = 32 * 1024;
 });
+
+builder.Services.AddSingleton<ServiceCarte>();
 
 var app = builder.Build();
 
@@ -41,6 +44,11 @@ app.MapGet("/api/etat", () => Results.Ok(new
     InfosMonde.ParDefaut.VersionMoteur,
     HeureServeur = DateTimeOffset.UtcNow,
 }));
+
+// Carte du continent. Le paramètre « graine » (entier de 0 à 4 294 967 295) est facultatif ;
+// une valeur invalide est refusée par la liaison de paramètres (réponse 400).
+app.MapGet("/api/carte", (uint? graine, ServiceCarte cartes) =>
+    Results.Ok(CarteDto.Depuis(cartes.Obtenir(graine))));
 
 app.MapHub<MondeHub>(MondeHub.Route);
 

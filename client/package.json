@@ -9,7 +9,8 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
-    "@microsoft/signalr": "10.0.11"
+    "@microsoft/signalr": "10.0.11",
+    "pixi.js": "8.22.0"
   },
   "devDependencies": {
     "typescript": "7.0.2",
