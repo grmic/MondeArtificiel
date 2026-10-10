@@ -26,6 +26,16 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>Instant du pas en cours.</summary>
     private long _maintenant;
 
+    // Raison de la décision en cours et humain concerné, pour la pensée qui l'accompagne.
+    private Motif _motif;
+    private Humain? _autre;
+
+    /// <summary>Événements survenus pendant le pas : le monde les verse au journal après le pas.</summary>
+    public List<EvenementJournal> Journal { get; } = [];
+
+    private void Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte) =>
+        Journal.Add(new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte));
+
     public void Vivre(Humain h, IReadOnlyList<Humain> tous, long maintenant)
     {
         if (!h.EstVivant) return;
@@ -45,7 +55,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (h.EstEnfant(maintenant)) NourrirEnfant(h, Vivant(tous, h.MereId), Vivant(tous, h.PereId));
         Grossesse(h, tous, maintenant);
         if (!h.EstVivant) return;
+        var avant = h.Activite;
+        (_motif, _autre) = (Motif.Aucun, null);
         Decider(h, partenaire, tous, maintenant);
+        if (h.Activite != avant && Penseur.Penser(h, _motif, _autre, maintenant) is { } pensee)
+        {
+            h.Memoire.Penser(maintenant, pensee);
+        }
     }
 
     private static bool AuMemeEndroit(Humain h, Humain? autre) => autre is not null && autre.X == h.X && autre.Y == h.Y;
@@ -118,12 +134,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (alea.Reel() < risque * fragilite)
             {
                 h.MaladeJusqua = maintenant + (3 + alea.Entier(8)) * Calendrier.SecondesParJour;
+                Noter(maintenant, TypeEvenement.Maladie, h, null, $"{h.Nom} tombe malade.");
             }
         }
     }
 
-    private static void Mourir(Humain h, long maintenant, CauseDeMort cause)
+    private void Mourir(Humain h, long maintenant, CauseDeMort cause)
     {
+        Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}, à {AgeEnMots(h, maintenant)}.");
         h.Sante = 0;
         h.MortLe = maintenant;
         h.CauseDeMort = cause;
@@ -169,6 +187,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (h.EstEnfant(maintenant))
         {
             var parent = Vivant(tous, h.MereId) ?? Vivant(tous, h.PereId);
+            _autre = parent;
             if (parent is not null && Distance(h.X, h.Y, parent.X, parent.Y) > 1) Avancer(h, parent.X, parent.Y, Activite.SuivreParent);
             else
             {
@@ -181,6 +200,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // Un adulte : veiller sur ses enfants, l'instinct de reproduction, puis rester près de l'autre, explorer ou se reposer.
         if (EnfantAVeiller(h, tous, maintenant) is { } enfant)
         {
+            _autre = enfant;
             Avancer(h, enfant.X, enfant.Y, Activite.VeillerEnfant);
             return;
         }
@@ -188,6 +208,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
         if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) > 2 + (1 - p.Sociabilite) * 8)
         {
+            _autre = partenaire;
             Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
         }
         else if (alea.Reel() < 0.15 + 0.5 * p.Curiosite)
@@ -199,6 +220,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.Activite = Activite.Repos;
             h.CibleX = h.CibleY = -1;
         }
+    }
+
+    internal static string AgeEnMots(Humain h, long maintenant)
+    {
+        var age = h.AgeEnAnnees(maintenant);
+        return age < 1 ? $"{Math.Max(0, (int)(age * 12))} mois" : $"{(int)age} an{(age >= 2 ? "s" : "")}";
     }
 
     /// <summary>Urgence d'un besoin : croît avec lui, et beaucoup plus vite au-delà de 70 (danger).</summary>
@@ -214,11 +241,41 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.Soif = 0;
             h.Activite = Activite.Boire;
             h.CibleX = h.CibleY = -1;
+            h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, _maintenant);
             return;
         }
         var cible = Chercher(h, i => EauDouceAPortee(i % carte.Largeur, i / carte.Largeur), _ => 0);
-        if (cible is { } c) Avancer(h, c.X, c.Y, Activite.ChercherEau);
-        else Explorer(h, Activite.ChercherEau);
+        if (cible is { } c)
+        {
+            _motif = Motif.Vu;
+            Avancer(h, c.X, c.Y, Activite.ChercherEau);
+        }
+        else if (!AllerAuSouvenir(h, TypeLieu.Eau, Activite.ChercherEau))
+        {
+            _motif = Motif.Inconnu;
+            Explorer(h, Activite.ChercherEau);
+        }
+    }
+
+    /// <summary>
+    /// Rien d'utile en vue : l'humain se rend au lieu de ce type le plus proche dont il se souvient.
+    /// Arrivé sur place sans rien trouver, il l'oublie.
+    /// </summary>
+    private bool AllerAuSouvenir(Humain h, TypeLieu type, Activite activite)
+    {
+        while (h.Memoire.PlusProche(type, h.X, h.Y, _maintenant) is { } lieu)
+        {
+            if (Distance(h.X, h.Y, lieu.X, lieu.Y) <= 1)
+            {
+                h.Memoire.Oublier(lieu); // déjà là, et rien : ce souvenir ne vaut plus rien
+                continue;
+            }
+            _motif = Motif.Souvenir;
+            Avancer(h, lieu.X, lieu.Y, activite);
+            if (h.CibleX < 0) h.Memoire.Oublier(lieu); // devenu inaccessible
+            return h.CibleX >= 0;
+        }
+        return false;
     }
 
     private void AllerManger(Humain h)
@@ -230,6 +287,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.Faim = Math.Max(0, h.Faim - pris * 2.5);
             h.Activite = Activite.Cueillir;
             h.CibleX = h.CibleY = -1;
+            h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant);
             return;
         }
         if (ecosysteme.Gibier[i] >= 2000 && !h.EstEnfant(_maintenant))
@@ -242,6 +300,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             {
                 var pris = Ecosysteme.Prelever(ecosysteme.Gibier, i, 15);
                 h.Faim = Math.Max(0, h.Faim - pris * 4);
+                h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant);
             }
             else
             {
@@ -252,8 +311,16 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var cible = Chercher(h,
             j => ecosysteme.Plantes[j] >= 1000 || ecosysteme.Gibier[j] >= 2000,
             j => ecosysteme.Plantes[j] + ecosysteme.Gibier[j] / 2);
-        if (cible is { } c) Avancer(h, c.X, c.Y, Activite.ChercherNourriture);
-        else Explorer(h, Activite.ChercherNourriture);
+        if (cible is { } c)
+        {
+            _motif = Motif.Vu;
+            Avancer(h, c.X, c.Y, Activite.ChercherNourriture);
+        }
+        else if (!AllerAuSouvenir(h, TypeLieu.Nourriture, Activite.ChercherNourriture))
+        {
+            _motif = Motif.Inconnu;
+            Explorer(h, Activite.ChercherNourriture);
+        }
     }
 
     private void AllerDormir(Humain h, Humain? partenaire)
@@ -263,6 +330,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 4)
             {
+                _autre = partenaire;
                 Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
                 return;
             }
@@ -275,12 +343,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         h.Activite = Activite.Dormir;
         h.CibleX = h.CibleY = -1;
+        if (Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4) h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant);
     }
 
     private void AllerSAbriter(Humain h, Humain? partenaire, long maintenant)
     {
         if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 6)
         {
+            _autre = partenaire;
             Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
             return;
         }
@@ -292,6 +362,15 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (mieux is { } m) Avancer(h, m.X, m.Y, Activite.ChercherAbri);
         else
         {
+            // Un abri connu pas trop loin (une demi-journée de marche) vaut le déplacement.
+            var abri = h.Memoire.PlusProche(TypeLieu.Abri, h.X, h.Y, maintenant);
+            if (abri is not null && Distance(h.X, h.Y, abri.X, abri.Y) is > 1 and <= 12
+                && Climat.Abri(carte.BiomeEn(h.X, h.Y)) < 0.4)
+            {
+                _motif = Motif.Souvenir;
+                Avancer(h, abri.X, abri.Y, Activite.ChercherAbri);
+                if (h.CibleX >= 0) return;
+            }
             h.Activite = Activite.SAbriter;
             h.CibleX = h.CibleY = -1;
         }

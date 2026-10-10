@@ -1,0 +1,186 @@
+import { connexion } from "./connexion";
+import type { HumainVue } from "./carte";
+
+interface Evenement {
+  id: number;
+  secondes: number;
+  date: string;
+  type: string;
+  humain: number;
+  autre: number;
+  texte: string;
+  origine: "naturelle" | "entite";
+}
+
+interface Fiche {
+  humain: HumainVue;
+  caractere: Record<string, number>;
+  biologie: Record<string, number>;
+  enfants: number[];
+  pensees: { date: string; texte: string }[];
+  lieux: { type: string; x: number; y: number; vuLe: string }[];
+  proches: { id: number; nom: string; jours: number; derniere: string }[];
+  histoire: Evenement[];
+}
+
+export type { Evenement };
+
+/** Petit constructeur d'éléments : le texte passe toujours par textContent (jamais de HTML injecté). */
+export function el<K extends keyof HTMLElementTagNameMap>(tag: K, classe?: string, texte?: string): HTMLElementTagNameMap[K] {
+  const e = document.createElement(tag);
+  if (classe) e.className = classe;
+  if (texte !== undefined) e.textContent = texte;
+  return e;
+}
+
+/** Fiche d'un humain : qui il est, ce qu'il pense, ce dont il se souvient et ce qu'il a vécu. */
+export class PanneauFiche {
+  private id = 0;
+  private minuteur?: number;
+
+  constructor(
+    private readonly racine: HTMLElement,
+    private readonly nom: (id: number) => string,
+    private readonly surChoix: (id: number) => void,
+  ) {}
+
+  get courant(): number {
+    return this.id;
+  }
+
+  async ouvrir(id: number): Promise<void> {
+    this.id = id;
+    this.surChoix(id);
+    await this.rafraichir();
+    window.clearInterval(this.minuteur);
+    // Tant qu'elle est ouverte, la fiche suit l'humain (deux fois par seconde au plus, sans file d'attente).
+    this.minuteur = window.setInterval(() => void this.rafraichir(), 2000);
+  }
+
+  fermer(): void {
+    window.clearInterval(this.minuteur);
+    this.id = 0;
+    this.racine.hidden = true;
+    this.surChoix(0);
+  }
+
+  private async rafraichir(): Promise<void> {
+    if (!this.id) return;
+    const id = this.id;
+    const fiche = await connexion.invoke<Fiche | null>("Fiche", id).catch(() => null);
+    if (!fiche || id !== this.id) return;
+    this.dessiner(fiche);
+  }
+
+  private lien(id: number, texte?: string): HTMLElement {
+    const a = el("button", "lien", texte ?? this.nom(id));
+    a.type = "button";
+    a.addEventListener("click", () => void this.ouvrir(id));
+    return a;
+  }
+
+  private dessiner(f: Fiche): void {
+    const h = f.humain;
+    const r = this.racine;
+    const defilement = r.querySelector(".corps")?.scrollTop ?? 0;
+    r.replaceChildren();
+    r.hidden = false;
+
+    const tete = el("div", "tete");
+    tete.append(el("h2", undefined, h.nom));
+    const fermer = el("button", "fermer", "×");
+    fermer.type = "button";
+    fermer.title = "Fermer la fiche";
+    fermer.addEventListener("click", () => this.fermer());
+    tete.append(fermer);
+    r.append(tete);
+
+    const corps = el("div", "corps");
+    const age = h.age < 2 ? `${Math.round(h.age * 12)} mois` : `${Math.floor(h.age)} ans`;
+    const etat = h.vivant ? `${h.activite}${h.malade ? " · malade" : ""}${h.enceinte ? " · enceinte" : ""}` : `mort ${h.causeDeMort ?? ""}`;
+    corps.append(el("p", "resume", `${h.sexe === "femme" ? "Femme" : "Homme"}, ${age} · ${etat}`));
+    if (h.pensee) corps.append(el("p", "pensee", `« ${h.pensee} »`));
+
+    // Famille
+    const famille = el("p", "famille");
+    const ajouter = (libelle: string, ids: number[]) => {
+      if (ids.length === 0) return;
+      famille.append(`${libelle} : `);
+      ids.forEach((id, i) => {
+        if (i > 0) famille.append(", ");
+        famille.append(this.lien(id));
+      });
+      famille.append(el("br"));
+    };
+    if (h.mere) ajouter("Parents", [h.mere, h.pere].filter(Boolean));
+    else famille.append(`Couple de départ n° ${h.emplacement} (créé par l'Entité)`, el("br"));
+    ajouter("Compagnon", h.partenaire ? [h.partenaire] : []);
+    ajouter("Enfants", f.enfants);
+    corps.append(famille);
+
+    if (h.vivant) {
+      corps.append(this.jauges("Besoins", { faim: h.faim, soif: h.soif, fatigue: h.fatigue, froid: h.froid, santé: h.sante }, 100));
+    }
+    corps.append(this.jauges("Caractère", f.caractere, 1));
+    const bio = el("p", "discret", Object.entries(f.biologie).map(([k, v]) => `${k} ${v}`).join(" · "));
+    corps.append(el("h3", undefined, "Biologie"), bio);
+
+    corps.append(el("h3", undefined, "Pensées récentes"));
+    const pensees = el("ul", "liste");
+    for (const p of f.pensees) {
+      const li = el("li");
+      li.append(el("span", "date", p.date), ` ${p.texte}`);
+      pensees.append(li);
+    }
+    if (f.pensees.length === 0) pensees.append(el("li", "discret", "Aucune pour l'instant."));
+    corps.append(pensees);
+
+    corps.append(el("h3", undefined, "Mémoire"));
+    const lieux = el("ul", "liste");
+    for (const l of f.lieux) lieux.append(el("li", undefined, `${l.type} en (${l.x}, ${l.y}), vu ${l.vuLe}`));
+    if (f.lieux.length === 0) lieux.append(el("li", "discret", "Ne se souvient d'aucun lieu."));
+    corps.append(lieux);
+    if (f.proches.length > 0) {
+      const proches = el("p");
+      proches.append("Côtoie : ");
+      f.proches.slice(0, 12).forEach((p, i) => {
+        if (i > 0) proches.append(", ");
+        proches.append(this.lien(p.id, p.nom), ` (${p.jours} j)`);
+      });
+      corps.append(proches);
+    }
+
+    corps.append(el("h3", undefined, "Histoire"));
+    const histoire = el("ul", "liste");
+    for (const e of f.histoire) histoire.append(ligneEvenement(e));
+    if (f.histoire.length === 0) histoire.append(el("li", "discret", "Rien encore."));
+    corps.append(histoire);
+
+    r.append(corps);
+    corps.scrollTop = defilement;
+  }
+
+  private jauges(titre: string, valeurs: Record<string, number>, max: number): HTMLElement {
+    const bloc = el("div");
+    bloc.append(el("h3", undefined, titre));
+    for (const [nom, v] of Object.entries(valeurs)) {
+      const ligne = el("div", "jauge");
+      ligne.append(el("span", "nom", nom));
+      const barre = el("span", "piste");
+      const plein = el("span", "plein");
+      plein.style.width = `${Math.round((Math.max(0, Math.min(max, v)) / max) * 100)}%`;
+      barre.append(plein);
+      ligne.append(barre, el("span", "valeur", max === 1 ? v.toFixed(2) : String(Math.round(v))));
+      bloc.append(ligne);
+    }
+    return bloc;
+  }
+}
+
+/** Ligne d'événement : date, texte, et la marque d'une intervention de l'Entité. */
+export function ligneEvenement(e: Evenement): HTMLElement {
+  const li = el("li", `evenement ${e.type}`);
+  li.append(el("span", "date", e.date), ` ${e.texte}`);
+  if (e.origine === "entite") li.append(el("span", "entite", " ✦ soufflé par l'Entité"));
+  return li;
+}

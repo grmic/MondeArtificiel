@@ -72,8 +72,13 @@ export class PanneauHorloge {
     private readonly surHorloge: (h: Horloge) => void,
     private readonly surMessage: (message: string) => void,
   ) {
-    connexion.on("Horloge", (h: Horloge) => this.afficher(h));
-    connexion.on("ObjectifAtteint", (description: string) => this.surMessage(`Arrivé : ${description}. Le temps est en pause.`));
+    // Les gestionnaires ne renvoient rien : une valeur renvoyée serait prise pour une réponse par SignalR.
+    connexion.on("Horloge", (h: Horloge) => {
+      this.afficher(h);
+    });
+    connexion.on("ObjectifAtteint", (description: string) => {
+      this.surMessage(`Arrivé : ${description}. Le temps est en pause.`);
+    });
     this.brancher();
   }
 

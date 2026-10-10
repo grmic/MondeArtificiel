@@ -1,6 +1,8 @@
 import { chargerCarte, VueCarte, type HumainVue, type InfoTuile } from "./carte";
 import { connexion, demarrerConnexion } from "./connexion";
+import { PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
+import { PanneauJournal } from "./journal";
 import "./style.css";
 
 const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
@@ -24,7 +26,8 @@ function decrireHumain(h: HumainVue): string {
   const qui = `${h.nom} (${h.sexe}, ${age}, ${liens.join(", ")})`;
   if (!h.vivant) return `✝ ${qui}, mort ${h.causeDeMort ?? ""}`;
   const etat = [h.activite, h.enceinte ? "enceinte" : "", h.malade ? "malade" : ""].filter(Boolean).join(" · ");
-  return `${qui} ${etat}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante}`;
+  const pensee = h.pensee ? `\n   « ${h.pensee} »` : "";
+  return `${qui} ${etat}${pensee}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante}`;
 }
 
 function decrire(info: InfoTuile): void {
@@ -59,10 +62,28 @@ async function demarrer(): Promise<void> {
     const naissances = Math.max(0, Math.max(...humains.map((h) => h.id)) - 66);
     population.textContent = `Vivants : ${vivants.length} (dont ${enfants} enfants) · enceintes : ${enceintes} · naissances : ${naissances}`;
   };
-  connexion.on("Humains", montrerHumains);
+  connexion.on("Humains", (humains: HumainVue[]) => {
+    montrerHumains(humains);
+  });
+
+  // Clic sur un humain : sa fiche. Le journal s'ouvre depuis la barre du haut.
+  const fiche = new PanneauFiche(element("#fiche"), (id) => nomsParId.get(id) ?? "?", (id) => vue.selectionner(id));
+  vue.quandClic((info) => {
+    const h = vue.humainsSous(info)[0];
+    if (h) void fiche.ouvrir(h.id);
+  });
+  const idDuNom = (nom: string) => {
+    const cherche = nom.toLocaleLowerCase("fr");
+    for (const [id, n] of nomsParId) if (n.toLocaleLowerCase("fr") === cherche) return id;
+    return undefined;
+  };
+  const journal = new PanneauJournal(element("#journal"), idDuNom, () => [...new Set(nomsParId.values())].sort(), (id) => void fiche.ouvrir(id));
+  element("#boutonJournal").addEventListener("click", () => journal.basculer());
+
   demarrerConnexion(element("#statut"), async () => {
     await horloge.synchroniser();
     montrerHumains(await connexion.invoke<HumainVue[]>("Humains"));
+    await journal.recharger();
   });
 
   const charger = async (graine?: number) => {
@@ -92,6 +113,8 @@ async function demarrer(): Promise<void> {
   // Réinitialisation : demandée ici, annoncée par le serveur à tous les navigateurs ouverts.
   let graineMonde: number | undefined;
   connexion.on("MondeReinitialise", (graine: number) => {
+    fiche.fermer();
+    void journal.recharger();
     void charger().then(() => (infos.textContent = `Monde réinitialisé · graine ${graine}. Le temps est en pause.`));
   });
   boutonReinit.addEventListener("click", () => {

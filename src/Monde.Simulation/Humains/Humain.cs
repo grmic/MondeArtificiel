@@ -111,6 +111,9 @@ public sealed class Humain
     /// <summary>Date du dernier accouchement .</summary>
     public long? DernierAccouchement { get; set; }
 
+    /// <summary>Lieux connus, humains côtoyés et dernières pensées.</summary>
+    public Memoire Memoire { get; set; } = new();
+
     public long? MortLe { get; set; }
     public CauseDeMort CauseDeMort { get; set; }
 
@@ -142,5 +145,11 @@ public sealed class Humain
 
     public double AgeEnAnnees(long maintenant) => (maintenant - Naissance) / (double)Temps.Calendrier.SecondesParAn;
 
-    public Humain Copier() => (Humain)MemberwiseClone();
+    /// <summary>Copie indépendante (la mémoire aussi est copiée).</summary>
+    public Humain Copier()
+    {
+        var copie = (Humain)MemberwiseClone();
+        copie.Memoire = Memoire.Copier();
+        return copie;
+    }
 }

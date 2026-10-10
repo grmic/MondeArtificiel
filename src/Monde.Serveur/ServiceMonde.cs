@@ -78,7 +78,13 @@ public sealed class ServiceMonde
 
     public void Sauvegarder()
     {
-        lock (_verrou) Depot.Enregistrer(_monde.Etat);
+        lock (_verrou)
+        {
+            var monde = _monde;
+            var etat = monde.Etat;
+            Depot.Enregistrer(etat);
+            monde.MarquerJournalEnregistre(etat.JournalNonEnregistre?.Count ?? 0);
+        }
     }
 
     /// <summary>
@@ -91,7 +97,7 @@ public sealed class ServiceMonde
         var nouveau = new MondeSimule(GenerateurContinent.Generer(graine), etat);
         lock (_verrou)
         {
-            Depot.Enregistrer(_monde.Etat);
+            Sauvegarder();
             Depot.CopierVers(CheminCopieAvantReinitialisation);
             Depot.Enregistrer(nouveau.Etat, remplacer: true);
             _monde = nouveau;

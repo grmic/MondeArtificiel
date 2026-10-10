@@ -13,7 +13,7 @@ namespace Monde.Stockage;
 public sealed class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 5;
+    public const int VersionSchema = 6;
 
     private readonly string _connexion;
 
@@ -157,6 +157,47 @@ public sealed class DepotMonde
                 );
                 """);
         }
+        if (actuelle < 6)
+        {
+            // Version 6 : journal des événements, mémoire des humains (lieux, proches) et pensées.
+            Executer(connexion, transaction, """
+                CREATE TABLE IF NOT EXISTS journal (
+                    id      INTEGER PRIMARY KEY,
+                    secondes INTEGER NOT NULL,
+                    type    INTEGER NOT NULL,
+                    humain  INTEGER NOT NULL,
+                    autre   INTEGER NOT NULL,
+                    texte   TEXT    NOT NULL,
+                    origine INTEGER NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS journal_humain ON journal (humain);
+                CREATE INDEX IF NOT EXISTS journal_autre ON journal (autre);
+                CREATE TABLE IF NOT EXISTS memoire_lieux (
+                    humain INTEGER NOT NULL,
+                    rang   INTEGER NOT NULL,
+                    type   INTEGER NOT NULL,
+                    x      INTEGER NOT NULL,
+                    y      INTEGER NOT NULL,
+                    vu_le  INTEGER NOT NULL,
+                    PRIMARY KEY (humain, rang)
+                );
+                CREATE TABLE IF NOT EXISTS memoire_proches (
+                    humain     INTEGER NOT NULL,
+                    rang       INTEGER NOT NULL,
+                    autre      INTEGER NOT NULL,
+                    rencontres INTEGER NOT NULL,
+                    derniere   INTEGER NOT NULL,
+                    PRIMARY KEY (humain, rang)
+                );
+                CREATE TABLE IF NOT EXISTS pensees (
+                    humain   INTEGER NOT NULL,
+                    rang     INTEGER NOT NULL,
+                    secondes INTEGER NOT NULL,
+                    texte    TEXT    NOT NULL,
+                    PRIMARY KEY (humain, rang)
+                );
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -243,7 +284,36 @@ public sealed class DepotMonde
                 });
             }
         }
+        if (humains.Count > 0) LireMemoires(connexion, humains);
+
+        commande.CommandText = "SELECT coalesce(max(id), 0) + 1 FROM journal;";
+        etat = etat with { ProchainIdJournal = Convert.ToInt64(commande.ExecuteScalar()) };
         return humains.Count > 0 ? etat with { Humains = humains } : etat;
+    }
+
+    private static void LireMemoires(SqliteConnection connexion, List<Humain> humains)
+    {
+        Humain? Trouver(long id) => id >= 1 && id <= humains.Count ? humains[(int)id - 1] : null;
+        using var commande = connexion.CreateCommand();
+        // Les rangs gardent l'ordre des listes, donc la simulation reprend à l'identique.
+        commande.CommandText = "SELECT humain, type, x, y, vu_le FROM memoire_lieux ORDER BY humain, rang;";
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read())
+            {
+                Trouver(l.GetInt64(0))?.Memoire.Lieux.Add(new LieuConnu((TypeLieu)l.GetByte(1), l.GetInt32(2), l.GetInt32(3), l.GetInt64(4)));
+            }
+        }
+        commande.CommandText = "SELECT humain, autre, rencontres, derniere FROM memoire_proches ORDER BY humain, rang;";
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read()) Trouver(l.GetInt64(0))?.Memoire.Proches.Add(new Proche(l.GetInt32(1), l.GetInt32(2), l.GetInt64(3)));
+        }
+        commande.CommandText = "SELECT humain, secondes, texte FROM pensees ORDER BY humain, rang;";
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read()) Trouver(l.GetInt64(0))?.Memoire.Pensees.Add(new Pensee(l.GetInt64(1), l.GetString(2)));
+        }
     }
 
     /// <summary>
@@ -254,7 +324,12 @@ public sealed class DepotMonde
     {
         using var connexion = Ouvrir();
         using var transaction = connexion.BeginTransaction();
-        if (remplacer) Executer(connexion, transaction, "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat;");
+        if (remplacer)
+        {
+            Executer(connexion, transaction,
+                "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; " +
+                "DELETE FROM memoire_lieux; DELETE FROM memoire_proches; DELETE FROM pensees;");
+        }
 
         using (var commande = connexion.CreateCommand())
         {
@@ -337,7 +412,114 @@ public sealed class DepotMonde
             }
         }
 
+        if (etat.Humains is { } tous) EnregistrerMemoires(connexion, transaction, tous);
+        if (etat.JournalNonEnregistre is { Count: > 0 } journal) EnregistrerJournal(connexion, transaction, journal);
+
         transaction.Commit();
+    }
+
+    private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
+    {
+        Executer(connexion, transaction, "DELETE FROM memoire_lieux; DELETE FROM memoire_proches; DELETE FROM pensees;");
+        using var lieux = Preparer(connexion, transaction,
+            "INSERT INTO memoire_lieux (humain, rang, type, x, y, vu_le) VALUES ($h, $r, $t, $x, $y, $v);", "$h", "$r", "$t", "$x", "$y", "$v");
+        using var proches = Preparer(connexion, transaction,
+            "INSERT INTO memoire_proches (humain, rang, autre, rencontres, derniere) VALUES ($h, $r, $a, $n, $d);", "$h", "$r", "$a", "$n", "$d");
+        using var pensees = Preparer(connexion, transaction,
+            "INSERT INTO pensees (humain, rang, secondes, texte) VALUES ($h, $r, $s, $t);", "$h", "$r", "$s", "$t");
+        foreach (var h in humains)
+        {
+            var m = h.Memoire;
+            for (var r = 0; r < m.Lieux.Count; r++)
+            {
+                var l = m.Lieux[r];
+                Lancer(lieux, h.Id, r, (int)l.Type, l.X, l.Y, l.VuLe);
+            }
+            for (var r = 0; r < m.Proches.Count; r++)
+            {
+                var p = m.Proches[r];
+                Lancer(proches, h.Id, r, p.Id, p.Rencontres, p.Derniere);
+            }
+            for (var r = 0; r < m.Pensees.Count; r++)
+            {
+                Lancer(pensees, h.Id, r, m.Pensees[r].Secondes, m.Pensees[r].Texte);
+            }
+        }
+    }
+
+    private static void EnregistrerJournal(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<EvenementJournal> journal)
+    {
+        // INSERT OR IGNORE : un événement déjà enregistré (même numéro) n'est pas dupliqué.
+        using var commande = Preparer(connexion, transaction,
+            "INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine) VALUES ($i, $s, $t, $h, $a, $x, $o);",
+            "$i", "$s", "$t", "$h", "$a", "$x", "$o");
+        foreach (var e in journal)
+        {
+            Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, e.Texte, (int)e.Origine);
+        }
+    }
+
+    private static SqliteCommand Preparer(SqliteConnection connexion, SqliteTransaction transaction, string sql, params string[] noms)
+    {
+        var commande = connexion.CreateCommand();
+        commande.Transaction = transaction;
+        commande.CommandText = sql;
+        foreach (var n in noms) commande.Parameters.Add(new SqliteParameter { ParameterName = n });
+        commande.Prepare();
+        return commande;
+    }
+
+    private static void Lancer(SqliteCommand commande, params object[] valeurs)
+    {
+        for (var i = 0; i < valeurs.Length; i++) commande.Parameters[i].Value = valeurs[i];
+        commande.ExecuteNonQuery();
+    }
+
+    /// <summary>Plus grand nombre d'événements renvoyés par une lecture du journal.</summary>
+    public const int LimiteJournal = 500;
+
+    /// <summary>
+    /// Lit le journal enregistré, du plus récent au plus ancien. Filtres facultatifs : types, humain concerné
+    /// (acteur ou autre), et pagination par numéro (événements de numéro inférieur à <paramref name="avantId"/>).
+    /// </summary>
+    public List<EvenementJournal> LireJournal(IReadOnlyCollection<TypeEvenement>? types = null, int? humain = null,
+        long? avantId = null, int limite = 100)
+    {
+        limite = Math.Clamp(limite, 1, LimiteJournal);
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        var conditions = new List<string>();
+        if (types is { Count: > 0 })
+        {
+            // Un paramètre par type : jamais de valeur concaténée dans le SQL.
+            var noms = types.Distinct().Select((t, i) =>
+            {
+                commande.Parameters.AddWithValue($"$t{i}", (int)t);
+                return $"$t{i}";
+            }).ToList();
+            conditions.Add($"type IN ({string.Join(", ", noms)})");
+        }
+        if (humain is { } h)
+        {
+            conditions.Add("(humain = $h OR autre = $h)");
+            commande.Parameters.AddWithValue("$h", h);
+        }
+        if (avantId is { } a)
+        {
+            conditions.Add("id < $a");
+            commande.Parameters.AddWithValue("$a", a);
+        }
+        commande.Parameters.AddWithValue("$limite", limite);
+        var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
+        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine FROM journal {where} ORDER BY id DESC LIMIT $limite;";
+        var resultat = new List<EvenementJournal>();
+        using var l = commande.ExecuteReader();
+        while (l.Read())
+        {
+            resultat.Add(new EvenementJournal(l.GetInt64(1), (TypeEvenement)l.GetByte(2), l.GetInt32(3), l.GetInt32(4), l.GetString(5),
+                (Origine)l.GetByte(6)) { Id = l.GetInt64(0) });
+        }
+        return resultat;
     }
 
     /// <summary>Lit un réglage de l'application (null s'il n'a jamais été enregistré).</summary>

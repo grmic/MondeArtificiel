@@ -15,6 +15,12 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     public ushort[]? Gibier { get; init; }
     public ushort[]? Plantes { get; init; }
     public ulong[]? Alea { get; init; }
+
+    /// <summary>Événements du journal pas encore enregistrés (ils s'ajoutent au journal sauvegardé).</summary>
+    public IReadOnlyList<EvenementJournal>? JournalNonEnregistre { get; init; }
+
+    /// <summary>Numéro que portera le prochain événement du journal.</summary>
+    public long ProchainIdJournal { get; init; } = 1;
 }
 
 /// <summary>
@@ -41,6 +47,12 @@ public sealed class MondeSimule
     private double _facteur;
     private double _reliquat;
     private Objectif? _objectif;
+    private readonly List<EvenementJournal> _journalNonEnregistre = [];
+    private readonly Queue<EvenementJournal> _journalRecent = new();
+    private long _prochainIdJournal;
+
+    /// <summary>Nombre d'événements récents gardés en mémoire pour les navigateurs.</summary>
+    public const int TailleJournalRecent = 500;
     private string? _objectifAtteint;
 
     public MondeSimule(Carte carte, EtatMonde etat)
@@ -64,6 +76,8 @@ public sealed class MondeSimule
         _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
         _comportement = new Comportement(carte, _ecosysteme, _alea);
         _noms = _humains.Select(x => x.Nom).ToHashSet();
+        _prochainIdJournal = Math.Max(1, etat.ProchainIdJournal);
+        foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
 
         for (var i = 0; i < _humains.Count; i++)
         {
@@ -107,9 +121,32 @@ public sealed class MondeSimule
                     Gibier = _ecosysteme.Gibier.ToArray(),
                     Plantes = _ecosysteme.Plantes.ToArray(),
                     Alea = _alea.Etat,
+                    JournalNonEnregistre = _journalNonEnregistre.ToList(),
+                    ProchainIdJournal = _prochainIdJournal,
                 };
             }
         }
+    }
+
+    /// <summary>Après une sauvegarde : les <paramref name="nombre"/> premiers événements en attente sont enregistrés.</summary>
+    public void MarquerJournalEnregistre(int nombre)
+    {
+        lock (_verrou) _journalNonEnregistre.RemoveRange(0, Math.Min(nombre, _journalNonEnregistre.Count));
+    }
+
+    /// <summary>Événements récents dont le numéro dépasse <paramref name="apresId"/>, du plus ancien au plus récent.</summary>
+    public List<EvenementJournal> JournalRecent(long apresId = 0)
+    {
+        lock (_verrou) return _journalRecent.Where(e => e.Id > apresId).ToList();
+    }
+
+    private void Ajouter(EvenementJournal evenement)
+    {
+        var numerote = evenement.Id > 0 ? evenement : evenement with { Id = _prochainIdJournal };
+        _prochainIdJournal = Math.Max(_prochainIdJournal, numerote.Id + 1);
+        _journalNonEnregistre.Add(numerote);
+        _journalRecent.Enqueue(numerote);
+        if (_journalRecent.Count > TailleJournalRecent) _journalRecent.Dequeue();
     }
 
     /// <summary>Copie légère des humains seulement (diffusion fréquente vers les navigateurs).</summary>
@@ -260,8 +297,33 @@ public sealed class MondeSimule
         foreach (var (mere, pereId) in _comportement.Accouchements)
         {
             var pere = pereId > 0 ? _humains[pereId - 1] : null;
-            _humains.Add(GenerateurPopulation.Naissance(_humains.Count + 1, mere, pere, _secondes, _alea, _noms));
+            var bebe = GenerateurPopulation.Naissance(_humains.Count + 1, mere, pere, _secondes, _alea, _noms);
+            _humains.Add(bebe);
+            var fils = bebe.Sexe == Sexe.Femme ? "fille" : "fils";
+            _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
+                $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}."));
         }
         _comportement.Accouchements.Clear();
+
+        if (nouveauJour) Cotoyer();
+        foreach (var e in _comportement.Journal) Ajouter(e);
+        _comportement.Journal.Clear();
+    }
+
+    /// <summary>Une fois par jour : chacun retient les humains qui sont près de lui (même case ou case voisine).</summary>
+    private void Cotoyer()
+    {
+        var vivants = _humains.Where(h => h.EstVivant && !h.EstBebe(_secondes)).ToList();
+        for (var i = 0; i < vivants.Count; i++)
+        {
+            var a = vivants[i];
+            for (var j = i + 1; j < vivants.Count; j++)
+            {
+                var b = vivants[j];
+                if (Math.Abs(a.X - b.X) > 1 || Math.Abs(a.Y - b.Y) > 1) continue;
+                a.Memoire.Cotoyer(b.Id, _secondes);
+                b.Memoire.Cotoyer(a.Id, _secondes);
+            }
+        }
     }
 }

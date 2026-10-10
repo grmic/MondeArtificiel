@@ -76,6 +76,7 @@ public sealed partial class Comportement
 
         if (choisi is not null)
         {
+            _autre = choisi;
             SAccoupler(h, choisi, tous, maintenant);
             return true;
         }
@@ -93,6 +94,7 @@ public sealed partial class Comportement
                 .FirstOrDefault();
         }
         if (cible is null || Distance(h.X, h.Y, cible.X, cible.Y) == 0) return false;
+        (_autre, _motif) = (cible, Motif.Desir);
         Avancer(h, cible.X, cible.Y, Activite.RejoindrePartenaire);
         return true;
     }
@@ -115,12 +117,17 @@ public sealed partial class Comportement
 
         var femme = a.Sexe == Sexe.Femme ? a : b;
         var homme = a.Sexe == Sexe.Femme ? b : a;
+        var infidele = Vivant(tous, a.PartenaireId) is { } pa && pa.Id != b.Id || Vivant(tous, b.PartenaireId) is { } pb && pb.Id != a.Id;
+        var hors = infidele ? " (hors de leur couple)" : "";
+        Noter(maintenant, TypeEvenement.Accouplement, femme, homme, $"{femme.Nom} et {homme.Nom} s'accouplent{hors}.");
         if (alea.Reel() < ChanceConception(femme, homme, tous, maintenant))
         {
             var jours = Math.Clamp(JoursDeGrossesseMoyens + Biologie.Normale(alea) * EcartJoursDeGrossesse, 230, 300);
             femme.EnceinteDepuis = maintenant;
             femme.TermeGrossesse = maintenant + (long)(jours * Calendrier.SecondesParJour);
             femme.PereEnfantId = homme.Id;
+            Noter(maintenant, TypeEvenement.Grossesse, femme, homme,
+                $"{femme.Nom} attend un enfant de {homme.Nom}. Elle ne le sait pas encore.");
         }
 
         // Deux humains seuls qui s'accouplent forment un couple.
@@ -128,6 +135,7 @@ public sealed partial class Comportement
         {
             a.PartenaireId = b.Id;
             b.PartenaireId = a.Id;
+            Noter(maintenant, TypeEvenement.Union, femme, homme, $"{femme.Nom} et {homme.Nom} forment un nouveau couple.");
         }
     }
 
@@ -188,7 +196,11 @@ public sealed partial class Comportement
         if (maintenant - debut < JoursRisqueFausseCouche * Calendrier.SecondesParJour)
         {
             var risqueParPas = Biologie.RisqueFausseCouche(age) * Detresse(mere) / (JoursRisqueFausseCouche * PasParJour);
-            if (alea.Reel() < risqueParPas) TerminerGrossesse(mere, maintenant);
+            if (alea.Reel() < risqueParPas)
+            {
+                TerminerGrossesse(mere, maintenant);
+                Noter(maintenant, TypeEvenement.FausseCouche, mere, null, $"{mere.Nom} perd l'enfant qu'elle portait.");
+            }
             return;
         }
 
@@ -204,6 +216,7 @@ public sealed partial class Comportement
         for (var n = jumeaux ? 2 : 1; n > 0; n--)
         {
             if (alea.Reel() >= risqueMortNe) Accouchements.Add((mere, mere.PereEnfantId));
+            else Noter(maintenant, TypeEvenement.MortNe, mere, null, $"{mere.Nom} met au monde un enfant mort-né.");
         }
 
         TerminerGrossesse(mere, maintenant);
@@ -296,7 +309,12 @@ public sealed partial class Comportement
     {
         b.Fatigue = 0;
         b.Desir = 0;
-        var porte = mere is not null && Distance(b.X, b.Y, mere.X, mere.Y) <= 1 && !Delaisse(mere);
+        var proche = mere is not null && Distance(b.X, b.Y, mere.X, mere.Y) <= 1;
+        var porte = proche && !Delaisse(mere!);
+        if (proche && !porte && b.Activite is Activite.PorteParSaMere or Activite.Dormir)
+        {
+            Noter(maintenant, TypeEvenement.Delaissement, mere!, b, $"{mere!.Nom}, à bout de forces, délaisse son bébé {b.Nom}.");
+        }
         if (mere is not null && porte)
         {
             b.X = mere.X;

@@ -104,6 +104,20 @@ public sealed class MondeHub(ServiceMonde service) : Hub
         return await DiffuserHorloge();
     }
 
+    /// <summary>Fiche détaillée d'un humain (null s'il n'existe pas).</summary>
+    public FicheDto? Fiche(int id) => FicheDto.Depuis(service, id);
+
+    /// <summary>Journal filtré, du plus récent au plus ancien (500 événements au plus par demande).</summary>
+    public List<EvenementDto> Journal(FiltreJournal filtre)
+    {
+        if (filtre.Types is { Length: > 20 } || filtre.Limite is < 1 or > Stockage.DepotMonde.LimiteJournal)
+        {
+            throw new HubException("Filtre du journal invalide.");
+        }
+        var types = EvenementDto.TypesDepuis(filtre.Types) ?? throw new HubException("Type d'événement inconnu.");
+        return FicheDto.Journal(service, filtre, types).Select(EvenementDto.Depuis).ToList();
+    }
+
     private async Task<HorlogeDto> DiffuserHorloge()
     {
         var horloge = HorlogeDto.Depuis(service);

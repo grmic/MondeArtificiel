@@ -56,3 +56,39 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .temps .alerte { color: #ffb347; }
 .temps .objectif { color: #ffd479; }
 .temps .champs-date[hidden], .temps [hidden] { display: none; }
+.panneau-lateral {
+  position: fixed; width: min(380px, calc(100vw - 24px));
+  display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 10px; background: var(--panneau); font-size: 0.85rem; line-height: 1.4;
+}
+.panneau-lateral[hidden] { display: none; }
+.fiche { left: 12px; top: 100px; max-height: calc(100vh - 250px); }
+.journal-panneau { right: 12px; top: 290px; bottom: 12px; }
+.panneau-lateral .tete { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px 4px; }
+.panneau-lateral h2 { font-size: 1rem; margin: 0; }
+.panneau-lateral h3 { font-size: 0.85rem; margin: 10px 0 4px; color: var(--discret); text-transform: uppercase; letter-spacing: 0.04em; }
+.panneau-lateral .fermer { background: none; border: none; color: var(--discret); font-size: 1.3rem; cursor: pointer; line-height: 1; }
+.panneau-lateral .corps { overflow-y: auto; padding: 0 14px 12px; }
+.fiche .resume { margin: 0 0 4px; }
+.fiche .pensee { margin: 4px 0; font-style: italic; color: #ffe6a8; }
+.fiche .famille { margin: 4px 0; }
+.jauge { display: grid; grid-template-columns: 7.5rem 1fr 2.6rem; align-items: center; gap: 6px; }
+.jauge .piste { height: 6px; border-radius: 3px; background: #26324a; overflow: hidden; }
+.jauge .plein { display: block; height: 100%; background: #5b9bd5; }
+.jauge .valeur { text-align: right; font-variant-numeric: tabular-nums; color: var(--discret); }
+.liste { list-style: none; margin: 0; padding: 0; }
+.liste li { padding: 2px 0; }
+.liste .date { color: var(--discret); font-variant-numeric: tabular-nums; min-width: 0; font-size: 0.8rem; }
+.lien { background: none; border: none; padding: 0; color: #8cc4ff; cursor: pointer; font: inherit; text-decoration: underline dotted; }
+.entite { color: #d9a8ff; }
+.journal-panneau .filtres { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 0 14px 6px; }
+.journal-panneau .puce { white-space: nowrap; }
+.journal-panneau .ligne { padding: 0 14px 6px; }
+.journal-panneau input[type=search] { width: 100%; box-sizing: border-box; padding: 3px 6px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); }
+.journal-panneau .evenements { flex: 1; overflow-y: auto; padding: 0 14px; }
+.journal-panneau .evenement { cursor: pointer; border-bottom: 1px solid #1f2a3c; }
+.journal-panneau .evenement:hover { background: #1c2635; }
+.evenement.mort, .evenement.mort-ne { color: #ffb3b3; }
+.evenement.naissance { color: #b8f0c4; }
+.journal-panneau .plus { margin: 6px 14px 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; }
+.journal-panneau .plus[hidden] { display: none; }

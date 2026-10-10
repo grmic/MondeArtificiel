@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-CfY-oxv7.js"></script>
+    <script type="module" crossorigin src="/assets/index-oC5GbE1R.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/CanvasPool-CT7OQSgs.js">
     <link rel="modulepreload" crossorigin href="/assets/canvasUtils-vHj9HkKG.js">
     <link rel="modulepreload" crossorigin href="/assets/RenderTargetSystem-FtcCc_-0.js">
     <link rel="modulepreload" crossorigin href="/assets/getTextureBatchBindGroup-DWZkPDHl.js">
     <link rel="modulepreload" crossorigin href="/assets/getTexelRangeRects-Dz82KJmA.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-xE0hUucr.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-OIYQZndC.css">
   </head>
   <body>
     <div id="scene"></div>
@@ -25,6 +25,7 @@
         <label for="graine">Graine</label>
         <input id="graine" type="number" min="0" max="4294967295" step="1" required />
         <button type="submit" title="Voir le continent d'une autre graine (aperçu, le monde courant ne change pas)">Aperçu</button>
+        <button type="button" id="boutonJournal" title="Naissances, morts, couples… filtrables par humain">Journal</button>
         <button type="button" id="boutonReinit" class="danger" title="Recommencer le monde à l'an 1">↺ Réinitialiser</button>
       </form>
     </header>
@@ -82,6 +83,8 @@
         </menu>
       </form>
     </dialog>
+    <aside id="fiche" class="fiche panneau-lateral" aria-label="Fiche de l'humain" hidden></aside>
+    <aside id="journal" class="journal-panneau panneau-lateral" aria-label="Journal du monde" hidden></aside>
     <aside id="infos" class="infos">Survole la carte pour voir une tuile. Molette : zoom · glisser : déplacer.</aside>
   </body>
 </html>

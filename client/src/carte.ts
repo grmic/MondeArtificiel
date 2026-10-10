@@ -117,6 +117,7 @@ export interface HumainVue {
   pere: number;
   enceinte: boolean;
   etape: "bébé" | "enfant" | "adulte";
+  pensee: string | null;
 }
 
 export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement; humains: HumainVue[] } | null;
@@ -135,6 +136,9 @@ export class VueCarte {
   private sprite?: Sprite;
   private carte?: Carte;
   private echelleMin = 1;
+  private readonly selection = new Graphics().circle(0, 0, 7).stroke({ width: 2, color: 0xffffff });
+  private selectionId = 0;
+  private surClic: (info: InfoTuile) => void = () => {};
 
   private constructor(
     private readonly app: Application,
@@ -214,6 +218,30 @@ export class VueCarte {
       point.position.set(h.x + decalage, h.y + 0.5);
     }
     this.ajusterMarqueurs();
+    this.placerSelection();
+  }
+
+  /** Appelé quand on clique (sans glisser) sur la carte. */
+  quandClic(action: (info: InfoTuile) => void): void {
+    this.surClic = action;
+  }
+
+  /** Entoure l'humain choisi (0 : aucun). */
+  selectionner(id: number): void {
+    this.selectionId = id;
+    this.placerSelection();
+  }
+
+  private placerSelection(): void {
+    const point = this.selectionId ? this.pointsHumains.get(this.selectionId) : undefined;
+    // Un bébé n'a pas de point : on entoure sa mère.
+    const h = this.humains.find((x) => x.id === this.selectionId);
+    const cible = point ?? (h ? this.pointsHumains.get(h.mere) : undefined);
+    this.selection.visible = !!cible;
+    if (!cible) return;
+    if (this.selection.parent !== this.calqueHumains) this.calqueHumains.addChild(this.selection);
+    this.selection.position.copyFrom(cible.position);
+    this.selection.scale.set(1 / this.monde.scale.x);
   }
 
   /** Assombrit la carte selon la clarté du jour (1 = plein jour, 0 = nuit). */
@@ -237,6 +265,13 @@ export class VueCarte {
     const inverse = 1 / this.monde.scale.x;
     for (const m of this.marqueurs.children) m.scale.set(inverse);
     for (const m of this.calqueHumains.children) m.scale.set(inverse);
+  }
+
+  /** Humains sous le pointeur, du plus proche au plus éloigné. */
+  humainsSous(info: InfoTuile): HumainVue[] {
+    if (!info) return [];
+    const d = (h: HumainVue) => Math.max(Math.abs(h.x - info.x), Math.abs(h.y - info.y));
+    return [...info.humains].sort((a, b) => Number(b.vivant) - Number(a.vivant) || d(a) - d(b));
   }
 
   private zoomer(facteur: number, ecranX: number, ecranY: number): void {
@@ -265,6 +300,7 @@ export class VueCarte {
   private brancherSouris(): void {
     const canvas = this.app.canvas;
     let glisse: { x: number; y: number } | null = null;
+    let depart: { x: number; y: number } | null = null;
 
     canvas.addEventListener("wheel", (ev) => {
       ev.preventDefault();
@@ -273,6 +309,7 @@ export class VueCarte {
 
     canvas.addEventListener("pointerdown", (ev) => {
       glisse = { x: ev.clientX, y: ev.clientY };
+      depart = { x: ev.clientX, y: ev.clientY };
       canvas.setPointerCapture(ev.pointerId);
       canvas.classList.add("glisse");
     });
@@ -291,7 +328,14 @@ export class VueCarte {
       if (canvas.hasPointerCapture(ev.pointerId)) canvas.releasePointerCapture(ev.pointerId);
       canvas.classList.remove("glisse");
     };
-    canvas.addEventListener("pointerup", finGlisse);
+    canvas.addEventListener("pointerup", (ev) => {
+      // Un clic : le pointeur n'a presque pas bougé depuis l'appui.
+      if (depart && Math.hypot(ev.clientX - depart.x, ev.clientY - depart.y) < 5) {
+        this.surClic(this.tuileSous(ev.offsetX, ev.offsetY));
+      }
+      depart = null;
+      finGlisse(ev);
+    });
     canvas.addEventListener("pointercancel", finGlisse);
     canvas.addEventListener("dblclick", () => this.cadrer());
   }

@@ -25,7 +25,8 @@ public sealed record HumainDto(
     int Mere,
     int Pere,
     bool Enceinte,
-    string Etape)
+    string Etape,
+    string? Pensee)
 {
     private static readonly Dictionary<Activite, string> Activites = new()
     {
@@ -47,29 +48,26 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.VeillerEnfant] = "rejoint son enfant",
     };
 
-    private static readonly Dictionary<CauseDeMort, string> Causes = new()
-    {
-        [Simulation.Humains.CauseDeMort.Faim] = "de faim",
-        [Simulation.Humains.CauseDeMort.Soif] = "de soif",
-        [Simulation.Humains.CauseDeMort.Froid] = "de froid",
-        [Simulation.Humains.CauseDeMort.Maladie] = "de maladie",
-        [Simulation.Humains.CauseDeMort.Epuisement] = "d'épuisement",
-        [Simulation.Humains.CauseDeMort.Vieillesse] = "de vieillesse",
-        [Simulation.Humains.CauseDeMort.Accouchement] = "en couches",
-    };
 
     public static List<HumainDto> Depuis(MondeSimule monde)
     {
         var (maintenant, humains) = monde.InstantaneHumains();
         // Les morts de plus d'un an ne sont plus affichés (la liste grandirait sans fin).
         return humains.Where(h => h.MortLe is not { } m || maintenant - m < Simulation.Temps.Calendrier.SecondesParAn)
-            .Select(h => new HumainDto(
+            .Select(h => Depuis(h, maintenant)).ToList();
+    }
+
+    public static HumainDto Depuis(Humain h, long maintenant)
+    {
+        var instant = h.MortLe ?? maintenant;
+        return new HumainDto(
             h.Id, h.Nom, h.Sexe == Simulation.Humains.Sexe.Femme ? "femme" : "homme", h.PartenaireId, h.Emplacement,
-            Math.Round(h.AgeEnAnnees(h.MortLe ?? maintenant), 1), h.X, h.Y,
+            Math.Round(h.AgeEnAnnees(instant), 1), h.X, h.Y,
             Activites.GetValueOrDefault(h.Activite, "?"), h.EstVivant, h.EstVivant && h.EstMalade(maintenant),
             Math.Round(h.Faim), Math.Round(h.Soif), Math.Round(h.Fatigue), Math.Round(h.Froid), Math.Round(h.Sante, 1),
-            h.EstVivant ? null : Causes.GetValueOrDefault(h.CauseDeMort),
+            h.EstVivant ? null : Libelles.Cause(h.CauseDeMort),
             h.MereId, h.PereId, h.EstEnceinte,
-            h.EstBebe(h.MortLe ?? maintenant) ? "bébé" : h.EstEnfant(h.MortLe ?? maintenant) ? "enfant" : "adulte")).ToList();
+            h.EstBebe(instant) ? "bébé" : h.EstEnfant(instant) ? "enfant" : "adulte",
+            h.EstVivant && h.Memoire.Pensees.Count > 0 ? h.Memoire.Pensees[^1].Texte : null);
     }
 }

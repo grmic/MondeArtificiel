@@ -1,0 +1,131 @@
+import { connexion } from "./connexion";
+import { el, ligneEvenement, type Evenement } from "./fiche";
+
+const TYPES: [string, string][] = [
+  ["naissance", "Naissances"],
+  ["mort", "Morts"],
+  ["mort-ne", "Morts-nés"],
+  ["maladie", "Maladies"],
+  ["union", "Couples"],
+  ["accouplement", "Accouplements"],
+  ["grossesse", "Grossesses"],
+  ["fausse-couche", "Fausses couches"],
+  ["delaissement", "Délaissements"],
+];
+
+/** Journal du monde : filtrable par type et par humain, mis à jour en direct, avec les plus anciens à la demande. */
+export class PanneauJournal {
+  private evenements: Evenement[] = [];
+  private types = new Set(TYPES.map(([cle]) => cle).filter((c) => c !== "accouplement"));
+  private humain: number | null = null;
+  private plusAncien = true;
+
+  constructor(
+    private readonly racine: HTMLElement,
+    private readonly idDuNom: (nom: string) => number | undefined,
+    private readonly nomsConnus: () => string[],
+    private readonly ouvrirFiche: (id: number) => void,
+  ) {
+    this.construire();
+    connexion.on("Journal", (nouveaux: Evenement[]) => {
+      this.recevoir(nouveaux);
+    });
+  }
+
+  basculer(): void {
+    this.racine.hidden = !this.racine.hidden;
+    if (!this.racine.hidden) void this.recharger();
+  }
+
+  /** Après une reconnexion ou une réinitialisation. */
+  async recharger(): Promise<void> {
+    if (this.racine.hidden) return;
+    this.evenements = await this.lire();
+    this.plusAncien = true;
+    this.dessinerListe();
+  }
+
+  private filtre(avantId?: number) {
+    return { types: [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100 };
+  }
+
+  private async lire(avantId?: number): Promise<Evenement[]> {
+    if (this.types.size === 0) return [];
+    return connexion.invoke<Evenement[]>("Journal", this.filtre(avantId)).catch(() => []);
+  }
+
+  private recevoir(nouveaux: Evenement[]): void {
+    if (this.racine.hidden) return;
+    const gardes = nouveaux.filter((e) => this.types.has(e.type) && (this.humain === null || e.humain === this.humain || e.autre === this.humain));
+    if (gardes.length === 0) return;
+    const connus = new Set(this.evenements.map((e) => e.id));
+    this.evenements = [...gardes.filter((e) => !connus.has(e.id)).reverse(), ...this.evenements].slice(0, 1000);
+    this.dessinerListe();
+  }
+
+  private construire(): void {
+    const r = this.racine;
+    const tete = el("div", "tete");
+    tete.append(el("h2", undefined, "Journal"));
+    const fermer = el("button", "fermer", "×");
+    fermer.type = "button";
+    fermer.addEventListener("click", () => this.basculer());
+    tete.append(fermer);
+
+    const filtres = el("div", "filtres");
+    for (const [cle, libelle] of TYPES) {
+      const etiquette = el("label", "puce");
+      const case_ = el("input");
+      case_.type = "checkbox";
+      case_.checked = this.types.has(cle);
+      case_.addEventListener("change", () => {
+        if (case_.checked) this.types.add(cle);
+        else this.types.delete(cle);
+        void this.recharger();
+      });
+      etiquette.append(case_, ` ${libelle}`);
+      filtres.append(etiquette);
+    }
+
+    const recherche = el("div", "ligne");
+    const champ = el("input");
+    champ.type = "search";
+    champ.placeholder = "Nom d'un humain (vide : tous)";
+    champ.setAttribute("list", "nomsHumains");
+    champ.maxLength = 40;
+    const liste = el("datalist");
+    liste.id = "nomsHumains";
+    champ.addEventListener("focus", () => liste.replaceChildren(...this.nomsConnus().map((n) => Object.assign(el("option"), { value: n }))));
+    champ.addEventListener("change", () => {
+      const nom = champ.value.trim();
+      this.humain = nom === "" ? null : this.idDuNom(nom) ?? -1;
+      void this.recharger();
+    });
+    recherche.append(champ, liste);
+
+    const zone = el("ul", "liste evenements");
+    const plus = el("button", "plus", "Plus anciens…");
+    plus.type = "button";
+    plus.addEventListener("click", async () => {
+      const dernier = this.evenements.at(-1);
+      if (!dernier) return;
+      const anciens = await this.lire(dernier.id);
+      this.plusAncien = anciens.length === 100;
+      this.evenements.push(...anciens);
+      this.dessinerListe();
+    });
+    r.append(tete, filtres, recherche, zone, plus);
+  }
+
+  private dessinerListe(): void {
+    const zone = this.racine.querySelector(".evenements")!;
+    zone.replaceChildren(...this.evenements.map((e) => {
+      const li = ligneEvenement(e);
+      li.title = "Cliquer pour ouvrir la fiche";
+      li.addEventListener("click", () => this.ouvrirFiche(e.humain));
+      return li;
+    }));
+    if (this.evenements.length === 0) zone.append(el("li", "discret", this.humain === -1 ? "Aucun humain de ce nom." : "Aucun événement."));
+    this.racine.querySelector<HTMLButtonElement>(".plus")!.hidden = !this.plusAncien || this.evenements.length < 100;
+  }
+}

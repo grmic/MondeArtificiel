@@ -18,6 +18,7 @@
         <label for="graine">Graine</label>
         <input id="graine" type="number" min="0" max="4294967295" step="1" required />
         <button type="submit" title="Voir le continent d'une autre graine (aperçu, le monde courant ne change pas)">Aperçu</button>
+        <button type="button" id="boutonJournal" title="Naissances, morts, couples… filtrables par humain">Journal</button>
         <button type="button" id="boutonReinit" class="danger" title="Recommencer le monde à l'an 1">↺ Réinitialiser</button>
       </form>
     </header>
@@ -75,6 +76,8 @@
         </menu>
       </form>
     </dialog>
+    <aside id="fiche" class="fiche panneau-lateral" aria-label="Fiche de l'humain" hidden></aside>
+    <aside id="journal" class="journal-panneau panneau-lateral" aria-label="Journal du monde" hidden></aside>
     <aside id="infos" class="infos">Survole la carte pour voir une tuile. Molette : zoom · glisser : déplacer.</aside>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -30,6 +30,7 @@ public sealed class MoteurSimulation(
         var debutMesure = TimeSpan.Zero;
         var mondeMesure = service.Monde;
         var secondesMesure = mondeMesure.Secondes;
+        long dernierEvenement = mondeMesure.JournalRecent().LastOrDefault()?.Id ?? 0;
 
         try
         {
@@ -44,6 +45,7 @@ public sealed class MoteurSimulation(
                 if (!ReferenceEquals(monde, mondeMesure))
                 {
                     (mondeMesure, secondesMesure, debutMesure) = (monde, monde.Secondes, maintenant);
+                    dernierEvenement = 0; // monde réinitialisé : son journal repart de zéro
                 }
                 else if (maintenant - debutMesure >= FenetreMesure)
                 {
@@ -64,7 +66,14 @@ public sealed class MoteurSimulation(
                 {
                     derniereDiffusion = maintenant;
                     await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
-                    await hub.Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde), arret);
+                    await hub.Clients.All.SendAsync("Humains", HumainDto.Depuis(monde), arret);
+                    // Nouveaux événements du journal (les 50 derniers au plus, l'historique complet reste consultable).
+                    var nouveaux = monde.JournalRecent(dernierEvenement);
+                    if (nouveaux.Count > 0)
+                    {
+                        dernierEvenement = nouveaux[^1].Id;
+                        await hub.Clients.All.SendAsync("Journal", nouveaux.TakeLast(50).Select(EvenementDto.Depuis).ToList(), arret);
+                    }
                 }
 
                 if (maintenant - derniereSauvegarde >= IntervalleSauvegarde)
