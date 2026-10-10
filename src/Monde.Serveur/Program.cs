@@ -11,7 +11,9 @@ builder.Services.AddSignalR(options =>
     options.MaximumReceiveMessageSize = 32 * 1024;
 });
 
+builder.Services.AddSingleton<ServiceMonde>();
 builder.Services.AddSingleton<ServiceCarte>();
+builder.Services.AddHostedService<MoteurSimulation>();
 
 var app = builder.Build();
 

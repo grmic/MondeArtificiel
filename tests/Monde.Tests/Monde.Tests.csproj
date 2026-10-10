@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Monde.Serveur\Monde.Serveur.csproj" />
     <ProjectReference Include="..\..\src\Monde.Simulation\Monde.Simulation.csproj" />
+    <ProjectReference Include="..\..\src\Monde.Stockage\Monde.Stockage.csproj" />
   </ItemGroup>
 
 </Project>

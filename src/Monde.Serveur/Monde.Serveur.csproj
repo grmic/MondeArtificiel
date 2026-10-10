@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Monde.Simulation\Monde.Simulation.csproj" />
+    <ProjectReference Include="..\Monde.Stockage\Monde.Stockage.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

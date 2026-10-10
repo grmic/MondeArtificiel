@@ -1,38 +1,36 @@
-import { HubConnectionBuilder, HubConnectionState, LogLevel } from "@microsoft/signalr";
+import { HubConnection, HubConnectionBuilder, HubConnectionState, LogLevel } from "@microsoft/signalr";
 
-interface ReponsePing {
-  heureServeur: string;
-  monde: string;
-}
+/** Connexion temps réel au serveur, partagée par toute la page. */
+export const connexion: HubConnection = new HubConnectionBuilder()
+  .withUrl("/hub/monde")
+  .withAutomaticReconnect()
+  .configureLogging(LogLevel.Warning)
+  .build();
 
-/** Connexion temps réel au serveur, avec affichage de son état dans l'élément fourni. */
-export function connecter(statut: HTMLElement): void {
+/**
+ * Démarre la connexion et affiche son état. `aChaqueConnexion` est rappelée
+ * après la première connexion et après chaque reconnexion.
+ */
+export function demarrerConnexion(statut: HTMLElement, aChaqueConnexion: () => Promise<void>): void {
   // textContent (et non innerHTML) : aucune donnée reçue n'est interprétée comme du HTML.
   const afficher = (texte: string, classe: "ok" | "erreur" | "") => {
     statut.textContent = texte;
     statut.className = `statut ${classe}`.trim();
   };
 
-  const connexion = new HubConnectionBuilder()
-    .withUrl("/hub/monde")
-    .withAutomaticReconnect()
-    .configureLogging(LogLevel.Warning)
-    .build();
-
-  const verifier = async () => {
-    const reponse = await connexion.invoke<ReponsePing>("Ping");
-    const heure = new Date(reponse.heureServeur).toLocaleTimeString("fr-FR");
-    afficher(`Connecté au serveur · ${heure}`, "ok");
+  const connecte = async () => {
+    afficher("Connecté", "ok");
+    await aChaqueConnexion();
   };
 
   connexion.onreconnecting(() => afficher("Connexion perdue, reconnexion…", "erreur"));
-  connexion.onreconnected(() => void verifier());
+  connexion.onreconnected(() => void connecte());
   connexion.onclose(() => afficher("Déconnecté du serveur", "erreur"));
 
   const demarrer = async (): Promise<void> => {
     try {
       await connexion.start();
-      await verifier();
+      await connecte();
     } catch {
       afficher("Serveur injoignable, nouvelle tentative…", "erreur");
       setTimeout(() => {

@@ -7,13 +7,13 @@ namespace Monde.Serveur;
 /// Fournit les cartes générées. Une carte est calculée une seule fois par graine,
 /// et le cache est borné pour ne pas grossir indéfiniment.
 /// </summary>
-public sealed class ServiceCarte(IConfiguration configuration)
+public sealed class ServiceCarte(ServiceMonde service)
 {
     private const int TailleMaxCache = 8;
     private readonly ConcurrentDictionary<ulong, Lazy<Carte>> _cache = new();
 
-    /// <summary>Graine du monde courant (section « Monde:Graine » de appsettings.json).</summary>
-    public uint GraineParDefaut { get; } = configuration.GetValue<uint>("Monde:Graine", 42);
+    /// <summary>Graine du monde courant (fixée à sa création, enregistrée dans sa sauvegarde).</summary>
+    public uint GraineParDefaut { get; } = (uint)service.Monde.Graine;
 
     public Carte Obtenir(uint? graine = null)
     {

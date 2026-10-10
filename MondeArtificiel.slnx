@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Monde.Serveur/Monde.Serveur.csproj" />
     <Project Path="src/Monde.Simulation/Monde.Simulation.csproj" />
+    <Project Path="src/Monde.Stockage/Monde.Stockage.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Monde.Tests/Monde.Tests.csproj" />

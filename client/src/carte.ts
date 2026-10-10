@@ -101,6 +101,7 @@ export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Empl
 export class VueCarte {
   private readonly monde = new Container();
   private readonly marqueurs = new Container();
+  private readonly nuit = new Graphics();
   private sprite?: Sprite;
   private carte?: Carte;
   private echelleMin = 1;
@@ -136,8 +137,14 @@ export class VueCarte {
       point.position.set(e.x + 0.5, e.y + 0.5);
       this.marqueurs.addChild(point);
     }
-    this.monde.addChild(this.marqueurs);
+    this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
+    this.monde.addChild(this.nuit, this.marqueurs);
     this.cadrer();
+  }
+
+  /** Assombrit la carte selon la clarté du jour (1 = plein jour, 0 = nuit). */
+  eclairer(lumiere: number): void {
+    this.nuit.alpha = (1 - Math.min(1, Math.max(0, lumiere))) * 0.55;
   }
 
   /** Ajuste le zoom pour voir toute la carte. */

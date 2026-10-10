@@ -1,12 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.SignalR.Client;
 using Monde.Serveur.Hubs;
 
 namespace Monde.Tests;
 
-public sealed class ServeurTests(WebApplicationFactory<Program> usine) : IClassFixture<WebApplicationFactory<Program>>
+public sealed class ServeurTests(UsineTest usine) : IClassFixture<UsineTest>
 {
     private sealed record Etat(string Nom, string VersionMoteur, DateTimeOffset HeureServeur);
 
@@ -46,12 +45,7 @@ public sealed class ServeurTests(WebApplicationFactory<Program> usine) : IClassF
     [Fact]
     public async Task HubSignalR_RepondAuPing()
     {
-        var connexion = new HubConnectionBuilder()
-            .WithUrl(new Uri(usine.Server.BaseAddress, MondeHub.Route), options =>
-            {
-                options.HttpMessageHandlerFactory = _ => usine.Server.CreateHandler();
-            })
-            .Build();
+        var connexion = usine.CreerConnexion();
         await using var _ = connexion;
 
         await connexion.StartAsync();

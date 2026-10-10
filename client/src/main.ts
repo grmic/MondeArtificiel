@@ -1,11 +1,12 @@
 import { chargerCarte, VueCarte, type InfoTuile } from "./carte";
-import { connecter } from "./connexion";
+import { demarrerConnexion } from "./connexion";
+import { PanneauHorloge } from "./horloge";
 import "./style.css";
 
-const statut = document.querySelector<HTMLElement>("#statut")!;
-const infos = document.querySelector<HTMLElement>("#infos")!;
-const formulaire = document.querySelector<HTMLFormElement>("#formGraine")!;
-const champGraine = document.querySelector<HTMLInputElement>("#graine")!;
+const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
+const infos = element("#infos");
+const formulaire = element<HTMLFormElement>("#formGraine");
+const champGraine = element<HTMLInputElement>("#graine");
 
 const GRAINE_MAX = 4_294_967_295;
 
@@ -23,8 +24,14 @@ function decrire(info: InfoTuile): void {
 }
 
 async function demarrer(): Promise<void> {
-  connecter(statut);
-  const vue = await VueCarte.creer(document.querySelector<HTMLElement>("#scene")!, decrire);
+  const vue = await VueCarte.creer(element("#scene"), decrire);
+  const horloge = new PanneauHorloge(
+    element("#date"),
+    element("#vitesses"),
+    (h) => vue.eclairer(h.lumiere),
+    (message) => (infos.textContent = message),
+  );
+  demarrerConnexion(element("#statut"), () => horloge.synchroniser());
 
   const charger = async (graine?: number) => {
     infos.textContent = "Génération de la carte…";
@@ -32,7 +39,8 @@ async function demarrer(): Promise<void> {
       const carte = await chargerCarte(graine);
       champGraine.value = String(carte.graine);
       vue.afficher(carte);
-      infos.textContent = `Graine ${carte.graine} · ${carte.emplacements.length} emplacements de départ.\nMolette : zoom · glisser : déplacer · double-clic : recadrer.`;
+      const apercu = graine === undefined ? "Monde courant" : "Aperçu";
+      infos.textContent = `${apercu} · graine ${carte.graine} · ${carte.emplacements.length} emplacements de départ.\nMolette : zoom · glisser : déplacer · double-clic : recadrer.`;
     } catch {
       infos.textContent = "Impossible de charger la carte.";
     }

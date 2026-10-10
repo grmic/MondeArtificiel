@@ -11,10 +11,12 @@
     <header class="barre">
       <h1>Monde artificiel</h1>
       <span id="statut" class="statut">Connexion au serveur…</span>
+      <span id="date" class="date"></span>
+      <div id="vitesses" class="vitesses" role="group" aria-label="Vitesse du temps"></div>
       <form id="formGraine" class="graine">
         <label for="graine">Graine</label>
         <input id="graine" type="number" min="0" max="4294967295" step="1" required />
-        <button type="submit">Générer</button>
+        <button type="submit" title="Voir le continent d'une autre graine (aperçu, le monde courant ne change pas)">Aperçu</button>
       </form>
     </header>
     <aside id="infos" class="infos">Survole la carte pour voir une tuile. Molette : zoom · glisser : déplacer.</aside>
