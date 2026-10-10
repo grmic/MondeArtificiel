@@ -9,6 +9,8 @@ const formulaire = element<HTMLFormElement>("#formGraine");
 const champGraine = element<HTMLInputElement>("#graine");
 
 const population = element("#population");
+const boutonReinit = element<HTMLButtonElement>("#boutonReinit");
+const dialogueReinit = element<HTMLDialogElement>("#dialogueReinit");
 const GRAINE_MAX = 4_294_967_295;
 let nomsParId = new Map<number, string>();
 
@@ -67,6 +69,7 @@ async function demarrer(): Promise<void> {
     try {
       const carte = await chargerCarte(graine);
       champGraine.value = String(carte.graine);
+      if (graine === undefined) graineMonde = carte.graine;
       vue.afficher(carte);
       const apercu = graine === undefined ? "Monde courant" : "Aperçu";
       infos.textContent = `${apercu} · graine ${carte.graine} · ${carte.emplacements.length} emplacements de départ.\nMolette : zoom · glisser : déplacer · double-clic : recadrer.`;
@@ -83,6 +86,34 @@ async function demarrer(): Promise<void> {
       return;
     }
     void charger(graine);
+  });
+
+  // Réinitialisation : demandée ici, annoncée par le serveur à tous les navigateurs ouverts.
+  let graineMonde: number | undefined;
+  connexion.on("MondeReinitialise", (graine: number) => {
+    void charger().then(() => (infos.textContent = `Monde réinitialisé · graine ${graine}. Le temps est en pause.`));
+  });
+  boutonReinit.addEventListener("click", () => {
+    const champ = Number(champGraine.value);
+    element("#graineCourante").textContent = String(graineMonde ?? "?");
+    element("#graineChamp").textContent = Number.isInteger(champ) && champ >= 0 && champ <= GRAINE_MAX ? String(champ) : "invalide";
+    dialogueReinit.returnValue = "";
+    dialogueReinit.showModal();
+  });
+  dialogueReinit.addEventListener("close", () => {
+    if (dialogueReinit.returnValue !== "confirmer") return;
+    const choix = new FormData(dialogueReinit.querySelector("form")!).get("choixGraine");
+    let graine: number | null = null;
+    if (choix === "courante") graine = graineMonde ?? null;
+    if (choix === "champ") {
+      graine = Number(champGraine.value);
+      if (!Number.isInteger(graine) || graine < 0 || graine > GRAINE_MAX) {
+        infos.textContent = `La graine doit être un entier entre 0 et ${GRAINE_MAX}.`;
+        return;
+      }
+    }
+    infos.textContent = "Réinitialisation du monde…";
+    connexion.invoke("Reinitialiser", graine).catch(() => (infos.textContent = "Le serveur a refusé la réinitialisation."));
   });
 
   window.addEventListener("resize", () => vue.cadrer());

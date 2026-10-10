@@ -24,6 +24,7 @@ public enum Activite : byte
     SAccoupler = 12,
     SuivreParent = 13,
     PorteParSaMere = 14,
+    VeillerEnfant = 15,
 }
 
 public enum CauseDeMort : byte
@@ -39,7 +40,12 @@ public enum CauseDeMort : byte
 }
 
 /// <summary>Traits de caractère, chacun entre 0 et 1, tirés au hasard à la naissance.</summary>
-public sealed record Personnalite(double Curiosite, double Prudence, double Sociabilite, double Endurance, double Adresse);
+/// <remarks>
+/// Attachement : force du lien avec ses enfants. Élevé chez la plupart, faible chez quelques-uns ;
+/// un parent peu attaché s'éloigne de ses enfants, et peut abandonner un bébé quand il souffre.
+/// </remarks>
+public sealed record Personnalite(double Curiosite, double Prudence, double Sociabilite, double Endurance, double Adresse,
+    double Attachement);
 
 /// <summary>
 /// Un humain et son état. Les besoins vont de 0 (satisfait) à 100 (extrême) ;
@@ -69,6 +75,8 @@ public sealed class Humain
 
     public required Personnalite Personnalite { get; init; }
 
+    public required Biologie Biologie { get; init; }
+
     public int X { get; set; }
     public int Y { get; set; }
     public double Faim { get; set; }
@@ -94,10 +102,13 @@ public sealed class Humain
     /// <summary>Début de la grossesse en secondes du monde, ou null.</summary>
     public long? EnceinteDepuis { get; set; }
 
+    /// <summary>Date prévue de l'accouchement : la durée de grossesse varie d'une grossesse à l'autre.</summary>
+    public long? TermeGrossesse { get; set; }
+
     /// <summary>Père de l'enfant attendu (0 si aucune grossesse).</summary>
     public int PereEnfantId { get; set; }
 
-    /// <summary>Date du dernier accouchement (l'allaitement rend peu fertile pendant un an).</summary>
+    /// <summary>Date du dernier accouchement .</summary>
     public long? DernierAccouchement { get; set; }
 
     public long? MortLe { get; set; }
@@ -115,10 +126,18 @@ public sealed class Humain
     /// <summary>Enfant ou bébé (moins de 14 ans) : suit ses parents, ne se reproduit pas.</summary>
     public bool EstEnfant(long maintenant) => AgeEnAnnees(maintenant) < 14;
 
+    /// <summary>Fécondité de 0 à environ 1,6 selon l'âge et la biologie propre (0 : enfant, ménopause ou stérilité).</summary>
+    public double Fecondite(long maintenant)
+    {
+        var age = AgeEnAnnees(maintenant);
+        return Sexe == Sexe.Femme ? Biologie.FeconditeFemme(age) : Biologie.FeconditeHomme(age);
+    }
+
+    /// <summary>En âge de procréer (pubère, avant la ménopause) : l'instinct existe, même chez un humain stérile.</summary>
     public bool EstFecond(long maintenant)
     {
         var age = AgeEnAnnees(maintenant);
-        return Sexe == Sexe.Femme ? age is >= 15 and < 45 : age is >= 15 and < 60;
+        return age >= 14 && age >= Biologie.AgePuberte && age < Biologie.AgeFinFertilite;
     }
 
     public double AgeEnAnnees(long maintenant) => (maintenant - Naissance) / (double)Temps.Calendrier.SecondesParAn;

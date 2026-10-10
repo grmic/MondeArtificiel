@@ -10,8 +10,13 @@ namespace Monde.Serveur;
 /// </summary>
 public sealed class ServiceMonde
 {
+    private readonly Lock _verrou = new();
+    private readonly ILogger<ServiceMonde> _journal;
+    private volatile MondeSimule _monde;
+
     public ServiceMonde(IConfiguration configuration, ILogger<ServiceMonde> journal)
     {
+        _journal = journal;
         var dossier = configuration["Monde:Dossier"];
         if (string.IsNullOrWhiteSpace(dossier))
         {
@@ -35,14 +40,42 @@ public sealed class ServiceMonde
         }
 
         var carte = GenerateurContinent.Generer(etat.Graine);
-        Monde = new MondeSimule(carte, etat with { NiveauVitesse = 0 });
+        _monde = new MondeSimule(carte, etat with { NiveauVitesse = 0 });
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
     }
 
-    public MondeSimule Monde { get; }
+    /// <summary>Monde courant. Il peut être remplacé par une réinitialisation : relire la propriété à chaque usage.</summary>
+    public MondeSimule Monde => _monde;
 
     public DepotMonde Depot { get; }
 
-    public void Sauvegarder() => Depot.Enregistrer(Monde.Etat);
+    /// <summary>Fichier où l'ancien monde est copié juste avant une réinitialisation.</summary>
+    public string CheminCopieAvantReinitialisation =>
+        Path.Combine(Path.GetDirectoryName(Depot.CheminFichier)!, "monde-avant-reinitialisation.db");
+
+    public void Sauvegarder()
+    {
+        lock (_verrou) Depot.Enregistrer(_monde.Etat);
+    }
+
+    /// <summary>
+    /// Remplace le monde par un monde neuf (an 1, 66 humains de départ), en pause.
+    /// L'ancien monde est d'abord copié dans <see cref="CheminCopieAvantReinitialisation"/> (seule la dernière copie est gardée).
+    /// </summary>
+    public MondeSimule Reinitialiser(uint graine)
+    {
+        var etat = MondeSimule.Nouveau(graine);
+        var nouveau = new MondeSimule(GenerateurContinent.Generer(graine), etat);
+        lock (_verrou)
+        {
+            Depot.Enregistrer(_monde.Etat);
+            Depot.CopierVers(CheminCopieAvantReinitialisation);
+            Depot.Enregistrer(nouveau.Etat, remplacer: true);
+            _monde = nouveau;
+        }
+        _journal.LogInformation("Monde réinitialisé (graine {Graine}) ; ancien monde copié dans {Copie}",
+            graine, CheminCopieAvantReinitialisation);
+        return nouveau;
+    }
 }

@@ -42,6 +42,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId));
         Metaboliser(h, chaleurPartagee, maintenant);
         if (!h.EstVivant) return;
+        if (h.EstEnfant(maintenant)) NourrirEnfant(h, Vivant(tous, h.MereId), Vivant(tous, h.PereId));
         Grossesse(h, tous, maintenant);
         if (!h.EstVivant) return;
         Decider(h, partenaire, tous, maintenant);
@@ -177,7 +178,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             return;
         }
 
-        // Un adulte : l'instinct de reproduction, puis rester près de l'autre, explorer ou se reposer.
+        // Un adulte : veiller sur ses enfants, l'instinct de reproduction, puis rester près de l'autre, explorer ou se reposer.
+        if (EnfantAVeiller(h, tous, maintenant) is { } enfant)
+        {
+            Avancer(h, enfant.X, enfant.Y, Activite.VeillerEnfant);
+            return;
+        }
         if (h.Desir >= SeuilDesir && ChercherAccouplement(h, partenaire, tous, maintenant)) return;
 
         if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) > 2 + (1 - p.Sociabilite) * 8)

@@ -18,8 +18,26 @@
         <label for="graine">Graine</label>
         <input id="graine" type="number" min="0" max="4294967295" step="1" required />
         <button type="submit" title="Voir le continent d'une autre graine (aperçu, le monde courant ne change pas)">Aperçu</button>
+        <button type="button" id="boutonReinit" class="danger" title="Recommencer le monde à l'an 1">↺ Réinitialiser</button>
       </form>
     </header>
+    <dialog id="dialogueReinit" class="dialogue">
+      <form method="dialog">
+        <h2>Réinitialiser le monde ?</h2>
+        <p>Le monde recommence à l'an 1 avec 33 nouveaux couples. Toute son histoire est effacée ;
+          une copie de l'ancien monde est gardée dans <code>monde-avant-reinitialisation.db</code> (seule la dernière).</p>
+        <fieldset>
+          <legend>Continent</legend>
+          <label><input type="radio" name="choixGraine" value="courante" checked /> Même graine (<span id="graineCourante"></span>)</label>
+          <label><input type="radio" name="choixGraine" value="champ" /> Graine du champ « Graine » (<span id="graineChamp"></span>)</label>
+          <label><input type="radio" name="choixGraine" value="hasard" /> Graine au hasard</label>
+        </fieldset>
+        <menu>
+          <button value="annuler" autofocus>Annuler</button>
+          <button value="confirmer" class="danger">Réinitialiser</button>
+        </menu>
+      </form>
+    </dialog>
     <aside id="infos" class="infos">Survole la carte pour voir une tuile. Molette : zoom · glisser : déplacer.</aside>
     <script type="module" src="/src/main.ts"></script>
   </body>

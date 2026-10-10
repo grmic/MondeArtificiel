@@ -90,8 +90,9 @@ public sealed class HumainsTests
                 Assert.True(Climat.EstPraticable(Carte.BiomeEn(h.X, h.Y)), $"{h.Nom} est dans l'eau en ({h.X}, {h.Y})");
                 Assert.InRange(h.Sante, 0, 100);
                 Assert.InRange(h.Faim, 0, 100);
-                // Un bébé vivant est dans les bras de sa mère vivante.
-                if (h.EstVivant && h.EstBebe(maintenant) && humains[h.MereId - 1].EstVivant)
+                // Un bébé vivant est dans les bras de sa mère vivante, si elle y est attachée (sinon elle peut le délaisser).
+                if (h.EstVivant && h.EstBebe(maintenant) && humains[h.MereId - 1].EstVivant
+                    && humains[h.MereId - 1].Personnalite.Attachement > 0.5)
                 {
                     var mere = humains[h.MereId - 1];
                     Assert.Equal((mere.X, mere.Y), (h.X, h.Y));

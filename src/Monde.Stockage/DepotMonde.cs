@@ -13,7 +13,7 @@ namespace Monde.Stockage;
 public sealed class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 3;
+    public const int VersionSchema = 4;
 
     private readonly string _connexion;
 
@@ -131,6 +131,18 @@ public sealed class DepotMonde
                 ALTER TABLE humains ADD COLUMN dernier_accouchement INTEGER;
                 """);
         }
+        if (actuelle < 4)
+        {
+            // Version 4 : attachement aux enfants, biologie propre à chacun, terme de la grossesse.
+            // Valeurs nulles pour les humains déjà enregistrés : des valeurs par défaut sont prises au chargement.
+            Executer(connexion, transaction, """
+                ALTER TABLE humains ADD COLUMN attachement REAL;
+                ALTER TABLE humains ADD COLUMN puberte REAL;
+                ALTER TABLE humains ADD COLUMN fin_fertilite REAL;
+                ALTER TABLE humains ADD COLUMN fertilite REAL;
+                ALTER TABLE humains ADD COLUMN terme_grossesse INTEGER;
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -169,7 +181,8 @@ public sealed class DepotMonde
                    curiosite, prudence, sociabilite, endurance, adresse,
                    x, y, faim, soif, fatigue, froid, sante, activite,
                    cible_x, cible_y, detour, malade_jusqua, mort_le, cause_mort,
-                   mere, pere, desir, enceinte_depuis, pere_enfant, dernier_accouchement
+                   mere, pere, desir, enceinte_depuis, pere_enfant, dernier_accouchement,
+                   attachement, puberte, fin_fertilite, fertilite, terme_grossesse
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -177,16 +190,21 @@ public sealed class DepotMonde
         {
             while (lecteur.Read())
             {
+                var sexe = (Sexe)lecteur.GetByte(2);
+                var biologie = lecteur.IsDBNull(32)
+                    ? Biologie.ParDefaut(sexe)
+                    : new Biologie(lecteur.GetDouble(32), lecteur.GetDouble(33), lecteur.GetDouble(34));
                 humains.Add(new Humain
                 {
                     Id = lecteur.GetInt32(0),
                     Nom = lecteur.GetString(1),
-                    Sexe = (Sexe)lecteur.GetByte(2),
+                    Sexe = sexe,
+                    Biologie = biologie,
                     PartenaireId = lecteur.GetInt32(3),
                     Emplacement = lecteur.GetInt32(4),
                     Naissance = lecteur.GetInt64(5),
                     Personnalite = new Personnalite(lecteur.GetDouble(6), lecteur.GetDouble(7), lecteur.GetDouble(8),
-                        lecteur.GetDouble(9), lecteur.GetDouble(10)),
+                        lecteur.GetDouble(9), lecteur.GetDouble(10), lecteur.IsDBNull(31) ? 0.8 : lecteur.GetDouble(31)),
                     X = lecteur.GetInt32(11),
                     Y = lecteur.GetInt32(12),
                     Faim = lecteur.GetDouble(13),
@@ -207,16 +225,22 @@ public sealed class DepotMonde
                     EnceinteDepuis = lecteur.IsDBNull(28) ? null : lecteur.GetInt64(28),
                     PereEnfantId = lecteur.GetInt32(29),
                     DernierAccouchement = lecteur.IsDBNull(30) ? null : lecteur.GetInt64(30),
+                    TermeGrossesse = lecteur.IsDBNull(35) ? null : lecteur.GetInt64(35),
                 });
             }
         }
         return humains.Count > 0 ? etat with { Humains = humains } : etat;
     }
 
-    public void Enregistrer(EtatMonde etat)
+    /// <summary>
+    /// Enregistre l'état. Avec <paramref name="remplacer"/>, l'ancien monde est d'abord entièrement effacé
+    /// (dans la même transaction : en cas d'échec, l'ancien monde reste intact).
+    /// </summary>
+    public void Enregistrer(EtatMonde etat, bool remplacer = false)
     {
         using var connexion = Ouvrir();
         using var transaction = connexion.BeginTransaction();
+        if (remplacer) Executer(connexion, transaction, "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat;");
 
         using (var commande = connexion.CreateCommand())
         {
@@ -263,18 +287,21 @@ public sealed class DepotMonde
                     curiosite, prudence, sociabilite, endurance, adresse,
                     x, y, faim, soif, fatigue, froid, sante, activite,
                     cible_x, cible_y, detour, malade_jusqua, mort_le, cause_mort,
-                    mere, pere, desir, enceinte_depuis, pere_enfant, dernier_accouchement)
+                    mere, pere, desir, enceinte_depuis, pere_enfant, dernier_accouchement,
+                    attachement, puberte, fin_fertilite, fertilite, terme_grossesse)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
                     $cible_x, $cible_y, $detour, $malade_jusqua, $mort_le, $cause_mort,
-                    $mere, $pere, $desir, $enceinte_depuis, $pere_enfant, $dernier_accouchement);
+                    $mere, $pere, $desir, $enceinte_depuis, $pere_enfant, $dernier_accouchement,
+                    $attachement, $puberte, $fin_fertilite, $fertilite, $terme_grossesse);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
                 "$x", "$y", "$faim", "$soif", "$fatigue", "$froid", "$sante", "$activite",
                 "$cible_x", "$cible_y", "$detour", "$malade_jusqua", "$mort_le", "$cause_mort",
-                "$mere", "$pere", "$desir", "$enceinte_depuis", "$pere_enfant", "$dernier_accouchement"];
+                "$mere", "$pere", "$desir", "$enceinte_depuis", "$pere_enfant", "$dernier_accouchement",
+                "$attachement", "$puberte", "$fin_fertilite", "$fertilite", "$terme_grossesse"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -288,6 +315,8 @@ public sealed class DepotMonde
                     h.CibleX, h.CibleY, h.Detour, h.MaladeJusqua, h.MortLe is { } m ? m : DBNull.Value, (int)h.CauseDeMort,
                     h.MereId, h.PereId, h.Desir, h.EnceinteDepuis is { } e ? e : DBNull.Value, h.PereEnfantId,
                     h.DernierAccouchement is { } d ? d : DBNull.Value,
+                    h.Personnalite.Attachement, h.Biologie.AgePuberte, h.Biologie.AgeFinFertilite, h.Biologie.Fertilite,
+                    h.TermeGrossesse is { } t ? t : DBNull.Value,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
@@ -295,6 +324,25 @@ public sealed class DepotMonde
         }
 
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// Copie cohérente du monde dans un autre fichier (VACUUM INTO), même pendant que le serveur écrit.
+    /// Un fichier existant à cet emplacement est remplacé.
+    /// </summary>
+    public void CopierVers(string cheminCopie)
+    {
+        var complet = Path.GetFullPath(cheminCopie);
+        if (string.Equals(complet, Path.GetFullPath(CheminFichier), StringComparison.Ordinal))
+        {
+            throw new ArgumentException("La copie doit aller dans un autre fichier.", nameof(cheminCopie));
+        }
+        File.Delete(complet); // VACUUM INTO refuse d'écrire sur un fichier existant
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = "VACUUM INTO $chemin;";
+        commande.Parameters.AddWithValue("$chemin", complet);
+        commande.ExecuteNonQuery();
     }
 
     // Les ressources sont stockées en petit-boutiste, quel que soit le processeur.

@@ -34,6 +34,25 @@ public sealed class MondeHub(ServiceMonde service) : Hub
         await Clients.All.SendAsync("Horloge", horloge);
         return horloge;
     }
+
+    /// <summary>
+    /// Recommence le monde à l'an 1 avec la graine donnée (ou une graine au hasard si elle est absente).
+    /// Tous les navigateurs connectés sont prévenus pour recharger la carte.
+    /// </summary>
+    public async Task<HorlogeDto> Reinitialiser(long? graine)
+    {
+        if (graine is < 0 or > uint.MaxValue)
+        {
+            throw new HubException("La graine doit être un entier entre 0 et 4294967295.");
+        }
+        var valeur = graine is { } g ? (uint)g : (uint)Random.Shared.NextInt64(0, (long)uint.MaxValue + 1);
+        var monde = service.Reinitialiser(valeur);
+        var horloge = HorlogeDto.Depuis(monde);
+        await Clients.All.SendAsync("MondeReinitialise", valeur);
+        await Clients.All.SendAsync("Horloge", horloge);
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        return horloge;
+    }
 }
 
 public sealed record ReponsePing(DateTimeOffset HeureServeur, string Monde);

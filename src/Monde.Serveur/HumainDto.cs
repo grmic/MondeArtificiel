@@ -44,6 +44,7 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.SAccoupler] = "s'accouple",
         [Simulation.Humains.Activite.SuivreParent] = "suit ses parents",
         [Simulation.Humains.Activite.PorteParSaMere] = "dans les bras de sa mère",
+        [Simulation.Humains.Activite.VeillerEnfant] = "rejoint son enfant",
     };
 
     private static readonly Dictionary<CauseDeMort, string> Causes = new()

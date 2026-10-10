@@ -24,11 +24,13 @@ Le monde est sauvegardé toutes les 10 secondes et à l'arrêt du serveur (Ctrl+
 - Windows : `%LOCALAPPDATA%\MondeArtificiel\mondes\monde.db`
 - Linux : `~/.local/share/MondeArtificiel/mondes/monde.db`
 
-Au redémarrage, le monde reprend à la date enregistrée, en pause. Pour repartir de zéro, supprime ce fichier (le serveur arrêté). Le dossier se change avec le réglage `Monde:Dossier`.
+Au redémarrage, le monde reprend à la date enregistrée, en pause. Pour repartir de zéro, utilise le bouton « ↺ Réinitialiser » de la page : on choisit la même graine, celle du champ « Graine » ou une graine au hasard. L'ancien monde est copié dans `monde-avant-reinitialisation.db` à côté (seule la dernière copie est gardée). Le dossier se change avec le réglage `Monde:Dossier`.
 
 Les 66 humains (33 couples) apparaissent sur la carte : point orange pour une femme, bleu pour un homme, croix grise pour un mort. Le compteur « Vivants » est en haut. Survoler un humain affiche son nom, son âge, ce qu'il fait et ses besoins (faim, soif, fatigue, froid, santé). Les noms sont tirés au hasard pour l'observateur : les humains n'ont pas encore de langage.
 
-Les adultes de 15 ans et plus ressentent un désir qui monte avec le temps (un instinct : ils ne savent pas qu'il mène à une naissance). Ils s'accouplent avec leur compagnon ou avec un humain d'un autre couple. Une grossesse dure 270 jours. Les bébés restent dans les bras de leur mère jusqu'à 2 ans, puis les enfants suivent leurs parents jusqu'à 14 ans. Le caractère d'un enfant mêle ceux de ses parents. Sur la carte, un enfant est un petit point et une femme enceinte a un contour blanc.
+Le désir est un instinct qui apparaît à la puberté (les humains ne savent pas qu'il mène à une naissance). Ils s'accouplent avec leur compagnon ou avec un humain d'un autre couple. Rien n'est fixé à l'avance : chaque humain a sa propre biologie, héritée en partie de ses parents (âge de la puberté vers 16 ans, ménopause vers 49 ans, fertilité propre, 3 % de stérilité), et les valeurs de départ viennent d'études sur les chasseurs-cueilleurs, citées dans `Humains/Biologie.cs` et `Humains/Reproduction.cs`. La chance de concevoir dépend de l'âge, de la faim, de la santé et de l'allaitement (presque nulle la première année, l'allaitement dure jusque vers 3 ans). La grossesse dure environ 268 jours, plus ou moins selon chacune ; fausse couche, mort-né, jumeaux et mort de la mère ont des risques qui varient avec l'âge, le nombre d'enfants, la faim et la santé.
+
+Chacun a aussi son propre attachement à ses enfants : fort chez la plupart, faible chez quelques-uns. Un parent attaché va rejoindre son enfant éloigné et partage nourriture et eau avec lui ; une mère peu attachée peut délaisser son bébé quand elle souffre. Les bébés restent dans les bras de leur mère jusqu'à 2 ans, puis les enfants suivent leurs parents jusqu'à 14 ans. Sur la carte, un enfant est un petit point et une femme enceinte a un contour blanc.
 
 Sur la carte : molette pour zoomer, glisser pour se déplacer, double-clic pour recadrer, survol pour voir une tuile. Le bouton « Aperçu » montre le continent d'une autre graine sans changer le monde courant. La graine d'un nouveau monde se règle dans `src/Monde.Serveur/appsettings.json` (`Monde:Graine`). Une même graine donne toujours la même carte, sur toutes les plateformes.
 
@@ -38,7 +40,7 @@ Sur la carte : molette pour zoomer, glisser pour se déplacer, double-clic pour 
 dotnet test
 ```
 
-La suite complète prend environ une minute, car un test simule deux années entières.
+La suite complète prend environ trois minutes, car des tests simulent plusieurs années entières.
 
 ## Modifier le client web
 

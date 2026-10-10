@@ -13,12 +13,13 @@ public sealed class ServiceCarte(ServiceMonde service)
     private readonly ConcurrentDictionary<ulong, Lazy<Carte>> _cache = new();
 
     /// <summary>Graine du monde courant (fixée à sa création, enregistrée dans sa sauvegarde).</summary>
-    public uint GraineParDefaut { get; } = (uint)service.Monde.Graine;
+    public uint GraineParDefaut => (uint)service.Monde.Graine;
 
     public Carte Obtenir(uint? graine = null)
     {
-        var cle = (ulong)(graine ?? GraineParDefaut);
-        if (cle == service.Monde.Graine) return service.Monde.Carte;
+        var monde = service.Monde;
+        var cle = (ulong)(graine ?? (uint)monde.Graine);
+        if (cle == monde.Graine) return monde.Carte;
         if (_cache.Count >= TailleMaxCache && !_cache.ContainsKey(cle))
         {
             // Garde seulement la carte par défaut quand le cache est plein.

@@ -33,3 +33,11 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .vitesses button { font-size: 0.8rem; padding: 3px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; }
 .vitesses button.actif { background: #2f6f4a; border-color: #4ac26b; }
 .population { font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.graine button.danger, .dialogue button.danger { background: #6b2323; border: 1px solid #ff6b6b; color: var(--texte); border-radius: 6px; cursor: pointer; }
+.dialogue { max-width: min(460px, calc(100vw - 32px)); border: 1px solid #3a4658; border-radius: 10px; background: #152030; color: var(--texte); }
+.dialogue::backdrop { background: rgba(0, 0, 0, 0.55); }
+.dialogue h2 { font-size: 1.05rem; margin-top: 0; }
+.dialogue p { font-size: 0.9rem; line-height: 1.4; }
+.dialogue fieldset { display: flex; flex-direction: column; gap: 6px; border: 1px solid #3a4658; border-radius: 8px; font-size: 0.9rem; }
+.dialogue menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 14px 0 0; }
+.dialogue menu button { padding: 4px 12px; }

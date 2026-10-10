@@ -27,7 +27,9 @@ public static class GenerateurPopulation
                     PartenaireId = partenaire,
                     Emplacement = emplacement.Numero,
                     Naissance = maintenant - (long)(age * Calendrier.SecondesParAn),
-                    Personnalite = new Personnalite(alea.Reel(), alea.Reel(), alea.Reel(), alea.Reel(), alea.Reel()),
+                    Personnalite = new Personnalite(alea.Reel(), alea.Reel(), alea.Reel(), alea.Reel(), alea.Reel(),
+                        AttachementInne(alea)),
+                    Biologie = Biologie.Tirer(sexe, alea),
                     X = emplacement.X,
                     Y = emplacement.Y,
                     Faim = alea.Reel() * 30,
@@ -38,6 +40,13 @@ public static class GenerateurPopulation
         }
         return humains;
     }
+
+    /// <summary>La grande majorité des humains s'attachent fortement à leurs enfants ; une minorité peu ou pas.</summary>
+    private static double AttachementInne(Alea alea) =>
+        alea.Reel() < 0.85 ? 0.6 + 0.4 * alea.Reel() : 0.6 * alea.Reel();
+
+    /// <summary>Part des garçons à la naissance (environ 105 garçons pour 100 filles).</summary>
+    public const double ProportionGarcons = 0.512;
 
     /// <summary>
     /// Un nouveau-né. Son caractère mêle ceux de ses parents, avec une part de hasard.
@@ -50,11 +59,12 @@ public static class GenerateurPopulation
             return Math.Clamp(moyenne + (alea.Reel() - 0.5) * 0.4, 0, 1);
         }
 
+        var sexe = alea.Reel() < ProportionGarcons ? Sexe.Homme : Sexe.Femme;
         return new Humain
         {
             Id = id,
             Nom = Noms.Nouveau(alea, nomsPris),
-            Sexe = alea.Entier(2) == 0 ? Sexe.Femme : Sexe.Homme,
+            Sexe = sexe,
             PartenaireId = 0,
             MereId = mere.Id,
             PereId = pere?.Id ?? 0,
@@ -62,7 +72,8 @@ public static class GenerateurPopulation
             Naissance = maintenant,
             Personnalite = new Personnalite(
                 Herite(p => p.Curiosite), Herite(p => p.Prudence), Herite(p => p.Sociabilite),
-                Herite(p => p.Endurance), Herite(p => p.Adresse)),
+                Herite(p => p.Endurance), Herite(p => p.Adresse), Herite(p => p.Attachement)),
+            Biologie = Biologie.Heriter(sexe, mere, pere, alea),
             X = mere.X,
             Y = mere.Y,
             Activite = Activite.PorteParSaMere,

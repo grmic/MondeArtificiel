@@ -111,6 +111,55 @@ public sealed class DepotMondeTests : IDisposable
     }
 
     [Fact]
+    public void FichierVersion3_GardeSesHumains_AvecDesTraitsParDefaut()
+    {
+        // Un monde enregistré avant la version 4 : on retire les nouvelles colonnes en recréant la table.
+        var monde = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42));
+        new DepotMonde(Fichier).Enregistrer(monde.Etat);
+        ExecuterSql(Fichier, """
+            UPDATE humains SET attachement = NULL, puberte = NULL, fin_fertilite = NULL, fertilite = NULL, terme_grossesse = NULL;
+            ALTER TABLE humains DROP COLUMN attachement;
+            ALTER TABLE humains DROP COLUMN puberte;
+            ALTER TABLE humains DROP COLUMN fin_fertilite;
+            ALTER TABLE humains DROP COLUMN fertilite;
+            ALTER TABLE humains DROP COLUMN terme_grossesse;
+            PRAGMA user_version = 3;
+            """);
+
+        var relu = new DepotMonde(Fichier).Charger()!.Humains!;
+
+        Assert.Equal(66, relu.Count);
+        Assert.All(relu, h =>
+        {
+            Assert.Equal(0.8, h.Personnalite.Attachement);
+            Assert.Equal(Simulation.Humains.Biologie.ParDefaut(h.Sexe), h.Biologie);
+            Assert.Null(h.TermeGrossesse);
+        });
+    }
+
+    [Fact]
+    public void Remplacer_EffaceLAncienMonde_EtCopieVers_LeGarde()
+    {
+        var depot = new DepotMonde(Fichier);
+        var ancien = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42));
+        ancien.AvancerDe(86_400);
+        var etatAncien = ancien.Etat;
+        var bebe = Simulation.Humains.GenerateurPopulation.Naissance(67, etatAncien.Humains![0], etatAncien.Humains[1], 1,
+            new Simulation.Monde.Alea(1), new HashSet<string>());
+        depot.Enregistrer(etatAncien with { Humains = [.. etatAncien.Humains, bebe] });
+        var copie = Path.Combine(_dossier, "copie.db");
+        depot.CopierVers(copie);
+        depot.CopierVers(copie); // une copie existante est remplacée
+
+        var neuf = MondeSimule.Nouveau(7);
+        depot.Enregistrer(neuf, remplacer: true);
+
+        Assert.Equal(neuf, depot.Charger());              // plus d'humains ni de ressources de l'ancien monde
+        Assert.Equal(67, new DepotMonde(copie).Charger()!.Humains!.Count);
+        Assert.Throws<ArgumentException>(() => depot.CopierVers(Fichier));
+    }
+
+    [Fact]
     public void SchemaPlusRecent_EstRefuse()
     {
         new DepotMonde(Fichier);
