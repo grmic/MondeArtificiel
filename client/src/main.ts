@@ -1,4 +1,4 @@
-import { chargerCarte, VueCarte, type HumainVue, type InfoTuile } from "./carte";
+import { chargerCarte, VueCarte, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
 import { PanneauFiche } from "./fiche";
@@ -28,8 +28,10 @@ function decrireHumain(h: HumainVue): string {
   if (!h.vivant) return `✝ ${qui}, mort ${h.causeDeMort ?? ""}`;
   const etat = [h.activite, h.humeur ?? "", h.enceinte ? "enceinte" : "", h.malade ? "malade" : ""].filter(Boolean).join(" · ");
   const pensee = h.pensee ? `\n   « ${h.pensee} »` : "";
-  return `${qui} ${etat}${pensee}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante}`;
+  return `${qui} ${etat}${pensee}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante} · réserves ${h.reserves}`;
 }
+
+let natureEn: (x: number, y: number) => { abondance: number; pluie: number } | null = () => null;
 
 function decrire(info: InfoTuile): void {
   if (!info) return;
@@ -40,6 +42,10 @@ function decrire(info: InfoTuile): void {
     `Tuile ${x}, ${y} · ${carte.nomsBiomes[carte.biomes[i]] ?? "?"}`,
     `Altitude ${altitude} · gibier ${carte.gibier[i]} · plantes ${carte.plantes[i]}`,
   ];
+  const nature = natureEn(x, y);
+  if (nature && nature.abondance > 0) {
+    lignes.push(`Ressources : ${Math.round(nature.abondance * 100)} % de ce que la saison permet · pluies de l'année : ${Math.round(nature.pluie * 100)} % de la normale`);
+  }
   if (emplacement) lignes.unshift(`Emplacement de départ n° ${emplacement.numero}`);
   if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 5).map(decrireHumain));
   infos.textContent = lignes.join("\n");
@@ -47,6 +53,25 @@ function decrire(info: InfoTuile): void {
 
 async function demarrer(): Promise<void> {
   const vue = await VueCarte.creer(element("#scene"), decrire);
+  natureEn = (x, y) => vue.natureEn(x, y);
+
+  // Couche des ressources : relue toutes les 5 secondes tant qu'elle est affichée.
+  const boutonRessources = element<HTMLButtonElement>("#boutonRessources");
+  let minuteurNature: number | undefined;
+  const lireNature = async () => {
+    const nature = await connexion.invoke<Nature>("Nature").catch(() => null);
+    if (nature && boutonRessources.classList.contains("actif")) vue.afficherNature(nature);
+  };
+  boutonRessources.addEventListener("click", () => {
+    const actif = boutonRessources.classList.toggle("actif");
+    window.clearInterval(minuteurNature);
+    if (actif) {
+      void lireNature();
+      minuteurNature = window.setInterval(() => void lireNature(), 5000);
+    } else {
+      vue.afficherNature(null);
+    }
+  });
   const horloge = new PanneauHorloge(
     element("#panneauTemps"),
     element("#date"),

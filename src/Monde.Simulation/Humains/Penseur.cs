@@ -12,6 +12,8 @@ public enum Motif : byte
     Inconnu = 3,
     /// <summary>L'instinct de reproduction le pousse vers quelqu'un.</summary>
     Desir = 4,
+    /// <summary>Le groupe part ; c'est lui qui en a le souvenir ou l'élan.</summary>
+    Guide = 5,
 }
 
 /// <summary>
@@ -62,6 +64,10 @@ public static class Penseur
             Activite.RejoindreProche => Choix($"Je vais retrouver {nom}.", $"{nom} me manque. Je vais vers {Pronom(autre)}."),
             Activite.Repos when h.Chagrin > 30 && autre is not null && !autre.EstVivant =>
                 Choix($"Je pense à {nom}. {Majuscule(Pronom(autre, sujet: true))} n'est plus là.", $"{nom} me manque."),
+            Activite.Migrer => motif == Motif.Guide
+                ? Choix($"Ici, la terre ne nous nourrit plus. Je mène les miens{vers}.", $"Il faut partir. Je montre le chemin{vers}.")
+                : Choix($"Les miens partent{vers}. Je les suis.", $"Ici, il n'y a plus rien. Nous partons{vers}."),
+            Activite.Repos when h.Reserves < 10 && h.Faim > 50 => Choix("Mes os percent ma peau.", "Je n'ai plus de forces."),
             Activite.Repos when h.EstDeprime => Choix("Rien n'a plus de goût.", "Je n'ai envie de rien."),
             Activite.Repos when h.Humeur > 75 => Choix("Il fait bon vivre ici.", "Je me sens bien."),
             Activite.Repos => Choix("Tout est calme. Je me repose.", "Rien ne presse."),

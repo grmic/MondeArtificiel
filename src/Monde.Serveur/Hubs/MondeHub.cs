@@ -110,6 +110,9 @@ public sealed class MondeHub(ServiceMonde service) : Hub
     /// <summary>Communautés actives puis dispersées, avec leurs membres.</summary>
     public List<CommunauteDto> Communautes() => CommunauteDto.Toutes(service);
 
+    /// <summary>Nature : abondance des terres, pluies des régions et indicateurs du monde.</summary>
+    public NatureDto Nature() => NatureDto.Depuis(service.Monde);
+
     /// <summary>Journal filtré, du plus récent au plus ancien (500 événements au plus par demande).</summary>
     public List<EvenementDto> Journal(FiltreJournal filtre)
     {

@@ -27,6 +27,8 @@ public enum TypeEvenement : byte
     Partage = 15,
     /// <summary>Résumé des gestes quotidiens d'un humain sur une journée.</summary>
     Journee = 16,
+    /// <summary>Sécheresse, année d'abondance : ce que fait la nature, région par région.</summary>
+    Nature = 17,
 }
 
 /// <summary>

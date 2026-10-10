@@ -14,6 +14,7 @@ const TYPES: [string, string][] = [
   ["lien", "Amitiés et hostilités"],
   ["humeur", "Deuils et humeur"],
   ["communaute", "Communautés"],
+  ["nature", "Nature"],
   ["partage", "Partages"],
   ["pensee", "Pensées"],
   ["journee", "Journées"],

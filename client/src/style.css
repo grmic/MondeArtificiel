@@ -103,4 +103,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .communaute-carte .titre { background: none; border: none; padding: 0; color: var(--texte); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
 .evenement.lien, .evenement.communaute { color: #d6e4ff; }
 .evenement.humeur { color: #ffd6a8; }
+.evenement.nature { color: #f0d79a; }
+.communaute-carte .alerte, .communaute-carte .titre.disette { color: #ffb347; }
+.relation-alliée { color: #b8f0c4; }
+.relation-rivale, .relation-hostile { color: #ffb3b3; }
+.graine button.actif { background: #2f6f4a; border-color: #4ac26b; }
 .evenement.pensee, .evenement.journee, .evenement.souvenir { color: var(--discret); }

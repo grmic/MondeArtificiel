@@ -181,7 +181,7 @@ public sealed class JournalEtMemoireTests : IDisposable
     }
 
     [Fact]
-    public void Fichier_Version5_PasseEnVersion7_SansPerdreSesHumains()
+    public void Fichier_Version5_PasseEnVersion8_SansPerdreSesHumains()
     {
         var depot = new DepotMonde(Fichier);
         depot.Enregistrer(NouveauMonde().Etat);
@@ -198,7 +198,7 @@ public sealed class JournalEtMemoireTests : IDisposable
     }
 
     [Fact]
-    public void Fichier_Version6_PasseEnVersion7_AvecUnCaractereNeutre_EtSesProchesDevenusDesLiens()
+    public void Fichier_Version6_PasseEnVersion8_AvecUnCaractereNeutre_EtSesProchesDevenusDesLiens()
     {
         var etat = NouveauMonde().Etat;
         var h1 = etat.Humains![0];

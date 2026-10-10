@@ -18,8 +18,9 @@ public sealed class HumainsTests
         var etat = monde.Etat;
         var humains = string.Join("\n", etat.Humains!.Select(h =>
             $"{h.Id} {h.X} {h.Y} {h.Faim:R} {h.Soif:R} {h.Fatigue:R} {h.Froid:R} {h.Sante:R} {h.Activite} {h.CibleX} {h.CibleY} {h.Detour} {h.MaladeJusqua} {h.MortLe} {h.CauseDeMort} "
-            + $"{string.Join(";", h.Memoire.Lieux)} {string.Join(";", h.Liens)} {h.Humeur:R} {h.Chagrin:R} {h.CommunauteId} {h.DeprimeDepuis} {string.Join(";", h.Memoire.Pensees)}"));
-        return $"{etat.Secondes} {etat.Pas} {string.Join(",", etat.Alea!)}\n{string.Join(",", etat.Gibier!)}\n{string.Join(",", etat.Plantes!)}\n{humains}";
+            + $"{string.Join(";", h.Memoire.Lieux)} {string.Join(";", h.Liens)} {h.Humeur:R} {h.Chagrin:R} {h.CommunauteId} {h.DeprimeDepuis} {string.Join(";", h.Memoire.Pensees)} {h.Reserves:R} {h.Biologie}"));
+        return $"{etat.Secondes} {etat.Pas} {string.Join(",", etat.Alea!)}\n{string.Join(",", etat.Gibier!)}\n{string.Join(",", etat.Plantes!)}\n"
+               + $"{string.Join(",", etat.Pluies!.Select(p => p.ToString("R")))}\n{string.Join(";", etat.Relations!)}\n{humains}";
     }
 
     [Fact]
@@ -178,7 +179,7 @@ public sealed class HumainsTests
 
         Assert.Equal(8, Ecosysteme.Prelever(eco.Plantes, i, 8));
         Assert.Equal(initial - 800, eco.Plantes[i]);
-        for (var heure = 0; heure < 24 * 60; heure++) eco.Repousser();
+        for (var jour = 0; jour < 60; jour++) eco.Journee(jour * Calendrier.SecondesParJour);
         Assert.True(eco.Plantes[i] > initial - 800);
         Assert.True(eco.Plantes[i] <= initial);
     }

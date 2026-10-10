@@ -149,7 +149,7 @@ export class PanneauFiche {
     corps.append(famille);
 
     if (h.vivant) {
-      corps.append(this.jauges("Besoins", { faim: h.faim, soif: h.soif, fatigue: h.fatigue, froid: h.froid, santé: h.sante }, 100));
+      corps.append(this.jauges("Besoins", { faim: h.faim, soif: h.soif, fatigue: h.fatigue, froid: h.froid, santé: h.sante, réserves: h.reserves }, 100));
     }
     corps.append(this.traits("Caractère", f.caractere, 1));
     corps.append(this.traits("Intelligence (QI, moyenne 100)", f.intelligence, 160));

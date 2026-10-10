@@ -24,7 +24,19 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Communautés, actives ou dispersées (numérotées de 1 à N).</summary>
     public IReadOnlyList<Communaute>? Communautes { get; init; }
+
+    /// <summary>Pluies de l'année par région climatique.</summary>
+    public double[]? Pluies { get; init; }
+
+    /// <summary>Relations entre communautés qui ne sont pas indifférentes.</summary>
+    public IReadOnlyList<RelationCommunautes>? Relations { get; init; }
 }
+
+/// <summary>État de la nature et de la population, pour l'observateur.</summary>
+/// <param name="Abondance">Ressources des terres habitables rapportées à leur niveau naturel.</param>
+/// <param name="RegionsSeches">Régions habitées où les pluies de l'année sont inférieures de 30 % à la normale.</param>
+public sealed record Indicateurs(int Vivants, int Enfants, double Abondance, double ReservesMoyennes, int RegionsSeches,
+    int RegionsHabitees, int CommunautesEnDisette);
 
 /// <summary>
 /// Le monde en cours de simulation. Le temps avance par pas fixes de 10 minutes du monde ;
@@ -36,7 +48,6 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 public sealed class MondeSimule
 {
     public const long SecondesParPas = 600;
-    private const long PasParHeure = Calendrier.SecondesParHeure / SecondesParPas;
     private const long PasParJour = Calendrier.SecondesParJour / SecondesParPas;
 
     private readonly object _verrou = new();
@@ -77,11 +88,12 @@ public sealed class MondeSimule
         _humains = etat.Humains is { Count: > 0 } h
             ? h.Select(x => x.Copier()).OrderBy(x => x.Id).ToList()
             : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes);
-        _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray());
+        _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
-        _social = new VieSociale(_alea);
-        _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social };
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
+        _social = new VieSociale(_alea) { Communautes = _communautes };
+        _social.ChargerRelations(etat.Relations ?? []);
+        _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social };
         _noms = _humains.Select(x => x.Nom).ToHashSet();
         _prochainIdJournal = Math.Max(1, etat.ProchainIdJournal);
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
@@ -131,6 +143,8 @@ public sealed class MondeSimule
                     JournalNonEnregistre = _journalNonEnregistre.ToList(),
                     ProchainIdJournal = _prochainIdJournal,
                     Communautes = _communautes.Select(c => c.Copier()).ToList(),
+                    Pluies = _ecosysteme.Pluies.ToArray(),
+                    Relations = _social.Relations,
                 };
             }
         }
@@ -162,6 +176,46 @@ public sealed class MondeSimule
     public List<Communaute> Communautes()
     {
         lock (_verrou) return _communautes.Select(c => c.Copier()).ToList();
+    }
+
+    /// <summary>Relations entre communautés qui ne sont pas indifférentes.</summary>
+    public List<RelationCommunautes> Relations()
+    {
+        lock (_verrou) return _social.Relations;
+    }
+
+    /// <summary>Abondance de chaque tuile (0 à 255, 128 = ce que la saison et les pluies permettent), pour la carte des ressources.</summary>
+    public byte[] CarteAbondance()
+    {
+        lock (_verrou) return _ecosysteme.CarteAbondance(_secondes);
+    }
+
+    /// <summary>Pluies de l'année par région climatique (copie), et nombre de régions en largeur et en hauteur.</summary>
+    public (double[] Pluies, int RegionsX, int RegionsY) Pluies()
+    {
+        lock (_verrou) return (_ecosysteme.Pluies.ToArray(), _ecosysteme.RegionsX, _ecosysteme.RegionsY);
+    }
+
+    /// <summary>État de la nature et de la population, calculé à la demande.</summary>
+    public Indicateurs Indicateurs()
+    {
+        lock (_verrou)
+        {
+            var vivants = _humains.Where(h => h.EstVivant).ToList();
+            var regions = vivants.Select(h => _ecosysteme.Region(h.X, h.Y)).ToHashSet();
+            double actuel = 0, naturel = 0;
+            for (var i = 0; i < Carte.Biomes.Length; i++)
+            {
+                if (!Biomes.EstHabitable((Biome)Carte.Biomes[i])) continue;
+                actuel += _ecosysteme.Plantes[i] + _ecosysteme.Gibier[i];
+                naturel += (Carte.Plantes[i] + Carte.Gibier[i]) * 100;
+            }
+            var adultes = vivants.Where(h => !h.EstEnfant(_secondes)).ToList();
+            return new Indicateurs(vivants.Count, vivants.Count - adultes.Count, naturel == 0 ? 0 : actuel / naturel,
+                adultes.Count == 0 ? 0 : adultes.Average(h => h.Reserves),
+                regions.Count(r => _ecosysteme.Pluies[r] < 0.7), regions.Count,
+                _communautes.Count(c => c.Active && c.Disette));
+        }
     }
 
     /// <summary>Copie légère des humains seulement (diffusion fréquente vers les navigateurs).</summary>
@@ -297,8 +351,12 @@ public sealed class MondeSimule
     private void ExecuterPas()
     {
         _pas++;
-        if (_pas % PasParHeure == 0) _ecosysteme.Repousser();
         var nouveauJour = _pas % PasParJour == 0;
+        if (nouveauJour)
+        {
+            if (_secondes % Calendrier.SecondesParAn < Calendrier.SecondesParJour) NouvelleAnnee();
+            _ecosysteme.Journee(_secondes);
+        }
 
         // La liste peut grandir pendant le pas : on ne fait vivre que ceux qui existaient au début.
         var nombre = _humains.Count;
@@ -332,12 +390,44 @@ public sealed class MondeSimule
             _social.Journee(_humains, _secondes);
             Oublier();
             _social.Humeurs(_humains, _secondes);
-            if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0) _social.Regrouper(_humains, _communautes, _secondes, _noms);
+            if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
+            {
+                _social.Regrouper(_humains, _communautes, _secondes, _noms);
+                _social.Territoires(_humains, _communautes, _ecosysteme, Carte, _secondes);
+            }
         }
         foreach (var e in _comportement.Journal) Ajouter(e);
         _comportement.Journal.Clear();
         foreach (var e in _social.Journal) Ajouter(e);
         _social.Journal.Clear();
+    }
+
+    /// <summary>
+    /// Premier jour de l'année : les pluies de chaque région sont tirées. Les sécheresses et les années d'abondance
+    /// des régions où vivent des humains sont notées au journal (une ligne par région touchée).
+    /// </summary>
+    private void NouvelleAnnee()
+    {
+        var avant = _ecosysteme.Pluies.ToArray();
+        _ecosysteme.NouvelleAnnee(_alea);
+        var habitees = _humains.Where(h => h.EstVivant).GroupBy(h => _ecosysteme.Region(h.X, h.Y))
+            .ToDictionary(g => g.Key, g => g.OrderBy(h => h.Id).First());
+        var dejaDits = new HashSet<string>();
+        foreach (var (r, temoin) in habitees.OrderBy(p => p.Key))
+        {
+            var pluie = _ecosysteme.Pluies[r];
+            var ou = Lieux.Direction(Carte, temoin.X, temoin.Y);
+            string? texte = pluie switch
+            {
+                < 0.7 when avant[r] < 0.7 => $"La sécheresse se prolonge {ou} du continent : les pluies restent rares ({pluie:P0} de la normale).",
+                < 0.7 => $"Une sécheresse frappe les terres {ou} du continent : il ne tombe que {pluie:P0} des pluies habituelles.",
+                > 1.35 => $"Une année très arrosée {ou} du continent : les plantes et le gibier abondent.",
+                _ when avant[r] < 0.7 => $"Les pluies reviennent {ou} du continent.",
+                _ => null,
+            };
+            // Deux régions dans la même direction donneraient deux fois la même ligne.
+            if (texte is not null && dejaDits.Add(texte)) Ajouter(new EvenementJournal(_secondes, TypeEvenement.Nature, 0, 0, texte));
+        }
     }
 
     /// <summary>Une fois par jour, chacun peut oublier des lieux, plus ou moins vite selon sa mémoire.</summary>

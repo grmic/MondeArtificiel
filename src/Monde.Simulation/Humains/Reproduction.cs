@@ -150,15 +150,18 @@ public sealed partial class Comportement
     internal double ChanceConception(Humain femme, Humain homme, IReadOnlyList<Humain> tous, long maintenant)
     {
         if (femme.EstEnceinte) return 0;
-        // Un manque d'énergie prolongé bloque l'ovulation (Ellison 2001).
-        var nutrition = Math.Clamp(1 - Math.Max(0, femme.Faim - 50) / 50, 0, 1) * Math.Clamp(femme.Sante / 100, 0, 1);
+        // L'ovulation dépend de l'énergie disponible : des réserves basses ou une faim qui dure la bloquent
+        // (Ellison, 2001 ; Valeggia et Ellison, 2009). Chez les chasseurs-cueilleurs, les conceptions suivent ainsi
+        // les saisons d'abondance, et les naissances s'espacent quand la nourriture manque.
+        var reserves = Math.Clamp((femme.Reserves - 10) / 30, 0, 1);
+        var nutrition = reserves * Math.Clamp(1 - Math.Max(0, femme.Faim - 50) / 35, 0, 1) * Math.Clamp(femme.Sante / 100, 0, 1);
         return ConceptionParAccouplement * femme.Fecondite(maintenant) * homme.Fecondite(maintenant)
                * nutrition * Allaitement(femme, tous, maintenant);
     }
 
     /// <summary>
-    /// L'allaitement à la demande, jusque vers 3 ans, rend presque infertile la première année, puis de moins en moins :
-    /// chez les chasseurs-cueilleurs, les naissances sont espacées de 3 à 4 ans (Konner et Worthman 1980).
+    /// L'allaitement à la demande, jusque vers 3 ans, rend presque infertile pendant un an et demi, puis de moins en moins :
+    /// chez les chasseurs-cueilleurs, les naissances sont espacées de 3 à 4 ans (Konner et Worthman 1980 ; Hill et Hurtado 1996).
     /// Si l'enfant meurt ou est éloigné de sa mère, la fécondité revient.
     /// </summary>
     internal static double Allaitement(Humain mere, IReadOnlyList<Humain> tous, long maintenant)
@@ -174,14 +177,14 @@ public sealed partial class Comportement
                 ? e.Activite is Activite.PorteParSaMere or Activite.Dormir
                 : Distance(e.X, e.Y, mere.X, mere.Y) <= 1;
             if (!allaite) continue;
-            return age < 1 ? 0.03 : 0.03 + 0.3 * (age - 1) / 2;
+            return age < 1.5 ? 0.02 : 0.02 + 0.4 * (age - 1.5) / 1.5;
         }
         return 1;
     }
 
     /// <summary>Faim et mauvaise santé de la mère aggravent les risques de la grossesse et de l'accouchement.</summary>
     private static double Detresse(Humain mere) =>
-        1 + Math.Max(0, mere.Faim - 60) / 40 + Math.Max(0, 60 - mere.Sante) / 40;
+        1 + Math.Max(0, mere.Faim - 60) / 40 + Math.Max(0, 60 - mere.Sante) / 40 + Math.Max(0, 20 - mere.Reserves) / 20;
 
     private static double FacteurAgeMere(double age) => age switch
     {
@@ -326,14 +329,15 @@ public sealed partial class Comportement
             b.Y = mere.Y;
         }
 
-        // L'allaitement nourrit le bébé et coûte à la mère ; le lait se tarit quand elle manque elle-même de tout.
-        var lait = porte ? Math.Clamp((100 - Math.Max(mere!.Faim, mere.Soif)) / 30, 0, 1) : 0;
-        b.Faim = Math.Clamp(b.Faim + 0.4 - 1.4 * lait, 0, 100);
+        // L'allaitement nourrit le bébé et coûte à la mère (environ 25 % d'énergie en plus) ; le lait se tarit quand
+        // elle manque elle-même de tout, et baisse quand ses réserves sont épuisées.
+        var lait = porte ? Math.Clamp((100 - Math.Max(mere!.Faim, mere.Soif)) / 30, 0, 1) * Math.Min(1, 0.4 + mere.Reserves / 40) : 0;
+        Depenser(b, (0.4 - 1.4 * lait) * b.Biologie.Metabolisme);
         b.Soif = Math.Clamp(b.Soif + 0.6 - 1.6 * lait, 0, 100);
         if (lait > 0)
         {
-            mere!.Faim = Math.Min(100, mere.Faim + 0.06 * lait);
-            mere.Soif = Math.Min(100, mere.Soif + 0.08 * lait);
+            Depenser(mere!, 0.06 * lait);
+            mere!.Soif = Math.Min(100, mere.Soif + 0.08 * lait);
         }
 
         if (porte)

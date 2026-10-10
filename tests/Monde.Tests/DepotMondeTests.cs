@@ -15,8 +15,24 @@ public sealed class DepotMondeTests : IDisposable
         if (Directory.Exists(_dossier)) Directory.Delete(_dossier, recursive: true);
     }
 
+    /// <summary>Ramène un fichier au schéma 7 (avant les réserves, les pluies et les territoires).</summary>
+    internal const string RetourVersion7 = """
+        ALTER TABLE humains DROP COLUMN reserves;
+        ALTER TABLE humains DROP COLUMN metabolisme;
+        ALTER TABLE communautes DROP COLUMN centre_x;
+        ALTER TABLE communautes DROP COLUMN centre_y;
+        ALTER TABLE communautes DROP COLUMN rayon;
+        ALTER TABLE communautes DROP COLUMN abondance;
+        ALTER TABLE communautes DROP COLUMN disette;
+        ALTER TABLE communautes DROP COLUMN destination_x;
+        ALTER TABLE communautes DROP COLUMN destination_y;
+        DROP TABLE climat;
+        DROP TABLE relations_communautes;
+        PRAGMA user_version = 7;
+        """;
+
     /// <summary>Ramène un fichier au schéma 6 (avant le caractère complet, les liens et les communautés).</summary>
-    internal const string RetourVersion6 = """
+    internal const string RetourVersion6 = RetourVersion7 + """
         DROP INDEX journal_humain_id;
         DROP INDEX journal_autre_id;
         DROP INDEX journal_type_id;

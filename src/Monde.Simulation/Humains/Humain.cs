@@ -27,6 +27,8 @@ public enum Activite : byte
     VeillerEnfant = 15,
     RejoindreProche = 16,
     EviterRival = 17,
+    /// <summary>Partir avec sa communauté vers des terres plus riches.</summary>
+    Migrer = 18,
 }
 
 public enum CauseDeMort : byte
@@ -111,6 +113,13 @@ public sealed class Humain
     public int X { get; set; }
     public int Y { get; set; }
     public double Faim { get; set; }
+
+    /// <summary>
+    /// Réserves du corps (graisse), de 0 à 100 : environ six semaines de nourriture quand elles sont pleines.
+    /// Elles se remplissent quand on mange à sa faim et se vident pendant les disettes ; quand elles sont basses,
+    /// la faim se fait sentir plus vite, les maladies frappent plus, et une femme conçoit moins.
+    /// </summary>
+    public double Reserves { get; set; } = 50;
     public double Soif { get; set; }
     public double Fatigue { get; set; }
     public double Froid { get; set; }

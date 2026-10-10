@@ -152,6 +152,36 @@ public sealed class PsycheEtSocialTests
     }
 
     [Fact]
+    public void Depression_DureAuMoinsDeuxSemaines_SansAllerRetourChaqueJour()
+    {
+        var social = new VieSociale(new Alea(3));
+        var h = Humain(1, Caractere());
+        var tous = new List<Humain> { h };
+        var maintenant = 10 * An;
+        h.DeprimeDepuis = maintenant;
+        h.JoursSombres = 21;
+        // Une embellie passagère ne suffit pas : l'épisode tient au moins deux semaines.
+        for (var j = 1; j <= 10; j++)
+        {
+            h.Humeur = 60;
+            social.Humeurs(tous, maintenant + j * Jour);
+        }
+        Assert.True(h.EstDeprime);
+        for (var j = 11; j <= 20; j++)
+        {
+            h.Humeur = 60;
+            social.Humeurs(tous, maintenant + j * Jour);
+        }
+        Assert.False(h.EstDeprime);
+        // Une seule mauvaise journée après la guérison ne replonge pas : il faut de nouveau trois semaines sombres.
+        h.Humeur = 10;
+        social.Humeurs(tous, maintenant + 21 * Jour);
+        Assert.False(h.EstDeprime);
+        Assert.Single(social.Journal, e => e.Texte.EndsWith("reprend goût à la vie."));
+        Assert.DoesNotContain(social.Journal, e => e.Texte.EndsWith("sombre dans une profonde tristesse."));
+    }
+
+    [Fact]
     public void Communaute_SeFormeEntreAmisQuiViventEnsemble_PuisSeDisperse()
     {
         var social = new VieSociale(new Alea(2));
@@ -210,6 +240,8 @@ public sealed class PsycheEtSocialTests
             var relu = depot.Charger()!;
 
             Assert.Equivalent(etat.Communautes, relu.Communautes, strict: true);
+            Assert.Equal(etat.Pluies, relu.Pluies);
+            Assert.Equal(etat.Relations ?? [], relu.Relations ?? []);
             for (var i = 0; i < etat.Humains!.Count; i++) Assert.Equivalent(etat.Humains[i], relu.Humains![i], strict: true);
             var journal = etat.JournalNonEnregistre!;
             foreach (var type in new[] { TypeEvenement.Lien, TypeEvenement.Pensee, TypeEvenement.Journee, TypeEvenement.Souvenir,

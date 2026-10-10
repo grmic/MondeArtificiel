@@ -87,6 +87,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         Activite.ChercherEau or Activite.ChercherNourriture or Activite.ChercherAbri => motif is Motif.Vu or Motif.Aucun,
         Activite.RejoindrePartenaire => motif != Motif.Desir,
         Activite.RejoindreProche or Activite.SuivreParent or Activite.VeillerEnfant => true,
+        Activite.Migrer => motif != Motif.Guide,
         _ => false,
     };
 
@@ -138,7 +139,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     {
         var p = h.Personnalite;
         var enceinte = h.EstEnceinte;
-        h.Faim += FaimParPas + (enceinte ? 0.05 : 0);
+        Depenser(h, FaimParPas * BesoinEnergie(h, maintenant));
         h.Soif += SoifParPas;
         h.Fatigue += h.Activite == Activite.Dormir
             ? -RecuperationSommeil
@@ -165,6 +166,62 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                              + (h.EstMalade(maintenant) ? 0.6 : 0);
 
         Souffrir(h, maintenant, 1);
+    }
+
+    /// <summary>Points de faim que représente un point de réserves (100 points de réserves : environ six semaines de nourriture).</summary>
+    internal const double FaimParPointDeReserve = 15;
+
+    /// <summary>
+    /// Points de faim apaisés par une unité de gibier : la viande est bien plus nourrissante que les plantes (2,5 par unité).
+    /// Réglé pour que le gibier d'un continent intact puisse nourrir de l'ordre d'une centaine de chasseurs à lui seul,
+    /// les plantes faisant le reste, comme chez la plupart des chasseurs-cueilleurs des climats chauds (Lee, 1968).
+    /// </summary>
+    private const double ValeurGibier = 12;
+
+    /// <summary>Niveau de réserves vers lequel tend un humain bien nourri (environ dix kilos de graisse).</summary>
+    internal const double ReservesDeConfort = 65;
+
+    /// <summary>
+    /// Dépense d'énergie du pas, relative à celle d'un adulte moyen : métabolisme propre à chacun, effort du moment
+    /// (dormir coûte moins que marcher ou chasser) et grossesse. Une grossesse demande environ 4 %, 12 % puis 21 %
+    /// d'énergie en plus selon le trimestre (FAO/OMS/UNU, 2004) ; l'allaitement est compté dans <see cref="VivreBebe"/>.
+    /// </summary>
+    internal static double BesoinEnergie(Humain h, long maintenant)
+    {
+        var effort = h.Activite switch
+        {
+            Activite.Dormir => 0.8,
+            Activite.Repos or Activite.SAbriter => 0.95,
+            _ => 1.2,
+        };
+        var grossesse = h.EnceinteDepuis is { } debut
+            ? ((maintenant - debut) / (double)Calendrier.SecondesParJour) switch { < 90 => 1.04, < 180 => 1.12, _ => 1.21 }
+            : 1;
+        return h.Biologie.Metabolisme * effort * grossesse;
+    }
+
+    /// <summary>
+    /// Ajoute une dépense (ou un repas, si elle est négative) à la faim. Le corps puise dans ses réserves quand on a faim,
+    /// ce qui ralentit la faim tant qu'il en reste ; quand on mange à sa faim, il en remet de côté, ce qui demande
+    /// de manger un peu plus.
+    /// </summary>
+    internal static void Depenser(Humain h, double besoin)
+    {
+        if (besoin > 0 && h.Faim > 50 && h.Reserves > 0)
+        {
+            var part = 0.7 * Math.Min(1, h.Reserves / 20);
+            h.Reserves = Math.Max(0, h.Reserves - besoin * part / FaimParPointDeReserve);
+            besoin *= 1 - part;
+        }
+        else if (h.Faim < 30 && h.Reserves < ReservesDeConfort)
+        {
+            // Le corps régule son poids : il stocke de moins en moins en approchant de son niveau habituel
+            // (chez les chasseurs-cueilleurs, la masse grasse varie de quelques kilos selon les saisons ; Jenike, 2001).
+            var stocke = 0.004 * (1 - h.Reserves / ReservesDeConfort);
+            h.Reserves += stocke;
+            besoin += stocke * FaimParPointDeReserve;
+        }
+        h.Faim = Math.Clamp(h.Faim + besoin, 0, 100);
     }
 
     /// <summary>Dégâts sur la santé selon les besoins, mort éventuelle, puis risque de tomber malade.</summary>
@@ -198,8 +255,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (!h.EstMalade(maintenant))
         {
             // La détresse affaiblit les défenses du corps.
+            // La dénutrition (réserves épuisées) affaiblit l'immunité (Schaible et Kaufmann, 2007).
             var risque = ProbabiliteMaladieDeBase * (1 + (100 - h.Sante) / 25 + h.Faim / 50 + h.Froid / 50) * (1.3 - 0.6 * p.Endurance)
-                         * (h.EstDeprime ? 1.3 : 1);
+                         * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25);
             if (alea.Reel() < risque * fragilite)
             {
                 h.MaladeJusqua = maintenant + (3 + alea.Entier(8)) * Calendrier.SecondesParJour;
@@ -292,6 +350,15 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             int dx = Math.Sign(h.X - rival.X), dy = Math.Sign(h.Y - rival.Y);
             if (dx == 0 && dy == 0) dx = 1;
             Avancer(h, Math.Clamp(h.X + 8 * dx, 0, carte.Largeur - 1), Math.Clamp(h.Y + 8 * dy, 0, carte.Hauteur - 1), Activite.EviterRival);
+            if (h.CibleX >= 0) return;
+        }
+        // Une communauté en disette part vers de meilleures terres : sa figure et la plupart des membres suivent le mouvement.
+        if (Social?.CommunauteDe(h) is { DestinationX: >= 0 } groupe
+            && Distance(h.X, h.Y, groupe.DestinationX, groupe.DestinationY) > 2
+            && (h.Activite == Activite.Migrer || alea.Reel() < (h.Id == groupe.FigureId ? 0.8 : 0.5)))
+        {
+            if (h.Id == groupe.FigureId) _motif = Motif.Guide;
+            Avancer(h, groupe.DestinationX, groupe.DestinationY, Activite.Migrer);
             if (h.CibleX >= 0) return;
         }
         // Les sociables vont retrouver ceux qu'ils aiment ; c'est ainsi que les groupes se forment.
@@ -408,7 +475,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var i = carte.Indice(h.X, h.Y);
         if (ecosysteme.Plantes[i] >= 1000)
         {
-            var pris = Ecosysteme.Prelever(ecosysteme.Plantes, i, 8);
+            // Le rendement de la cueillette suit la densité de ce qui pousse : une tuile riche nourrit vite,
+            // une tuile déjà dépouillée demande bien plus de temps (théorie de l'approvisionnement optimal).
+            var pris = Ecosysteme.Prelever(ecosysteme.Plantes, i, Math.Clamp(ecosysteme.Plantes[i] / 1000, 1, 8));
             h.Faim = Math.Max(0, h.Faim - pris * 2.5);
             h.Activite = Activite.Cueillir;
             h.CibleX = h.CibleY = -1;
@@ -423,8 +492,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.CibleX = h.CibleY = -1;
             if (alea.Reel() < chance)
             {
-                var pris = Ecosysteme.Prelever(ecosysteme.Gibier, i, 15);
-                h.Faim = Math.Max(0, h.Faim - pris * 4);
+                // Une prise nourrit bien plus qu'une cueillette ; on n'en prélève que ce qu'on peut manger.
+                var pris = Ecosysteme.Prelever(ecosysteme.Gibier, i, Math.Clamp((int)Math.Ceiling(h.Faim / ValeurGibier), 1, 5));
+                h.Faim = Math.Max(0, h.Faim - pris * ValeurGibier);
                 h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h));
             }
             else

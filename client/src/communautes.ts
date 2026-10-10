@@ -1,4 +1,5 @@
 import { connexion } from "./connexion";
+import type { Indicateurs } from "./carte";
 import { el } from "./fiche";
 
 interface Communaute {
@@ -11,6 +12,13 @@ interface Communaute {
   membres: { id: number; nom: string; etape: string }[];
   x: number;
   y: number;
+  rayon: number;
+  abondance: number;
+  disette: boolean;
+  destination: string | null;
+  faim: number;
+  reserves: number;
+  relations: { id: number; nom: string; etat: string }[];
 }
 
 /**
@@ -49,11 +57,14 @@ export class PanneauCommunautes {
 
   async rafraichir(): Promise<void> {
     if (this.racine.hidden) return;
-    const liste = await connexion.invoke<Communaute[]>("Communautes").catch(() => null);
-    if (liste) this.dessiner(liste);
+    const [liste, nature] = await Promise.all([
+      connexion.invoke<Communaute[]>("Communautes").catch(() => null),
+      connexion.invoke<{ indicateurs: Indicateurs }>("Nature").catch(() => null),
+    ]);
+    if (liste) this.dessiner(liste, nature?.indicateurs);
   }
 
-  private dessiner(liste: Communaute[]): void {
+  private dessiner(liste: Communaute[], monde?: Indicateurs): void {
     const r = this.racine;
     const defilement = r.querySelector(".corps")?.scrollTop ?? 0;
     r.replaceChildren();
@@ -71,6 +82,12 @@ export class PanneauCommunautes {
       actives.length === 0
         ? "Aucune communauté pour l'instant : les humains vivent encore en familles isolées."
         : `${actives.length} communauté${actives.length > 1 ? "s" : ""} · ${actives.reduce((n, c) => n + c.membres.length, 0)} humains y vivent.`));
+    if (monde) {
+      corps.append(el("p", "discret",
+        `Monde : ${monde.vivants} vivants · terres à ${Math.round(monde.abondance * 100)} % de leurs ressources naturelles · ` +
+        `réserves moyennes des adultes ${Math.round(monde.reservesMoyennes)} · sécheresse dans ${monde.regionsSeches} région${monde.regionsSeches > 1 ? "s" : ""} habitée${monde.regionsSeches > 1 ? "s" : ""} sur ${monde.regionsHabitees}` +
+        (monde.communautesEnDisette > 0 ? ` · ${monde.communautesEnDisette} en disette` : "")));
+    }
 
     for (const c of actives) corps.append(this.carte(c));
     if (dispersees.length > 0) {
@@ -88,7 +105,8 @@ export class PanneauCommunautes {
 
   private carte(c: Communaute): HTMLElement {
     const bloc = el("div", `communaute-carte${c.id === this.choisie ? " choisie" : ""}`);
-    const titre = el("button", "titre", `${c.nom} · ${c.membres.length} membres`);
+    const titre = el("button", "titre", `${c.nom} · ${c.membres.length} membres${c.disette ? " · disette" : ""}`);
+    if (c.disette) titre.classList.add("disette");
     titre.type = "button";
     titre.title = "Montrer ses membres sur la carte";
     titre.addEventListener("click", () => {
@@ -99,6 +117,18 @@ export class PanneauCommunautes {
     const adultes = c.membres.filter((m) => m.etape === "adulte").length;
     const info = el("p", "discret", `Née ${c.fondeeLe} · vers (${c.x}, ${c.y}) · ${adultes} adultes, ${c.membres.length - adultes} enfants`);
     bloc.append(info);
+    bloc.append(el("p", c.abondance < 40 ? "alerte" : "discret",
+      `Terres alentour : ${c.abondance} % de ce qu'elles donnent d'ordinaire · faim moyenne ${c.faim} · réserves moyennes ${c.reserves}`));
+    if (c.destination) bloc.append(el("p", "alerte", `En route vers ${c.destination}, à la recherche de terres plus riches.`));
+    if (c.relations.length > 0) {
+      const rel = el("p");
+      rel.append("Voisines : ");
+      c.relations.forEach((r, i) => {
+        if (i > 0) rel.append(", ");
+        rel.append(el("span", `relation-${r.etat.split(" ")[0]}`, `${r.nom} (${r.etat})`));
+      });
+      bloc.append(rel);
+    }
     const figure = el("p");
     const lien = el("button", "lien", c.nomFigure);
     lien.type = "button";

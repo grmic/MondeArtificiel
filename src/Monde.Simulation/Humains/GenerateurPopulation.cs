@@ -34,6 +34,7 @@ public static class GenerateurPopulation
                     Faim = alea.Reel() * 30,
                     Soif = alea.Reel() * 30,
                     Fatigue = alea.Reel() * 30,
+                    Reserves = 40 + alea.Reel() * 30,
                 });
             }
         }
@@ -71,6 +72,8 @@ public static class GenerateurPopulation
             X = mere.X,
             Y = mere.Y,
             Activite = Activite.PorteParSaMere,
+            // Un nouveau-né naît avec un peu de graisse, d'autant plus que sa mère était bien nourrie.
+            Reserves = Math.Clamp(15 + mere.Reserves / 4, 15, 40),
         };
     }
 }

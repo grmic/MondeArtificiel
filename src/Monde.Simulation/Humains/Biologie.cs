@@ -9,13 +9,22 @@ namespace Monde.Simulation.Humains;
 /// <param name="AgePuberte">Âge (années) où la fécondité commence.</param>
 /// <param name="AgeFinFertilite">Âge (années) de la ménopause ; très élevé chez les hommes, dont la fécondité baisse sans s'arrêter.</param>
 /// <param name="Fertilite">Facteur individuel autour de 1 (0 : stérile).</param>
-public sealed record Biologie(double AgePuberte, double AgeFinFertilite, double Fertilite)
+/// <param name="Metabolisme">
+/// Dépense d'énergie propre à chacun, autour de 1 : à corpulence égale, le métabolisme de base varie d'environ 7 %
+/// d'un individu à l'autre (Johnstone et al., 2005) et se transmet à environ 40 % (Bouchard et al., 1989).
+/// Un humain au métabolisme élevé a faim plus souvent et souffre plus vite de la disette.
+/// </param>
+public sealed record Biologie(double AgePuberte, double AgeFinFertilite, double Fertilite, double Metabolisme = 1)
 {
+    private const double EcartMetabolisme = 0.07;
+    private const double HeritabiliteMetabolisme = 0.4;
+
     /// <summary>Valeurs pour un humain enregistré avant l'existence de ces traits.</summary>
     public static Biologie ParDefaut(Sexe sexe) => new(16, sexe == Sexe.Femme ? 49 : 90, 1);
 
     /// <summary>Tirage pour un humain de départ (créé par l'Entité, sans parents).</summary>
-    public static Biologie Tirer(Sexe sexe, Alea alea) => Construire(sexe, alea, 16, sexe == Sexe.Femme ? 49 : 90, 1);
+    public static Biologie Tirer(Sexe sexe, Alea alea) =>
+        Construire(sexe, alea, 16, sexe == Sexe.Femme ? 49 : 90, 1) with { Metabolisme = Metabolique(alea, 0) };
 
     /// <summary>Tirage pour un nouveau-né : moyenne des parents de même nature, plus une variation propre.</summary>
     public static Biologie Heriter(Sexe sexe, Humain mere, Humain? pere, Alea alea)
@@ -25,7 +34,17 @@ public sealed record Biologie(double AgePuberte, double AgeFinFertilite, double 
         var fin = sexe == Sexe.Femme ? mere.Biologie.AgeFinFertilite : 90;
         var parents = pere is null ? mere.Biologie.Fertilite : (mere.Biologie.Fertilite + pere.Biologie.Fertilite) / 2;
         // Moitié héritée, moitié propre : un enfant de parents peu féconds ne l'est pas forcément.
-        return Construire(sexe, alea, puberte, fin, 0.5 + parents / 2);
+        var biologie = Construire(sexe, alea, puberte, fin, 0.5 + parents / 2);
+        var metabolismeParents = pere is null ? mere.Biologie.Metabolisme : (mere.Biologie.Metabolisme + pere.Biologie.Metabolisme) / 2;
+        return biologie with { Metabolisme = Metabolique(alea, (metabolismeParents - 1) / EcartMetabolisme) };
+    }
+
+    /// <summary>Métabolisme : écart des parents transmis selon l'héritabilité (modèle de Falconer), plus une part propre.</summary>
+    private static double Metabolique(Alea alea, double ecartParents)
+    {
+        var h2 = HeritabiliteMetabolisme;
+        var z = h2 * ecartParents + Math.Sqrt(1 - h2 * h2 / 2) * Normale(alea);
+        return Math.Clamp(1 + EcartMetabolisme * z, 0.75, 1.3);
     }
 
     private static Biologie Construire(Sexe sexe, Alea alea, double puberte, double fin, double fertilite)

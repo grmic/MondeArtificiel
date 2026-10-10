@@ -27,6 +27,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Souvenir] = "souvenir",
         [TypeEvenement.Partage] = "partage",
         [TypeEvenement.Journee] = "journee",
+        [TypeEvenement.Nature] = "nature",
     };
 
 
@@ -122,6 +123,7 @@ public sealed record FicheDto(
                 ["puberté (ans)"] = Math.Round(b.AgePuberte, 1),
                 ["fin de fertilité (ans)"] = Math.Round(b.AgeFinFertilite, 1),
                 ["fertilité"] = Math.Round(b.Fertilite, 2),
+                ["métabolisme"] = Math.Round(b.Metabolisme, 2),
             },
             h.EstVivant && !h.EstBebe(maintenant)
                 ? new AmeDto(Libelles.Humeur(h), (int)Math.Round(h.Humeur), (int)Math.Round(h.Chagrin), h.DeuilDeId,
@@ -165,27 +167,51 @@ public sealed record FicheDto(
 
 public sealed record MembreDto(int Id, string Nom, string Etape);
 
-/// <summary>Une communauté : qui en fait partie, depuis quand, où elle vit, autour de qui.</summary>
+/// <summary>Ce qu'une autre communauté est pour celle-ci.</summary>
+public sealed record RelationDto(int Id, string Nom, string Etat);
+
+/// <summary>Une communauté : qui en fait partie, depuis quand, où elle vit, autour de qui, et ce que ses terres lui donnent.</summary>
+/// <param name="Abondance">Ressources autour d'elle, en % de leur niveau naturel.</param>
+/// <param name="Destination">Direction vers laquelle elle part, ou null si elle reste.</param>
 public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? DisperseeLe, int Figure, string NomFigure,
-    IReadOnlyList<MembreDto> Membres, int X, int Y)
+    IReadOnlyList<MembreDto> Membres, int X, int Y, int Rayon, int Abondance, bool Disette, string? Destination,
+    int Faim, int Reserves, IReadOnlyList<RelationDto> Relations)
 {
+    private static string Etat(EtatRelation e) => e switch
+    {
+        EtatRelation.Alliees => "alliée",
+        EtatRelation.Rivales => "rivale pour les terres",
+        EtatRelation.Hostiles => "hostile",
+        _ => "indifférente",
+    };
+
     public static List<CommunauteDto> Toutes(ServiceMonde service)
     {
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
         var parCommunaute = humains.Where(h => h.EstVivant && h.CommunauteId != 0).ToLookup(h => h.CommunauteId);
-        return monde.Communautes()
+        var toutes = monde.Communautes();
+        var relations = monde.Relations();
+        return toutes
             .OrderBy(c => c.DisperseeLe is null ? 0 : 1).ThenByDescending(c => parCommunaute[c.Id].Count()).ThenBy(c => c.Id)
             .Select(c =>
             {
                 var membres = parCommunaute[c.Id].ToList();
                 var x = membres.Count > 0 ? (int)Math.Round(membres.Average(m => m.X)) : 0;
                 var y = membres.Count > 0 ? (int)Math.Round(membres.Average(m => m.Y)) : 0;
+                var adultes = membres.Where(m => !m.EstEnfant(maintenant)).ToList();
                 return new CommunauteDto(c.Id, c.Nom, Calendrier.Decomposer(c.FondeeLe).ToString(),
                     c.DisperseeLe is { } d ? Calendrier.Decomposer(d).ToString() : null,
                     c.FigureId, humains[c.FigureId - 1].Nom,
                     membres.Select(m => new MembreDto(m.Id, m.Nom, m.EstBebe(maintenant) ? "bébé" : m.EstEnfant(maintenant) ? "enfant" : "adulte")).ToList(),
-                    x, y);
+                    x, y, c.Rayon, (int)Math.Round(c.Abondance * 100), c.Active && c.Disette,
+                    c.Active && c.DestinationX >= 0 ? Lieux.Vers(c.CentreX, c.CentreY, c.DestinationX, c.DestinationY) : null,
+                    adultes.Count == 0 ? 0 : (int)Math.Round(adultes.Average(m => m.Faim)),
+                    adultes.Count == 0 ? 0 : (int)Math.Round(adultes.Average(m => m.Reserves)),
+                    relations.Where(r => r.A == c.Id || r.B == c.Id)
+                        .Select(r => (Autre: r.A == c.Id ? r.B : r.A, r.Etat))
+                        .Select(r => new RelationDto(r.Autre, toutes[r.Autre - 1].Nom, Etat(r.Etat)))
+                        .ToList());
             }).ToList();
     }
 }

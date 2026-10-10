@@ -38,6 +38,7 @@ public sealed class JourneeType
             Ajouter(Activite.ChercherAbri, "a cherché un abri");
             Ajouter(Activite.SAbriter, "s'est recroquevillé" + e + " de froid");
             Ajouter(Activite.Explorer, "a exploré");
+            Ajouter(Activite.Migrer, "a marché avec les siens vers de nouvelles terres");
             Ajouter(Activite.RejoindrePartenaire, "a rejoint son compagnon".Replace("son compagnon", h.Sexe == Sexe.Femme ? "son compagnon" : "sa compagne"));
             Ajouter(Activite.RejoindreProche, "est allé" + e + " retrouver un proche");
             Ajouter(Activite.SuivreParent, "a suivi ses parents");

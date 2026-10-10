@@ -120,6 +120,53 @@ export interface HumainVue {
   pensee: string | null;
   humeur: string | null;
   communaute: number;
+  reserves: number;
+}
+
+/** Indicateurs du monde, tels que renvoyés par le hub (méthode « Nature »). */
+export interface Indicateurs {
+  vivants: number;
+  enfants: number;
+  abondance: number;
+  reservesMoyennes: number;
+  regionsSeches: number;
+  regionsHabitees: number;
+  communautesEnDisette: number;
+}
+
+/** Nature : abondance de chaque tuile (Base64, 128 = ce que la saison et les pluies permettent) et pluies de l'année par région. */
+export interface Nature {
+  indicateurs: Indicateurs;
+  largeur: number;
+  hauteur: number;
+  abondance: string;
+  regionsX: number;
+  regionsY: number;
+  tailleRegion: number;
+  pluies: number[];
+}
+
+/** Couleur d'une tuile selon ses ressources : rouge (épuisée) → jaune → transparent (intacte). */
+function dessinerAbondance(nature: Nature, carte: Carte): HTMLCanvasElement {
+  const valeurs = decoderBase64(nature.abondance);
+  const canvas = document.createElement("canvas");
+  canvas.width = nature.largeur;
+  canvas.height = nature.hauteur;
+  const ctx = canvas.getContext("2d")!;
+  const image = ctx.createImageData(nature.largeur, nature.hauteur);
+  for (let i = 0; i < valeurs.length; i++) {
+    const v = valeurs[i];
+    if (v === 0 || carte.biomes[i] <= 3) continue; // ni eau ni terre stérile
+    const r = v / 128; // 1 : niveau permis par la saison
+    const p = i * 4;
+    const manque = Math.max(0, Math.min(1, 1 - r));
+    image.data[p] = 255;
+    image.data[p + 1] = Math.round(220 * (1 - manque));
+    image.data[p + 2] = 40;
+    image.data[p + 3] = Math.round(200 * Math.min(1, manque * 1.4));
+  }
+  ctx.putImageData(image, 0, 0);
+  return canvas;
 }
 
 export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement; humains: HumainVue[] } | null;
@@ -143,6 +190,8 @@ export class VueCarte {
   private readonly halo = new Graphics();
   private surlignes = new Set<number>();
   private surClic: (info: InfoTuile) => void = () => {};
+  private readonly calqueNature = new Container();
+  private nature?: Nature;
 
   private constructor(
     private readonly app: Application,
@@ -160,6 +209,7 @@ export class VueCarte {
   }
 
   afficher(carte: Carte): void {
+    this.afficherNature(null);
     this.carte = carte;
     this.monde.removeChildren();
     this.sprite?.texture.destroy(true);
@@ -177,9 +227,51 @@ export class VueCarte {
       this.marqueurs.addChild(point);
     }
     this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
-    this.monde.addChild(this.nuit, this.marqueurs, this.calqueHumains);
+    this.monde.addChild(this.nuit, this.calqueNature, this.marqueurs, this.calqueHumains);
     this.cadrer();
   }
+
+  /** Montre (ou cache, avec null) les ressources des terres et les régions touchées par la sécheresse ou très arrosées. */
+  afficherNature(nature: Nature | null): void {
+    this.nature = nature ?? undefined;
+    for (const c of this.calqueNature.removeChildren()) c.destroy({ children: true, texture: true });
+    if (!nature || !this.carte || nature.largeur !== this.carte.largeur || nature.hauteur !== this.carte.hauteur) return;
+    const texture = Texture.from(dessinerAbondance(nature, this.carte));
+    texture.source.scaleMode = "nearest";
+    this.calqueNature.addChild(new Sprite(texture));
+    const regions = new Graphics();
+    const valeurs = decoderBase64(nature.abondance);
+    nature.pluies.forEach((pluie, r) => {
+      if (pluie >= 0.7 && pluie <= 1.35) return;
+      // Cadre réduit aux terres de la région (tuiles qui portent des ressources) : rien n'est tracé sur la mer.
+      const x0 = (r % nature.regionsX) * nature.tailleRegion;
+      const y0 = Math.floor(r / nature.regionsX) * nature.tailleRegion;
+      let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
+      for (let y = y0; y < Math.min(y0 + nature.tailleRegion, nature.hauteur); y++) {
+        for (let x = x0; x < Math.min(x0 + nature.tailleRegion, nature.largeur); x++) {
+          if (valeurs[y * nature.largeur + x] === 0) continue;
+          minX = Math.min(minX, x); minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+        }
+      }
+      if (maxX < 0) return;
+      regions.rect(minX + 0.5, minY + 0.5, maxX - minX, maxY - minY)
+        .stroke({ width: 0.8, color: pluie < 0.7 ? 0xd98c3a : 0x5fb4ff, alpha: 0.9 });
+    });
+    this.calqueNature.addChild(regions);
+  }
+
+  /** Abondance d'une tuile (1 = ce que la saison et les pluies permettent) et pluie de sa région, si la couche des ressources est affichée. */
+  natureEn(x: number, y: number): { abondance: number; pluie: number } | null {
+    const n = this.nature;
+    if (!n || x < 0 || y < 0 || x >= n.largeur || y >= n.hauteur) return null;
+    if (!this.octetsNature || this.octetsNature.source !== n.abondance) {
+      this.octetsNature = { source: n.abondance, valeurs: decoderBase64(n.abondance) };
+    }
+    const r = Math.floor(y / n.tailleRegion) * n.regionsX + Math.floor(x / n.tailleRegion);
+    return { abondance: this.octetsNature.valeurs[y * n.largeur + x] / 128, pluie: n.pluies[r] ?? 1 };
+  }
+  private octetsNature?: { source: string; valeurs: Uint8Array };
 
   /** Place les humains : un point par vivant (orange : femme, bleu : homme), une croix grise par mort. */
   afficherHumains(humains: HumainVue[]): void {

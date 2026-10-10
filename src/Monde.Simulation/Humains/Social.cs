@@ -32,6 +32,21 @@ public sealed class Communaute
 
     public bool Active => DisperseeLe is null;
 
+    /// <summary>Centre du groupe (position moyenne des adultes) et rayon de son territoire, en cases (mis à jour chaque semaine).</summary>
+    public int CentreX { get; set; }
+    public int CentreY { get; set; }
+    public int Rayon { get; set; }
+
+    /// <summary>Ressources autour du groupe rapportées à leur niveau naturel (1 : intactes, 0 : épuisées).</summary>
+    public double Abondance { get; set; } = 1;
+
+    /// <summary>Vrai tant que le groupe manque de nourriture (réserves de ses membres basses ou terres épuisées).</summary>
+    public bool Disette { get; set; }
+
+    /// <summary>Terres vers lesquelles le groupe se déplace (−1 : il reste où il est).</summary>
+    public int DestinationX { get; set; } = -1;
+    public int DestinationY { get; set; } = -1;
+
     public Communaute Copier() => (Communaute)MemberwiseClone();
 }
 
@@ -42,7 +57,7 @@ public sealed class Communaute
 /// le névrosisme les conflits. Le nombre de liens qu'un humain entretient dépend de son extraversion
 /// (la limite cognitive d'environ 150 relations de Dunbar n'est pas atteinte dans un si petit monde).
 /// </summary>
-public sealed class VieSociale(Alea alea)
+public sealed partial class VieSociale(Alea alea)
 {
     public const double SeuilAmitie = 40;
     public const double FinAmitie = 20;
@@ -138,6 +153,19 @@ public sealed class VieSociale(Alea alea)
         if (Parents(a, b)) delta += 1.0;
         if (a.PartenaireId == b.Id) delta += 1.5;
         if (a.Faim > 60 && b.Faim > 60) delta -= 1.5 * (1 - (pa.Agreabilite + pb.Agreabilite) / 2);
+        // Quand les réserves s'épuisent, chacun voit en l'autre un rival pour la nourriture.
+        if (a.Reserves < 25 && b.Reserves < 25) delta -= 0.7;
+        // Entre membres de deux communautés, la relation entre les groupes colore la rencontre.
+        if (a.CommunauteId != 0 && b.CommunauteId != 0 && a.CommunauteId != b.CommunauteId)
+        {
+            delta += RelationEntre(a.CommunauteId, b.CommunauteId) switch
+            {
+                EtatRelation.Alliees => 0.5,
+                EtatRelation.Rivales => -1.0,
+                EtatRelation.Hostiles => -1.5,
+                _ => 0,
+            };
+        }
 
         var avant = la ?? new Lien(b.Id, 0, 0, maintenant);
         var apres = avant with
@@ -268,9 +296,11 @@ public sealed class VieSociale(Alea alea)
                 h.DeprimeDepuis = maintenant;
                 Noter(maintenant, TypeEvenement.Humeur, h, null, $"{h.Nom} sombre dans une profonde tristesse.");
             }
-            else if (h.EstDeprime && h.Humeur > 30)
+            // Un épisode dépressif dure au moins deux semaines (critère du DSM-5) et ne cède qu'à un vrai mieux.
+            else if (h.EstDeprime && h.Humeur > 35 && maintenant - h.DeprimeDepuis >= 14 * Calendrier.SecondesParJour)
             {
                 h.DeprimeDepuis = null;
+                h.JoursSombres = 0;
                 Noter(maintenant, TypeEvenement.Humeur, h, null, $"{h.Nom} reprend goût à la vie.");
             }
         }
@@ -402,8 +432,12 @@ public sealed class VieSociale(Alea alea)
                 };
                 communautes.Add(communaute);
                 reprises.Add(communaute.Id);
-                Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                    $"Une communauté se forme autour de {figure.Nom} : {g.Count} humains vivent désormais ensemble.");
+                // Groupe venu en majorité d'une même communauté : c'est une scission.
+                var origine = g.Where(h => h.CommunauteId != 0).GroupBy(h => h.CommunauteId)
+                    .Select(c => (Id: c.Key, Nombre: c.Count())).OrderByDescending(c => c.Nombre).ThenBy(c => c.Id).FirstOrDefault();
+                Noter(maintenant, TypeEvenement.Communaute, figure, null, origine.Id != 0 && origine.Nombre * 2 > g.Count
+                    ? $"{g.Count} humains quittent la {Minuscule(communautes[origine.Id - 1].Nom)} et se rassemblent autour de {figure.Nom}."
+                    : $"Une communauté se forme autour de {figure.Nom} : {g.Count} humains vivent désormais ensemble.");
             }
             foreach (var h in g) nouvelles[h.Id] = communaute.Id;
 
