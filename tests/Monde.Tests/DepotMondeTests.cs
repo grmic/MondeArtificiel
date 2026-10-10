@@ -15,7 +15,40 @@ public sealed class DepotMondeTests : IDisposable
         if (Directory.Exists(_dossier)) Directory.Delete(_dossier, recursive: true);
     }
 
-    private static void ExecuterSql(string fichier, string sql)
+    /// <summary>Ramène un fichier au schéma 6 (avant le caractère complet, les liens et les communautés).</summary>
+    internal const string RetourVersion6 = """
+        DROP INDEX journal_humain_id;
+        DROP INDEX journal_autre_id;
+        DROP INDEX journal_type_id;
+        CREATE INDEX journal_humain ON journal (humain);
+        CREATE INDEX journal_autre ON journal (autre);
+        ALTER TABLE humains DROP COLUMN agreabilite;
+        ALTER TABLE humains DROP COLUMN nevrosisme;
+        ALTER TABLE humains DROP COLUMN transcendance;
+        ALTER TABLE humains DROP COLUMN qi;
+        ALTER TABLE humains DROP COLUMN qi_verbal;
+        ALTER TABLE humains DROP COLUMN qi_spatial;
+        ALTER TABLE humains DROP COLUMN qi_manuel;
+        ALTER TABLE humains DROP COLUMN qi_memoire;
+        ALTER TABLE humains DROP COLUMN qi_art;
+        ALTER TABLE humains DROP COLUMN humeur;
+        ALTER TABLE humains DROP COLUMN chagrin;
+        ALTER TABLE humains DROP COLUMN deuil_de;
+        ALTER TABLE humains DROP COLUMN jours_sombres;
+        ALTER TABLE humains DROP COLUMN deprime_depuis;
+        ALTER TABLE humains DROP COLUMN communaute;
+        ALTER TABLE humains DROP COLUMN inconfort;
+        ALTER TABLE humains DROP COLUMN compagnie;
+        ALTER TABLE memoire_lieux DROP COLUMN rappels;
+        ALTER TABLE memoire_lieux DROP COLUMN decu_le;
+        DROP TABLE liens;
+        DROP TABLE communautes;
+        CREATE TABLE memoire_proches (humain INTEGER NOT NULL, rang INTEGER NOT NULL, autre INTEGER NOT NULL,
+            rencontres INTEGER NOT NULL, derniere INTEGER NOT NULL, PRIMARY KEY (humain, rang));
+        PRAGMA user_version = 6;
+        """;
+
+    internal static void ExecuterSql(string fichier, string sql)
     {
         using var connexion = new SqliteConnection($"Data Source={fichier};Pooling=False");
         connexion.Open();
@@ -116,6 +149,7 @@ public sealed class DepotMondeTests : IDisposable
         // Un monde enregistré avant la version 4 : on retire les nouvelles colonnes en recréant la table.
         var monde = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42));
         new DepotMonde(Fichier).Enregistrer(monde.Etat);
+        ExecuterSql(Fichier, RetourVersion6);
         ExecuterSql(Fichier, """
             UPDATE humains SET attachement = NULL, puberte = NULL, fin_fertilite = NULL, fertilite = NULL, terme_grossesse = NULL;
             ALTER TABLE humains DROP COLUMN attachement;
@@ -163,6 +197,7 @@ public sealed class DepotMondeTests : IDisposable
     public void FichierVersion4_NiveauDeVitesseConvertiEnFacteur()
     {
         new DepotMonde(Fichier).Enregistrer(new EtatMonde(42, 1000, 1, 0));
+        ExecuterSql(Fichier, RetourVersion6);
         ExecuterSql(Fichier, "DROP TABLE reglages; UPDATE etat SET vitesse = 3; PRAGMA user_version = 4;");
 
         var depot = new DepotMonde(Fichier);

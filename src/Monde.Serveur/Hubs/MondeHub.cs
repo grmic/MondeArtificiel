@@ -107,6 +107,9 @@ public sealed class MondeHub(ServiceMonde service) : Hub
     /// <summary>Fiche détaillée d'un humain (null s'il n'existe pas).</summary>
     public FicheDto? Fiche(int id) => FicheDto.Depuis(service, id);
 
+    /// <summary>Communautés actives puis dispersées, avec leurs membres.</summary>
+    public List<CommunauteDto> Communautes() => CommunauteDto.Toutes(service);
+
     /// <summary>Journal filtré, du plus récent au plus ancien (500 événements au plus par demande).</summary>
     public List<EvenementDto> Journal(FiltreJournal filtre)
     {

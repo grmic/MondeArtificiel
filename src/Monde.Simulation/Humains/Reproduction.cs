@@ -69,7 +69,9 @@ public sealed partial class Comportement
             {
                 if (autre.Id == h.Id || autre.Sexe == h.Sexe || !autre.EstVivant) continue;
                 if (Distance(h.X, h.Y, autre.X, autre.Y) > 1 || !EstDispose(autre, maintenant) || SontParents(h, autre)) continue;
-                if (alea.Reel() < ouverture) choisi = autre;
+                // On ne s'unit pas à qui l'on déteste ; l'affection rend l'union plus probable.
+                var affection = h.AffectionPour(autre.Id);
+                if (affection > VieSociale.SeuilHostilite && alea.Reel() < Math.Clamp(ouverture + affection / 200, 0, 1)) choisi = autre;
                 break;
             }
         }
@@ -89,8 +91,8 @@ public sealed partial class Comportement
             var rayon = RayonPerception(h);
             cible = tous
                 .Where(a => a.EstVivant && a.Sexe != h.Sexe && a.EstFecond(maintenant) && !SontParents(h, a)
-                            && Distance(h.X, h.Y, a.X, a.Y) <= rayon)
-                .OrderBy(a => Distance(h.X, h.Y, a.X, a.Y)).ThenBy(a => a.Id)
+                            && Distance(h.X, h.Y, a.X, a.Y) <= rayon && h.AffectionPour(a.Id) > VieSociale.SeuilHostilite)
+                .OrderBy(a => Distance(h.X, h.Y, a.X, a.Y) - h.AffectionPour(a.Id) / 20).ThenBy(a => a.Id)
                 .FirstOrDefault();
         }
         if (cible is null || Distance(h.X, h.Y, cible.X, cible.Y) == 0) return false;
@@ -136,6 +138,8 @@ public sealed partial class Comportement
             a.PartenaireId = b.Id;
             b.PartenaireId = a.Id;
             Noter(maintenant, TypeEvenement.Union, femme, homme, $"{femme.Nom} et {homme.Nom} forment un nouveau couple.");
+            VieSociale.Rejouir(a, 10);
+            VieSociale.Rejouir(b, 10);
         }
     }
 
@@ -273,10 +277,11 @@ public sealed partial class Comportement
 
     /// <summary>
     /// Une mère qui souffre trop (faim, soif, froid) cesse de porter son bébé si elle y est peu attachée.
-    /// Le seuil dépasse 100, donc n'est jamais atteint, dès que l'attachement vaut plus de 0,5.
+    /// Le seuil dépasse 100, donc n'est jamais atteint, dès que l'attachement vaut plus de 0,5 ;
+    /// une mère déprimée s'occupe moins de son bébé (le seuil baisse de 25).
     /// </summary>
     internal static bool Delaisse(Humain mere) =>
-        Math.Max(mere.Faim, Math.Max(mere.Soif, mere.Froid)) > 60 + 80 * mere.Personnalite.Attachement;
+        Math.Max(mere.Faim, Math.Max(mere.Soif, mere.Froid)) > 60 + 80 * mere.Personnalite.Attachement - (mere.EstDeprime ? 25 : 0);
 
     /// <summary>
     /// Un enfant sevré ne sait pas encore se nourrir seul : un parent proche partage avec lui nourriture et eau,
@@ -356,6 +361,9 @@ public sealed partial class Comportement
         if (alea.Reel() < taux / Calendrier.JoursParAn)
         {
             Mourir(h, maintenant, age >= 50 ? CauseDeMort.Vieillesse : CauseDeMort.Maladie);
+            return;
         }
+        var desespoir = Social?.RisqueDesespoir(h, maintenant) ?? 0;
+        if (desespoir > 0 && alea.Reel() < desespoir) Mourir(h, maintenant, CauseDeMort.Desespoir);
     }
 }

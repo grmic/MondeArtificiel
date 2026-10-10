@@ -22,7 +22,7 @@ public sealed class ReproductionTests
         PartenaireId = 0,
         Emplacement = 1,
         Naissance = 10 * An - (long)(age * An),
-        Personnalite = new Personnalite(0.5, 0.5, 0.5, 0.5, 0.5, attachement),
+        Personnalite = new Personnalite(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, attachement, 0.5, Intelligence.Moyenne),
         Biologie = biologie ?? new Biologie(16, sexe == Sexe.Femme ? 49 : 90, 1),
     };
 

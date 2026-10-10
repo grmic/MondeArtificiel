@@ -13,6 +13,20 @@ public enum TypeEvenement : byte
     /// <summary>Réservé aux découvertes (feu, outils…), à venir.</summary>
     Decouverte = 8,
     MortNe = 9,
+    /// <summary>Une pensée (ce que l'humain fait et pourquoi).</summary>
+    Pensee = 10,
+    /// <summary>Amitié ou hostilité qui naît ou qui s'éteint.</summary>
+    Lien = 11,
+    /// <summary>Deuil, tristesse profonde, guérison.</summary>
+    Humeur = 12,
+    /// <summary>Communauté qui se forme, se disperse, membre qui arrive ou part.</summary>
+    Communaute = 13,
+    /// <summary>Un lieu oublié.</summary>
+    Souvenir = 14,
+    /// <summary>Nourriture partagée avec un autre que son enfant.</summary>
+    Partage = 15,
+    /// <summary>Résumé des gestes quotidiens d'un humain sur une journée.</summary>
+    Journee = 16,
 }
 
 /// <summary>
@@ -32,6 +46,16 @@ public sealed record EvenementJournal(long Secondes, TypeEvenement Type, int Hum
     public long Id { get; init; }
 }
 
+public static class TypesEvenement
+{
+    /// <summary>
+    /// Types très fréquents (pensées, souvenirs, partages, accouplements) : ils sont enregistrés comme les autres,
+    /// mais ne sont ni gardés dans la file des événements récents ni poussés en direct aux navigateurs.
+    /// </summary>
+    public static bool EstFrequent(TypeEvenement t) =>
+        t is TypeEvenement.Pensee or TypeEvenement.Journee or TypeEvenement.Souvenir or TypeEvenement.Partage or TypeEvenement.Accouplement;
+}
+
 /// <summary>Formulations partagées par le journal et le serveur.</summary>
 public static class Libelles
 {
@@ -44,6 +68,19 @@ public static class Libelles
         Humains.CauseDeMort.Epuisement => "d'épuisement",
         Humains.CauseDeMort.Vieillesse => "de vieillesse",
         Humains.CauseDeMort.Accouchement => "en couches",
+        Humains.CauseDeMort.Desespoir => "de sa propre main",
         _ => "",
+    };
+
+    /// <summary>État d'âme en un ou deux mots.</summary>
+    public static string Humeur(Humains.Humain h) => h switch
+    {
+        { EstDeprime: true } => "déprimé" + (h.Sexe == Humains.Sexe.Femme ? "e" : ""),
+        { Chagrin: > 30 } => "en deuil",
+        { Humeur: > 75 } => h.Sexe == Humains.Sexe.Femme ? "joyeuse" : "joyeux",
+        { Humeur: > 60 } => "content" + (h.Sexe == Humains.Sexe.Femme ? "e" : ""),
+        { Humeur: > 40 } => "serein" + (h.Sexe == Humains.Sexe.Femme ? "e" : ""),
+        { Humeur: > 25 } => "triste",
+        _ => "abattu" + (h.Sexe == Humains.Sexe.Femme ? "e" : ""),
     };
 }

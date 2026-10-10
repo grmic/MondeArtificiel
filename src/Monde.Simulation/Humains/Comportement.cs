@@ -33,6 +33,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>Événements survenus pendant le pas : le monde les verse au journal après le pas.</summary>
     public List<EvenementJournal> Journal { get; } = [];
 
+    /// <summary>Morts du pas : le monde endeuille leurs proches.</summary>
+    public List<Humain> Deces { get; } = [];
+
+    /// <summary>Liens, humeur et partages (fourni par le monde).</summary>
+    public VieSociale? Social { get; set; }
+
     private void Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte) =>
         Journal.Add(new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte));
 
@@ -49,10 +55,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var partenaire = h.EstEnfant(maintenant)
             ? Vivant(tous, h.MereId) ?? Vivant(tous, h.PereId)
             : Vivant(tous, h.PartenaireId);
-        var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId));
+        var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId))
+                              || AmiAuMemeEndroit(h, tous);
         Metaboliser(h, chaleurPartagee, maintenant);
         if (!h.EstVivant) return;
         if (h.EstEnfant(maintenant)) NourrirEnfant(h, Vivant(tous, h.MereId), Vivant(tous, h.PereId));
+        PartagerAvecProches(h, tous);
         Grossesse(h, tous, maintenant);
         if (!h.EstVivant) return;
         var avant = h.Activite;
@@ -60,7 +68,64 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         Decider(h, partenaire, tous, maintenant);
         if (h.Activite != avant && Penseur.Penser(h, _motif, _autre, maintenant) is { } pensee)
         {
-            h.Memoire.Penser(maintenant, pensee);
+            var routine = EstRoutine(h.Activite, _motif);
+            if (routine) Routine.Compter(h.Id, h.Activite);
+            // Au journal : les gestes de tous les jours sont résumés une fois par jour ; une autre pensée est notée,
+            // sauf si une pensée de même sens figure déjà parmi les dernières (activités qui alternent).
+            var nouvelle = !routine && !h.Memoire.PenseeRecente(pensee, Memoire.PenseesMax);
+            if (h.Memoire.Penser(maintenant, pensee) && nouvelle) Noter(maintenant, TypeEvenement.Pensee, h, _autre, $"{h.Nom} : « {pensee} »");
+        }
+    }
+
+    /// <summary>Gestes quotidiens (boire, manger, dormir, se reposer, aller vers ce qu'on voit ou vers les siens) : résumés chaque jour.</summary>
+    public JourneeType Routine { get; } = new();
+
+    private static bool EstRoutine(Activite a, Motif motif) => a switch
+    {
+        Activite.Boire or Activite.Cueillir or Activite.Chasser or Activite.Dormir or Activite.Repos or Activite.Explorer
+            or Activite.SAbriter => true,
+        Activite.ChercherEau or Activite.ChercherNourriture or Activite.ChercherAbri => motif is Motif.Vu or Motif.Aucun,
+        Activite.RejoindrePartenaire => motif != Motif.Desir,
+        Activite.RejoindreProche or Activite.SuivreParent or Activite.VeillerEnfant => true,
+        _ => false,
+    };
+
+    /// <summary>Se serrer contre quelqu'un qu'on aime réchauffe autant que contre son compagnon.</summary>
+    private static bool AmiAuMemeEndroit(Humain h, IReadOnlyList<Humain> tous)
+    {
+        foreach (var l in h.Liens)
+        {
+            if (l.Affection < 20) continue;
+            var a = tous[l.Id - 1];
+            if (a.EstVivant && a.X == h.X && a.Y == h.Y) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Un humain affamé reçoit un peu de nourriture d'un proche rassasié à côté de lui : d'autant plus que celui-ci
+    /// est bienveillant et l'aime, ou vit dans la même communauté. Le partage de nourriture hors de la famille est
+    /// universel chez les chasseurs-cueilleurs (Kaplan et Hill, 1985) et nourrit la reconnaissance.
+    /// </summary>
+    private void PartagerAvecProches(Humain h, IReadOnlyList<Humain> tous)
+    {
+        if (h.Faim < 60 || h.EstBebe(_maintenant)) return;
+        foreach (var l in h.Liens)
+        {
+            var d = tous[l.Id - 1];
+            if (!d.EstVivant || d.Faim >= 40 || d.EstBebe(_maintenant) || d.EstDeprime) continue;
+            if (Distance(h.X, h.Y, d.X, d.Y) > 1) continue;
+            var lien = d.LienAvec(h.Id);
+            if (lien is null) continue;
+            var communaute = d.CommunauteId != 0 && d.CommunauteId == h.CommunauteId ? 0.3 : 0;
+            var envie = Math.Clamp(lien.Affection / 100 + communaute, 0, 1) * d.Personnalite.Agreabilite;
+            if (envie <= 0.05) continue;
+            var donne = Math.Min(h.Faim - 40, 0.6 * envie);
+            h.Faim -= donne;
+            d.Faim = Math.Min(100, d.Faim + 0.6 * donne);
+            VieSociale.Gratitude(d, h, 0.05);
+            Social?.PartagesDuJour.Add((d.Id, h.Id));
+            return;
         }
     }
 
@@ -96,6 +161,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         h.Soif = Math.Clamp(h.Soif, 0, 100);
         h.Fatigue = Math.Clamp(h.Fatigue, 0, 100);
         h.Froid = Math.Clamp(h.Froid, 0, 100);
+        h.InconfortDuJour += (Math.Max(0, h.Faim - 50) + Math.Max(0, h.Soif - 50) + Math.Max(0, h.Froid - 40)) / 50
+                             + (h.EstMalade(maintenant) ? 0.6 : 0);
 
         Souffrir(h, maintenant, 1);
     }
@@ -130,7 +197,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // Tomber malade : plus probable quand on est affaibli, affamé ou transi.
         if (!h.EstMalade(maintenant))
         {
-            var risque = ProbabiliteMaladieDeBase * (1 + (100 - h.Sante) / 25 + h.Faim / 50 + h.Froid / 50) * (1.3 - 0.6 * p.Endurance);
+            // La détresse affaiblit les défenses du corps.
+            var risque = ProbabiliteMaladieDeBase * (1 + (100 - h.Sante) / 25 + h.Faim / 50 + h.Froid / 50) * (1.3 - 0.6 * p.Endurance)
+                         * (h.EstDeprime ? 1.3 : 1);
             if (alea.Reel() < risque * fragilite)
             {
                 h.MaladeJusqua = maintenant + (3 + alea.Entier(8)) * Calendrier.SecondesParJour;
@@ -141,7 +210,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     private void Mourir(Humain h, long maintenant, CauseDeMort cause)
     {
-        Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}, à {AgeEnMots(h, maintenant)}.");
+        Noter(maintenant, TypeEvenement.Mort, h, null, cause == CauseDeMort.Desespoir
+            ? $"{h.Nom}, accablé{(h.Sexe == Sexe.Femme ? "e" : "")} de tristesse, met fin à ses jours, à {AgeEnMots(h, maintenant)}."
+            : $"{h.Nom} meurt {Libelles.Cause(cause)}, à {AgeEnMots(h, maintenant)}.");
+        Deces.Add(h);
         h.Sante = 0;
         h.MortLe = maintenant;
         h.CauseDeMort = cause;
@@ -161,8 +233,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (!reveil) return;
         }
 
-        // Urgence de chaque besoin (0 à 1 environ). Les prudents réagissent plus tôt.
-        var seuil = 0.45 - 0.2 * p.Prudence;
+        // Urgence de chaque besoin (0 à 1 environ). Les prudents réagissent plus tôt ; le désespoir fait négliger ses besoins.
+        var abattu = h.EstDeprime || h.Chagrin > 50;
+        var seuil = 0.45 - 0.2 * p.Prudence + (abattu ? 0.1 : 0);
         var urgences = new (double Valeur, Activite Besoin)[]
         {
             (Urgence(h.Soif) * 1.2, Activite.Boire),
@@ -210,8 +283,26 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             _autre = partenaire;
             Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
+            return;
         }
-        else if (alea.Reel() < 0.15 + 0.5 * p.Curiosite)
+        // On s'écarte de ceux qu'on ne supporte plus : c'est ainsi que les groupes trop tendus se scindent.
+        if (RivalProche(h, tous) is { } rival && (h.Activite == Activite.EviterRival || alea.Reel() < 0.6 - 0.4 * p.Agreabilite))
+        {
+            _autre = rival;
+            int dx = Math.Sign(h.X - rival.X), dy = Math.Sign(h.Y - rival.Y);
+            if (dx == 0 && dy == 0) dx = 1;
+            Avancer(h, Math.Clamp(h.X + 8 * dx, 0, carte.Largeur - 1), Math.Clamp(h.Y + 8 * dy, 0, carte.Hauteur - 1), Activite.EviterRival);
+            if (h.CibleX >= 0) return;
+        }
+        // Les sociables vont retrouver ceux qu'ils aiment ; c'est ainsi que les groupes se forment.
+        if (!abattu && (h.Activite == Activite.RejoindreProche || alea.Reel() < 0.1 + 0.4 * p.Extraversion)
+            && ProcheARejoindre(h, tous) is { } proche)
+        {
+            _autre = proche;
+            Avancer(h, proche.X, proche.Y, Activite.RejoindreProche);
+            return;
+        }
+        if (alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
         {
             Explorer(h);
         }
@@ -219,7 +310,39 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             h.Activite = Activite.Repos;
             h.CibleX = h.CibleY = -1;
+            // Au repos, l'endeuillé pense à celui qu'il a perdu.
+            if (h.Chagrin > 30 && h.DeuilDeId > 0) _autre = tous[h.DeuilDeId - 1];
         }
+    }
+
+    /// <summary>Un humain hostile à moins de 3 cases, ou null.</summary>
+    private static Humain? RivalProche(Humain h, IReadOnlyList<Humain> tous)
+    {
+        foreach (var l in h.Liens)
+        {
+            if (!l.Rivaux) continue;
+            var a = tous[l.Id - 1];
+            if (a.EstVivant && Distance(h.X, h.Y, a.X, a.Y) <= 3) return a;
+        }
+        return null;
+    }
+
+    /// <summary>L'humain aimé le plus attirant à rejoindre : affection forte, pas trop loin, mais pas déjà à côté.</summary>
+    private Humain? ProcheARejoindre(Humain h, IReadOnlyList<Humain> tous)
+    {
+        Humain? choisi = null;
+        var meilleur = double.MinValue;
+        foreach (var l in h.Liens)
+        {
+            if (l.Affection < 30) continue;
+            var a = tous[l.Id - 1];
+            if (!a.EstVivant || a.EstBebe(_maintenant)) continue;
+            var d = Distance(h.X, h.Y, a.X, a.Y);
+            if (d <= 3 || d > 25) continue;
+            var score = l.Affection - d;
+            if (score > meilleur) (meilleur, choisi) = (score, a);
+        }
+        return choisi;
     }
 
     internal static string AgeEnMots(Humain h, long maintenant)
@@ -241,7 +364,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.Soif = 0;
             h.Activite = Activite.Boire;
             h.CibleX = h.CibleY = -1;
-            h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, _maintenant);
+            h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, _maintenant, Aptitude(h));
             return;
         }
         var cible = Chercher(h, i => EauDouceAPortee(i % carte.Largeur, i / carte.Largeur), _ => 0);
@@ -259,7 +382,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     /// <summary>
     /// Rien d'utile en vue : l'humain se rend au lieu de ce type le plus proche dont il se souvient.
-    /// Arrivé sur place sans rien trouver, il l'oublie.
+    /// Arrivé sur place sans rien trouver, il est déçu : un souvenir faible s'efface, un souvenir solide s'affaiblit.
     /// </summary>
     private bool AllerAuSouvenir(Humain h, TypeLieu type, Activite activite)
     {
@@ -267,7 +390,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             if (Distance(h.X, h.Y, lieu.X, lieu.Y) <= 1)
             {
-                h.Memoire.Oublier(lieu); // déjà là, et rien : ce souvenir ne vaut plus rien
+                h.Memoire.Decevoir(lieu, _maintenant); // déjà là, et rien : le souvenir s'affaiblit
                 continue;
             }
             _motif = Motif.Souvenir;
@@ -278,6 +401,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         return false;
     }
 
+    private static double Aptitude(Humain h) => h.Personnalite.Intelligence.Memoire;
+
     private void AllerManger(Humain h)
     {
         var i = carte.Indice(h.X, h.Y);
@@ -287,7 +412,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.Faim = Math.Max(0, h.Faim - pris * 2.5);
             h.Activite = Activite.Cueillir;
             h.CibleX = h.CibleY = -1;
-            h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant);
+            h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h));
             return;
         }
         if (ecosysteme.Gibier[i] >= 2000 && !h.EstEnfant(_maintenant))
@@ -300,7 +425,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             {
                 var pris = Ecosysteme.Prelever(ecosysteme.Gibier, i, 15);
                 h.Faim = Math.Max(0, h.Faim - pris * 4);
-                h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant);
+                h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h));
             }
             else
             {
@@ -343,7 +468,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         h.Activite = Activite.Dormir;
         h.CibleX = h.CibleY = -1;
-        if (Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4) h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant);
+        if (Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4) h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));
     }
 
     private void AllerSAbriter(Humain h, Humain? partenaire, long maintenant)

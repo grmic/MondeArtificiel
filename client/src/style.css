@@ -72,7 +72,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .fiche .resume { margin: 0 0 4px; }
 .fiche .pensee { margin: 4px 0; font-style: italic; color: #ffe6a8; }
 .fiche .famille { margin: 4px 0; }
-.jauge { display: grid; grid-template-columns: 7.5rem 1fr 2.6rem; align-items: center; gap: 6px; }
+.jauge { display: grid; grid-template-columns: 6.8rem 1fr 2.4rem 6.6rem; align-items: center; gap: 6px; }
+.jauge .mots { color: var(--discret); font-size: 0.78rem; }
 .jauge .piste { height: 6px; border-radius: 3px; background: #26324a; overflow: hidden; }
 .jauge .plein { display: block; height: 100%; background: #5b9bd5; }
 .jauge .valeur { text-align: right; font-variant-numeric: tabular-nums; color: var(--discret); }
@@ -92,3 +93,14 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .evenement.naissance { color: #b8f0c4; }
 .journal-panneau .plus { margin: 6px 14px 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; }
 .journal-panneau .plus[hidden] { display: none; }
+.fiche .ame, .fiche .communaute { margin: 4px 0; }
+.lien-hostile, .lien-méfiance { color: #ffb3b3; }
+.lien-très-proche, .lien-ami { color: #b8f0c4; }
+.communautes-panneau { right: 12px; top: 290px; bottom: 12px; }
+.communaute-carte { border: 1px solid #2a3850; border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
+.communaute-carte.choisie { border-color: #d9a8ff; }
+.communaute-carte p { margin: 3px 0; }
+.communaute-carte .titre { background: none; border: none; padding: 0; color: var(--texte); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.evenement.lien, .evenement.communaute { color: #d6e4ff; }
+.evenement.humeur { color: #ffd6a8; }
+.evenement.pensee, .evenement.journee, .evenement.souvenir { color: var(--discret); }

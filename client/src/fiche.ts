@@ -12,14 +12,24 @@ interface Evenement {
   origine: "naturelle" | "entite";
 }
 
+interface Trait {
+  nom: string;
+  valeur: number;
+  mots: string;
+  aide: string;
+}
+
 interface Fiche {
   humain: HumainVue;
-  caractere: Record<string, number>;
+  caractere: Trait[];
+  intelligence: Trait[];
   biologie: Record<string, number>;
+  ame: { etat: string; humeur: number; chagrin: number; deuilDe: number; deprimeDepuis: string | null } | null;
+  communaute: { id: number; nom: string } | null;
   enfants: number[];
   pensees: { date: string; texte: string }[];
-  lieux: { type: string; x: number; y: number; vuLe: string }[];
-  proches: { id: number; nom: string; jours: number; derniere: string }[];
+  lieux: { type: string; x: number; y: number; vuLe: string; visites: number }[];
+  liens: { id: number; nom: string; familiarite: number; affection: number; statut: string; vivant: boolean }[];
   histoire: Evenement[];
 }
 
@@ -42,6 +52,7 @@ export class PanneauFiche {
     private readonly racine: HTMLElement,
     private readonly nom: (id: number) => string,
     private readonly surChoix: (id: number) => void,
+    private readonly ouvrirCommunaute: (id: number) => void = () => {},
   ) {}
 
   get courant(): number {
@@ -100,6 +111,25 @@ export class PanneauFiche {
     const etat = h.vivant ? `${h.activite}${h.malade ? " · malade" : ""}${h.enceinte ? " · enceinte" : ""}` : `mort ${h.causeDeMort ?? ""}`;
     corps.append(el("p", "resume", `${h.sexe === "femme" ? "Femme" : "Homme"}, ${age} · ${etat}`));
     if (h.pensee) corps.append(el("p", "pensee", `« ${h.pensee} »`));
+    if (f.ame) {
+      const ame = el("p", "ame");
+      ame.append(`Humeur : ${f.ame.etat} (${f.ame.humeur}/100)`);
+      if (f.ame.chagrin > 0) {
+        ame.append(` · chagrin ${f.ame.chagrin}/100`);
+        if (f.ame.deuilDe) ame.append(" (", this.lien(f.ame.deuilDe), ")");
+      }
+      if (f.ame.deprimeDepuis) ame.append(el("br"), `Déprimé${h.sexe === "femme" ? "e" : ""} depuis ${f.ame.deprimeDepuis}`);
+      corps.append(ame);
+    }
+    if (f.communaute) {
+      const c = el("p", "communaute");
+      const bouton = el("button", "lien", f.communaute.nom);
+      bouton.type = "button";
+      const id = f.communaute.id;
+      bouton.addEventListener("click", () => this.ouvrirCommunaute(id));
+      c.append("Vit dans la ", bouton);
+      corps.append(c);
+    }
 
     // Famille
     const famille = el("p", "famille");
@@ -121,9 +151,21 @@ export class PanneauFiche {
     if (h.vivant) {
       corps.append(this.jauges("Besoins", { faim: h.faim, soif: h.soif, fatigue: h.fatigue, froid: h.froid, santé: h.sante }, 100));
     }
-    corps.append(this.jauges("Caractère", f.caractere, 1));
+    corps.append(this.traits("Caractère", f.caractere, 1));
+    corps.append(this.traits("Intelligence (QI, moyenne 100)", f.intelligence, 160));
     const bio = el("p", "discret", Object.entries(f.biologie).map(([k, v]) => `${k} ${v}`).join(" · "));
     corps.append(el("h3", undefined, "Biologie"), bio);
+
+    corps.append(el("h3", undefined, "Liens"));
+    const liens = el("ul", "liste");
+    for (const l of f.liens.slice(0, 15)) {
+      const li = el("li", `lien-${l.statut.replace(/\s/g, "-")}`);
+      li.append(this.lien(l.id, l.nom), ` ${l.vivant ? "" : "✝ "}— ${l.statut} (affection ${l.affection}, familiarité ${l.familiarite})`);
+      liens.append(li);
+    }
+    if (f.liens.length === 0) liens.append(el("li", "discret", "Ne connaît encore personne."));
+    else if (f.liens.length > 15) liens.append(el("li", "discret", `… et ${f.liens.length - 15} autres.`));
+    corps.append(liens);
 
     corps.append(el("h3", undefined, "Pensées récentes"));
     const pensees = el("ul", "liste");
@@ -137,18 +179,11 @@ export class PanneauFiche {
 
     corps.append(el("h3", undefined, "Mémoire"));
     const lieux = el("ul", "liste");
-    for (const l of f.lieux) lieux.append(el("li", undefined, `${l.type} en (${l.x}, ${l.y}), vu ${l.vuLe}`));
+    for (const l of f.lieux) {
+      lieux.append(el("li", undefined, `${l.type} en (${l.x}, ${l.y}), ${l.visites > 1 ? `${l.visites} visites, ` : ""}vu ${l.vuLe}`));
+    }
     if (f.lieux.length === 0) lieux.append(el("li", "discret", "Ne se souvient d'aucun lieu."));
     corps.append(lieux);
-    if (f.proches.length > 0) {
-      const proches = el("p");
-      proches.append("Côtoie : ");
-      f.proches.slice(0, 12).forEach((p, i) => {
-        if (i > 0) proches.append(", ");
-        proches.append(this.lien(p.id, p.nom), ` (${p.jours} j)`);
-      });
-      corps.append(proches);
-    }
 
     corps.append(el("h3", undefined, "Histoire"));
     const histoire = el("ul", "liste");
@@ -158,6 +193,23 @@ export class PanneauFiche {
 
     r.append(corps);
     corps.scrollTop = defilement;
+  }
+
+  private traits(titre: string, traits: Trait[], max: number): HTMLElement {
+    const bloc = el("div");
+    bloc.append(el("h3", undefined, titre));
+    for (const t of traits) {
+      const ligne = el("div", "jauge");
+      ligne.title = t.aide;
+      ligne.append(el("span", "nom", t.nom));
+      const piste = el("span", "piste");
+      const plein = el("span", "plein");
+      plein.style.width = `${Math.round((Math.max(0, Math.min(max, t.valeur)) / max) * 100)}%`;
+      piste.append(plein);
+      ligne.append(piste, el("span", "valeur", max === 1 ? t.valeur.toFixed(2) : String(Math.round(t.valeur))), el("span", "mots", t.mots));
+      bloc.append(ligne);
+    }
+    return bloc;
   }
 
   private jauges(titre: string, valeurs: Record<string, number>, max: number): HTMLElement {

@@ -118,6 +118,8 @@ export interface HumainVue {
   enceinte: boolean;
   etape: "bébé" | "enfant" | "adulte";
   pensee: string | null;
+  humeur: string | null;
+  communaute: number;
 }
 
 export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement; humains: HumainVue[] } | null;
@@ -138,6 +140,8 @@ export class VueCarte {
   private echelleMin = 1;
   private readonly selection = new Graphics().circle(0, 0, 7).stroke({ width: 2, color: 0xffffff });
   private selectionId = 0;
+  private readonly halo = new Graphics();
+  private surlignes = new Set<number>();
   private surClic: (info: InfoTuile) => void = () => {};
 
   private constructor(
@@ -219,6 +223,28 @@ export class VueCarte {
     }
     this.ajusterMarqueurs();
     this.placerSelection();
+    this.dessinerHalo();
+  }
+
+  /** Entoure d'un halo les membres d'une communauté (liste vide : aucun). */
+  surligner(ids: number[]): void {
+    this.surlignes = new Set(ids);
+    this.dessinerHalo();
+  }
+
+  private dessinerHalo(): void {
+    this.halo.clear();
+    // Le halo est en coordonnées de la carte : il est hors du calque des humains, dont les éléments sont mis à l'échelle du zoom.
+    if (this.halo.parent !== this.monde && this.calqueHumains.parent === this.monde) {
+      this.monde.addChildAt(this.halo, this.monde.getChildIndex(this.calqueHumains));
+    }
+    for (const id of this.surlignes) {
+      const point = this.pointsHumains.get(id);
+      if (!point) continue;
+      this.halo.circle(point.position.x, point.position.y, 2.2)
+        .fill({ color: 0xd9a8ff, alpha: 0.25 })
+        .stroke({ width: 0.5, color: 0xd9a8ff, alpha: 0.9 });
+    }
   }
 
   /** Appelé quand on clique (sans glisser) sur la carte. */

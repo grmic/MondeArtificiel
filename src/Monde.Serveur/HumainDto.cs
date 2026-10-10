@@ -26,7 +26,9 @@ public sealed record HumainDto(
     int Pere,
     bool Enceinte,
     string Etape,
-    string? Pensee)
+    string? Pensee,
+    string? Humeur,
+    int Communaute)
 {
     private static readonly Dictionary<Activite, string> Activites = new()
     {
@@ -46,6 +48,8 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.SuivreParent] = "suit ses parents",
         [Simulation.Humains.Activite.PorteParSaMere] = "dans les bras de sa mère",
         [Simulation.Humains.Activite.VeillerEnfant] = "rejoint son enfant",
+        [Simulation.Humains.Activite.RejoindreProche] = "rejoint un proche",
+        [Simulation.Humains.Activite.EviterRival] = "s'éloigne d'un rival",
     };
 
 
@@ -68,6 +72,8 @@ public sealed record HumainDto(
             h.EstVivant ? null : Libelles.Cause(h.CauseDeMort),
             h.MereId, h.PereId, h.EstEnceinte,
             h.EstBebe(instant) ? "bébé" : h.EstEnfant(instant) ? "enfant" : "adulte",
-            h.EstVivant && h.Memoire.Pensees.Count > 0 ? h.Memoire.Pensees[^1].Texte : null);
+            h.EstVivant && h.Memoire.Pensees.Count > 0 ? h.Memoire.Pensees[^1].Texte : null,
+            h.EstVivant && !h.EstBebe(maintenant) ? Libelles.Humeur(h) : null,
+            h.EstVivant ? h.CommunauteId : 0);
     }
 }

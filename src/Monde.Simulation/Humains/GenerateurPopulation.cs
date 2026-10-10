@@ -27,8 +27,7 @@ public static class GenerateurPopulation
                     PartenaireId = partenaire,
                     Emplacement = emplacement.Numero,
                     Naissance = maintenant - (long)(age * Calendrier.SecondesParAn),
-                    Personnalite = new Personnalite(alea.Reel(), alea.Reel(), alea.Reel(), alea.Reel(), alea.Reel(),
-                        AttachementInne(alea)),
+                    Personnalite = Psyche.Tirer(alea, AttachementInne(alea)),
                     Biologie = Biologie.Tirer(sexe, alea),
                     X = emplacement.X,
                     Y = emplacement.Y,
@@ -49,15 +48,12 @@ public static class GenerateurPopulation
     public const double ProportionGarcons = 0.512;
 
     /// <summary>
-    /// Un nouveau-né. Son caractère mêle ceux de ses parents, avec une part de hasard.
+    /// Un nouveau-né. Son caractère et son intelligence viennent en partie de ses parents, en partie du hasard.
     /// </summary>
     public static Humain Naissance(int id, Humain mere, Humain? pere, long maintenant, Alea alea, ISet<string> nomsPris)
     {
-        double Herite(Func<Personnalite, double> trait)
-        {
-            var moyenne = pere is null ? trait(mere.Personnalite) : (trait(mere.Personnalite) + trait(pere.Personnalite)) / 2;
-            return Math.Clamp(moyenne + (alea.Reel() - 0.5) * 0.4, 0, 1);
-        }
+        var attachement = Math.Clamp((pere is null ? mere.Personnalite.Attachement
+            : (mere.Personnalite.Attachement + pere.Personnalite.Attachement) / 2) + (alea.Reel() - 0.5) * 0.4, 0, 1);
 
         var sexe = alea.Reel() < ProportionGarcons ? Sexe.Homme : Sexe.Femme;
         return new Humain
@@ -70,9 +66,7 @@ public static class GenerateurPopulation
             PereId = pere?.Id ?? 0,
             Emplacement = mere.Emplacement,
             Naissance = maintenant,
-            Personnalite = new Personnalite(
-                Herite(p => p.Curiosite), Herite(p => p.Prudence), Herite(p => p.Sociabilite),
-                Herite(p => p.Endurance), Herite(p => p.Adresse), Herite(p => p.Attachement)),
+            Personnalite = Psyche.Heriter(mere, pere, alea, attachement),
             Biologie = Biologie.Heriter(sexe, mere, pere, alea),
             X = mere.X,
             Y = mere.Y,

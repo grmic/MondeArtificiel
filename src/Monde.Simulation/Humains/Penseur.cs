@@ -58,13 +58,21 @@ public static class Penseur
             Activite.VeillerEnfant => $"Où est {nom} ? Je vais {Pronom(autre, complement: true)} chercher.",
             Activite.SuivreParent => $"Je reste près de {nom}.",
             Activite.Explorer => Choix($"Que trouve-t-on{vers} ?", $"Je pars voir{vers}."),
+            Activite.EviterRival => Choix($"Je ne supporte plus {nom}. Je m'éloigne.", $"{nom} m'exaspère. Je pars{vers}."),
+            Activite.RejoindreProche => Choix($"Je vais retrouver {nom}.", $"{nom} me manque. Je vais vers {Pronom(autre)}."),
+            Activite.Repos when h.Chagrin > 30 && autre is not null && !autre.EstVivant =>
+                Choix($"Je pense à {nom}. {Majuscule(Pronom(autre, sujet: true))} n'est plus là.", $"{nom} me manque."),
+            Activite.Repos when h.EstDeprime => Choix("Rien n'a plus de goût.", "Je n'ai envie de rien."),
+            Activite.Repos when h.Humeur > 75 => Choix("Il fait bon vivre ici.", "Je me sens bien."),
             Activite.Repos => Choix("Tout est calme. Je me repose.", "Rien ne presse."),
             _ => null,
         };
     }
 
-    private static string Pronom(Humain? autre, bool complement = false) =>
-        autre?.Sexe == Sexe.Femme ? (complement ? "la" : "elle") : (complement ? "le" : "lui");
+    private static string Pronom(Humain? autre, bool complement = false, bool sujet = false) =>
+        autre?.Sexe == Sexe.Femme ? (complement ? "la" : "elle") : (complement ? "le" : sujet ? "il" : "lui");
+
+    private static string Majuscule(string mot) => char.ToUpperInvariant(mot[0]) + mot[1..];
 
     /// <summary>« vers le nord-est », d'après la destination ; vide s'il n'y en a pas.</summary>
     internal static string Direction(Humain h)

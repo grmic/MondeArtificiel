@@ -1,5 +1,6 @@
 import { chargerCarte, VueCarte, type HumainVue, type InfoTuile } from "./carte";
 import { connexion, demarrerConnexion } from "./connexion";
+import { PanneauCommunautes } from "./communautes";
 import { PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
@@ -25,7 +26,7 @@ function decrireHumain(h: HumainVue): string {
   if (h.partenaire) liens.push(`avec ${nom(h.partenaire)}`);
   const qui = `${h.nom} (${h.sexe}, ${age}, ${liens.join(", ")})`;
   if (!h.vivant) return `✝ ${qui}, mort ${h.causeDeMort ?? ""}`;
-  const etat = [h.activite, h.enceinte ? "enceinte" : "", h.malade ? "malade" : ""].filter(Boolean).join(" · ");
+  const etat = [h.activite, h.humeur ?? "", h.enceinte ? "enceinte" : "", h.malade ? "malade" : ""].filter(Boolean).join(" · ");
   const pensee = h.pensee ? `\n   « ${h.pensee} »` : "";
   return `${qui} ${etat}${pensee}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante}`;
 }
@@ -67,7 +68,14 @@ async function demarrer(): Promise<void> {
   });
 
   // Clic sur un humain : sa fiche. Le journal s'ouvre depuis la barre du haut.
-  const fiche = new PanneauFiche(element("#fiche"), (id) => nomsParId.get(id) ?? "?", (id) => vue.selectionner(id));
+  let communautes: PanneauCommunautes | undefined = undefined;
+  const fiche = new PanneauFiche(element("#fiche"), (id) => nomsParId.get(id) ?? "?", (id) => vue.selectionner(id),
+    (id) => {
+      journal.fermer();
+      void communautes?.ouvrir(id);
+    });
+  communautes = new PanneauCommunautes(element("#communautes"), (ids) => vue.surligner(ids), (id) => void fiche.ouvrir(id));
+
   vue.quandClic((info) => {
     const h = vue.humainsSous(info)[0];
     if (h) void fiche.ouvrir(h.id);
@@ -78,7 +86,15 @@ async function demarrer(): Promise<void> {
     return undefined;
   };
   const journal = new PanneauJournal(element("#journal"), idDuNom, () => [...new Set(nomsParId.values())].sort(), (id) => void fiche.ouvrir(id));
-  element("#boutonJournal").addEventListener("click", () => journal.basculer());
+  // Journal et communautés occupent la même place : ouvrir l'un ferme l'autre.
+  element("#boutonJournal").addEventListener("click", () => {
+    communautes?.fermer();
+    journal.basculer();
+  });
+  element("#boutonCommunautes").addEventListener("click", () => {
+    journal.fermer();
+    communautes?.basculer();
+  });
 
   demarrerConnexion(element("#statut"), async () => {
     await horloge.synchroniser();
@@ -114,6 +130,7 @@ async function demarrer(): Promise<void> {
   let graineMonde: number | undefined;
   connexion.on("MondeReinitialise", (graine: number) => {
     fiche.fermer();
+    communautes?.fermer();
     void journal.recharger();
     void charger().then(() => (infos.textContent = `Monde réinitialisé · graine ${graine}. Le temps est en pause.`));
   });

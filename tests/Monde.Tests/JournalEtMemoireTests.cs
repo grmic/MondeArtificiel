@@ -4,6 +4,7 @@ using Monde.Serveur;
 using Monde.Serveur.Hubs;
 using Monde.Simulation;
 using Monde.Simulation.Humains;
+using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 using Monde.Stockage;
 
@@ -31,51 +32,79 @@ public sealed class JournalEtMemoireTests : IDisposable
     });
 
     [Fact]
-    public void Memoire_UnLieuProcheEstLeMeme_EtLaPlaceEstLimitee()
+    public void Memoire_UnLieuProcheEstLeMeme_EtLaPlaceDependDeLAptitude()
     {
         var m = new Memoire();
         m.Retenir(TypeLieu.Eau, 10, 10, 0);
-        m.Retenir(TypeLieu.Eau, 12, 11, 100); // à 2 cases : même endroit, rafraîchi
+        m.Retenir(TypeLieu.Eau, 12, 11, 100); // à 2 cases : même endroit, rafraîchi le même jour (pas de rappel)
         Assert.Single(m.Lieux);
         Assert.Equal(new LieuConnu(TypeLieu.Eau, 12, 11, 100), m.Lieux[0]);
+        m.Retenir(TypeLieu.Eau, 12, 11, Calendrier.SecondesParJour); // revenu un autre jour : un rappel
+        Assert.Equal(1, m.Lieux[0].Rappels);
 
-        for (var i = 1; i <= Memoire.LieuxParType; i++) m.Retenir(TypeLieu.Eau, 10 + 10 * i, 10, 100 + i);
-        Assert.Equal(Memoire.LieuxParType, m.Lieux.Count);
-        Assert.DoesNotContain(m.Lieux, l => l.X == 12); // le plus ancien est oublié
+        Assert.Equal(3, Memoire.Capacite(70));
+        Assert.Equal(5, Memoire.Capacite(100));
+        Assert.Equal(10, Memoire.Capacite(130));
 
-        m.Retenir(TypeLieu.Abri, 0, 0, 200);
-        Assert.Equal(Memoire.LieuxParType + 1, m.Lieux.Count); // chaque type a sa propre place
+        // Mémoire faible (70) : 3 lieux d'eau au plus ; le souvenir le plus faible part (ici, jamais rappelé et le plus ancien).
+        for (var i = 1; i <= 5; i++) m.Retenir(TypeLieu.Eau, 10 + 10 * i, 10, Calendrier.SecondesParJour + i, aptitude: 70);
+        Assert.Equal(3, m.Lieux.Count);
+        Assert.Contains(m.Lieux, l => l.X == 12); // le lieu rappelé reste
+
+        m.Retenir(TypeLieu.Abri, 0, 0, 200, aptitude: 70);
+        Assert.Equal(4, m.Lieux.Count); // chaque type a sa propre place
     }
 
     [Fact]
-    public void Memoire_UnLieuTropAncienNEstPlusUtilise()
+    public void Memoire_LOubliDependDeLAptitudeEtDesRappels()
     {
-        var m = new Memoire();
-        m.Retenir(TypeLieu.Nourriture, 5, 5, 0);
-        m.Retenir(TypeLieu.Nourriture, 50, 50, Memoire.DureeSouvenirLieu);
+        static double Restants(double aptitude, int rappels, int jours)
+        {
+            var alea = new Alea(7);
+            var m = new Memoire();
+            for (var i = 0; i < 1000; i++) m.Lieux.Add(new LieuConnu(TypeLieu.Eau, i, 0, 0, rappels));
+            for (var j = 0; j < jours; j++) m.OublierAvecLeTemps(aptitude, alea);
+            return m.Lieux.Count / 1000.0;
+        }
 
-        Assert.Equal(5, m.PlusProche(TypeLieu.Nourriture, 0, 0, Memoire.DureeSouvenirLieu)!.X);
-        Assert.Equal(50, m.PlusProche(TypeLieu.Nourriture, 0, 0, Memoire.DureeSouvenirLieu + 1)!.X);
-        Assert.Null(m.PlusProche(TypeLieu.Eau, 0, 0, 0));
+        // Vu une fois, 30 jours plus tard : un « crétin » (70) a presque tout oublié, une très bonne mémoire (130) presque rien.
+        Assert.InRange(Restants(70, 0, 30), 0, 0.05);      // théorie : e^(−30/7,5) ≈ 2 %
+        Assert.InRange(Restants(100, 0, 30), 0.30, 0.44);  // e^(−1) ≈ 37 %
+        Assert.InRange(Restants(130, 0, 30), 0.72, 0.84);  // e^(−0,25) ≈ 78 %
+        // Un abri où l'on est revenu 50 fois : presque jamais oublié en un an.
+        Assert.InRange(Restants(100, 50, 365), 0.94, 1);
     }
 
     [Fact]
-    public void Memoire_ProchesEtPenseesSontBornes()
+    public void Memoire_UnLieuDecevantEstEviteOuOublie()
     {
         var m = new Memoire();
-        m.Cotoyer(1, 0);
-        m.Cotoyer(1, 10);
-        Assert.Equal(new Proche(1, 2, 10), m.Proches.Single());
-        for (var id = 2; id <= Memoire.ProchesMax + 5; id++) m.Cotoyer(id, id);
-        Assert.Equal(Memoire.ProchesMax, m.Proches.Count);
-        Assert.Contains(m.Proches, p => p.Id == 1); // le lien le plus fort reste
+        var faible = new LieuConnu(TypeLieu.Nourriture, 5, 5, 0, Rappels: 1);
+        var solide = new LieuConnu(TypeLieu.Nourriture, 50, 50, 0, Rappels: 6);
+        m.Lieux.AddRange([faible, solide]);
 
+        m.Decevoir(faible, 100);
+        Assert.DoesNotContain(faible, m.Lieux);
+        m.Decevoir(solide, 100);
+        Assert.Equal(4, m.Lieux.Single().Rappels);
+        Assert.Null(m.PlusProche(TypeLieu.Nourriture, 0, 0, 100 + Memoire.DureeDeception - 1)); // trop tôt pour y retourner
+        Assert.Equal(50, m.PlusProche(TypeLieu.Nourriture, 0, 0, 100 + Memoire.DureeDeception)!.X);
+    }
+
+    [Fact]
+    public void Memoire_PenseesBornees_SansRepetition()
+    {
+        var m = new Memoire();
         m.Penser(0, "J'ai soif.");
         m.Penser(1, "J'ai soif.");
         Assert.Single(m.Pensees); // pas de répétition immédiate
         for (var i = 0; i < Memoire.PenseesMax + 3; i++) m.Penser(i, $"pensée {i}");
         Assert.Equal(Memoire.PenseesMax, m.Pensees.Count);
         Assert.Equal($"pensée {Memoire.PenseesMax + 2}", m.Pensees[^1].Texte);
+
+        m.Penser(50, "J'ai soif. Je vois de l'eau vers le nord.");
+        Assert.True(m.PenseeRecente("J'ai soif. Je vois de l'eau vers le sud-est.", 3)); // même sens, autre direction
+        Assert.False(m.PenseeRecente("J'ai faim. Il y a de quoi manger vers le nord.", 3));
 
         var copie = m.Copier();
         copie.Penser(99, "autre");
@@ -92,7 +121,7 @@ public sealed class JournalEtMemoireTests : IDisposable
         Assert.NotEmpty(adultes);
         Assert.All(adultes, h => Assert.NotEmpty(h.Memoire.Pensees));
         Assert.True(adultes.Count(h => h.Memoire.Lieux.Count > 0) > adultes.Count * 0.9);
-        Assert.True(adultes.Count(h => h.Memoire.Proches.Count > 0) > adultes.Count * 0.9);
+        Assert.True(adultes.Count(h => h.Liens.Count > 0) > adultes.Count * 0.9);
         Assert.All(humains.Where(h => h.AgeEnAnnees(monde.Secondes) < 1), h => Assert.Empty(h.Memoire.Pensees));
 
         var journal = monde.Etat.JournalNonEnregistre!;
@@ -152,17 +181,13 @@ public sealed class JournalEtMemoireTests : IDisposable
     }
 
     [Fact]
-    public void Fichier_Version5_PasseEnVersion6_SansPerdreSesHumains()
+    public void Fichier_Version5_PasseEnVersion7_SansPerdreSesHumains()
     {
         var depot = new DepotMonde(Fichier);
         depot.Enregistrer(NouveauMonde().Etat);
-        using (var connexion = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={Fichier};Pooling=False"))
-        {
-            connexion.Open();
-            using var commande = connexion.CreateCommand();
-            commande.CommandText = "DROP TABLE journal; DROP TABLE memoire_lieux; DROP TABLE memoire_proches; DROP TABLE pensees; PRAGMA user_version = 5;";
-            commande.ExecuteNonQuery();
-        }
+        DepotMondeTests.ExecuterSql(Fichier, DepotMondeTests.RetourVersion6);
+        DepotMondeTests.ExecuterSql(Fichier,
+            "DROP TABLE journal; DROP TABLE memoire_lieux; DROP TABLE memoire_proches; DROP TABLE pensees; PRAGMA user_version = 5;");
 
         var relu = new DepotMonde(Fichier).Charger()!;
 
@@ -170,6 +195,27 @@ public sealed class JournalEtMemoireTests : IDisposable
         Assert.All(relu.Humains, h => Assert.Empty(h.Memoire.Lieux));
         Assert.Equal(1, relu.ProchainIdJournal);
         Assert.Empty(new DepotMonde(Fichier).LireJournal());
+    }
+
+    [Fact]
+    public void Fichier_Version6_PasseEnVersion7_AvecUnCaractereNeutre_EtSesProchesDevenusDesLiens()
+    {
+        var etat = NouveauMonde().Etat;
+        var h1 = etat.Humains![0];
+        new DepotMonde(Fichier).Enregistrer(etat);
+        DepotMondeTests.ExecuterSql(Fichier, DepotMondeTests.RetourVersion6);
+        DepotMondeTests.ExecuterSql(Fichier, "INSERT INTO memoire_proches VALUES (1, 0, 2, 40, 9000);");
+
+        var relu = new DepotMonde(Fichier).Charger()!.Humains!;
+
+        var p = relu[0].Personnalite;
+        Assert.Equal(h1.Personnalite.Ouverture, p.Ouverture);
+        Assert.Equal(h1.Personnalite.Extraversion, p.Extraversion);
+        Assert.Equal(0.5, p.Agreabilite);
+        Assert.Equal(100, p.Intelligence.Generale);
+        Assert.Equal(h1.Personnalite.Adresse, p.Adresse, precision: 9); // l'adresse d'avant devient l'aptitude manuelle
+        Assert.Equal(new Lien(2, 40, 0, 9000), relu[0].Liens.Single());
+        Assert.Equal(50, relu[0].Humeur);
     }
 
     [Fact]

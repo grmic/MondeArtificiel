@@ -11,12 +11,22 @@ const TYPES: [string, string][] = [
   ["grossesse", "Grossesses"],
   ["fausse-couche", "Fausses couches"],
   ["delaissement", "Délaissements"],
+  ["lien", "Amitiés et hostilités"],
+  ["humeur", "Deuils et humeur"],
+  ["communaute", "Communautés"],
+  ["partage", "Partages"],
+  ["pensee", "Pensées"],
+  ["journee", "Journées"],
+  ["souvenir", "Oublis"],
 ];
+
+/** Types très nombreux : décochés au départ, et non reçus en direct (le bouton ↻ les relit). */
+const FREQUENTS = new Set(["accouplement", "pensee", "journee", "souvenir", "partage"]);
 
 /** Journal du monde : filtrable par type et par humain, mis à jour en direct, avec les plus anciens à la demande. */
 export class PanneauJournal {
   private evenements: Evenement[] = [];
-  private types = new Set(TYPES.map(([cle]) => cle).filter((c) => c !== "accouplement"));
+  private types = new Set(TYPES.map(([cle]) => cle).filter((c) => !FREQUENTS.has(c)));
   private humain: number | null = null;
   private plusAncien = true;
 
@@ -30,6 +40,10 @@ export class PanneauJournal {
     connexion.on("Journal", (nouveaux: Evenement[]) => {
       this.recevoir(nouveaux);
     });
+  }
+
+  fermer(): void {
+    this.racine.hidden = true;
   }
 
   basculer(): void {
@@ -67,10 +81,16 @@ export class PanneauJournal {
     const r = this.racine;
     const tete = el("div", "tete");
     tete.append(el("h2", undefined, "Journal"));
+    const relire = el("button", "fermer", "↻");
+    relire.type = "button";
+    relire.title = "Relire le journal (les pensées, journées et oublis n'arrivent pas en direct)";
+    relire.addEventListener("click", () => void this.recharger());
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.addEventListener("click", () => this.basculer());
-    tete.append(fermer);
+    const boutons = el("span");
+    boutons.append(relire, fermer);
+    tete.append(boutons);
 
     const filtres = el("div", "filtres");
     for (const [cle, libelle] of TYPES) {

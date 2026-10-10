@@ -13,7 +13,7 @@ namespace Monde.Stockage;
 public sealed class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 6;
+    public const int VersionSchema = 7;
 
     private readonly string _connexion;
 
@@ -198,6 +198,58 @@ public sealed class DepotMonde
                 );
                 """);
         }
+        if (actuelle < 7)
+        {
+            // Version 7 : caractère complet (Big Five, transcendance), intelligence, humeur et deuil, liens,
+            // communautés, mémoire des lieux renforcée par les rappels ; index du journal adaptés au filtrage.
+            Executer(connexion, transaction, """
+                ALTER TABLE humains ADD COLUMN agreabilite REAL;
+                ALTER TABLE humains ADD COLUMN nevrosisme REAL;
+                ALTER TABLE humains ADD COLUMN transcendance REAL;
+                ALTER TABLE humains ADD COLUMN qi REAL;
+                ALTER TABLE humains ADD COLUMN qi_verbal REAL;
+                ALTER TABLE humains ADD COLUMN qi_spatial REAL;
+                ALTER TABLE humains ADD COLUMN qi_manuel REAL;
+                ALTER TABLE humains ADD COLUMN qi_memoire REAL;
+                ALTER TABLE humains ADD COLUMN qi_art REAL;
+                ALTER TABLE humains ADD COLUMN humeur REAL NOT NULL DEFAULT 50;
+                ALTER TABLE humains ADD COLUMN chagrin REAL NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN deuil_de INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN jours_sombres INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN deprime_depuis INTEGER;
+                ALTER TABLE humains ADD COLUMN communaute INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN inconfort REAL NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN compagnie INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE memoire_lieux ADD COLUMN rappels INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE memoire_lieux ADD COLUMN decu_le INTEGER;
+                CREATE TABLE IF NOT EXISTS liens (
+                    humain      INTEGER NOT NULL,
+                    rang        INTEGER NOT NULL,
+                    autre       INTEGER NOT NULL,
+                    familiarite REAL    NOT NULL,
+                    affection   REAL    NOT NULL,
+                    derniere    INTEGER NOT NULL,
+                    amis        INTEGER NOT NULL,
+                    rivaux      INTEGER NOT NULL,
+                    PRIMARY KEY (humain, rang)
+                );
+                INSERT OR IGNORE INTO liens (humain, rang, autre, familiarite, affection, derniere, amis, rivaux)
+                    SELECT humain, rang, autre, min(100, rencontres), 0, derniere, 0, 0 FROM memoire_proches;
+                DROP TABLE memoire_proches;
+                CREATE TABLE IF NOT EXISTS communautes (
+                    id           INTEGER PRIMARY KEY,
+                    nom          TEXT    NOT NULL,
+                    fondee_le    INTEGER NOT NULL,
+                    dispersee_le INTEGER,
+                    figure       INTEGER NOT NULL
+                );
+                DROP INDEX IF EXISTS journal_humain;
+                DROP INDEX IF EXISTS journal_autre;
+                CREATE INDEX IF NOT EXISTS journal_humain_id ON journal (humain, id);
+                CREATE INDEX IF NOT EXISTS journal_autre_id ON journal (autre, id);
+                CREATE INDEX IF NOT EXISTS journal_type_id ON journal (type, id);
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -237,7 +289,9 @@ public sealed class DepotMonde
                    x, y, faim, soif, fatigue, froid, sante, activite,
                    cible_x, cible_y, detour, malade_jusqua, mort_le, cause_mort,
                    mere, pere, desir, enceinte_depuis, pere_enfant, dernier_accouchement,
-                   attachement, puberte, fin_fertilite, fertilite, terme_grossesse
+                   attachement, puberte, fin_fertilite, fertilite, terme_grossesse,
+                   agreabilite, nevrosisme, transcendance, qi, qi_verbal, qi_spatial, qi_manuel, qi_memoire, qi_art,
+                   humeur, chagrin, deuil_de, jours_sombres, deprime_depuis, communaute, inconfort, compagnie
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -258,8 +312,7 @@ public sealed class DepotMonde
                     PartenaireId = lecteur.GetInt32(3),
                     Emplacement = lecteur.GetInt32(4),
                     Naissance = lecteur.GetInt64(5),
-                    Personnalite = new Personnalite(lecteur.GetDouble(6), lecteur.GetDouble(7), lecteur.GetDouble(8),
-                        lecteur.GetDouble(9), lecteur.GetDouble(10), lecteur.IsDBNull(31) ? 0.8 : lecteur.GetDouble(31)),
+                    Personnalite = LirePersonnalite(lecteur),
                     X = lecteur.GetInt32(11),
                     Y = lecteur.GetInt32(12),
                     Faim = lecteur.GetDouble(13),
@@ -281,14 +334,54 @@ public sealed class DepotMonde
                     PereEnfantId = lecteur.GetInt32(29),
                     DernierAccouchement = lecteur.IsDBNull(30) ? null : lecteur.GetInt64(30),
                     TermeGrossesse = lecteur.IsDBNull(35) ? null : lecteur.GetInt64(35),
+                    Humeur = lecteur.GetDouble(45),
+                    Chagrin = lecteur.GetDouble(46),
+                    DeuilDeId = lecteur.GetInt32(47),
+                    JoursSombres = lecteur.GetInt32(48),
+                    DeprimeDepuis = lecteur.IsDBNull(49) ? null : lecteur.GetInt64(49),
+                    CommunauteId = lecteur.GetInt32(50),
+                    InconfortDuJour = lecteur.GetDouble(51),
+                    CompagnieDuJour = lecteur.GetInt32(52),
                 });
             }
         }
         if (humains.Count > 0) LireMemoires(connexion, humains);
 
+        commande.CommandText = "SELECT id, nom, fondee_le, dispersee_le, figure FROM communautes ORDER BY id;";
+        var communautes = new List<Communaute>();
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read())
+            {
+                communautes.Add(new Communaute
+                {
+                    Id = l.GetInt32(0), Nom = l.GetString(1), FondeeLe = l.GetInt64(2),
+                    DisperseeLe = l.IsDBNull(3) ? null : l.GetInt64(3), FigureId = l.GetInt32(4),
+                });
+            }
+        }
+        if (communautes.Count > 0) etat = etat with { Communautes = communautes };
+
         commande.CommandText = "SELECT coalesce(max(id), 0) + 1 FROM journal;";
         etat = etat with { ProchainIdJournal = Convert.ToInt64(commande.ExecuteScalar()) };
         return humains.Count > 0 ? etat with { Humains = humains } : etat;
+    }
+
+    /// <summary>
+    /// Caractère d'un humain. Un monde enregistré avant la version 7 n'avait que cinq traits : la curiosité devient
+    /// l'ouverture, la sociabilité l'extraversion, la prudence la conscience ; les nouveaux traits sont moyens.
+    /// </summary>
+    private static Personnalite LirePersonnalite(SqliteDataReader l)
+    {
+        var attachement = l.IsDBNull(31) ? 0.8 : l.GetDouble(31);
+        if (l.IsDBNull(36))
+        {
+            return new Personnalite(l.GetDouble(6), l.GetDouble(7), l.GetDouble(8), 0.5, 0.5, 0.5, attachement, l.GetDouble(9),
+                Intelligence.Moyenne with { Manuelle = 55 + 90 * l.GetDouble(10) });
+        }
+        return new Personnalite(l.GetDouble(6), l.GetDouble(7), l.GetDouble(8), l.GetDouble(36), l.GetDouble(37), l.GetDouble(38),
+            attachement, l.GetDouble(9),
+            new Intelligence(l.GetDouble(39), l.GetDouble(40), l.GetDouble(41), l.GetDouble(42), l.GetDouble(43), l.GetDouble(44)));
     }
 
     private static void LireMemoires(SqliteConnection connexion, List<Humain> humains)
@@ -296,18 +389,23 @@ public sealed class DepotMonde
         Humain? Trouver(long id) => id >= 1 && id <= humains.Count ? humains[(int)id - 1] : null;
         using var commande = connexion.CreateCommand();
         // Les rangs gardent l'ordre des listes, donc la simulation reprend à l'identique.
-        commande.CommandText = "SELECT humain, type, x, y, vu_le FROM memoire_lieux ORDER BY humain, rang;";
+        commande.CommandText = "SELECT humain, type, x, y, vu_le, rappels, decu_le FROM memoire_lieux ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
         {
             while (l.Read())
             {
-                Trouver(l.GetInt64(0))?.Memoire.Lieux.Add(new LieuConnu((TypeLieu)l.GetByte(1), l.GetInt32(2), l.GetInt32(3), l.GetInt64(4)));
+                Trouver(l.GetInt64(0))?.Memoire.Lieux.Add(new LieuConnu((TypeLieu)l.GetByte(1), l.GetInt32(2), l.GetInt32(3), l.GetInt64(4),
+                    l.GetInt32(5), l.IsDBNull(6) ? null : l.GetInt64(6)));
             }
         }
-        commande.CommandText = "SELECT humain, autre, rencontres, derniere FROM memoire_proches ORDER BY humain, rang;";
+        commande.CommandText = "SELECT humain, autre, familiarite, affection, derniere, amis, rivaux FROM liens ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
         {
-            while (l.Read()) Trouver(l.GetInt64(0))?.Memoire.Proches.Add(new Proche(l.GetInt32(1), l.GetInt32(2), l.GetInt64(3)));
+            while (l.Read())
+            {
+                Trouver(l.GetInt64(0))?.Liens.Add(new Lien(l.GetInt32(1), l.GetDouble(2), l.GetDouble(3), l.GetInt64(4),
+                    l.GetBoolean(5), l.GetBoolean(6)));
+            }
         }
         commande.CommandText = "SELECT humain, secondes, texte FROM pensees ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
@@ -328,7 +426,7 @@ public sealed class DepotMonde
         {
             Executer(connexion, transaction,
                 "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; " +
-                "DELETE FROM memoire_lieux; DELETE FROM memoire_proches; DELETE FROM pensees;");
+                "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes;");
         }
 
         using (var commande = connexion.CreateCommand())
@@ -377,20 +475,26 @@ public sealed class DepotMonde
                     x, y, faim, soif, fatigue, froid, sante, activite,
                     cible_x, cible_y, detour, malade_jusqua, mort_le, cause_mort,
                     mere, pere, desir, enceinte_depuis, pere_enfant, dernier_accouchement,
-                    attachement, puberte, fin_fertilite, fertilite, terme_grossesse)
+                    attachement, puberte, fin_fertilite, fertilite, terme_grossesse,
+                    agreabilite, nevrosisme, transcendance, qi, qi_verbal, qi_spatial, qi_manuel, qi_memoire, qi_art,
+                    humeur, chagrin, deuil_de, jours_sombres, deprime_depuis, communaute, inconfort, compagnie)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
                     $cible_x, $cible_y, $detour, $malade_jusqua, $mort_le, $cause_mort,
                     $mere, $pere, $desir, $enceinte_depuis, $pere_enfant, $dernier_accouchement,
-                    $attachement, $puberte, $fin_fertilite, $fertilite, $terme_grossesse);
+                    $attachement, $puberte, $fin_fertilite, $fertilite, $terme_grossesse,
+                    $agreabilite, $nevrosisme, $transcendance, $qi, $qi_verbal, $qi_spatial, $qi_manuel, $qi_memoire, $qi_art,
+                    $humeur, $chagrin, $deuil_de, $jours_sombres, $deprime_depuis, $communaute, $inconfort, $compagnie);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
                 "$x", "$y", "$faim", "$soif", "$fatigue", "$froid", "$sante", "$activite",
                 "$cible_x", "$cible_y", "$detour", "$malade_jusqua", "$mort_le", "$cause_mort",
                 "$mere", "$pere", "$desir", "$enceinte_depuis", "$pere_enfant", "$dernier_accouchement",
-                "$attachement", "$puberte", "$fin_fertilite", "$fertilite", "$terme_grossesse"];
+                "$attachement", "$puberte", "$fin_fertilite", "$fertilite", "$terme_grossesse",
+                "$agreabilite", "$nevrosisme", "$transcendance", "$qi", "$qi_verbal", "$qi_spatial", "$qi_manuel", "$qi_memoire", "$qi_art",
+                "$humeur", "$chagrin", "$deuil_de", "$jours_sombres", "$deprime_depuis", "$communaute", "$inconfort", "$compagnie"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -398,7 +502,8 @@ public sealed class DepotMonde
                 object[] valeurs =
                 [
                     h.Id, h.Nom, (int)h.Sexe, h.PartenaireId, h.Emplacement, h.Naissance,
-                    h.Personnalite.Curiosite, h.Personnalite.Prudence, h.Personnalite.Sociabilite,
+                    // Colonnes d'origine : curiosite = ouverture, prudence = conscience, sociabilite = extraversion.
+                    h.Personnalite.Ouverture, h.Personnalite.Conscience, h.Personnalite.Extraversion,
                     h.Personnalite.Endurance, h.Personnalite.Adresse,
                     h.X, h.Y, h.Faim, h.Soif, h.Fatigue, h.Froid, h.Sante, (int)h.Activite,
                     h.CibleX, h.CibleY, h.Detour, h.MaladeJusqua, h.MortLe is { } m ? m : DBNull.Value, (int)h.CauseDeMort,
@@ -406,6 +511,11 @@ public sealed class DepotMonde
                     h.DernierAccouchement is { } d ? d : DBNull.Value,
                     h.Personnalite.Attachement, h.Biologie.AgePuberte, h.Biologie.AgeFinFertilite, h.Biologie.Fertilite,
                     h.TermeGrossesse is { } t ? t : DBNull.Value,
+                    h.Personnalite.Agreabilite, h.Personnalite.Nevrosisme, h.Personnalite.Transcendance,
+                    h.Personnalite.Intelligence.Generale, h.Personnalite.Intelligence.Verbale, h.Personnalite.Intelligence.Spatiale,
+                    h.Personnalite.Intelligence.Manuelle, h.Personnalite.Intelligence.Memoire, h.Personnalite.Intelligence.Artistique,
+                    h.Humeur, h.Chagrin, h.DeuilDeId, h.JoursSombres, h.DeprimeDepuis is { } dd ? dd : DBNull.Value,
+                    h.CommunauteId, h.InconfortDuJour, h.CompagnieDuJour,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
@@ -413,6 +523,7 @@ public sealed class DepotMonde
         }
 
         if (etat.Humains is { } tous) EnregistrerMemoires(connexion, transaction, tous);
+        if (etat.Communautes is { } communautes) EnregistrerCommunautes(connexion, transaction, communautes);
         if (etat.JournalNonEnregistre is { Count: > 0 } journal) EnregistrerJournal(connexion, transaction, journal);
 
         transaction.Commit();
@@ -420,11 +531,13 @@ public sealed class DepotMonde
 
     private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
     {
-        Executer(connexion, transaction, "DELETE FROM memoire_lieux; DELETE FROM memoire_proches; DELETE FROM pensees;");
+        Executer(connexion, transaction, "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees;");
         using var lieux = Preparer(connexion, transaction,
-            "INSERT INTO memoire_lieux (humain, rang, type, x, y, vu_le) VALUES ($h, $r, $t, $x, $y, $v);", "$h", "$r", "$t", "$x", "$y", "$v");
-        using var proches = Preparer(connexion, transaction,
-            "INSERT INTO memoire_proches (humain, rang, autre, rencontres, derniere) VALUES ($h, $r, $a, $n, $d);", "$h", "$r", "$a", "$n", "$d");
+            "INSERT INTO memoire_lieux (humain, rang, type, x, y, vu_le, rappels, decu_le) VALUES ($h, $r, $t, $x, $y, $v, $n, $d);",
+            "$h", "$r", "$t", "$x", "$y", "$v", "$n", "$d");
+        using var liens = Preparer(connexion, transaction,
+            "INSERT INTO liens (humain, rang, autre, familiarite, affection, derniere, amis, rivaux) VALUES ($h, $r, $a, $f, $af, $d, $am, $ri);",
+            "$h", "$r", "$a", "$f", "$af", "$d", "$am", "$ri");
         using var pensees = Preparer(connexion, transaction,
             "INSERT INTO pensees (humain, rang, secondes, texte) VALUES ($h, $r, $s, $t);", "$h", "$r", "$s", "$t");
         foreach (var h in humains)
@@ -433,18 +546,26 @@ public sealed class DepotMonde
             for (var r = 0; r < m.Lieux.Count; r++)
             {
                 var l = m.Lieux[r];
-                Lancer(lieux, h.Id, r, (int)l.Type, l.X, l.Y, l.VuLe);
+                Lancer(lieux, h.Id, r, (int)l.Type, l.X, l.Y, l.VuLe, l.Rappels, l.DecuLe is { } d ? d : DBNull.Value);
             }
-            for (var r = 0; r < m.Proches.Count; r++)
+            for (var r = 0; r < h.Liens.Count; r++)
             {
-                var p = m.Proches[r];
-                Lancer(proches, h.Id, r, p.Id, p.Rencontres, p.Derniere);
+                var l = h.Liens[r];
+                Lancer(liens, h.Id, r, l.Id, l.Familiarite, l.Affection, l.Derniere, l.Amis, l.Rivaux);
             }
             for (var r = 0; r < m.Pensees.Count; r++)
             {
                 Lancer(pensees, h.Id, r, m.Pensees[r].Secondes, m.Pensees[r].Texte);
             }
         }
+    }
+
+    private static void EnregistrerCommunautes(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Communaute> communautes)
+    {
+        using var commande = Preparer(connexion, transaction,
+            "INSERT OR REPLACE INTO communautes (id, nom, fondee_le, dispersee_le, figure) VALUES ($i, $n, $f, $d, $g);",
+            "$i", "$n", "$f", "$d", "$g");
+        foreach (var c in communautes) Lancer(commande, c.Id, c.Nom, c.FondeeLe, c.DisperseeLe is { } d ? d : DBNull.Value, c.FigureId);
     }
 
     private static void EnregistrerJournal(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<EvenementJournal> journal)

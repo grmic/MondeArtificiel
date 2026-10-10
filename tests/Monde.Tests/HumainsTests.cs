@@ -18,7 +18,7 @@ public sealed class HumainsTests
         var etat = monde.Etat;
         var humains = string.Join("\n", etat.Humains!.Select(h =>
             $"{h.Id} {h.X} {h.Y} {h.Faim:R} {h.Soif:R} {h.Fatigue:R} {h.Froid:R} {h.Sante:R} {h.Activite} {h.CibleX} {h.CibleY} {h.Detour} {h.MaladeJusqua} {h.MortLe} {h.CauseDeMort} "
-            + $"{string.Join(";", h.Memoire.Lieux)} {string.Join(";", h.Memoire.Proches)} {string.Join(";", h.Memoire.Pensees)}"));
+            + $"{string.Join(";", h.Memoire.Lieux)} {string.Join(";", h.Liens)} {h.Humeur:R} {h.Chagrin:R} {h.CommunauteId} {h.DeprimeDepuis} {string.Join(";", h.Memoire.Pensees)}"));
         return $"{etat.Secondes} {etat.Pas} {string.Join(",", etat.Alea!)}\n{string.Join(",", etat.Gibier!)}\n{string.Join(",", etat.Plantes!)}\n{humains}";
     }
 

@@ -20,7 +20,15 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Delaissement] = "delaissement",
         [TypeEvenement.Decouverte] = "decouverte",
         [TypeEvenement.MortNe] = "mort-ne",
+        [TypeEvenement.Pensee] = "pensee",
+        [TypeEvenement.Lien] = "lien",
+        [TypeEvenement.Humeur] = "humeur",
+        [TypeEvenement.Communaute] = "communaute",
+        [TypeEvenement.Souvenir] = "souvenir",
+        [TypeEvenement.Partage] = "partage",
+        [TypeEvenement.Journee] = "journee",
     };
+
 
     public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, Calendrier.Decomposer(e.Secondes).ToString(),
         Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, e.Texte,
@@ -43,24 +51,37 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 /// <summary>Filtre du journal demandé par le navigateur.</summary>
 public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, long? AvantId = null, int Limite = 100);
 
-public sealed record LieuDto(string Type, int X, int Y, string VuLe);
-
-public sealed record ProcheDto(int Id, string Nom, int Jours, string Derniere);
+public sealed record LieuDto(string Type, int X, int Y, string VuLe, int Visites);
 
 public sealed record PenseeDto(string Date, string Texte);
 
-/// <summary>Fiche complète d'un humain : état, caractère, biologie, famille, mémoire, pensées et histoire.</summary>
+/// <summary>Un trait affiché : nom, valeur (0 à 1, ou QI) et qualification en mots.</summary>
+public sealed record TraitDto(string Nom, double Valeur, string Mots, string Aide);
+
+public sealed record LienDto(int Id, string Nom, int Familiarite, int Affection, string Statut, bool Vivant);
+
+public sealed record AmeDto(string Etat, int Humeur, int Chagrin, int DeuilDe, string? DeprimeDepuis);
+
+public sealed record CommunauteRefDto(int Id, string Nom);
+
+/// <summary>Fiche complète d'un humain : état, caractère, intelligence, humeur, liens, mémoire, pensées et histoire.</summary>
 public sealed record FicheDto(
     HumainDto Humain,
-    IReadOnlyDictionary<string, double> Caractere,
+    IReadOnlyList<TraitDto> Caractere,
+    IReadOnlyList<TraitDto> Intelligence,
     IReadOnlyDictionary<string, double> Biologie,
+    AmeDto? Ame,
+    CommunauteRefDto? Communaute,
     IReadOnlyList<int> Enfants,
     IReadOnlyList<PenseeDto> Pensees,
     IReadOnlyList<LieuDto> Lieux,
-    IReadOnlyList<ProcheDto> Proches,
+    IReadOnlyList<LienDto> Liens,
     IReadOnlyList<EvenementDto> Histoire)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
+
+    private static TraitDto Trait(string nom, double v, string aide) => new(nom, Math.Round(v, 2), Psyche.Niveau(v), aide);
+    private static TraitDto Qi(string nom, double v, string aide) => new(nom, Math.Round(v), Monde.Simulation.Humains.Intelligence.Qualifier(v), aide);
 
     public static FicheDto? Depuis(ServiceMonde service, int id)
     {
@@ -70,33 +91,63 @@ public sealed record FicheDto(
         var h = humains[id - 1];
         string Nom(int i) => i >= 1 && i <= humains.Count ? humains[i - 1].Nom : "?";
         var p = h.Personnalite;
+        var i = p.Intelligence;
         var b = h.Biologie;
+        var communaute = h.CommunauteId == 0 ? null : monde.Communautes().FirstOrDefault(c => c.Id == h.CommunauteId);
+        // L'histoire ne reprend pas les pensées : elles ont leur propre rubrique.
+        var types = EvenementDto.Cles.Keys.Where(t => t != TypeEvenement.Pensee).ToList();
         return new FicheDto(
             HumainDto.Depuis(h, maintenant),
-            new Dictionary<string, double>
-            {
-                ["curiosité"] = Math.Round(p.Curiosite, 2),
-                ["prudence"] = Math.Round(p.Prudence, 2),
-                ["sociabilité"] = Math.Round(p.Sociabilite, 2),
-                ["endurance"] = Math.Round(p.Endurance, 2),
-                ["adresse"] = Math.Round(p.Adresse, 2),
-                ["attachement"] = Math.Round(p.Attachement, 2),
-            },
+            [
+                Trait("ouverture", p.Ouverture, "curiosité, imagination, goût du nouveau"),
+                Trait("conscience", p.Conscience, "application, prévoyance"),
+                Trait("extraversion", p.Extraversion, "besoin des autres ; bas : replié sur soi"),
+                Trait("agréabilité", p.Agreabilite, "bienveillance, partage ; bas : méfiant, querelleur"),
+                Trait("névrosisme", p.Nevrosisme, "sensibilité à l'anxiété et à la tristesse"),
+                Trait("transcendance", p.Transcendance, "penchant spirituel et contemplatif ; bas : rationnel, terre à terre"),
+                Trait("charisme", p.Charisme, "déduit : extraversion, calme, chaleur, aisance à communiquer"),
+                Trait("attachement", p.Attachement, "lien avec ses enfants"),
+                Trait("endurance", p.Endurance, "résistance à la fatigue et aux maladies"),
+            ],
+            [
+                Qi("générale", i.Generale, "comprendre, raisonner, apprendre"),
+                Qi("verbale", i.Verbale, "communiquer, imiter sons et gestes"),
+                Qi("spatiale", i.Spatiale, "s'orienter, se représenter les lieux"),
+                Qi("manuelle", i.Manuelle, "adresse des mains et du corps"),
+                Qi("mémoire", i.Memoire, "retenir les lieux, oublier moins vite"),
+                Qi("artistique", i.Artistique, "sens des formes, des rythmes, des couleurs"),
+            ],
             new Dictionary<string, double>
             {
                 ["puberté (ans)"] = Math.Round(b.AgePuberte, 1),
                 ["fin de fertilité (ans)"] = Math.Round(b.AgeFinFertilite, 1),
                 ["fertilité"] = Math.Round(b.Fertilite, 2),
             },
+            h.EstVivant && !h.EstBebe(maintenant)
+                ? new AmeDto(Libelles.Humeur(h), (int)Math.Round(h.Humeur), (int)Math.Round(h.Chagrin), h.DeuilDeId,
+                    h.DeprimeDepuis is { } d ? Date(d) : null)
+                : null,
+            communaute is null ? null : new CommunauteRefDto(communaute.Id, communaute.Nom),
             humains.Where(e => e.MereId == id || e.PereId == id).Select(e => e.Id).ToList(),
             h.Memoire.Pensees.AsEnumerable().Reverse().Select(x => new PenseeDto(Date(x.Secondes), x.Texte)).ToList(),
-            h.Memoire.Lieux.OrderBy(l => l.Type).ThenByDescending(l => l.VuLe)
+            h.Memoire.Lieux.OrderBy(l => l.Type).ThenByDescending(l => l.Rappels).ThenByDescending(l => l.VuLe)
                 .Select(l => new LieuDto(l.Type switch { TypeLieu.Eau => "eau", TypeLieu.Nourriture => "nourriture", _ => "abri" },
-                    l.X, l.Y, Date(l.VuLe))).ToList(),
-            h.Memoire.Proches.OrderByDescending(x => x.Rencontres)
-                .Select(x => new ProcheDto(x.Id, Nom(x.Id), x.Rencontres, Date(x.Derniere))).ToList(),
-            Journal(service, new FiltreJournal(Humain: id, Limite: 200), []).Select(EvenementDto.Depuis).ToList());
+                    l.X, l.Y, Date(l.VuLe), l.Rappels + 1)).ToList(),
+            h.Liens.OrderByDescending(l => Math.Abs(l.Affection)).ThenByDescending(l => l.Familiarite)
+                .Select(l => new LienDto(l.Id, Nom(l.Id), (int)Math.Round(l.Familiarite), (int)Math.Round(l.Affection),
+                    Statut(l), humains[l.Id - 1].EstVivant)).ToList(),
+            Journal(service, new FiltreJournal(Humain: id, Limite: 200), types).Select(EvenementDto.Depuis).ToList());
     }
+
+    private static string Statut(Lien l) => l switch
+    {
+        { Rivaux: true } => "hostile",
+        { Affection: >= 70 } => "très proche",
+        { Amis: true } => "ami",
+        { Affection: <= -10 } => "méfiance",
+        { Familiarite: >= 30 } => "familier",
+        _ => "connaissance",
+    };
 
     /// <summary>Journal enregistré et événements récents pas encore enregistrés, fusionnés, du plus récent au plus ancien.</summary>
     public static List<EvenementJournal> Journal(ServiceMonde service, FiltreJournal filtre, List<TypeEvenement> types)
@@ -109,5 +160,32 @@ public sealed record FicheDto(
         var recents = service.Monde.JournalRecent().Where(Convient);
         var enregistres = service.Depot.LireJournal(types, filtre.Humain, filtre.AvantId, limite);
         return recents.Concat(enregistres).DistinctBy(e => e.Id).OrderByDescending(e => e.Id).Take(limite).ToList();
+    }
+}
+
+public sealed record MembreDto(int Id, string Nom, string Etape);
+
+/// <summary>Une communauté : qui en fait partie, depuis quand, où elle vit, autour de qui.</summary>
+public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? DisperseeLe, int Figure, string NomFigure,
+    IReadOnlyList<MembreDto> Membres, int X, int Y)
+{
+    public static List<CommunauteDto> Toutes(ServiceMonde service)
+    {
+        var monde = service.Monde;
+        var (maintenant, humains) = monde.InstantaneHumains();
+        var parCommunaute = humains.Where(h => h.EstVivant && h.CommunauteId != 0).ToLookup(h => h.CommunauteId);
+        return monde.Communautes()
+            .OrderBy(c => c.DisperseeLe is null ? 0 : 1).ThenByDescending(c => parCommunaute[c.Id].Count()).ThenBy(c => c.Id)
+            .Select(c =>
+            {
+                var membres = parCommunaute[c.Id].ToList();
+                var x = membres.Count > 0 ? (int)Math.Round(membres.Average(m => m.X)) : 0;
+                var y = membres.Count > 0 ? (int)Math.Round(membres.Average(m => m.Y)) : 0;
+                return new CommunauteDto(c.Id, c.Nom, Calendrier.Decomposer(c.FondeeLe).ToString(),
+                    c.DisperseeLe is { } d ? Calendrier.Decomposer(d).ToString() : null,
+                    c.FigureId, humains[c.FigureId - 1].Nom,
+                    membres.Select(m => new MembreDto(m.Id, m.Nom, m.EstBebe(maintenant) ? "bébé" : m.EstEnfant(maintenant) ? "enfant" : "adulte")).ToList(),
+                    x, y);
+            }).ToList();
     }
 }

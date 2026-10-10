@@ -21,6 +21,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Numéro que portera le prochain événement du journal.</summary>
     public long ProchainIdJournal { get; init; } = 1;
+
+    /// <summary>Communautés, actives ou dispersées (numérotées de 1 à N).</summary>
+    public IReadOnlyList<Communaute>? Communautes { get; init; }
 }
 
 /// <summary>
@@ -41,6 +44,8 @@ public sealed class MondeSimule
     private readonly Ecosysteme _ecosysteme;
     private readonly Alea _alea;
     private readonly Comportement _comportement;
+    private readonly VieSociale _social;
+    private readonly List<Communaute> _communautes;
     private readonly HashSet<string> _noms;
     private long _secondes;
     private long _pas;
@@ -51,7 +56,7 @@ public sealed class MondeSimule
     private readonly Queue<EvenementJournal> _journalRecent = new();
     private long _prochainIdJournal;
 
-    /// <summary>Nombre d'événements récents gardés en mémoire pour les navigateurs.</summary>
+    /// <summary>Nombre d'événements récents gardés en mémoire pour les navigateurs (hors événements fréquents).</summary>
     public const int TailleJournalRecent = 500;
     private string? _objectifAtteint;
 
@@ -74,7 +79,9 @@ public sealed class MondeSimule
             : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes);
         _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
-        _comportement = new Comportement(carte, _ecosysteme, _alea);
+        _social = new VieSociale(_alea);
+        _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social };
+        _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
         _noms = _humains.Select(x => x.Nom).ToHashSet();
         _prochainIdJournal = Math.Max(1, etat.ProchainIdJournal);
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
@@ -123,6 +130,7 @@ public sealed class MondeSimule
                     Alea = _alea.Etat,
                     JournalNonEnregistre = _journalNonEnregistre.ToList(),
                     ProchainIdJournal = _prochainIdJournal,
+                    Communautes = _communautes.Select(c => c.Copier()).ToList(),
                 };
             }
         }
@@ -145,8 +153,15 @@ public sealed class MondeSimule
         var numerote = evenement.Id > 0 ? evenement : evenement with { Id = _prochainIdJournal };
         _prochainIdJournal = Math.Max(_prochainIdJournal, numerote.Id + 1);
         _journalNonEnregistre.Add(numerote);
+        if (TypesEvenement.EstFrequent(numerote.Type)) return;
         _journalRecent.Enqueue(numerote);
         if (_journalRecent.Count > TailleJournalRecent) _journalRecent.Dequeue();
+    }
+
+    /// <summary>Copie des communautés (actives et dispersées).</summary>
+    public List<Communaute> Communautes()
+    {
+        lock (_verrou) return _communautes.Select(c => c.Copier()).ToList();
     }
 
     /// <summary>Copie légère des humains seulement (diffusion fréquente vers les navigateurs).</summary>
@@ -302,28 +317,48 @@ public sealed class MondeSimule
             var fils = bebe.Sexe == Sexe.Femme ? "fille" : "fils";
             _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
                 $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}."));
+            // Une naissance réjouit la mère, et le père s'il est là et attaché à ses enfants.
+            VieSociale.Rejouir(mere, 20 * mere.Personnalite.Attachement);
+            if (pere is { EstVivant: true }) VieSociale.Rejouir(pere, 15 * pere.Personnalite.Attachement);
         }
         _comportement.Accouchements.Clear();
 
-        if (nouveauJour) Cotoyer();
+        foreach (var mort in _comportement.Deces) _social.Endeuiller(mort, _humains, _secondes);
+        _comportement.Deces.Clear();
+
+        if (nouveauJour)
+        {
+            _comportement.Journal.AddRange(_comportement.Routine.Resumer(_humains, _secondes));
+            _social.Journee(_humains, _secondes);
+            Oublier();
+            _social.Humeurs(_humains, _secondes);
+            if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0) _social.Regrouper(_humains, _communautes, _secondes, _noms);
+        }
         foreach (var e in _comportement.Journal) Ajouter(e);
         _comportement.Journal.Clear();
+        foreach (var e in _social.Journal) Ajouter(e);
+        _social.Journal.Clear();
     }
 
-    /// <summary>Une fois par jour : chacun retient les humains qui sont près de lui (même case ou case voisine).</summary>
-    private void Cotoyer()
+    /// <summary>Une fois par jour, chacun peut oublier des lieux, plus ou moins vite selon sa mémoire.</summary>
+    private void Oublier()
     {
-        var vivants = _humains.Where(h => h.EstVivant && !h.EstBebe(_secondes)).ToList();
-        for (var i = 0; i < vivants.Count; i++)
+        foreach (var h in _humains)
         {
-            var a = vivants[i];
-            for (var j = i + 1; j < vivants.Count; j++)
+            if (!h.EstVivant || h.EstBebe(_secondes)) continue;
+            foreach (var l in h.Memoire.OublierAvecLeTemps(h.Personnalite.Intelligence.Memoire, _alea))
             {
-                var b = vivants[j];
-                if (Math.Abs(a.X - b.X) > 1 || Math.Abs(a.Y - b.Y) > 1) continue;
-                a.Memoire.Cotoyer(b.Id, _secondes);
-                b.Memoire.Cotoyer(a.Id, _secondes);
+                var quoi = l.Type switch
+                {
+                    TypeLieu.Eau => "un point d'eau",
+                    TypeLieu.Nourriture => "un coin où manger",
+                    _ => "un abri",
+                };
+                _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Souvenir, h.Id, 0,
+                    $"{h.Nom} a oublié {quoi} (en {l.X}, {l.Y}){(l.Rappels > 0 ? $", où {Pronom(h)} était allé{(h.Sexe == Sexe.Femme ? "e" : "")} {l.Rappels + 1} fois" : "")}."));
             }
         }
     }
+
+    private static string Pronom(Humain h) => h.Sexe == Sexe.Femme ? "elle" : "il";
 }

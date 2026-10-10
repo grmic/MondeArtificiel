@@ -25,6 +25,8 @@ public enum Activite : byte
     SuivreParent = 13,
     PorteParSaMere = 14,
     VeillerEnfant = 15,
+    RejoindreProche = 16,
+    EviterRival = 17,
 }
 
 public enum CauseDeMort : byte
@@ -37,15 +39,44 @@ public enum CauseDeMort : byte
     Epuisement = 5,
     Vieillesse = 6,
     Accouchement = 7,
+    /// <summary>Suicide, au terme d'une longue détresse.</summary>
+    Desespoir = 8,
 }
 
-/// <summary>Traits de caractère, chacun entre 0 et 1, tirés au hasard à la naissance.</summary>
-/// <remarks>
-/// Attachement : force du lien avec ses enfants. Élevé chez la plupart, faible chez quelques-uns ;
-/// un parent peu attaché s'éloigne de ses enfants, et peut abandonner un bébé quand il souffre.
-/// </remarks>
-public sealed record Personnalite(double Curiosite, double Prudence, double Sociabilite, double Endurance, double Adresse,
-    double Attachement);
+/// <summary>
+/// Caractère et intelligence, innés et en partie hérités (voir <see cref="Psyche"/>).
+/// Les traits vont de 0 à 1, autour de 0,5.
+/// </summary>
+/// <param name="Ouverture">Curiosité, imagination, goût de la nouveauté (Big Five).</param>
+/// <param name="Conscience">Application, prévoyance, constance (Big Five).</param>
+/// <param name="Extraversion">Besoin des autres, énergie sociale ; bas : replié sur soi (Big Five).</param>
+/// <param name="Agreabilite">Bienveillance, envie de partager, de coopérer ; bas : méfiant, querelleur (Big Five).</param>
+/// <param name="Nevrosisme">Sensibilité aux émotions négatives : anxiété, tristesse, colère (Big Five).</param>
+/// <param name="Transcendance">Penchant spirituel et contemplatif ; bas : rationnel, terre à terre (Cloninger).</param>
+/// <param name="Attachement">Force du lien avec ses enfants : élevé chez la plupart, faible chez quelques-uns.</param>
+/// <param name="Endurance">Résistance physique à la fatigue et aux maladies.</param>
+public sealed record Personnalite(double Ouverture, double Conscience, double Extraversion, double Agreabilite,
+    double Nevrosisme, double Transcendance, double Attachement, double Endurance, Intelligence Intelligence)
+{
+    /// <summary>Envie d'aller voir plus loin.</summary>
+    public double Curiosite => Ouverture;
+
+    /// <summary>Envie d'être avec les autres.</summary>
+    public double Sociabilite => Extraversion;
+
+    /// <summary>Réagir tôt au danger : les consciencieux et les anxieux sont prudents.</summary>
+    public double Prudence => Math.Clamp(0.6 * Conscience + 0.4 * Nevrosisme, 0, 1);
+
+    /// <summary>Adresse, de 0 à 1, d'après l'aptitude manuelle.</summary>
+    public double Adresse => Math.Clamp((Intelligence.Manuelle - 55) / 90, 0, 1);
+
+    /// <summary>
+    /// Charisme : extraverti, émotionnellement stable, chaleureux, à l'aise pour communiquer.
+    /// Le meneur d'un groupe n'est pas désigné : il émerge de son charisme et de ses liens.
+    /// </summary>
+    public double Charisme => Math.Clamp(0.4 * Extraversion + 0.25 * (1 - Nevrosisme) + 0.15 * Agreabilite
+        + 0.2 * Math.Clamp((Intelligence.Verbale - 55) / 90, 0, 1), 0, 1);
+}
 
 /// <summary>
 /// Un humain et son état. Les besoins vont de 0 (satisfait) à 100 (extrême) ;
@@ -111,8 +142,47 @@ public sealed class Humain
     /// <summary>Date du dernier accouchement .</summary>
     public long? DernierAccouchement { get; set; }
 
-    /// <summary>Lieux connus, humains côtoyés et dernières pensées.</summary>
+    /// <summary>Lieux connus et dernières pensées.</summary>
     public Memoire Memoire { get; set; } = new();
+
+    /// <summary>Liens avec les autres humains (familiarité, affection), du plus ancien au plus récent.</summary>
+    public List<Lien> Liens { get; set; } = [];
+
+    /// <summary>Humeur, de 0 (au plus mal) à 100 (joyeux) ; 50 est neutre.</summary>
+    public double Humeur { get; set; } = 50;
+
+    /// <summary>Chagrin, de 0 à 100 : monte à la perte d'un proche, puis s'apaise plus ou moins vite selon chacun.</summary>
+    public double Chagrin { get; set; }
+
+    /// <summary>Humain le plus pleuré en ce moment (0 si aucun).</summary>
+    public int DeuilDeId { get; set; }
+
+    /// <summary>Jours d'affilée passés au plus mal (humeur basse) : au-delà de deux semaines, l'humain sombre.</summary>
+    public int JoursSombres { get; set; }
+
+    /// <summary>Début d'une dépression, ou null.</summary>
+    public long? DeprimeDepuis { get; set; }
+
+    /// <summary>Communauté à laquelle il appartient (0 : aucune).</summary>
+    public int CommunauteId { get; set; }
+
+    /// <summary>Inconfort cumulé depuis le début de la journée (faim, soif, froid, maladie), pour l'humeur.</summary>
+    public double InconfortDuJour { get; set; }
+
+    /// <summary>Humains aimés côtoyés aujourd'hui, pour l'humeur.</summary>
+    public int CompagnieDuJour { get; set; }
+
+    public bool EstDeprime => DeprimeDepuis is not null;
+
+    /// <summary>Lien avec un autre humain, ou null.</summary>
+    public Lien? LienAvec(int id)
+    {
+        foreach (var l in Liens) if (l.Id == id) return l;
+        return null;
+    }
+
+    /// <summary>Affection pour un autre humain (0 sans lien).</summary>
+    public double AffectionPour(int id) => LienAvec(id)?.Affection ?? 0;
 
     public long? MortLe { get; set; }
     public CauseDeMort CauseDeMort { get; set; }
@@ -145,11 +215,12 @@ public sealed class Humain
 
     public double AgeEnAnnees(long maintenant) => (maintenant - Naissance) / (double)Temps.Calendrier.SecondesParAn;
 
-    /// <summary>Copie indépendante (la mémoire aussi est copiée).</summary>
+    /// <summary>Copie indépendante (la mémoire et les liens aussi sont copiés).</summary>
     public Humain Copier()
     {
         var copie = (Humain)MemberwiseClone();
         copie.Memoire = Memoire.Copier();
+        copie.Liens = [.. Liens];
         return copie;
     }
 }
