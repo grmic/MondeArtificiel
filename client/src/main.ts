@@ -1,5 +1,5 @@
-import { chargerCarte, VueCarte, type InfoTuile } from "./carte";
-import { demarrerConnexion } from "./connexion";
+import { chargerCarte, VueCarte, type HumainVue, type InfoTuile } from "./carte";
+import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauHorloge } from "./horloge";
 import "./style.css";
 
@@ -8,7 +8,17 @@ const infos = element("#infos");
 const formulaire = element<HTMLFormElement>("#formGraine");
 const champGraine = element<HTMLInputElement>("#graine");
 
+const population = element("#population");
 const GRAINE_MAX = 4_294_967_295;
+let nomsParId = new Map<number, string>();
+
+function decrireHumain(h: HumainVue): string {
+  const compagnon = nomsParId.get(h.partenaire) ?? "?";
+  const qui = `${h.nom} (${h.sexe}, ${Math.floor(h.age)} ans, couple n° ${h.emplacement} avec ${compagnon})`;
+  if (!h.vivant) return `✝ ${qui}, mort ${h.causeDeMort ?? ""}`;
+  const malade = h.malade ? " · malade" : "";
+  return `${qui} ${h.activite}${malade}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante}`;
+}
 
 function decrire(info: InfoTuile): void {
   if (!info) return;
@@ -19,7 +29,8 @@ function decrire(info: InfoTuile): void {
     `Tuile ${x}, ${y} · ${carte.nomsBiomes[carte.biomes[i]] ?? "?"}`,
     `Altitude ${altitude} · gibier ${carte.gibier[i]} · plantes ${carte.plantes[i]}`,
   ];
-  if (emplacement) lignes.unshift(`Emplacement n° ${emplacement.numero} (un couple)`);
+  if (emplacement) lignes.unshift(`Emplacement de départ n° ${emplacement.numero}`);
+  if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 4).map(decrireHumain));
   infos.textContent = lignes.join("\n");
 }
 
@@ -31,7 +42,16 @@ async function demarrer(): Promise<void> {
     (h) => vue.eclairer(h.lumiere),
     (message) => (infos.textContent = message),
   );
-  demarrerConnexion(element("#statut"), () => horloge.synchroniser());
+  const montrerHumains = (humains: HumainVue[]) => {
+    nomsParId = new Map(humains.map((h) => [h.id, h.nom]));
+    vue.afficherHumains(humains);
+    population.textContent = `Vivants : ${humains.filter((h) => h.vivant).length} / ${humains.length}`;
+  };
+  connexion.on("Humains", montrerHumains);
+  demarrerConnexion(element("#statut"), async () => {
+    await horloge.synchroniser();
+    montrerHumains(await connexion.invoke<HumainVue[]>("Humains"));
+  });
 
   const charger = async (graine?: number) => {
     infos.textContent = "Génération de la carte…";

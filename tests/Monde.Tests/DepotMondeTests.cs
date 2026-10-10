@@ -15,6 +15,15 @@ public sealed class DepotMondeTests : IDisposable
         if (Directory.Exists(_dossier)) Directory.Delete(_dossier, recursive: true);
     }
 
+    private static void ExecuterSql(string fichier, string sql)
+    {
+        using var connexion = new SqliteConnection($"Data Source={fichier};Pooling=False");
+        connexion.Open();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = sql;
+        commande.ExecuteNonQuery();
+    }
+
     [Fact]
     public void NouveauFichier_NeContientAucunEtat()
     {
@@ -23,12 +32,32 @@ public sealed class DepotMondeTests : IDisposable
     }
 
     [Fact]
-    public void EtatEnregistre_EstRelu_ApresReouverture()
+    public void EtatSimple_EstRelu_ApresReouverture()
     {
         var etat = new EtatMonde(uint.MaxValue, 123_456_789, 205_761, 3);
         new DepotMonde(Fichier).Enregistrer(etat);
 
         Assert.Equal(etat, new DepotMonde(Fichier).Charger());
+    }
+
+    [Fact]
+    public void EtatComplet_EstReluALIdentique()
+    {
+        var monde = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42));
+        monde.AvancerDe(3 * 86_400);
+        var etat = monde.Etat;
+        new DepotMonde(Fichier).Enregistrer(etat);
+
+        var relu = new DepotMonde(Fichier).Charger()!;
+
+        Assert.Equal(etat.Alea, relu.Alea);
+        Assert.Equal(etat.Gibier, relu.Gibier);
+        Assert.Equal(etat.Plantes, relu.Plantes);
+        Assert.Equal(etat.Humains!.Count, relu.Humains!.Count);
+        for (var i = 0; i < etat.Humains.Count; i++)
+        {
+            Assert.Equivalent(etat.Humains[i], relu.Humains[i], strict: true);
+        }
     }
 
     [Fact]
@@ -42,16 +71,29 @@ public sealed class DepotMondeTests : IDisposable
     }
 
     [Fact]
+    public void FichierVersion1_EstMisAJour_SansPerdreLaDate()
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(Fichier)!);
+        ExecuterSql(Fichier, """
+            CREATE TABLE etat (id INTEGER PRIMARY KEY CHECK (id = 1), graine INTEGER NOT NULL,
+                secondes INTEGER NOT NULL CHECK (secondes >= 0), pas INTEGER NOT NULL CHECK (pas >= 0),
+                vitesse INTEGER NOT NULL, modifie_le TEXT NOT NULL);
+            INSERT INTO etat VALUES (1, 42, 99000, 165, 0, '2026-10-10');
+            PRAGMA user_version = 1;
+            """);
+
+        var etat = new DepotMonde(Fichier).Charger()!;
+
+        Assert.Equal(99_000, etat.Secondes);
+        Assert.Null(etat.Humains); // seront créés par le monde à partir de la graine
+        Assert.Null(etat.Alea);
+    }
+
+    [Fact]
     public void SchemaPlusRecent_EstRefuse()
     {
         new DepotMonde(Fichier);
-        using (var connexion = new SqliteConnection($"Data Source={Fichier};Pooling=False"))
-        {
-            connexion.Open();
-            using var commande = connexion.CreateCommand();
-            commande.CommandText = "PRAGMA user_version = 99;";
-            commande.ExecuteNonQuery();
-        }
+        ExecuterSql(Fichier, "PRAGMA user_version = 99;");
 
         Assert.Throws<InvalidOperationException>(() => new DepotMonde(Fichier));
     }

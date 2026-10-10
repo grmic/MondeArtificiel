@@ -26,6 +26,8 @@ Le monde est sauvegardé toutes les 10 secondes et à l'arrêt du serveur (Ctrl+
 
 Au redémarrage, le monde reprend à la date enregistrée, en pause. Pour repartir de zéro, supprime ce fichier (le serveur arrêté). Le dossier se change avec le réglage `Monde:Dossier`.
 
+Les 66 humains (33 couples) apparaissent sur la carte : point orange pour une femme, bleu pour un homme, croix grise pour un mort. Le compteur « Vivants » est en haut. Survoler un humain affiche son nom, son âge, ce qu'il fait et ses besoins (faim, soif, fatigue, froid, santé). Les noms sont tirés au hasard pour l'observateur : les humains n'ont pas encore de langage.
+
 Sur la carte : molette pour zoomer, glisser pour se déplacer, double-clic pour recadrer, survol pour voir une tuile. Le bouton « Aperçu » montre le continent d'une autre graine sans changer le monde courant. La graine d'un nouveau monde se règle dans `src/Monde.Serveur/appsettings.json` (`Monde:Graine`). Une même graine donne toujours la même carte, sur toutes les plateformes.
 
 ## Tester
@@ -33,6 +35,8 @@ Sur la carte : molette pour zoomer, glisser pour se déplacer, double-clic pour 
 ```bash
 dotnet test
 ```
+
+La suite complète prend environ une minute, car un test simule deux années entières.
 
 ## Modifier le client web
 
@@ -47,7 +51,7 @@ npm run dev     # ou : rechargement à chaud sur http://localhost:5173 (serveur 
 
 | Dossier | Rôle |
 | --- | --- |
-| `src/Monde.Simulation` | Moteur de simulation pur, sans web ni base. `Monde/GenerateurContinent.cs` crée la carte, `Temps/` gère le calendrier et les vitesses, `MondeSimule.cs` fait avancer le monde par pas de 10 minutes |
+| `src/Monde.Simulation` | Moteur de simulation pur, sans web ni base. `Monde/GenerateurContinent.cs` crée la carte, `Temps/` gère le calendrier et les vitesses, `Humains/` contient la population, le climat, les ressources et les règles de comportement (`Comportement.cs`), `MondeSimule.cs` fait avancer le monde par pas de 10 minutes |
 | `src/Monde.Serveur` | Kestrel, API, hub SignalR `/hub/monde`, API `/api/carte`, fichiers du client dans `wwwroot` |
 | `src/Monde.Stockage` | Sauvegarde du monde dans SQLite (un fichier par monde) |
 | `tests/Monde.Tests` | Tests xUnit (unitaires et d'intégration) |

@@ -19,6 +19,8 @@ public sealed class MondeHub(ServiceMonde service) : Hub
 
     public IReadOnlyList<Vitesse> Vitesses() => Vitesse.Toutes;
 
+    public List<HumainDto> Humains() => HumainDto.Depuis(service.Monde);
+
     public async Task<HorlogeDto> ChoisirVitesse(int niveau)
     {
         if (!Vitesse.Existe(niveau))

@@ -32,3 +32,4 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .vitesses { display: flex; flex-wrap: wrap; gap: 4px; }
 .vitesses button { font-size: 0.8rem; padding: 3px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; }
 .vitesses button.actif { background: #2f6f4a; border-color: #4ac26b; }
+.population { font-size: 0.9rem; font-variant-numeric: tabular-nums; }

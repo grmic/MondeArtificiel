@@ -21,6 +21,21 @@ public sealed class Alea
         _s3 = SplitMix64(ref x);
     }
 
+    /// <summary>Reprend un générateur à partir d'un état sauvegardé (voir <see cref="Etat"/>).</summary>
+    public static Alea Depuis(IReadOnlyList<ulong> etat)
+    {
+        if (etat.Count != 4 || etat.All(v => v == 0))
+        {
+            throw new ArgumentException("L'état doit contenir 4 valeurs, pas toutes nulles.", nameof(etat));
+        }
+        var alea = new Alea(0);
+        (alea._s0, alea._s1, alea._s2, alea._s3) = (etat[0], etat[1], etat[2], etat[3]);
+        return alea;
+    }
+
+    /// <summary>État interne, à sauvegarder pour reprendre exactement la même suite.</summary>
+    public ulong[] Etat => [_s0, _s1, _s2, _s3];
+
     /// <summary>Étape de SplitMix64 : fait avancer l'état et renvoie une valeur mélangée.</summary>
     public static ulong SplitMix64(ref ulong etat)
     {

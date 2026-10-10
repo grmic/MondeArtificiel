@@ -1,4 +1,5 @@
 using Monde.Simulation;
+using Monde.Simulation.Monde;
 using Monde.Stockage;
 
 namespace Monde.Serveur;
@@ -26,7 +27,6 @@ public sealed class ServiceMonde
         {
             var graine = configuration.GetValue<uint>("Monde:Graine", 42);
             etat = MondeSimule.Nouveau(graine);
-            Depot.Enregistrer(etat);
             journal.LogInformation("Nouveau monde créé (graine {Graine}) dans {Fichier}", graine, Depot.CheminFichier);
         }
         else
@@ -34,7 +34,10 @@ public sealed class ServiceMonde
             journal.LogInformation("Monde repris dans {Fichier}", Depot.CheminFichier);
         }
 
-        Monde = new MondeSimule(etat with { NiveauVitesse = 0 });
+        var carte = GenerateurContinent.Generer(etat.Graine);
+        Monde = new MondeSimule(carte, etat with { NiveauVitesse = 0 });
+        // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
+        Sauvegarder();
     }
 
     public MondeSimule Monde { get; }

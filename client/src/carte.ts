@@ -95,13 +95,39 @@ function dessinerImage(carte: Carte): HTMLCanvasElement {
   return canvas;
 }
 
-export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement } | null;
+export interface HumainVue {
+  id: number;
+  nom: string;
+  sexe: "femme" | "homme";
+  partenaire: number;
+  emplacement: number;
+  age: number;
+  x: number;
+  y: number;
+  activite: string;
+  vivant: boolean;
+  malade: boolean;
+  faim: number;
+  soif: number;
+  fatigue: number;
+  froid: number;
+  sante: number;
+  causeDeMort: string | null;
+}
+
+export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement; humains: HumainVue[] } | null;
+
+const COULEUR_FEMME = 0xffb347;
+const COULEUR_HOMME = 0x6ec6ff;
 
 /** Vue de la carte : affichage, zoom à la molette, déplacement à la souris, survol des tuiles. */
 export class VueCarte {
   private readonly monde = new Container();
   private readonly marqueurs = new Container();
   private readonly nuit = new Graphics();
+  private readonly calqueHumains = new Container();
+  private readonly pointsHumains = new Map<number, Graphics>();
+  private humains: HumainVue[] = [];
   private sprite?: Sprite;
   private carte?: Carte;
   private echelleMin = 1;
@@ -133,13 +159,41 @@ export class VueCarte {
 
     this.marqueurs.removeChildren();
     for (const e of carte.emplacements) {
-      const point = new Graphics().circle(0, 0, 5).fill({ color: 0xe5484d }).stroke({ width: 2, color: 0xffffff });
+      // Lieu de départ d'un couple : simple anneau, les humains eux-mêmes sont dessinés par-dessus.
+      const point = new Graphics().circle(0, 0, 7).stroke({ width: 1.5, color: 0xffffff, alpha: 0.5 });
       point.position.set(e.x + 0.5, e.y + 0.5);
       this.marqueurs.addChild(point);
     }
     this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
-    this.monde.addChild(this.nuit, this.marqueurs);
+    this.monde.addChild(this.nuit, this.marqueurs, this.calqueHumains);
     this.cadrer();
+  }
+
+  /** Place les humains : un point par vivant (orange : femme, bleu : homme), une croix grise par mort. */
+  afficherHumains(humains: HumainVue[]): void {
+    this.humains = humains;
+    for (const h of humains) {
+      let point = this.pointsHumains.get(h.id);
+      const etat = h.vivant ? h.sexe : "mort";
+      if (!point || point.label !== etat) {
+        point?.destroy();
+        point = new Graphics();
+        point.label = etat;
+        if (h.vivant) {
+          point.circle(0, 0, 3.5).fill({ color: h.sexe === "femme" ? COULEUR_FEMME : COULEUR_HOMME }).stroke({ width: 1, color: 0x000000 });
+        } else {
+          point.moveTo(-3, -3).lineTo(3, 3).moveTo(3, -3).lineTo(-3, 3).stroke({ width: 1.5, color: 0x9aa7b8 });
+        }
+        this.pointsHumains.set(h.id, point);
+        // Les morts restent sous les vivants.
+        if (h.vivant) this.calqueHumains.addChild(point);
+        else this.calqueHumains.addChildAt(point, 0);
+      }
+      // Léger décalage pour distinguer les deux membres d'un couple sur la même tuile.
+      const decalage = h.sexe === "femme" ? 0.3 : 0.7;
+      point.position.set(h.x + decalage, h.y + 0.5);
+    }
+    this.ajusterMarqueurs();
   }
 
   /** Assombrit la carte selon la clarté du jour (1 = plein jour, 0 = nuit). */
@@ -162,6 +216,7 @@ export class VueCarte {
   private ajusterMarqueurs(): void {
     const inverse = 1 / this.monde.scale.x;
     for (const m of this.marqueurs.children) m.scale.set(inverse);
+    for (const m of this.calqueHumains.children) m.scale.set(inverse);
   }
 
   private zoomer(facteur: number, ecranX: number, ecranY: number): void {
@@ -182,7 +237,9 @@ export class VueCarte {
     if (x < 0 || y < 0 || x >= this.carte.largeur || y >= this.carte.hauteur) return null;
     const rayon = Math.max(1, 6 / this.monde.scale.x);
     const emplacement = this.carte.emplacements.find((e) => Math.abs(e.x - x) <= rayon && Math.abs(e.y - y) <= rayon);
-    return { x, y, carte: this.carte, emplacement };
+    const humains = this.humains.filter((h) => Math.abs(h.x - x) <= rayon && Math.abs(h.y - y) <= rayon);
+    humains.sort((a, b) => Number(b.vivant) - Number(a.vivant));
+    return { x, y, carte: this.carte, emplacement, humains };
   }
 
   private brancherSouris(): void {

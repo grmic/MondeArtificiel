@@ -1,48 +1,104 @@
+using Monde.Simulation.Humains;
+using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
 namespace Monde.Simulation;
 
-/// <summary>État sauvegardable du monde.</summary>
-public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, int NiveauVitesse);
+/// <summary>
+/// État sauvegardable du monde. Les champs facultatifs sont absents pour un monde
+/// qui n'a pas encore d'humains : ils sont alors créés à partir de la graine.
+/// </summary>
+public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, int NiveauVitesse)
+{
+    public IReadOnlyList<Humain>? Humains { get; init; }
+    public ushort[]? Gibier { get; init; }
+    public ushort[]? Plantes { get; init; }
+    public ulong[]? Alea { get; init; }
+}
 
 /// <summary>
 /// Le monde en cours de simulation. Le temps avance par pas fixes de 10 minutes du monde ;
 /// les secondes non encore converties en pas sont conservées pour le prochain appel.
 /// Les méthodes sont protégées par un verrou : le moteur et les clients peuvent l'appeler en parallèle.
+/// Tout le hasard vient d'un seul générateur sauvegardé : un monde rechargé continue exactement
+/// comme s'il n'avait jamais été arrêté.
 /// </summary>
 public sealed class MondeSimule
 {
     public const long SecondesParPas = 600;
+    private const long PasParHeure = Calendrier.SecondesParHeure / SecondesParPas;
 
     private readonly object _verrou = new();
+    private readonly List<Humain> _humains;
+    private readonly Ecosysteme _ecosysteme;
+    private readonly Alea _alea;
+    private readonly Comportement _comportement;
     private long _secondes;
     private long _pas;
     private Vitesse _vitesse;
     private double _reliquat;
 
-    public MondeSimule(EtatMonde etat)
+    public MondeSimule(Carte carte, EtatMonde etat)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(etat.Secondes);
         ArgumentOutOfRangeException.ThrowIfNegative(etat.Pas);
+        if (carte.Graine != etat.Graine)
+        {
+            throw new ArgumentException("La carte ne correspond pas à la graine du monde.", nameof(carte));
+        }
+
+        Carte = carte;
         Graine = etat.Graine;
         _secondes = etat.Secondes;
         _pas = etat.Pas;
         _vitesse = Vitesse.Existe(etat.NiveauVitesse) ? Vitesse.Toutes[etat.NiveauVitesse] : Vitesse.Pause;
+        _humains = etat.Humains is { Count: > 0 } h
+            ? h.Select(x => x.Copier()).OrderBy(x => x.Id).ToList()
+            : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes);
+        _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray());
+        _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
+        _comportement = new Comportement(carte, _ecosysteme, _alea);
+
+        for (var i = 0; i < _humains.Count; i++)
+        {
+            if (_humains[i].Id != i + 1) throw new ArgumentException("Les identifiants des humains doivent aller de 1 à N.");
+        }
     }
 
     /// <summary>Nouveau monde : il commence à l'aube du premier jour, en pause.</summary>
     public static EtatMonde Nouveau(ulong graine) => new(graine, 6 * Calendrier.SecondesParHeure, 0, 0);
 
+    public Carte Carte { get; }
+
     public ulong Graine { get; }
 
     public Vitesse Vitesse { get { lock (_verrou) return _vitesse; } }
 
+    public DateMonde Date { get { lock (_verrou) return Calendrier.Decomposer(_secondes); } }
+
+    /// <summary>Copie complète de l'état, pour la sauvegarde.</summary>
     public EtatMonde Etat
     {
-        get { lock (_verrou) return new EtatMonde(Graine, _secondes, _pas, _vitesse.Niveau); }
+        get
+        {
+            lock (_verrou)
+            {
+                return new EtatMonde(Graine, _secondes, _pas, _vitesse.Niveau)
+                {
+                    Humains = _humains.Select(h => h.Copier()).ToList(),
+                    Gibier = _ecosysteme.Gibier.ToArray(),
+                    Plantes = _ecosysteme.Plantes.ToArray(),
+                    Alea = _alea.Etat,
+                };
+            }
+        }
     }
 
-    public DateMonde Date { get { lock (_verrou) return Calendrier.Decomposer(_secondes); } }
+    /// <summary>Copie légère des humains seulement (diffusion fréquente vers les navigateurs).</summary>
+    public (long Secondes, List<Humain> Humains) InstantaneHumains()
+    {
+        lock (_verrou) return (_secondes, _humains.Select(h => h.Copier()).ToList());
+    }
 
     public void ChangerVitesse(int niveau)
     {
@@ -80,21 +136,28 @@ public sealed class MondeSimule
         ArgumentOutOfRangeException.ThrowIfNegative(secondesMonde);
         lock (_verrou)
         {
+            var fin = _secondes + secondesMonde;
             var avant = _secondes / SecondesParPas;
-            _secondes += secondesMonde;
-            var apres = _secondes / SecondesParPas;
-            var nouveaux = (int)(apres - avant);
-            for (var i = 0; i < nouveaux; i++)
+            var nouveaux = (int)(fin / SecondesParPas - avant);
+            for (var k = 1; k <= nouveaux; k++)
             {
+                // Chaque pas s'exécute à l'instant exact où il tombe.
+                _secondes = (avant + k) * SecondesParPas;
                 ExecuterPas();
             }
+            _secondes = fin;
             return nouveaux;
         }
     }
 
-    /// <summary>Un pas de simulation (10 minutes du monde). Les humains y agiront à l'étape 4.</summary>
+    /// <summary>Un pas de simulation (10 minutes du monde).</summary>
     private void ExecuterPas()
     {
         _pas++;
+        if (_pas % PasParHeure == 0) _ecosysteme.Repousser();
+        foreach (var humain in _humains)
+        {
+            _comportement.Vivre(humain, _humains, _secondes);
+        }
     }
 }

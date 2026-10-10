@@ -18,6 +18,7 @@ public sealed class ServiceCarte(ServiceMonde service)
     public Carte Obtenir(uint? graine = null)
     {
         var cle = (ulong)(graine ?? GraineParDefaut);
+        if (cle == service.Monde.Graine) return service.Monde.Carte;
         if (_cache.Count >= TailleMaxCache && !_cache.ContainsKey(cle))
         {
             // Garde seulement la carte par défaut quand le cache est plein.

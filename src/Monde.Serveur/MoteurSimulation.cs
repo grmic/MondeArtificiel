@@ -37,6 +37,7 @@ public sealed class MoteurSimulation(
                 {
                     derniereDiffusion = maintenant;
                     await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service.Monde), arret);
+                    await hub.Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde), arret);
                 }
 
                 if (maintenant - derniereSauvegarde >= IntervalleSauvegarde)
