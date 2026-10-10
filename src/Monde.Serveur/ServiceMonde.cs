@@ -83,7 +83,7 @@ public sealed class ServiceMonde
             var monde = _monde;
             var etat = monde.Etat;
             Depot.Enregistrer(etat);
-            monde.MarquerJournalEnregistre(etat.JournalNonEnregistre?.Count ?? 0);
+            monde.MarquerJournalEnregistre(etat.JournalNonEnregistre?.Count ?? 0, etat.ArchivesNonEnregistrees?.Count ?? 0);
         }
     }
 

@@ -12,6 +12,9 @@ interface Evenement {
   origine: "naturelle" | "entite";
   /** Numéro de l'événement qui l'a provoqué (0 : aucune cause notée). */
   cause: number;
+  /** Communauté concernée, et l'autre pour ce qui se passe entre deux groupes (0 : aucune). */
+  communaute: number;
+  autreCommunaute: number;
 }
 
 interface Ame {
@@ -74,6 +77,7 @@ export class PanneauFiche {
   }
 
   async ouvrir(id: number): Promise<void> {
+    if (id !== this.id) replierCauses();
     this.id = id;
     this.surChoix(id);
     await this.rafraichir();
@@ -269,10 +273,23 @@ export function ligneEvenement(e: Evenement): HTMLElement {
 }
 
 /**
+ * Causes déjà dépliées, gardées d'un rafraîchissement à l'autre : la fiche et le journal se redessinent toutes les
+ * deux secondes, et la chaîne ouverte doit rester affichée tant qu'on la lit.
+ */
+const causesOuvertes = new Map<number, Evenement | null>();
+
+/** Oublie les chaînes dépliées (quand on passe à une autre fiche). */
+export function replierCauses(): void {
+  causesOuvertes.clear();
+}
+
+/**
  * Bouton qui va chercher l'événement à l'origine d'un autre et l'affiche juste en dessous, avec à son tour
- * son propre bouton : on remonte ainsi la chaîne des causes aussi loin qu'elle va.
+ * son propre bouton : on remonte ainsi la chaîne des causes aussi loin qu'elle va. Une cause déjà dépliée
+ * est redessinée telle quelle.
  */
 export function boutonCause(parent: HTMLElement, causeId: number, libelle: string): HTMLElement {
+  if (causesOuvertes.has(causeId)) return blocCause(parent, causeId, causesOuvertes.get(causeId) ?? null, libelle);
   const bouton = el("button", "cause", libelle);
   bouton.type = "button";
   bouton.title = "Afficher l'événement qui en est la cause";
@@ -280,15 +297,28 @@ export function boutonCause(parent: HTMLElement, causeId: number, libelle: strin
     ev.stopPropagation();
     bouton.disabled = true;
     const cause = await connexion.invoke<Evenement | null>("Evenement", causeId).catch(() => null);
-    const bloc = el("div", "chaine-cause");
-    if (cause) {
-      bloc.append("↳ ", el("span", "date", cause.date), ` ${cause.texte}`);
-      if (cause.cause > 0) bloc.append(" ", boutonCause(bloc, cause.cause, "pourquoi ?"));
-    } else {
-      bloc.append("↳ cause introuvable");
-    }
+    causesOuvertes.set(causeId, cause);
     bouton.remove();
-    parent.append(bloc);
+    parent.append(blocCause(parent, causeId, cause, libelle));
   });
   return bouton;
+}
+
+function blocCause(parent: HTMLElement, causeId: number, cause: Evenement | null, libelle: string): HTMLElement {
+  const bloc = el("div", "chaine-cause");
+  if (cause) {
+    bloc.append("↳ ", el("span", "date", cause.date), ` ${cause.texte}`);
+    if (cause.cause > 0) bloc.append(" ", boutonCause(bloc, cause.cause, "pourquoi ?"));
+  } else {
+    bloc.append("↳ cause introuvable");
+  }
+  const replier = el("button", "cause", "replier");
+  replier.type = "button";
+  replier.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    causesOuvertes.delete(causeId);
+    bloc.replaceWith(boutonCause(parent, causeId, libelle));
+  });
+  bloc.append(" ", replier);
+  return bloc;
 }

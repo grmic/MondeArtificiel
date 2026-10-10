@@ -110,6 +110,16 @@ public sealed class MondeHub(ServiceMonde service) : Hub
     /// <summary>Communautés actives puis dispersées, avec leurs membres.</summary>
     public List<CommunauteDto> Communautes() => CommunauteDto.Toutes(service);
 
+    /// <summary>Terres des communautés : maintenant (secondes absentes) ou à une date archivée (début de saison).</summary>
+    public TerritoiresDto? Territoires(long? secondes) =>
+        secondes is { } s ? (s < 0 ? null : Serveur.Territoires.Archives(service, s)) : Serveur.Territoires.Actuels(service);
+
+    /// <summary>Dates auxquelles les terres des communautés ont été archivées.</summary>
+    public List<DateArchiveDto> DatesTerritoires() => Serveur.Territoires.Dates(service);
+
+    /// <summary>Taille d'une communauté au début de chaque saison (vide si elle n'existe pas).</summary>
+    public List<TailleDto> TaillesCommunaute(int id) => id < 1 ? [] : Serveur.Territoires.Tailles(service, id);
+
     /// <summary>Nature : abondance des terres, pluies des régions et indicateurs du monde.</summary>
     public NatureDto Nature() => NatureDto.Depuis(service.Monde);
 

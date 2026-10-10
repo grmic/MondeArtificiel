@@ -17,7 +17,34 @@ public sealed class DepotMondeTests : IDisposable
 
     /// <summary>Ramène un fichier au schéma 7 (avant les réserves, les pluies et les territoires).</summary>
     /// <summary>Ramène un fichier au schéma 8 (avant les causes, les rancunes et les usages).</summary>
-    internal const string RetourVersion8 = """
+    /// <summary>Ramène un fichier au schéma 9 (avant l'identité et l'histoire des communautés).</summary>
+    internal const string RetourVersion9 = """
+        DROP INDEX journal_communaute_id;
+        DROP INDEX journal_autre_communaute_id;
+        ALTER TABLE journal DROP COLUMN communaute;
+        ALTER TABLE journal DROP COLUMN autre_communaute;
+        ALTER TABLE communautes DROP COLUMN nom_propre;
+        ALTER TABLE communautes DROP COLUMN sens;
+        ALTER TABLE communautes DROP COLUMN sens_cle;
+        ALTER TABLE communautes DROP COLUMN eponyme;
+        ALTER TABLE communautes DROP COLUMN lexique;
+        ALTER TABLE communautes DROP COLUMN origine;
+        ALTER TABLE communautes DROP COLUMN fusion_vers;
+        ALTER TABLE communautes DROP COLUMN fusion_decidee_le;
+        ALTER TABLE communautes DROP COLUMN fusion_evenement;
+        ALTER TABLE communautes DROP COLUMN fusionnee_dans;
+        ALTER TABLE communautes DROP COLUMN accueil_le;
+        ALTER TABLE communautes DROP COLUMN migrations;
+        ALTER TABLE communautes DROP COLUMN disettes_surmontees;
+        ALTER TABLE communautes DROP COLUMN installation_evenement;
+        ALTER TABLE communautes DROP COLUMN territoire;
+        ALTER TABLE relations_communautes DROP COLUMN evenement;
+        DROP TABLE noms_communautes;
+        DROP TABLE archives_communautes;
+        PRAGMA user_version = 9;
+        """;
+
+    internal const string RetourVersion8 = RetourVersion9 + """
         ALTER TABLE journal DROP COLUMN cause;
         ALTER TABLE humains DROP COLUMN faim_soif_jour;
         ALTER TABLE humains DROP COLUMN froid_jour;

@@ -33,6 +33,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Dernière offense entre deux communautés (cause d'une éventuelle hostilité).</summary>
     public IReadOnlyList<OffenseCommunautes>? Offenses { get; init; }
+
+    /// <summary>Instantanés de saison des communautés pas encore enregistrés (ils s'ajoutent à leur histoire sauvegardée).</summary>
+    public IReadOnlyList<ArchiveCommunaute>? ArchivesNonEnregistrees { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -67,6 +70,7 @@ public sealed class MondeSimule
     private double _reliquat;
     private Objectif? _objectif;
     private readonly List<EvenementJournal> _journalNonEnregistre = [];
+    private readonly List<ArchiveCommunaute> _archivesNonEnregistrees = [];
     private readonly Queue<EvenementJournal> _journalRecent = new();
     private readonly Numeroteur _numeros = new();
 
@@ -101,6 +105,7 @@ public sealed class MondeSimule
         _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social, Numeros = _numeros };
         _noms = _humains.Select(x => x.Nom).ToHashSet();
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
+        _archivesNonEnregistrees.AddRange(etat.ArchivesNonEnregistrees ?? []);
 
         for (var i = 0; i < _humains.Count; i++)
         {
@@ -150,15 +155,29 @@ public sealed class MondeSimule
                     Pluies = _ecosysteme.Pluies.ToArray(),
                     Relations = _social.Relations,
                     Offenses = _social.Offenses,
+                    ArchivesNonEnregistrees = _archivesNonEnregistrees.ToList(),
                 };
             }
         }
     }
 
-    /// <summary>Après une sauvegarde : les <paramref name="nombre"/> premiers événements en attente sont enregistrés.</summary>
-    public void MarquerJournalEnregistre(int nombre)
+    /// <summary>
+    /// Après une sauvegarde : les <paramref name="nombre"/> premiers événements et les <paramref name="archives"/>
+    /// premiers instantanés en attente sont enregistrés.
+    /// </summary>
+    public void MarquerJournalEnregistre(int nombre, int archives = 0)
     {
-        lock (_verrou) _journalNonEnregistre.RemoveRange(0, Math.Min(nombre, _journalNonEnregistre.Count));
+        lock (_verrou)
+        {
+            _journalNonEnregistre.RemoveRange(0, Math.Min(nombre, _journalNonEnregistre.Count));
+            _archivesNonEnregistrees.RemoveRange(0, Math.Min(archives, _archivesNonEnregistrees.Count));
+        }
+    }
+
+    /// <summary>Instantanés de saison pas encore enregistrés (copie).</summary>
+    public List<ArchiveCommunaute> ArchivesEnMemoire()
+    {
+        lock (_verrou) return [.. _archivesNonEnregistrees];
     }
 
     /// <summary>Événements récents dont le numéro dépasse <paramref name="apresId"/>, du plus ancien au plus récent.</summary>
@@ -179,6 +198,16 @@ public sealed class MondeSimule
     private void Ajouter(EvenementJournal evenement)
     {
         var numerote = evenement.Id > 0 ? evenement : evenement with { Id = _numeros.Suivant() };
+        // Sans communauté notée, l'événement appartient à celle de l'humain (d'un nouveau-né : celle de sa mère).
+        if (numerote.CommunauteId == 0 && numerote.HumainId > 0 && numerote.HumainId <= _humains.Count)
+        {
+            var communaute = _humains[numerote.HumainId - 1].CommunauteId;
+            if (communaute == 0 && numerote.Type == TypeEvenement.Naissance && numerote.AutreId > 0 && numerote.AutreId <= _humains.Count)
+            {
+                communaute = _humains[numerote.AutreId - 1].CommunauteId;
+            }
+            if (communaute != 0) numerote = numerote with { CommunauteId = communaute };
+        }
         _numeros.Prochain = Math.Max(_numeros.Prochain, numerote.Id + 1);
         _journalNonEnregistre.Add(numerote);
         if (TypesEvenement.EstFrequent(numerote.Type)) return;
@@ -370,6 +399,15 @@ public sealed class MondeSimule
         {
             if (_secondes % Calendrier.SecondesParAn < Calendrier.SecondesParJour) NouvelleAnnee();
             _ecosysteme.Journee(_secondes);
+        }
+
+        // Toutes les heures, chacun marque les terres de son groupe ; au début de chaque saison, l'histoire des groupes est archivée.
+        if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0) _social.Parcourir(_humains, Carte, _secondes);
+        if (nouveauJour && _secondes % (Calendrier.JoursParSaison * Calendrier.SecondesParJour) < Calendrier.SecondesParJour)
+        {
+            _social.Archiver(_humains, _communautes, Carte, _secondes);
+            _archivesNonEnregistrees.AddRange(_social.Archives);
+            _social.Archives.Clear();
         }
 
         // La liste peut grandir pendant le pas : on ne fait vivre que ceux qui existaient au début.

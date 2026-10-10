@@ -7,7 +7,7 @@ namespace Monde.Serveur;
 /// <summary>Un événement du journal tel qu'envoyé au navigateur.</summary>
 /// <param name="Cause">Numéro de l'événement qui l'a provoqué (0 : aucune cause notée).</param>
 public sealed record EvenementDto(long Id, long Secondes, string Date, string Type, int Humain, int Autre, string Texte, string Origine,
-    long Cause)
+    long Cause, int Communaute, int AutreCommunaute)
 {
     /// <summary>Clés des types, dans l'ordre de l'énumération (le navigateur filtre avec ces clés).</summary>
     public static readonly IReadOnlyDictionary<TypeEvenement, string> Cles = new Dictionary<TypeEvenement, string>
@@ -36,7 +36,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 
     public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, Calendrier.Decomposer(e.Secondes).ToString(),
         Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, e.Texte,
-        e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId);
+        e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId);
 
     /// <summary>Traduit les clés reçues ; une clé inconnue rend la demande invalide (null).</summary>
     public static List<TypeEvenement>? TypesDepuis(IEnumerable<string>? cles)
@@ -53,7 +53,8 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 }
 
 /// <summary>Filtre du journal demandé par le navigateur.</summary>
-public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, long? AvantId = null, int Limite = 100);
+/// <param name="Communaute">Chronologie d'une communauté : les événements qui la concernent.</param>
+public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, long? AvantId = null, int Limite = 100, int? Communaute = null);
 
 public sealed record LieuDto(string Type, int X, int Y, string VuLe, int Visites);
 
@@ -179,14 +180,18 @@ public sealed record FicheDto(
         bool Convient(EvenementJournal e) =>
             (types.Count == 0 || types.Contains(e.Type))
             && (filtre.Humain is not { } h || e.HumainId == h || e.AutreId == h)
-            && (filtre.AvantId is not { } a || e.Id < a);
+            && (filtre.AvantId is not { } a || e.Id < a)
+            && (filtre.Communaute is not { } c || e.CommunauteId == c || e.AutreCommunauteId == c);
         var recents = service.Monde.JournalRecent().Where(Convient);
-        var enregistres = service.Depot.LireJournal(types, filtre.Humain, filtre.AvantId, limite);
+        var enregistres = service.Depot.LireJournal(types, filtre.Humain, filtre.AvantId, limite, filtre.Communaute);
         return recents.Concat(enregistres).DistinctBy(e => e.Id).OrderByDescending(e => e.Id).Take(limite).ToList();
     }
 }
 
 public sealed record MembreDto(int Id, string Nom, string Etape);
+
+/// <summary>Un nom qu'a porté une communauté, depuis quand, et l'événement qui le lui a donné.</summary>
+public sealed record NomDto(string Nom, string? Sens, string Depuis, long Evenement);
 
 /// <summary>Ce qu'une autre communauté est pour celle-ci.</summary>
 public sealed record RelationDto(int Id, string Nom, string Etat);
@@ -194,10 +199,40 @@ public sealed record RelationDto(int Id, string Nom, string Etat);
 /// <summary>Une communauté : qui en fait partie, depuis quand, où elle vit, autour de qui, et ce que ses terres lui donnent.</summary>
 /// <param name="Abondance">Ressources autour d'elle, en % de leur niveau naturel.</param>
 /// <param name="Destination">Direction vers laquelle elle part, ou null si elle reste.</param>
+/// <param name="NomPropre">Nom que se donnent ses membres (null tant qu'ils ne se sont pas nommés), et son sens.</param>
+/// <param name="Noms">Noms successifs, du premier au dernier.</param>
+/// <param name="Mots">Premiers mots du groupe (« rivière : kalu »).</param>
+/// <param name="Terres">Nombre de cases de ses terres parcourues.</param>
+/// <param name="Histoire">Ce qu'elle a traversé, en phrases (origine, fusions, migrations, disettes).</param>
 public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? DisperseeLe, int Figure, string NomFigure,
     IReadOnlyList<MembreDto> Membres, int X, int Y, int Rayon, int Abondance, bool Disette, string? Destination,
-    int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage)
+    int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage, string? NomPropre, string? Sens,
+    IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire)
 {
+    /// <summary>Les idées des mots, en français, pour l'observateur.</summary>
+    private static readonly Dictionary<string, string> Idees = new()
+    {
+        ["ceux"] = "ceux (qui sont…)", ["gens"] = "les humains", ["enfants"] = "enfants de", ["riviere"] = "rivière", ["lac"] = "lac",
+        ["rivage"] = "rivage", ["montagnes"] = "montagnes", ["marais"] = "marais", ["sables"] = "sables", ["foret"] = "forêt",
+        ["fougeres"] = "fougères", ["soleil"] = "soleil", ["etoiles"] = "étoiles", ["faim"] = "faim vaincue", ["marche"] = "marcher",
+        ["partis"] = "partir",
+    };
+
+    private static List<string> Raconter(Communaute c, List<Communaute> toutes)
+    {
+        var histoire = new List<string>();
+        string Ref(int id) => toutes[id - 1].Nom;
+        if (c.OrigineId > 0) histoire.Add($"Née d'une scission de la {Minuscule(Ref(c.OrigineId))}.");
+        foreach (var f in toutes.Where(x => x.FusionneeDansId == c.Id)) histoire.Add($"A accueilli la {Minuscule(f.Nom)}, qui s'est fondue en elle.");
+        if (c.FusionneeDansId > 0) histoire.Add($"S'est fondue dans la {Minuscule(Ref(c.FusionneeDansId))}.");
+        if (c.Active && c.FusionVersId > 0) histoire.Add($"En route pour rejoindre la {Minuscule(Ref(c.FusionVersId))}.");
+        if (c.Migrations > 0) histoire.Add(c.Migrations == 1 ? "A migré une fois vers de nouvelles terres." : $"A migré {c.Migrations} fois vers de nouvelles terres.");
+        if (c.DisettesSurmontees > 0) histoire.Add(c.DisettesSurmontees == 1 ? "A surmonté une disette." : $"A surmonté {c.DisettesSurmontees} disettes.");
+        return histoire;
+    }
+
+    private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
+
     private static string Etat(EtatRelation e) => e switch
     {
         EtatRelation.Alliees => "alliée",
@@ -238,7 +273,12 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                         UsageFidelite.MalVu => "s'unir hors de son couple y est mal vu",
                         UsageFidelite.Indifferent => "nul ne s'y offusque qu'on s'unisse hors de son couple",
                         _ => "pas d'usage établi sur la fidélité",
-                    });
+                    },
+                    c.NomPropre, c.Sens,
+                    c.Noms.Select(n => new NomDto(n.Nom, n.Sens, Calendrier.Decomposer(n.Depuis).ToString(), n.EvenementId)).ToList(),
+                    c.Lexique.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => $"{Idees.GetValueOrDefault(m.Key, m.Key)} : {m.Value}").ToList(),
+                    c.Active ? VieSociale.Etendue(VieSociale.Frequentees(c.Territoire), monde.Carte).Length : 0,
+                    Raconter(c, toutes));
             }).ToList();
     }
 }

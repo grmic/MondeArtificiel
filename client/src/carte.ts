@@ -169,6 +169,68 @@ function dessinerAbondance(nature: Nature, carte: Carte): HTMLCanvasElement {
   return canvas;
 }
 
+/** Terres d'une communauté : cases en plages (début, longueur, début, longueur…). */
+export interface Territoire {
+  id: number;
+  nom: string;
+  membres: number;
+  plages: number[];
+}
+
+export interface Territoires {
+  secondes: number;
+  date: string;
+  actuel: boolean;
+  communautes: Territoire[];
+}
+
+/** Couleurs bien distinctes (palette qualitative de 12 teintes, ColorBrewer « Paired » éclaircie) : une par communauté, en boucle. */
+const PALETTE: [number, number, number][] = [
+  [31, 120, 180], [255, 127, 0], [51, 160, 44], [227, 26, 28], [106, 61, 154], [177, 89, 40],
+  [166, 206, 227], [253, 191, 111], [178, 223, 138], [251, 154, 153], [202, 178, 214], [255, 255, 153],
+];
+
+/** Couleur propre à une communauté. */
+export function couleurCommunaute(id: number): [number, number, number] {
+  return PALETTE[(id - 1) % PALETTE.length];
+}
+
+/** Terres des communautés : un voile de leur couleur, et un trait plein là où elles s'arrêtent. */
+function dessinerTerritoires(t: Territoires, largeur: number, hauteur: number, choisie: number): { canvas: HTMLCanvasElement; proprietaires: Int32Array } {
+  const proprietaires = new Int32Array(largeur * hauteur);
+  for (const c of t.communautes) {
+    for (let i = 0; i + 1 < c.plages.length; i += 2) {
+      for (let k = 0; k < c.plages[i + 1]; k++) {
+        const j = c.plages[i] + k;
+        if (j >= 0 && j < proprietaires.length) proprietaires[j] = c.id;
+      }
+    }
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = largeur;
+  canvas.height = hauteur;
+  const ctx = canvas.getContext("2d")!;
+  const image = ctx.createImageData(largeur, hauteur);
+  for (let y = 0; y < hauteur; y++) {
+    for (let x = 0; x < largeur; x++) {
+      const i = y * largeur + x;
+      const id = proprietaires[i];
+      if (id === 0) continue;
+      const bord = x === 0 || y === 0 || x === largeur - 1 || y === hauteur - 1
+        || proprietaires[i - 1] !== id || proprietaires[i + 1] !== id || proprietaires[i - largeur] !== id || proprietaires[i + largeur] !== id;
+      const [r, g, b] = couleurCommunaute(id);
+      const p = i * 4;
+      image.data[p] = r;
+      image.data[p + 1] = g;
+      image.data[p + 2] = b;
+      const terne = choisie !== 0 && id !== choisie;
+      image.data[p + 3] = bord ? (terne ? 110 : 230) : (terne ? 25 : 70);
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return { canvas, proprietaires };
+}
+
 export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement; humains: HumainVue[] } | null;
 
 const COULEUR_FEMME = 0xffb347;
@@ -192,6 +254,8 @@ export class VueCarte {
   private surClic: (info: InfoTuile) => void = () => {};
   private readonly calqueNature = new Container();
   private nature?: Nature;
+  private readonly calqueTerritoires = new Container();
+  private territoires?: { donnees: Territoires; proprietaires: Int32Array };
 
   private constructor(
     private readonly app: Application,
@@ -210,6 +274,7 @@ export class VueCarte {
 
   afficher(carte: Carte): void {
     this.afficherNature(null);
+    this.afficherTerritoires(null);
     this.carte = carte;
     this.monde.removeChildren();
     this.sprite?.texture.destroy(true);
@@ -227,7 +292,7 @@ export class VueCarte {
       this.marqueurs.addChild(point);
     }
     this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
-    this.monde.addChild(this.nuit, this.calqueNature, this.marqueurs, this.calqueHumains);
+    this.monde.addChild(this.nuit, this.calqueTerritoires, this.calqueNature, this.marqueurs, this.calqueHumains);
     this.cadrer();
   }
 
@@ -259,6 +324,26 @@ export class VueCarte {
         .stroke({ width: 0.8, color: pluie < 0.7 ? 0xd98c3a : 0x5fb4ff, alpha: 0.9 });
     });
     this.calqueNature.addChild(regions);
+  }
+
+  /** Montre (ou cache, avec null) les terres des communautés ; celles de la communauté choisie ressortent. */
+  afficherTerritoires(t: Territoires | null, choisie = 0): void {
+    for (const c of this.calqueTerritoires.removeChildren()) c.destroy({ children: true, texture: true });
+    this.territoires = undefined;
+    if (!t || !this.carte) return;
+    const { canvas, proprietaires } = dessinerTerritoires(t, this.carte.largeur, this.carte.hauteur, choisie);
+    const texture = Texture.from(canvas);
+    texture.source.scaleMode = "nearest";
+    this.calqueTerritoires.addChild(new Sprite(texture));
+    this.territoires = { donnees: t, proprietaires };
+  }
+
+  /** Communauté dont la tuile fait partie des terres, si la couche des territoires est affichée. */
+  territoireEn(x: number, y: number): Territoire | null {
+    const t = this.territoires;
+    if (!t || !this.carte || x < 0 || y < 0 || x >= this.carte.largeur || y >= this.carte.hauteur) return null;
+    const id = t.proprietaires[y * this.carte.largeur + x];
+    return id === 0 ? null : t.donnees.communautes.find((c) => c.id === id) ?? null;
   }
 
   /** Abondance d'une tuile (1 = ce que la saison et les pluies permettent) et pluie de sa région, si la couche des ressources est affichée. */

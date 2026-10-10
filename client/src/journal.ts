@@ -30,6 +30,8 @@ export class PanneauJournal {
   private evenements: Evenement[] = [];
   private types = new Set(TYPES.map(([cle]) => cle).filter((c) => !FREQUENTS.has(c)));
   private humain: number | null = null;
+  /** Chronologie d'une communauté suivie (null : tout le monde). */
+  private communaute: { id: number; nom: string } | null = null;
   private plusAncien = true;
 
   constructor(
@@ -48,6 +50,18 @@ export class PanneauJournal {
     this.racine.hidden = true;
   }
 
+  /**
+   * Chronologie d'une communauté : le journal ne montre plus que ce qui la concerne (sa vie de groupe, les naissances,
+   * morts et conflits de ses membres, ses relations avec les autres groupes).
+   */
+  suivreCommunaute(id: number, nom: string): void {
+    this.communaute = { id, nom };
+    this.types = new Set(["communaute", "naissance", "mort", "conflit", "union"]);
+    this.racine.querySelectorAll<HTMLInputElement>(".filtres input").forEach((c) => (c.checked = this.types.has(c.dataset.cle ?? "")));
+    this.racine.hidden = false;
+    void this.recharger();
+  }
+
   basculer(): void {
     this.racine.hidden = !this.racine.hidden;
     if (!this.racine.hidden) void this.recharger();
@@ -62,7 +76,7 @@ export class PanneauJournal {
   }
 
   private filtre(avantId?: number) {
-    return { types: [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100 };
+    return { types: [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100, communaute: this.communaute?.id ?? null };
   }
 
   private async lire(avantId?: number): Promise<Evenement[]> {
@@ -72,7 +86,9 @@ export class PanneauJournal {
 
   private recevoir(nouveaux: Evenement[]): void {
     if (this.racine.hidden) return;
-    const gardes = nouveaux.filter((e) => this.types.has(e.type) && (this.humain === null || e.humain === this.humain || e.autre === this.humain));
+    const c = this.communaute?.id;
+    const gardes = nouveaux.filter((e) => this.types.has(e.type) && (this.humain === null || e.humain === this.humain || e.autre === this.humain)
+      && (c === undefined || e.communaute === c || e.autreCommunaute === c));
     if (gardes.length === 0) return;
     const connus = new Set(this.evenements.map((e) => e.id));
     this.evenements = [...gardes.filter((e) => !connus.has(e.id)).reverse(), ...this.evenements].slice(0, 1000);
@@ -100,6 +116,7 @@ export class PanneauJournal {
       const case_ = el("input");
       case_.type = "checkbox";
       case_.checked = this.types.has(cle);
+      case_.dataset.cle = cle;
       case_.addEventListener("change", () => {
         if (case_.checked) this.types.add(cle);
         else this.types.delete(cle);
@@ -125,6 +142,10 @@ export class PanneauJournal {
     });
     recherche.append(champ, liste);
 
+    const suivi = el("div", "suivi");
+    suivi.hidden = true;
+    r.append(suivi);
+
     const zone = el("ul", "liste evenements");
     const plus = el("button", "plus", "Plus anciens…");
     plus.type = "button";
@@ -136,10 +157,21 @@ export class PanneauJournal {
       this.evenements.push(...anciens);
       this.dessinerListe();
     });
-    r.append(tete, filtres, recherche, zone, plus);
+    r.append(tete, filtres, recherche, suivi, zone, plus);
   }
 
   private dessinerListe(): void {
+    const suivi = this.racine.querySelector<HTMLElement>(".suivi")!;
+    suivi.hidden = this.communaute === null;
+    if (this.communaute) {
+      const arreter = el("button", undefined, "× tout le monde");
+      arreter.type = "button";
+      arreter.addEventListener("click", () => {
+        this.communaute = null;
+        void this.recharger();
+      });
+      suivi.replaceChildren(`Chronologie de la ${this.communaute.nom.charAt(0).toLowerCase()}${this.communaute.nom.slice(1)}`, arreter);
+    }
     const zone = this.racine.querySelector(".evenements")!;
     zone.replaceChildren(...this.evenements.map((e) => {
       const li = ligneEvenement(e);

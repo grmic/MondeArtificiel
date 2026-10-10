@@ -10,10 +10,10 @@ namespace Monde.Stockage;
 /// ce qui rendra les snapshots et les forks simples (copie du fichier).
 /// Toutes les requêtes sont paramétrées ; une sauvegarde complète tient dans une transaction.
 /// </summary>
-public sealed class DepotMonde
+public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 9;
+    public const int VersionSchema = 10;
 
     private readonly string _connexion;
 
@@ -321,6 +321,54 @@ public sealed class DepotMonde
                 );
                 """);
         }
+        if (actuelle < 10)
+        {
+            // Version 10 : identité et histoire des communautés (noms, mots, fusions, terres parcourues, archives de saison),
+            // communautés concernées par chaque événement, événement à l'origine d'une relation entre communautés.
+            Executer(connexion, transaction, """
+                ALTER TABLE journal ADD COLUMN communaute INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE journal ADD COLUMN autre_communaute INTEGER NOT NULL DEFAULT 0;
+                CREATE INDEX IF NOT EXISTS journal_communaute_id ON journal (communaute, id);
+                CREATE INDEX IF NOT EXISTS journal_autre_communaute_id ON journal (autre_communaute, id);
+                ALTER TABLE communautes ADD COLUMN nom_propre TEXT;
+                ALTER TABLE communautes ADD COLUMN sens TEXT;
+                ALTER TABLE communautes ADD COLUMN sens_cle TEXT;
+                ALTER TABLE communautes ADD COLUMN eponyme INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN lexique TEXT NOT NULL DEFAULT '';
+                ALTER TABLE communautes ADD COLUMN origine INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN fusion_vers INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN fusion_decidee_le INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN fusion_evenement INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN fusionnee_dans INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN accueil_le INTEGER;
+                ALTER TABLE communautes ADD COLUMN migrations INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN disettes_surmontees INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN installation_evenement INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN territoire BLOB;
+                ALTER TABLE relations_communautes ADD COLUMN evenement INTEGER NOT NULL DEFAULT 0;
+                CREATE TABLE IF NOT EXISTS noms_communautes (
+                    communaute INTEGER NOT NULL,
+                    rang       INTEGER NOT NULL,
+                    nom        TEXT    NOT NULL,
+                    sens       TEXT,
+                    depuis     INTEGER NOT NULL,
+                    evenement  INTEGER NOT NULL,
+                    PRIMARY KEY (communaute, rang)
+                );
+                INSERT OR IGNORE INTO noms_communautes (communaute, rang, nom, sens, depuis, evenement)
+                    SELECT id, 0, nom, NULL, fondee_le, 0 FROM communautes;
+                CREATE TABLE IF NOT EXISTS archives_communautes (
+                    communaute INTEGER NOT NULL,
+                    secondes   INTEGER NOT NULL,
+                    membres    INTEGER NOT NULL,
+                    adultes    INTEGER NOT NULL,
+                    cases      BLOB    NOT NULL,
+                    PRIMARY KEY (communaute, secondes)
+                );
+                CREATE INDEX IF NOT EXISTS archives_secondes ON archives_communautes (secondes);
+                """);
+            RattacherJournalAuxCommunautes(connexion, transaction);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -434,7 +482,9 @@ public sealed class DepotMonde
 
         commande.CommandText = """
             SELECT id, nom, fondee_le, dispersee_le, figure, centre_x, centre_y, rayon, abondance, disette, destination_x, destination_y,
-                   tolerance, usage, derniere_affaire, disette_evenement
+                   tolerance, usage, derniere_affaire, disette_evenement, nom_propre, sens, sens_cle, eponyme, lexique, origine,
+                   fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations, disettes_surmontees,
+                   installation_evenement, territoire
             FROM communautes ORDER BY id;
             """;
         var communautes = new List<Communaute>();
@@ -450,16 +500,26 @@ public sealed class DepotMonde
                     Disette = l.GetBoolean(9), DestinationX = l.GetInt32(10), DestinationY = l.GetInt32(11),
                     Tolerance = l.GetDouble(12), Usage = (UsageFidelite)l.GetInt32(13), DerniereAffaireId = l.GetInt64(14),
                     DisetteEvenementId = l.GetInt64(15),
+                    NomPropre = l.IsDBNull(16) ? null : l.GetString(16), Sens = l.IsDBNull(17) ? null : l.GetString(17),
+                    SensCle = l.IsDBNull(18) ? null : l.GetString(18), EponymeId = l.GetInt32(19), Lexique = LireLexique(l.GetString(20)),
+                    OrigineId = l.GetInt32(21), FusionVersId = l.GetInt32(22), FusionDecideeLe = l.GetInt64(23),
+                    FusionEvenementId = l.GetInt64(24), FusionneeDansId = l.GetInt32(25), AccueilLe = l.IsDBNull(26) ? null : l.GetInt64(26),
+                    Migrations = l.GetInt32(27), DisettesSurmontees = l.GetInt32(28), InstallationEvenementId = l.GetInt64(29),
+                    Territoire = l.IsDBNull(30) ? [] : LireTerritoire((byte[])l[30]),
                 });
             }
         }
-        if (communautes.Count > 0) etat = etat with { Communautes = communautes };
+        if (communautes.Count > 0)
+        {
+            LireNoms(commande, communautes);
+            etat = etat with { Communautes = communautes };
+        }
 
-        commande.CommandText = "SELECT a, b, etat FROM relations_communautes ORDER BY a, b;";
+        commande.CommandText = "SELECT a, b, etat, evenement FROM relations_communautes ORDER BY a, b;";
         var relations = new List<RelationCommunautes>();
         using (var l = commande.ExecuteReader())
         {
-            while (l.Read()) relations.Add(new RelationCommunautes(l.GetInt32(0), l.GetInt32(1), (EtatRelation)l.GetByte(2)));
+            while (l.Read()) relations.Add(new RelationCommunautes(l.GetInt32(0), l.GetInt32(1), (EtatRelation)l.GetByte(2), l.GetInt64(3)));
         }
         if (relations.Count > 0) etat = etat with { Relations = relations };
 
@@ -551,7 +611,7 @@ public sealed class DepotMonde
                 "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; " +
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
-                "DELETE FROM offenses_communautes;");
+                "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes;");
         }
 
         using (var commande = connexion.CreateCommand())
@@ -670,6 +730,7 @@ public sealed class DepotMonde
         if (etat.Relations is { } relations) EnregistrerRelations(connexion, transaction, relations);
         if (etat.Offenses is { } offensesAEnregistrer) EnregistrerOffenses(connexion, transaction, offensesAEnregistrer);
         if (etat.JournalNonEnregistre is { Count: > 0 } journal) EnregistrerJournal(connexion, transaction, journal);
+        if (etat.ArchivesNonEnregistrees is { Count: > 0 } archives) EnregistrerArchives(connexion, transaction, archives);
 
         transaction.Commit();
     }
@@ -724,22 +785,32 @@ public sealed class DepotMonde
     {
         using var commande = Preparer(connexion, transaction, """
             INSERT OR REPLACE INTO communautes (id, nom, fondee_le, dispersee_le, figure, centre_x, centre_y, rayon, abondance, disette,
-                destination_x, destination_y, tolerance, usage, derniere_affaire, disette_evenement)
-            VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy, $to, $u, $da, $de);
-            """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy", "$to", "$u", "$da", "$de");
+                destination_x, destination_y, tolerance, usage, derniere_affaire, disette_evenement, nom_propre, sens, sens_cle, eponyme,
+                lexique, origine, fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations,
+                disettes_surmontees, installation_evenement, territoire)
+            VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy, $to, $u, $da, $de, $np, $s, $sc, $ep, $lx, $o, $fv, $fd, $fe,
+                $fi, $al, $mi, $ds, $ie, $te);
+            """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy", "$to", "$u", "$da", "$de", "$np", "$s",
+            "$sc", "$ep", "$lx", "$o", "$fv", "$fd", "$fe", "$fi", "$al", "$mi", "$ds", "$ie", "$te");
         foreach (var c in communautes)
         {
             Lancer(commande, c.Id, c.Nom, c.FondeeLe, c.DisperseeLe is { } d ? d : DBNull.Value, c.FigureId,
                 c.CentreX, c.CentreY, c.Rayon, c.Abondance, c.Disette, c.DestinationX, c.DestinationY,
-                c.Tolerance, (int)c.Usage, c.DerniereAffaireId, c.DisetteEvenementId);
+                c.Tolerance, (int)c.Usage, c.DerniereAffaireId, c.DisetteEvenementId,
+                (object?)c.NomPropre ?? DBNull.Value, (object?)c.Sens ?? DBNull.Value, (object?)c.SensCle ?? DBNull.Value, c.EponymeId,
+                EcrireLexique(c.Lexique), c.OrigineId, c.FusionVersId, c.FusionDecideeLe, c.FusionEvenementId, c.FusionneeDansId,
+                c.AccueilLe is { } al ? al : DBNull.Value, c.Migrations, c.DisettesSurmontees, c.InstallationEvenementId,
+                c.Territoire.Count == 0 ? DBNull.Value : EcrireTerritoire(c.Territoire));
         }
+        EnregistrerNoms(connexion, transaction, communautes);
     }
 
     private static void EnregistrerRelations(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<RelationCommunautes> relations)
     {
         Executer(connexion, transaction, "DELETE FROM relations_communautes;");
-        using var commande = Preparer(connexion, transaction, "INSERT INTO relations_communautes (a, b, etat) VALUES ($a, $b, $e);", "$a", "$b", "$e");
-        foreach (var r in relations) Lancer(commande, r.A, r.B, (int)r.Etat);
+        using var commande = Preparer(connexion, transaction,
+            "INSERT INTO relations_communautes (a, b, etat, evenement) VALUES ($a, $b, $e, $v);", "$a", "$b", "$e", "$v");
+        foreach (var r in relations) Lancer(commande, r.A, r.B, (int)r.Etat, r.EvenementId);
     }
 
     private static void EnregistrerOffenses(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<OffenseCommunautes> offenses)
@@ -754,11 +825,15 @@ public sealed class DepotMonde
     {
         // INSERT OR IGNORE : un événement déjà enregistré (même numéro) n'est pas dupliqué.
         using var commande = Preparer(connexion, transaction,
-            "INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause) VALUES ($i, $s, $t, $h, $a, $x, $o, $c);",
-            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c");
+            """
+            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute)
+            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac);
+            """,
+            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac");
         foreach (var e in journal)
         {
-            Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, e.Texte, (int)e.Origine, e.CauseId);
+            Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, e.Texte, (int)e.Origine, e.CauseId,
+                e.CommunauteId, e.AutreCommunauteId);
         }
     }
 
@@ -786,7 +861,7 @@ public sealed class DepotMonde
     /// (acteur ou autre), et pagination par numéro (événements de numéro inférieur à <paramref name="avantId"/>).
     /// </summary>
     public List<EvenementJournal> LireJournal(IReadOnlyCollection<TypeEvenement>? types = null, int? humain = null,
-        long? avantId = null, int limite = 100)
+        long? avantId = null, int limite = 100, int? communaute = null)
     {
         limite = Math.Clamp(limite, 1, LimiteJournal);
         using var connexion = Ouvrir();
@@ -807,6 +882,11 @@ public sealed class DepotMonde
             conditions.Add("(humain = $h OR autre = $h)");
             commande.Parameters.AddWithValue("$h", h);
         }
+        if (communaute is { } c)
+        {
+            conditions.Add("(communaute = $c OR autre_communaute = $c)");
+            commande.Parameters.AddWithValue("$c", c);
+        }
         if (avantId is { } a)
         {
             conditions.Add("id < $a");
@@ -814,7 +894,7 @@ public sealed class DepotMonde
         }
         commande.Parameters.AddWithValue("$limite", limite);
         var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
-        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause FROM journal {where} ORDER BY id DESC LIMIT $limite;";
+        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute FROM journal {where} ORDER BY id DESC LIMIT $limite;";
         return LireEvenements(commande);
     }
 
@@ -823,7 +903,7 @@ public sealed class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause FROM journal WHERE id = $id;";
+        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute FROM journal WHERE id = $id;";
         commande.Parameters.AddWithValue("$id", id);
         return LireEvenements(commande).FirstOrDefault();
     }
@@ -835,7 +915,7 @@ public sealed class DepotMonde
         while (l.Read())
         {
             resultat.Add(new EvenementJournal(l.GetInt64(1), (TypeEvenement)l.GetByte(2), l.GetInt32(3), l.GetInt32(4), l.GetString(5),
-                (Origine)l.GetByte(6)) { Id = l.GetInt64(0), CauseId = l.GetInt64(7) });
+                (Origine)l.GetByte(6)) { Id = l.GetInt64(0), CauseId = l.GetInt64(7), CommunauteId = l.GetInt32(8), AutreCommunauteId = l.GetInt32(9) });
         }
         return resultat;
     }

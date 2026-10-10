@@ -31,4 +31,12 @@ public static class Noms
             if (deja.Add(nom)) return nom;
         }
     }
+
+    /// <summary>Un mot court (sons pris dans le même répertoire que les noms), en minuscules.</summary>
+    public static string Mot(Alea alea, int syllabes)
+    {
+        var mot = "";
+        for (var i = 0; i < syllabes; i++) mot += Attaques[alea.Entier(Attaques.Length)] + Voyelles[alea.Entier(Voyelles.Length)];
+        return mot;
+    }
 }

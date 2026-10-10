@@ -1,6 +1,6 @@
 import { connexion } from "./connexion";
 import type { Indicateurs } from "./carte";
-import { el } from "./fiche";
+import { boutonCause, el } from "./fiche";
 
 interface Communaute {
   id: number;
@@ -21,6 +21,42 @@ interface Communaute {
   relations: { id: number; nom: string; etat: string }[];
   /** Usage du groupe envers ceux qui s'unissent hors de leur couple. */
   usage: string;
+  /** Nom que se donnent ses membres, et ce qu'il veut dire (null tant qu'ils ne se sont pas nommés). */
+  nomPropre: string | null;
+  sens: string | null;
+  noms: { nom: string; sens: string | null; depuis: string; evenement: number }[];
+  mots: string[];
+  terres: number;
+  histoire: string[];
+}
+
+interface Taille {
+  secondes: number;
+  date: string;
+  membres: number;
+  adultes: number;
+}
+
+/** Courbe de la taille d'une communauté au début de chaque saison (membres en bleu, adultes en pointillés verts). */
+function courbe(tailles: Taille[]): SVGSVGElement {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("class", "courbe");
+  svg.setAttribute("viewBox", "0 0 300 48");
+  svg.setAttribute("preserveAspectRatio", "none");
+  const max = Math.max(1, ...tailles.map((t) => t.membres));
+  const points = (cle: "membres" | "adultes") => tailles
+    .map((t, i) => `${tailles.length === 1 ? 150 : (i / (tailles.length - 1)) * 300},${46 - (t[cle] / max) * 44}`).join(" ");
+  for (const cle of ["membres", "adultes"] as const) {
+    const ligne = document.createElementNS(ns, "polyline");
+    ligne.setAttribute("points", points(cle));
+    if (cle === "adultes") ligne.setAttribute("class", "adultes");
+    svg.append(ligne);
+  }
+  const titre = document.createElementNS(ns, "title");
+  titre.textContent = `De ${tailles[0].date} à ${tailles[tailles.length - 1].date} : jusqu'à ${max} membres`;
+  svg.append(titre);
+  return svg;
 }
 
 /**
@@ -30,12 +66,18 @@ interface Communaute {
 export class PanneauCommunautes {
   private choisie = 0;
   private minuteur?: number;
+  private tailles: { id: number; valeurs: Taille[]; lu: number } | null = null;
 
   constructor(
     private readonly racine: HTMLElement,
     private readonly surligner: (ids: number[]) => void,
     private readonly ouvrirFiche: (id: number) => void,
+    private readonly suivre: (id: number, nom: string) => void = () => {},
+    private readonly montrerTerres: (id: number) => void = () => {},
   ) {}
+
+  /** Prévenu quand la communauté choisie change (0 : aucune). */
+  surChoix: (id: number) => void = () => {};
 
   basculer(): void {
     if (this.racine.hidden) void this.ouvrir();
@@ -43,7 +85,10 @@ export class PanneauCommunautes {
   }
 
   async ouvrir(id?: number): Promise<void> {
-    if (id !== undefined) this.choisie = id;
+    if (id !== undefined) {
+      this.choisie = id;
+      this.surChoix(id);
+    }
     this.racine.hidden = false;
     await this.rafraichir();
     window.clearInterval(this.minuteur);
@@ -54,11 +99,18 @@ export class PanneauCommunautes {
     window.clearInterval(this.minuteur);
     this.racine.hidden = true;
     this.choisie = 0;
+    this.surChoix(0);
     this.surligner([]);
   }
 
   async rafraichir(): Promise<void> {
     if (this.racine.hidden) return;
+    // Taille au fil des saisons de la communauté choisie : relue au plus une fois par minute.
+    if (this.choisie && (this.tailles?.id !== this.choisie || Date.now() - this.tailles.lu > 60_000)) {
+      const id = this.choisie;
+      const valeurs = await connexion.invoke<Taille[]>("TaillesCommunaute", id).catch(() => []);
+      this.tailles = { id, valeurs, lu: Date.now() };
+    }
     const [liste, nature] = await Promise.all([
       connexion.invoke<Communaute[]>("Communautes").catch(() => null),
       connexion.invoke<{ indicateurs: Indicateurs }>("Nature").catch(() => null),
@@ -95,7 +147,14 @@ export class PanneauCommunautes {
     if (dispersees.length > 0) {
       corps.append(el("h3", undefined, "Dispersées"));
       const ul = el("ul", "liste");
-      for (const c of dispersees.slice(0, 30)) ul.append(el("li", "discret", `${c.nom} : ${c.fondeeLe} → ${c.disperseeLe}`));
+      for (const c of dispersees.slice(0, 30)) {
+        const li = el("li", "discret", `${c.nom} : ${c.fondeeLe} → ${c.disperseeLe}${c.histoire.length > 0 ? ` · ${c.histoire.join(" ")}` : ""} `);
+        const chrono = el("button", "lien", "chronologie");
+        chrono.type = "button";
+        chrono.addEventListener("click", () => this.suivre(c.id, c.nom));
+        li.append(chrono);
+        ul.append(li);
+      }
       corps.append(ul);
     }
     r.append(tete, corps);
@@ -113,12 +172,19 @@ export class PanneauCommunautes {
     titre.title = "Montrer ses membres sur la carte";
     titre.addEventListener("click", () => {
       this.choisie = this.choisie === c.id ? 0 : c.id;
+      this.surChoix(this.choisie);
       void this.rafraichir();
     });
     bloc.append(titre);
+    if (c.nomPropre && c.sens) bloc.append(el("p", "nom-propre", `« ${c.nomPropre} » : ${c.sens}`));
     const adultes = c.membres.filter((m) => m.etape === "adulte").length;
-    const info = el("p", "discret", `Née ${c.fondeeLe} · vers (${c.x}, ${c.y}) · ${adultes} adultes, ${c.membres.length - adultes} enfants`);
+    const info = el("p", "discret", `Née ${c.fondeeLe} · vers (${c.x}, ${c.y}) · ${adultes} adultes, ${c.membres.length - adultes} enfants · terres : ${c.terres} cases`);
     bloc.append(info);
+    if (c.histoire.length > 0) {
+      const ul = el("ul", "histoire");
+      for (const h of c.histoire) ul.append(el("li", undefined, h));
+      bloc.append(ul);
+    }
     bloc.append(el("p", c.abondance < 40 ? "alerte" : "discret",
       `Terres alentour : ${c.abondance} % de ce qu'elles donnent d'ordinaire · faim moyenne ${c.faim} · réserves moyennes ${c.reserves}`));
     if (c.destination) bloc.append(el("p", "alerte", `En route vers ${c.destination}, à la recherche de terres plus riches.`));
@@ -138,7 +204,33 @@ export class PanneauCommunautes {
     lien.addEventListener("click", () => this.ouvrirFiche(c.figure));
     figure.append("Figure centrale : ", lien);
     bloc.append(figure);
+    const boutons = el("div", "boutons");
+    const chrono = el("button", undefined, "Chronologie");
+    chrono.type = "button";
+    chrono.title = "Tout ce qui est arrivé à cette communauté, dans le journal";
+    chrono.addEventListener("click", () => this.suivre(c.id, c.nom));
+    const terres = el("button", undefined, "Terres");
+    terres.type = "button";
+    terres.title = "Ses terres sur la carte, aujourd'hui et au fil des saisons";
+    terres.addEventListener("click", () => this.montrerTerres(c.id));
+    boutons.append(chrono, terres);
+    bloc.append(boutons);
     if (c.id === this.choisie) {
+      if (c.noms.length > 1) {
+        bloc.append(el("h3", undefined, "Noms successifs"));
+        const ul = el("ul", "liste");
+        for (const n of c.noms) {
+          const li = el("li");
+          li.append(el("span", "date", n.depuis), ` ${n.nom}${n.sens ? ` (« ${n.sens} »)` : " (nom donné par l'observateur)"} `);
+          if (n.evenement > 0) li.append(boutonCause(li, n.evenement, "comment ?"));
+          ul.append(li);
+        }
+        bloc.append(ul);
+      }
+      if (c.mots.length > 0) bloc.append(el("p", "discret", `Premiers mots : ${c.mots.join(" · ")}`));
+      if (this.tailles?.id === c.id && this.tailles.valeurs.length > 1) {
+        bloc.append(el("h3", undefined, "Taille au fil des saisons"), courbe(this.tailles.valeurs));
+      }
       const membres = el("p", "membres");
       c.membres.forEach((m, i) => {
         if (i > 0) membres.append(", ");

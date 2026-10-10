@@ -14,8 +14,11 @@ public enum EtatRelation : byte
     Hostiles = 3,
 }
 
-/// <summary>Relation entre deux communautés (<see cref="A"/> &lt; <see cref="B"/>).</summary>
-public sealed record RelationCommunautes(int A, int B, EtatRelation Etat);
+/// <summary>
+/// Relation entre deux communautés (<see cref="A"/> &lt; <see cref="B"/>), et l'événement qui l'a fait naître
+/// (cause d'une fusion décidée entre alliées, par exemple).
+/// </summary>
+public sealed record RelationCommunautes(int A, int B, EtatRelation Etat, long EvenementId = 0);
 
 /// <summary>
 /// Territoires, disettes, migrations et relations entre communautés. Rien n'est décrété : la disette se constate
@@ -42,6 +45,7 @@ public sealed partial class VieSociale
     private const int DistanceMigrationMax = 40;
 
     private readonly Dictionary<(int A, int B), EtatRelation> _relations = [];
+    private readonly Dictionary<(int A, int B), long> _debutsRelations = [];
 
     /// <summary>Communautés du monde (fournies par le monde), pour les comportements de groupe.</summary>
     public IReadOnlyList<Communaute> Communautes { get; set; } = [];
@@ -49,12 +53,17 @@ public sealed partial class VieSociale
     /// <summary>Relations qui ne sont pas indifférentes, dans un ordre stable.</summary>
     public List<RelationCommunautes> Relations =>
         _relations.Where(r => r.Value != EtatRelation.Indifferentes).OrderBy(r => r.Key.A).ThenBy(r => r.Key.B)
-            .Select(r => new RelationCommunautes(r.Key.A, r.Key.B, r.Value)).ToList();
+            .Select(r => new RelationCommunautes(r.Key.A, r.Key.B, r.Value, _debutsRelations.GetValueOrDefault(r.Key))).ToList();
 
     public void ChargerRelations(IEnumerable<RelationCommunautes> relations)
     {
         _relations.Clear();
-        foreach (var r in relations) _relations[Paire(r.A, r.B)] = r.Etat;
+        _debutsRelations.Clear();
+        foreach (var r in relations)
+        {
+            _relations[Paire(r.A, r.B)] = r.Etat;
+            if (r.EvenementId > 0) _debutsRelations[Paire(r.A, r.B)] = r.EvenementId;
+        }
     }
 
     private static (int, int) Paire(int a, int b) => a < b ? (a, b) : (b, a);
@@ -93,6 +102,7 @@ public sealed partial class VieSociale
             c.DestinationX = c.DestinationY = -1;
         }
         Relier(humains, actives, membres, maintenant);
+        Identites(humains, communautes, membres, carte, maintenant);
     }
 
     private void Disette(Communaute c, List<Humain> groupe, double reserves, Ecosysteme nature, Carte carte, long maintenant)
@@ -103,20 +113,26 @@ public sealed partial class VieSociale
             c.Disette = true;
             c.DisetteEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null, c.Abondance < AbondanceDisette
                 ? $"La disette gagne la {Minuscule(c.Nom)} : le gibier et les plantes se font rares alentour ({c.Abondance:P0} de ce que la terre donne d'ordinaire)."
-                : $"La disette gagne la {Minuscule(c.Nom)} : ses membres maigrissent et ont faim.");
+                : $"La disette gagne la {Minuscule(c.Nom)} : ses membres maigrissent et ont faim.", communaute: c.Id);
         }
         else if (c.Disette && reserves > ReservesFinDisette && c.Abondance > AbondanceFinDisette)
         {
             c.Disette = false;
-            c.DestinationX = c.DestinationY = -1;
-            Noter(maintenant, TypeEvenement.Communaute, figure, null, $"La disette prend fin pour la {Minuscule(c.Nom)}.", c.DisetteEvenementId);
+            c.DisettesSurmontees++;
+            if (c.FusionVersId == 0) c.DestinationX = c.DestinationY = -1;
+            Noter(maintenant, TypeEvenement.Communaute, figure, null, $"La disette prend fin pour la {Minuscule(c.Nom)}.", c.DisetteEvenementId,
+                communaute: c.Id);
             return;
         }
+        // Un groupe en route pour en rejoindre un autre ne cherche pas d'autres terres.
+        if (c.FusionVersId != 0) return;
 
         if (c.DestinationX >= 0 && Math.Max(Math.Abs(c.CentreX - c.DestinationX), Math.Abs(c.CentreY - c.DestinationY)) <= 4)
         {
-            Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                $"La {Minuscule(c.Nom)} s'installe sur ses nouvelles terres, {Lieux.Direction(carte, c.CentreX, c.CentreY)} du continent.");
+            c.InstallationEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null,
+                $"La {Minuscule(c.Nom)} s'installe sur ses nouvelles terres, {Lieux.Direction(carte, c.CentreX, c.CentreY)} du continent.",
+                communaute: c.Id);
+            c.Migrations++;
             c.DestinationX = c.DestinationY = -1;
         }
         if (!c.Disette || c.DestinationX >= 0 || c.Abondance >= AbondanceFinDisette) return;
@@ -140,7 +156,7 @@ public sealed partial class VieSociale
             (c.DestinationX, c.DestinationY) = (meilleur.X, meilleur.Y);
             Noter(maintenant, TypeEvenement.Communaute, guide, null,
                 $"La {Minuscule(c.Nom)} part vers {Lieux.Vers(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)}, vers des terres plus riches dont se souvient {guide.Nom}.",
-                c.DisetteEvenementId);
+                c.DisetteEvenementId, communaute: c.Id);
             return;
         }
 
@@ -155,7 +171,7 @@ public sealed partial class VieSociale
             (c.DestinationX, c.DestinationY) = (x, y);
             Noter(maintenant, TypeEvenement.Communaute, figure, null,
                 $"La {Minuscule(c.Nom)} quitte ses terres épuisées et part à l'aventure vers {Lieux.Vers(c.CentreX, c.CentreY, x, y)}.",
-                c.DisetteEvenementId);
+                c.DisetteEvenementId, communaute: c.Id);
             return;
         }
     }
@@ -165,6 +181,7 @@ public sealed partial class VieSociale
     {
         var ids = actives.Select(c => c.Id).ToHashSet();
         foreach (var cle in _relations.Keys.Where(k => !ids.Contains(k.A) || !ids.Contains(k.B)).ToList()) _relations.Remove(cle);
+        foreach (var cle in _debutsRelations.Keys.Where(k => !_relations.ContainsKey(k)).ToList()) _debutsRelations.Remove(cle);
         foreach (var cle in _offenses.Keys.Where(k => !ids.Contains(k.A) || !ids.Contains(k.B)).ToList()) _offenses.Remove(cle);
 
         // Somme et nombre des liens entre membres de deux communautés.
@@ -208,6 +225,7 @@ public sealed partial class VieSociale
                 if (apres == avant) continue;
                 if (apres == EtatRelation.Indifferentes) _relations.Remove(cle);
                 else _relations[cle] = apres;
+                _debutsRelations.Remove(cle);
 
                 var figureA = humains[a.FigureId - 1];
                 var figureB = humains[b.FigureId - 1];
@@ -225,13 +243,14 @@ public sealed partial class VieSociale
                     },
                 };
                 // Une hostilité qui suit une violence entre les deux groupes cite cette violence comme cause.
-                Noter(maintenant, TypeEvenement.Communaute, figureA, figureB, texte,
+                var id = Noter(maintenant, TypeEvenement.Communaute, figureA, figureB, texte,
                     apres switch
                     {
                         EtatRelation.Hostiles => _offenses.GetValueOrDefault(cle),
                         EtatRelation.Rivales => a.Disette ? a.DisetteEvenementId : b.DisetteEvenementId,
                         _ => 0,
-                    });
+                    }, communaute: a.Id, autreCommunaute: b.Id);
+                if (apres != EtatRelation.Indifferentes) _debutsRelations[cle] = id;
             }
         }
     }

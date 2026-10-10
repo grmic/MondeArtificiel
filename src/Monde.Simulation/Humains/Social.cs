@@ -21,8 +21,58 @@ public sealed class Communaute
 {
     public required int Id { get; init; }
 
-    /// <summary>Nom donné pour l'observateur, d'après sa figure centrale à sa naissance.</summary>
-    public required string Nom { get; init; }
+    /// <summary>
+    /// Nom affiché : d'abord celui que lui donne l'observateur (« Communauté de … », d'après sa figure centrale à sa naissance),
+    /// puis « Communauté » suivi du nom que ses membres se donnent, quand ils en ont trouvé un.
+    /// </summary>
+    public required string Nom { get; set; }
+
+    /// <summary>Nom que les membres se donnent (null tant qu'ils ne se sont pas nommés), et ce qu'il veut dire.</summary>
+    public string? NomPropre { get; set; }
+    public string? Sens { get; set; }
+
+    /// <summary>Idée d'où vient le nom (« riviere », « eponyme », « gens »…), pour savoir quand il ne convient plus.</summary>
+    public string? SensCle { get; set; }
+
+    /// <summary>Humain dont le groupe porte le nom (0 : aucun).</summary>
+    public int EponymeId { get; set; }
+
+    /// <summary>
+    /// Premiers mots du groupe (idée → mot) : ceux qui ont servi à le nommer. Une communauté née d'une scission garde
+    /// les mots de celle qu'elle quitte ; c'est le germe de sa langue.
+    /// </summary>
+    public Dictionary<string, string> Lexique { get; set; } = [];
+
+    /// <summary>Noms successifs, du premier au dernier.</summary>
+    public List<NomCommunaute> Noms { get; set; } = [];
+
+    /// <summary>Communauté d'où vient le groupe, s'il est né d'une scission (0 sinon).</summary>
+    public int OrigineId { get; set; }
+
+    /// <summary>Communauté que le groupe a décidé de rejoindre (0 : aucune), depuis quand, et l'événement de la décision.</summary>
+    public int FusionVersId { get; set; }
+    public long FusionDecideeLe { get; set; }
+    public long FusionEvenementId { get; set; }
+
+    /// <summary>Communauté dans laquelle le groupe s'est fondu (0 : il ne s'est fondu dans aucune).</summary>
+    public int FusionneeDansId { get; set; }
+
+    /// <summary>Dernière fois que le groupe a accueilli une autre communauté : ses nouveaux membres ne se connaissent pas encore.</summary>
+    public long? AccueilLe { get; set; }
+
+    /// <summary>Migrations menées à leur terme et disettes surmontées : ce que le groupe a traversé.</summary>
+    public int Migrations { get; set; }
+    public int DisettesSurmontees { get; set; }
+
+    /// <summary>Dernière installation sur de nouvelles terres (événement du journal).</summary>
+    public long InstallationEvenementId { get; set; }
+
+    /// <summary>
+    /// Terres parcourues : pour chaque case où un membre est passé, le jour du dernier passage et le nombre de jours
+    /// de passage (voir <see cref="VieSociale.Passage"/>). Tant que personne n'a
+    /// inventé la frontière, le territoire d'un groupe n'est rien d'autre que les terres qu'il fréquente.
+    /// </summary>
+    public Dictionary<int, long> Territoire { get; set; } = [];
 
     public required long FondeeLe { get; init; }
     public long? DisperseeLe { get; set; }
@@ -64,7 +114,14 @@ public sealed class Communaute
     /// <summary>Dernière affaire d'infidélité qui a marqué le groupe (événement du journal), cause des changements d'usage.</summary>
     public long DerniereAffaireId { get; set; }
 
-    public Communaute Copier() => (Communaute)MemberwiseClone();
+    public Communaute Copier()
+    {
+        var copie = (Communaute)MemberwiseClone();
+        copie.Lexique = new Dictionary<string, string>(Lexique);
+        copie.Noms = [.. Noms];
+        copie.Territoire = new Dictionary<int, long>(Territoire);
+        return copie;
+    }
 }
 
 /// <summary>
@@ -93,10 +150,18 @@ public sealed partial class VieSociale(Alea alea)
     /// <summary>Partages de nourriture du jour (donneur, receveur), notés une fois par jour au journal.</summary>
     public HashSet<(int Donneur, int Receveur)> PartagesDuJour { get; } = [];
 
-    /// <summary>Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause.</summary>
-    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0)
+    /// <summary>
+    /// Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause. Sans communauté
+    /// précisée, l'événement appartient à la chronologie de la communauté de <paramref name="h"/>.
+    /// </summary>
+    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0,
+        int communaute = -1, int autreCommunaute = 0)
     {
-        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte) { Id = Numeros.Suivant(), CauseId = cause };
+        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte)
+        {
+            Id = Numeros.Suivant(), CauseId = cause, CommunauteId = communaute >= 0 ? communaute : h.CommunauteId,
+            AutreCommunauteId = autreCommunaute,
+        };
         Journal.Add(e);
         return e.Id;
     }
@@ -435,9 +500,11 @@ public sealed partial class VieSociale(Alea alea)
     /// <summary>
     /// Une fois par semaine : les humains reliés par des liens d'affection forment des groupes.
     /// Un groupe d'au moins 5 humains dont 3 adultes est une communauté. Elle garde son identité
-    /// tant qu'elle conserve au moins la moitié de ses membres ; sinon elle se disperse.
+    /// tant qu'elle conserve au moins la moitié de ses membres ; sinon elle se disperse, ou se fond dans celle
+    /// qui a accueilli la plupart d'entre eux.
     /// Il faut une amitié pour entrer, un simple lien d'affection pour rester (évite les va-et-vient),
     /// et les deux humains doivent vivre à moins de <see cref="DistanceCommunaute"/> cases l'un de l'autre.
+    /// Deux groupes qui ont décidé de s'unir restent unis le temps que leurs membres apprennent à se connaître.
     /// </summary>
     public void Regrouper(List<Humain> humains, List<Communaute> communautes, long maintenant, ISet<string> noms)
     {
@@ -474,6 +541,7 @@ public sealed partial class VieSociale(Alea alea)
                 if (dejaEnsemble ? l.Affection >= 15 && l.Familiarite >= 20 : l.Amis) Unir(h.Id, l.Id);
             }
         }
+        Rassembler(humains, membres, communautes, maintenant, Unir);
 
         var groupes = membres.GroupBy(h => Racine(h.Id))
             .Select(g => g.ToList())
@@ -496,15 +564,21 @@ public sealed partial class VieSociale(Alea alea)
             Communaute communaute;
             if (candidate.Id != 0 && candidate.Nombre * 2 >= tailles[candidate.Id])
             {
-                communaute = communautes.First(c => c.Id == candidate.Id);
+                communaute = communautes[candidate.Id - 1];
                 reprises.Add(communaute.Id);
             }
             else
             {
                 var figure = Figure(g, maintenant);
                 var nom = $"Communauté de {figure.Nom}";
-                var homonymes = communautes.Count(c => c.Nom == nom || c.Nom.StartsWith(nom + " (", StringComparison.Ordinal));
+                // Les homonymes se comptent sur le premier nom de chaque communauté : celles qui se sont nommées depuis comptent encore.
+                var homonymes = communautes.Select(c => c.Noms.Count > 0 ? c.Noms[0].Nom : c.Nom)
+                    .Count(n => n == nom || n.StartsWith(nom + " (", StringComparison.Ordinal));
                 var tolerance = ToleranceInitiale(g, communautes, maintenant);
+                // Groupe venu en majorité d'une même communauté : c'est une scission.
+                var origine = g.Where(h => h.CommunauteId != 0).GroupBy(h => h.CommunauteId)
+                    .Select(c => (Id: c.Key, Nombre: c.Count())).OrderByDescending(c => c.Nombre).ThenBy(c => c.Id).FirstOrDefault();
+                var scission = origine.Id != 0 && origine.Nombre * 2 > g.Count;
                 communaute = new Communaute
                 {
                     Id = communautes.Count + 1,
@@ -513,15 +587,17 @@ public sealed partial class VieSociale(Alea alea)
                     FigureId = figure.Id,
                     Tolerance = tolerance,
                     Usage = Classer(tolerance, UsageFidelite.Neutre),
+                    OrigineId = scission ? origine.Id : 0,
+                    // Ceux qui partent emportent les mots de leur ancien groupe.
+                    Lexique = scission ? new Dictionary<string, string>(communautes[origine.Id - 1].Lexique) : [],
                 };
                 communautes.Add(communaute);
                 reprises.Add(communaute.Id);
-                // Groupe venu en majorité d'une même communauté : c'est une scission.
-                var origine = g.Where(h => h.CommunauteId != 0).GroupBy(h => h.CommunauteId)
-                    .Select(c => (Id: c.Key, Nombre: c.Count())).OrderByDescending(c => c.Nombre).ThenBy(c => c.Id).FirstOrDefault();
-                Noter(maintenant, TypeEvenement.Communaute, figure, null, origine.Id != 0 && origine.Nombre * 2 > g.Count
+                var id = Noter(maintenant, TypeEvenement.Communaute, figure, null, scission
                     ? $"{g.Count} humains quittent la {Minuscule(communautes[origine.Id - 1].Nom)} et se rassemblent autour de {figure.Nom}."
-                    : $"Une communauté se forme autour de {figure.Nom} : {g.Count} humains vivent désormais ensemble.");
+                    : $"Une communauté se forme autour de {figure.Nom} : {g.Count} humains vivent désormais ensemble.",
+                    communaute: communaute.Id, autreCommunaute: scission ? origine.Id : 0);
+                communaute.Noms.Add(new NomCommunaute(communaute.Nom, null, maintenant, id));
             }
             foreach (var h in g) nouvelles[h.Id] = communaute.Id;
 
@@ -530,15 +606,39 @@ public sealed partial class VieSociale(Alea alea)
             {
                 communaute.FigureId = nouvelleFigure.Id;
                 Noter(maintenant, TypeEvenement.Communaute, nouvelleFigure, null,
-                    $"{nouvelleFigure.Nom} devient la figure centrale de la {Minuscule(communaute.Nom)}.");
+                    $"{nouvelleFigure.Nom} devient la figure centrale de la {Minuscule(communaute.Nom)}.", communaute: communaute.Id);
             }
         }
 
+        var fondues = new Dictionary<int, int>(); // communauté → celle qui a accueilli ses membres
         foreach (var c in communautes.Where(c => c.Active && !reprises.Contains(c.Id)))
         {
             c.DisperseeLe = maintenant;
             var figure = humains[c.FigureId - 1];
-            Noter(maintenant, TypeEvenement.Communaute, figure, null, $"La {Minuscule(c.Nom)} se disperse.");
+            // La plupart de ses membres vivent désormais dans une même communauté : le groupe s'y est fondu.
+            var accueil = membres.Where(h => anciens[h.Id] == c.Id && nouvelles.ContainsKey(h.Id))
+                .GroupBy(h => nouvelles[h.Id]).Select(x => (Id: x.Key, Nombre: x.Count()))
+                .OrderByDescending(x => x.Nombre).ThenBy(x => x.Id).FirstOrDefault();
+            if (accueil.Id != 0 && accueil.Nombre * 2 >= tailles.GetValueOrDefault(c.Id))
+            {
+                var cible = communautes[accueil.Id - 1];
+                // Un petit groupe parti depuis quelques semaines qui revient d'où il vient n'a pas fait de fusion : il n'a pas duré.
+                if (maintenant - c.FondeeLe < AgeAvantDeSeNommer && c.FusionEvenementId == 0)
+                {
+                    Noter(maintenant, TypeEvenement.Communaute, figure, null,
+                        $"La {Minuscule(c.Nom)} ne dure pas : {accueil.Nombre} de ses membres vivent de nouveau avec la {Minuscule(cible.Nom)}.",
+                        communaute: cible.Id, autreCommunaute: c.Id);
+                }
+                else
+                {
+                    Fondre(c, cible, figure, accueil.Nombre, maintenant);
+                }
+                fondues[c.Id] = cible.Id;
+                c.Territoire.Clear();
+                continue;
+            }
+            Noter(maintenant, TypeEvenement.Communaute, figure, null, $"La {Minuscule(c.Nom)} se disperse.", communaute: c.Id);
+            c.Territoire.Clear();
         }
 
         foreach (var h in membres)
@@ -547,14 +647,18 @@ public sealed partial class VieSociale(Alea alea)
             var apres = nouvelles.GetValueOrDefault(h.Id);
             h.CommunauteId = apres;
             if (avant == apres || h.EstBebe(maintenant)) continue;
-            // Les arrivées dans une communauté qui vient de naître sont déjà dans l'annonce de sa formation.
-            if (apres != 0 && communautes[apres - 1].FondeeLe != maintenant)
+            // Les arrivées dans une communauté qui vient de naître sont déjà dans l'annonce de sa formation,
+            // celles d'une fusion dans l'annonce de la fusion.
+            if (apres != 0 && communautes[apres - 1].FondeeLe != maintenant
+                && fondues.GetValueOrDefault(avant) != apres)
             {
-                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}.");
+                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}.",
+                    communaute: apres, autreCommunaute: avant);
             }
             else if (apres == 0 && communautes[avant - 1].Active)
             {
-                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} quitte la {Minuscule(communautes[avant - 1].Nom)}.");
+                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} quitte la {Minuscule(communautes[avant - 1].Nom)}.",
+                    communaute: avant);
             }
         }
         Usages(humains, communautes, maintenant);

@@ -116,3 +116,23 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .chaine-cause .chaine-cause { margin-left: 10px; }
 .evenement.conflit { color: #f0a070; }
 .communaute-carte .usage { color: var(--discret); font-size: 0.85rem; }
+.territoires {
+  position: fixed; left: 12px; bottom: 110px; width: min(380px, calc(100vw - 24px)); max-height: 40vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 8px 14px; border-radius: 10px; background: var(--panneau); font-size: 0.85rem;
+}
+.territoires[hidden] { display: none; }
+.territoires .ligne { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.territoires input[type=range] { flex: 1; }
+.territoires .fermer { background: none; border: none; color: var(--discret); font-size: 1.3rem; cursor: pointer; line-height: 1; }
+.territoires p { margin: 0; }
+.pastille { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+.communaute-carte .nom-propre { color: #ffe6a8; font-style: italic; }
+.communaute-carte .histoire { margin: 3px 0; padding-left: 16px; }
+.communaute-carte .boutons { display: flex; gap: 8px; margin-top: 4px; }
+.communaute-carte .boutons button, .journal-panneau .suivi button { font-size: 0.8rem; padding: 2px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; }
+.courbe { display: block; width: 100%; height: 48px; margin: 4px 0; }
+.courbe polyline { fill: none; stroke: #8cc4ff; stroke-width: 1.5; }
+.courbe .adultes { stroke: #b8f0c4; stroke-dasharray: 3 2; }
+.journal-panneau .suivi { padding: 0 14px 6px; color: #ffe6a8; display: flex; gap: 8px; align-items: center; }
+.journal-panneau .suivi[hidden] { display: none; }

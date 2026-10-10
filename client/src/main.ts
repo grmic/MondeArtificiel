@@ -4,6 +4,7 @@ import { PanneauCommunautes } from "./communautes";
 import { PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
+import { PanneauTerritoires } from "./territoires";
 import "./style.css";
 
 const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
@@ -32,6 +33,7 @@ function decrireHumain(h: HumainVue): string {
 }
 
 let natureEn: (x: number, y: number) => { abondance: number; pluie: number } | null = () => null;
+let territoireEn: (x: number, y: number) => { nom: string } | null = () => null;
 
 function decrire(info: InfoTuile): void {
   if (!info) return;
@@ -46,6 +48,8 @@ function decrire(info: InfoTuile): void {
   if (nature && nature.abondance > 0) {
     lignes.push(`Ressources : ${Math.round(nature.abondance * 100)} % de ce que la saison permet · pluies de l'année : ${Math.round(nature.pluie * 100)} % de la normale`);
   }
+  const terres = territoireEn(x, y);
+  if (terres) lignes.push(`Terres de la ${terres.nom.charAt(0).toLowerCase()}${terres.nom.slice(1)}`);
   if (emplacement) lignes.unshift(`Emplacement de départ n° ${emplacement.numero}`);
   if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 5).map(decrireHumain));
   infos.textContent = lignes.join("\n");
@@ -54,6 +58,7 @@ function decrire(info: InfoTuile): void {
 async function demarrer(): Promise<void> {
   const vue = await VueCarte.creer(element("#scene"), decrire);
   natureEn = (x, y) => vue.natureEn(x, y);
+  territoireEn = (x, y) => vue.territoireEn(x, y);
 
   // Couche des ressources : relue toutes les 5 secondes tant qu'elle est affichée.
   const boutonRessources = element<HTMLButtonElement>("#boutonRessources");
@@ -99,7 +104,21 @@ async function demarrer(): Promise<void> {
       journal.fermer();
       void communautes?.ouvrir(id);
     });
-  communautes = new PanneauCommunautes(element("#communautes"), (ids) => vue.surligner(ids), (id) => void fiche.ouvrir(id));
+  const territoires = new PanneauTerritoires(element("#panneauTerritoires"), vue, (id) => {
+    journal.fermer();
+    void communautes?.ouvrir(id);
+  });
+  communautes = new PanneauCommunautes(element("#communautes"), (ids) => vue.surligner(ids), (id) => void fiche.ouvrir(id),
+    (id, nom) => {
+      communautes?.fermer();
+      journal.suivreCommunaute(id, nom);
+    },
+    (id) => {
+      territoires.choisir(id);
+      if (!territoires.ouvert) void territoires.ouvrir();
+    });
+  communautes.surChoix = (id) => territoires.choisir(id);
+  element("#boutonTerritoires").addEventListener("click", () => territoires.basculer());
 
   vue.quandClic((info) => {
     const h = vue.humainsSous(info)[0];
@@ -155,6 +174,7 @@ async function demarrer(): Promise<void> {
   let graineMonde: number | undefined;
   connexion.on("MondeReinitialise", (graine: number) => {
     fiche.fermer();
+    territoires.fermer();
     communautes?.fermer();
     void journal.recharger();
     void charger().then(() => (infos.textContent = `Monde réinitialisé · graine ${graine}. Le temps est en pause.`));

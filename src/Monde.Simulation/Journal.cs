@@ -53,6 +53,13 @@ public sealed record EvenementJournal(long Secondes, TypeEvenement Type, int Hum
 {
     public long Id { get; init; }
     public long CauseId { get; init; }
+
+    /// <summary>
+    /// Communauté concernée (0 : aucune) et, pour ce qui se passe entre deux groupes, l'autre communauté.
+    /// Par défaut, c'est la communauté de l'humain au moment des faits : la chronologie d'un groupe s'en déduit.
+    /// </summary>
+    public int CommunauteId { get; init; }
+    public int AutreCommunauteId { get; init; }
 }
 
 /// <summary>
