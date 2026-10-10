@@ -1,0 +1,18 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+
+# Client
+client/node_modules/
+client/dist/
+
+# Données des mondes (fichiers SQLite)
+*.db
+*.db-shm
+*.db-wal
+
+# macOS / éditeurs
+.DS_Store
+.idea/
