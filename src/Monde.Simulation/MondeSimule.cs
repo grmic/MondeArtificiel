@@ -8,7 +8,8 @@ namespace Monde.Simulation;
 /// État sauvegardable du monde. Les champs facultatifs sont absents pour un monde
 /// qui n'a pas encore d'humains : ils sont alors créés à partir de la graine.
 /// </summary>
-public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, int NiveauVitesse)
+/// <param name="Facteur">Vitesse : secondes du monde par seconde réelle (0 = pause).</param>
+public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Facteur)
 {
     public IReadOnlyList<Humain>? Humains { get; init; }
     public ushort[]? Gibier { get; init; }
@@ -37,8 +38,10 @@ public sealed class MondeSimule
     private readonly HashSet<string> _noms;
     private long _secondes;
     private long _pas;
-    private Vitesse _vitesse;
+    private double _facteur;
     private double _reliquat;
+    private Objectif? _objectif;
+    private string? _objectifAtteint;
 
     public MondeSimule(Carte carte, EtatMonde etat)
     {
@@ -53,7 +56,7 @@ public sealed class MondeSimule
         Graine = etat.Graine;
         _secondes = etat.Secondes;
         _pas = etat.Pas;
-        _vitesse = Vitesse.Existe(etat.NiveauVitesse) ? Vitesse.Toutes[etat.NiveauVitesse] : Vitesse.Pause;
+        _facteur = Vitesse.FacteurValide(etat.Facteur) ? etat.Facteur : 0;
         _humains = etat.Humains is { Count: > 0 } h
             ? h.Select(x => x.Copier()).OrderBy(x => x.Id).ToList()
             : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes);
@@ -75,7 +78,19 @@ public sealed class MondeSimule
 
     public ulong Graine { get; }
 
-    public Vitesse Vitesse { get { lock (_verrou) return _vitesse; } }
+    /// <summary>Vitesse demandée : secondes du monde par seconde réelle (0 = pause).</summary>
+    public double Facteur { get { lock (_verrou) return _facteur; } }
+
+    /// <summary>Objectif « avancer jusqu'à » en cours, ou null.</summary>
+    public Objectif? Objectif { get { lock (_verrou) return _objectif; } }
+
+    public long Secondes { get { lock (_verrou) return _secondes; } }
+
+    /// <summary>Date, pas, vitesse et objectif lus ensemble, sans copier les humains (diffusion fréquente).</summary>
+    public (long Secondes, long Pas, double Facteur, Objectif? Objectif) Horloge
+    {
+        get { lock (_verrou) return (_secondes, _pas, _facteur, _objectif); }
+    }
 
     public DateMonde Date { get { lock (_verrou) return Calendrier.Decomposer(_secondes); } }
 
@@ -86,7 +101,7 @@ public sealed class MondeSimule
         {
             lock (_verrou)
             {
-                return new EtatMonde(Graine, _secondes, _pas, _vitesse.Niveau)
+                return new EtatMonde(Graine, _secondes, _pas, _facteur)
                 {
                     Humains = _humains.Select(h => h.Copier()).ToList(),
                     Gibier = _ecosysteme.Gibier.ToArray(),
@@ -103,54 +118,127 @@ public sealed class MondeSimule
         lock (_verrou) return (_secondes, _humains.Select(h => h.Copier()).ToList());
     }
 
+    /// <summary>Choisit une vitesse préréglée (0 = pause). Annule un objectif en cours.</summary>
     public void ChangerVitesse(int niveau)
     {
         if (!Vitesse.Existe(niveau)) throw new ArgumentOutOfRangeException(nameof(niveau), niveau, "Vitesse inconnue.");
+        ChangerFacteur(Vitesse.Toutes[niveau].Facteur);
+    }
+
+    /// <summary>Choisit une vitesse libre (0 = pause). Annule un objectif en cours.</summary>
+    public void ChangerFacteur(double facteur)
+    {
+        if (!Vitesse.FacteurValide(facteur)) throw new ArgumentOutOfRangeException(nameof(facteur), facteur, "Vitesse hors limites.");
         lock (_verrou)
         {
-            _vitesse = Vitesse.Toutes[niveau];
+            _facteur = facteur;
+            _reliquat = 0;
+            _objectif = null;
+        }
+    }
+
+    /// <summary>Lance un « avancer jusqu'à » : le monde file à la vitesse maximale, puis se met en pause.</summary>
+    public void FixerObjectif(Objectif objectif)
+    {
+        lock (_verrou)
+        {
+            if (objectif.Limite <= _secondes) throw new ArgumentOutOfRangeException(nameof(objectif), "L'objectif est déjà passé.");
+            _objectif = objectif;
             _reliquat = 0;
         }
     }
 
+    /// <summary>Renvoie, une seule fois, la description du dernier objectif atteint (null sinon).</summary>
+    public string? PrendreObjectifAtteint()
+    {
+        lock (_verrou)
+        {
+            var atteint = _objectifAtteint;
+            _objectifAtteint = null;
+            return atteint;
+        }
+    }
+
     /// <summary>
-    /// Fait avancer le monde d'une durée réelle, selon la vitesse courante.
-    /// Renvoie le nombre de pas de simulation exécutés.
+    /// Fait avancer le monde d'une durée réelle, selon la vitesse courante (vitesse maximale si un objectif est en cours).
+    /// Avec un <paramref name="budget"/>, le calcul s'arrête quand il est épuisé : si la machine ne suit pas,
+    /// le retard est abandonné (le monde ralentit au lieu de s'emballer). Renvoie le nombre de pas exécutés.
     /// </summary>
-    public int Avancer(TimeSpan dureeReelle)
+    public int Avancer(TimeSpan dureeReelle, TimeSpan? budget = null)
     {
         if (dureeReelle <= TimeSpan.Zero) return 0;
         lock (_verrou)
         {
-            if (_vitesse.Facteur == 0) return 0;
+            var facteur = _objectif is null ? _facteur : Vitesse.FacteurMax;
+            if (facteur == 0) return 0;
             // Une pause du programme (veille de l'ordinateur) ne doit pas faire sauter des années :
             // l'écart pris en compte est plafonné à une seconde réelle.
             var reel = Math.Min(dureeReelle.TotalSeconds, 1.0);
-            _reliquat += reel * _vitesse.Facteur;
+            _reliquat += reel * facteur;
             var secondes = (long)_reliquat;
             _reliquat -= secondes;
-            return AvancerDe(secondes);
+            var (pas, complet) = AvancerInterne(secondes, budget);
+            if (!complet) _reliquat = 0;
+            return pas;
         }
     }
 
-    /// <summary>Avance d'un nombre exact de secondes du monde (utile pour les tests et l'accéléré).</summary>
+    /// <summary>Avance d'un nombre exact de secondes du monde (pas à pas, tests).</summary>
     public int AvancerDe(long secondesMonde)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(secondesMonde);
-        lock (_verrou)
+        lock (_verrou) return AvancerInterne(secondesMonde, null).Pas;
+    }
+
+    private (int Pas, bool Complet) AvancerInterne(long secondesMonde, TimeSpan? budget)
+    {
+        var chrono = budget is null ? null : System.Diagnostics.Stopwatch.StartNew();
+        var fin = _secondes + secondesMonde;
+        var objectif = _objectif;
+        if (objectif is not null) fin = Math.Min(fin, objectif.Limite);
+        var nombreAvant = _humains.Count;
+        var vivantsAvant = objectif?.Type == TypeObjectif.Mort ? _humains.Count(h => h.EstVivant) : 0;
+
+        var pas = 0;
+        var evenement = false;
+        while (true)
         {
-            var fin = _secondes + secondesMonde;
-            var avant = _secondes / SecondesParPas;
-            var nouveaux = (int)(fin / SecondesParPas - avant);
-            for (var k = 1; k <= nouveaux; k++)
+            // Chaque pas s'exécute à l'instant exact où il tombe.
+            var prochain = (_secondes / SecondesParPas + 1) * SecondesParPas;
+            if (prochain > fin)
             {
-                // Chaque pas s'exécute à l'instant exact où il tombe.
-                _secondes = (avant + k) * SecondesParPas;
-                ExecuterPas();
+                _secondes = fin;
+                break;
             }
-            _secondes = fin;
-            return nouveaux;
+            _secondes = prochain;
+            ExecuterPas();
+            pas++;
+
+            if (objectif is not null)
+            {
+                evenement = objectif.Type switch
+                {
+                    TypeObjectif.Naissance => _humains.Count > nombreAvant,
+                    // Les naissances du pas sont vivantes : on compare aux vivants d'avant, nouveau-nés compris.
+                    TypeObjectif.Mort => _humains.Count(h => h.EstVivant) < vivantsAvant + (_humains.Count - nombreAvant),
+                    _ => false,
+                };
+                if (evenement) break;
+            }
+            if (chrono is not null && chrono.Elapsed >= budget) return (pas, false);
         }
+
+        if (objectif is not null && (evenement || _secondes >= objectif.Limite))
+        {
+            _objectifAtteint = evenement || objectif.Type == TypeObjectif.Date
+                ? objectif.Description
+                : $"{objectif.Description} : rien en cent ans";
+            _objectif = null;
+            _facteur = 0;
+            _reliquat = 0;
+            return (pas, false);
+        }
+        return (pas, true);
     }
 
     /// <summary>Un pas de simulation (10 minutes du monde).</summary>

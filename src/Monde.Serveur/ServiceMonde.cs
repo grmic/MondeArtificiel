@@ -6,13 +6,16 @@ namespace Monde.Serveur;
 
 /// <summary>
 /// Détient le monde courant et sa sauvegarde. Au démarrage, le monde reprend à la date enregistrée,
-/// toujours en pause : rien ne s'écoule tant que l'on n'a pas choisi une vitesse.
+/// en pause par défaut, ou à sa dernière vitesse si ce réglage est choisi.
 /// </summary>
 public sealed class ServiceMonde
 {
     private readonly Lock _verrou = new();
     private readonly ILogger<ServiceMonde> _journal;
+    private const string CleRedemarrage = "redemarrage";
     private volatile MondeSimule _monde;
+    private volatile bool _reprendreVitesse;
+    private double _facteurAtteint;
 
     public ServiceMonde(IConfiguration configuration, ILogger<ServiceMonde> journal)
     {
@@ -40,7 +43,8 @@ public sealed class ServiceMonde
         }
 
         var carte = GenerateurContinent.Generer(etat.Graine);
-        _monde = new MondeSimule(carte, etat with { NiveauVitesse = 0 });
+        _reprendreVitesse = Depot.LireReglage(CleRedemarrage) == "vitesse";
+        _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 });
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
     }
@@ -49,6 +53,24 @@ public sealed class ServiceMonde
     public MondeSimule Monde => _monde;
 
     public DepotMonde Depot { get; }
+
+    /// <summary>Au redémarrage du serveur : vrai = reprendre à la dernière vitesse, faux = en pause.</summary>
+    public bool ReprendreVitesse
+    {
+        get => _reprendreVitesse;
+        set
+        {
+            Depot.EcrireReglage(CleRedemarrage, value ? "vitesse" : "pause");
+            _reprendreVitesse = value;
+        }
+    }
+
+    /// <summary>Vitesse réellement atteinte, mesurée par le moteur (secondes du monde par seconde réelle).</summary>
+    public double FacteurAtteint
+    {
+        get => Volatile.Read(ref _facteurAtteint);
+        set => Volatile.Write(ref _facteurAtteint, value);
+    }
 
     /// <summary>Fichier où l'ancien monde est copié juste avant une réinitialisation.</summary>
     public string CheminCopieAvantReinitialisation =>

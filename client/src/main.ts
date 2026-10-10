@@ -44,6 +44,7 @@ function decrire(info: InfoTuile): void {
 async function demarrer(): Promise<void> {
   const vue = await VueCarte.creer(element("#scene"), decrire);
   const horloge = new PanneauHorloge(
+    element("#panneauTemps"),
     element("#date"),
     element("#vitesses"),
     (h) => vue.eclairer(h.lumiere),

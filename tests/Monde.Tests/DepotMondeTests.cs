@@ -160,6 +160,28 @@ public sealed class DepotMondeTests : IDisposable
     }
 
     [Fact]
+    public void FichierVersion4_NiveauDeVitesseConvertiEnFacteur()
+    {
+        new DepotMonde(Fichier).Enregistrer(new EtatMonde(42, 1000, 1, 0));
+        ExecuterSql(Fichier, "DROP TABLE reglages; UPDATE etat SET vitesse = 3; PRAGMA user_version = 4;");
+
+        var depot = new DepotMonde(Fichier);
+
+        Assert.Equal(1_440, depot.Charger()!.Facteur);
+        Assert.Null(depot.LireReglage("redemarrage"));
+        depot.EcrireReglage("redemarrage", "vitesse");
+        depot.EcrireReglage("redemarrage", "pause");
+        Assert.Equal("pause", depot.LireReglage("redemarrage"));
+    }
+
+    [Fact]
+    public void VitesseLibre_EstRelue()
+    {
+        new DepotMonde(Fichier).Enregistrer(new EtatMonde(42, 1000, 1, 0.5));
+        Assert.Equal(0.5, new DepotMonde(Fichier).Charger()!.Facteur);
+    }
+
+    [Fact]
     public void SchemaPlusRecent_EstRefuse()
     {
         new DepotMonde(Fichier);

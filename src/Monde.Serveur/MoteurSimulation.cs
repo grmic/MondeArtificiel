@@ -16,6 +16,9 @@ public sealed class MoteurSimulation(
     private static readonly TimeSpan Cadence = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan IntervalleDiffusion = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan IntervalleSauvegarde = TimeSpan.FromSeconds(10);
+    // Temps de calcul accordé au monde à chaque tour : le reste sert à diffuser et à répondre aux navigateurs.
+    private static readonly TimeSpan BudgetCalcul = TimeSpan.FromMilliseconds(70);
+    private static readonly TimeSpan FenetreMesure = TimeSpan.FromSeconds(1);
 
     protected override async Task ExecuteAsync(CancellationToken arret)
     {
@@ -24,19 +27,43 @@ public sealed class MoteurSimulation(
         var precedent = chrono.Elapsed;
         var derniereDiffusion = TimeSpan.Zero;
         var derniereSauvegarde = TimeSpan.Zero;
+        var debutMesure = TimeSpan.Zero;
+        var mondeMesure = service.Monde;
+        var secondesMesure = mondeMesure.Secondes;
 
         try
         {
             while (await minuteur.WaitForNextTickAsync(arret))
             {
                 var maintenant = chrono.Elapsed;
-                service.Monde.Avancer(maintenant - precedent);
+                var monde = service.Monde;
+                monde.Avancer(maintenant - precedent, BudgetCalcul);
                 precedent = maintenant;
+
+                // Vitesse réellement atteinte, mesurée sur environ une seconde.
+                if (!ReferenceEquals(monde, mondeMesure))
+                {
+                    (mondeMesure, secondesMesure, debutMesure) = (monde, monde.Secondes, maintenant);
+                }
+                else if (maintenant - debutMesure >= FenetreMesure)
+                {
+                    var secondes = monde.Secondes;
+                    service.FacteurAtteint = (secondes - secondesMesure) / (maintenant - debutMesure).TotalSeconds;
+                    (secondesMesure, debutMesure) = (secondes, maintenant);
+                }
+
+                if (monde.PrendreObjectifAtteint() is { } objectif)
+                {
+                    service.FacteurAtteint = 0;
+                    service.Sauvegarder();
+                    await hub.Clients.All.SendAsync("ObjectifAtteint", objectif, arret);
+                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
+                }
 
                 if (maintenant - derniereDiffusion >= IntervalleDiffusion)
                 {
                     derniereDiffusion = maintenant;
-                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service.Monde), arret);
+                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
                     await hub.Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde), arret);
                 }
 

@@ -16,7 +16,14 @@ dotnet run
 
 Puis ouvrir http://localhost:5080 : la page affiche « Connecté au serveur » et la carte du continent avec les 33 emplacements de départ.
 
-En haut, la date du monde et les vitesses : pause, temps réel, puis l'accéléré jusqu'à « 5 min = 5 ans ». La carte s'assombrit la nuit. L'année compte 4 saisons de 90 jours, et la durée du jour varie selon la saison.
+En haut, la date du monde et les vitesses préréglées : pause, temps réel, puis l'accéléré jusqu'à « 5 min = 5 ans ». Le panneau « Temps », à droite, donne le contrôle complet :
+
+- **Vitesse libre** : un curseur du ralenti (×0,1) à ×10 000 000. Le monde va aussi vite que la machine le permet ; la vitesse réellement atteinte s'affiche à côté, en orange quand la machine ne suit pas.
+- **Pas à pas** : met en pause, puis avance de 10 minutes, d'une heure ou d'un jour.
+- **Aller jusqu'à** : demain matin, la prochaine saison, la prochaine année, la prochaine naissance, la prochaine mort ou une date précise. Le monde file à la vitesse maximale, puis se met en pause et l'annonce. Changer de vitesse ou « Arrêter » annule l'objectif.
+- **Redémarrage** : une case choisit si, au redémarrage du serveur, le monde repart en pause (par défaut) ou à sa dernière vitesse.
+
+Pour aller plus vite, lance le serveur en mode Release : `dotnet run -c Release`. La carte s'assombrit la nuit. L'année compte 4 saisons de 90 jours, et la durée du jour varie selon la saison.
 
 Le monde est sauvegardé toutes les 10 secondes et à l'arrêt du serveur (Ctrl+C), dans un fichier SQLite :
 
@@ -24,7 +31,7 @@ Le monde est sauvegardé toutes les 10 secondes et à l'arrêt du serveur (Ctrl+
 - Windows : `%LOCALAPPDATA%\MondeArtificiel\mondes\monde.db`
 - Linux : `~/.local/share/MondeArtificiel/mondes/monde.db`
 
-Au redémarrage, le monde reprend à la date enregistrée, en pause. Pour repartir de zéro, utilise le bouton « ↺ Réinitialiser » de la page : on choisit la même graine, celle du champ « Graine » ou une graine au hasard. L'ancien monde est copié dans `monde-avant-reinitialisation.db` à côté (seule la dernière copie est gardée). Le dossier se change avec le réglage `Monde:Dossier`.
+Au redémarrage, le monde reprend à la date enregistrée (en pause, sauf réglage contraire). Pour repartir de zéro, utilise le bouton « ↺ Réinitialiser » de la page : on choisit la même graine, celle du champ « Graine » ou une graine au hasard. L'ancien monde est copié dans `monde-avant-reinitialisation.db` à côté (seule la dernière copie est gardée). Le dossier se change avec le réglage `Monde:Dossier`.
 
 Les 66 humains (33 couples) apparaissent sur la carte : point orange pour une femme, bleu pour un homme, croix grise pour un mort. Le compteur « Vivants » est en haut. Survoler un humain affiche son nom, son âge, ce qu'il fait et ses besoins (faim, soif, fatigue, froid, santé). Les noms sont tirés au hasard pour l'observateur : les humains n'ont pas encore de langage.
 

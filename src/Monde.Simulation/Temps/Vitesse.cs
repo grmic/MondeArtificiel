@@ -16,5 +16,28 @@ public sealed record Vitesse(int Niveau, string Nom, long Facteur)
 
     public static Vitesse Pause => Toutes[0];
 
+    /// <summary>Ralenti le plus lent : 1 seconde du monde toutes les 10 secondes réelles.</summary>
+    public const double FacteurMin = 0.1;
+
+    /// <summary>
+    /// Vitesse la plus haute que l'on peut demander (environ 19 ans par minute). Le monde va aussi vite
+    /// que la machine le permet : la vitesse réellement atteinte est mesurée et affichée.
+    /// </summary>
+    public const double FacteurMax = 10_000_000;
+
+    /// <summary>0 (pause) ou une valeur finie entre <see cref="FacteurMin"/> et <see cref="FacteurMax"/>.</summary>
+    public static bool FacteurValide(double facteur) =>
+        facteur == 0 || double.IsFinite(facteur) && facteur >= FacteurMin && facteur <= FacteurMax;
+
+    /// <summary>Niveau de la vitesse préréglée qui a exactement ce facteur, ou -1 (vitesse libre).</summary>
+    public static int NiveauDe(double facteur)
+    {
+        foreach (var v in Toutes)
+        {
+            if (v.Facteur == facteur) return v.Niveau;
+        }
+        return -1;
+    }
+
     public static bool Existe(int niveau) => niveau >= 0 && niveau < Toutes.Count;
 }

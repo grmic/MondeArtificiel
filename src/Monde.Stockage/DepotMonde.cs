@@ -13,7 +13,7 @@ namespace Monde.Stockage;
 public sealed class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 4;
+    public const int VersionSchema = 5;
 
     private readonly string _connexion;
 
@@ -143,6 +143,20 @@ public sealed class DepotMonde
                 ALTER TABLE humains ADD COLUMN terme_grossesse INTEGER;
                 """);
         }
+        if (actuelle < 5)
+        {
+            // Version 5 : la vitesse devient libre (facteur au lieu d'un niveau préréglé) ; réglages de l'application.
+            // Une base neuve n'a encore aucune ligne dans « etat » : la conversion ne touche alors rien.
+            Executer(connexion, transaction, """
+                UPDATE etat SET vitesse = CASE vitesse
+                    WHEN 1 THEN 1 WHEN 2 THEN 60 WHEN 3 THEN 1440 WHEN 4 THEN 129600 WHEN 5 THEN 518400 ELSE 0 END
+                WHERE typeof(vitesse) = 'integer';
+                CREATE TABLE IF NOT EXISTS reglages (
+                    cle    TEXT PRIMARY KEY,
+                    valeur TEXT NOT NULL
+                );
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -161,7 +175,7 @@ public sealed class DepotMonde
                 unchecked((ulong)lecteur.GetInt64(0)),
                 lecteur.GetInt64(1),
                 lecteur.GetInt64(2),
-                lecteur.GetInt32(3))
+                lecteur.GetDouble(3))
             {
                 Alea = lecteur.IsDBNull(4) ? null : [.. Enumerable.Range(4, 4).Select(i => unchecked((ulong)lecteur.GetInt64(i)))],
             };
@@ -256,7 +270,7 @@ public sealed class DepotMonde
             commande.Parameters.AddWithValue("$graine", unchecked((long)etat.Graine));
             commande.Parameters.AddWithValue("$secondes", etat.Secondes);
             commande.Parameters.AddWithValue("$pas", etat.Pas);
-            commande.Parameters.AddWithValue("$vitesse", etat.NiveauVitesse);
+            commande.Parameters.AddWithValue("$vitesse", etat.Facteur);
             commande.Parameters.AddWithValue("$modifie", DateTimeOffset.UtcNow.ToString("O"));
             for (var i = 0; i < 4; i++)
             {
@@ -324,6 +338,26 @@ public sealed class DepotMonde
         }
 
         transaction.Commit();
+    }
+
+    /// <summary>Lit un réglage de l'application (null s'il n'a jamais été enregistré).</summary>
+    public string? LireReglage(string cle)
+    {
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = "SELECT valeur FROM reglages WHERE cle = $cle;";
+        commande.Parameters.AddWithValue("$cle", cle);
+        return commande.ExecuteScalar() as string;
+    }
+
+    public void EcrireReglage(string cle, string valeur)
+    {
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = "INSERT INTO reglages (cle, valeur) VALUES ($cle, $valeur) ON CONFLICT (cle) DO UPDATE SET valeur = excluded.valeur;";
+        commande.Parameters.AddWithValue("$cle", cle);
+        commande.Parameters.AddWithValue("$valeur", valeur);
+        commande.ExecuteNonQuery();
     }
 
     /// <summary>

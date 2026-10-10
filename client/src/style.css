@@ -41,3 +41,18 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .dialogue fieldset { display: flex; flex-direction: column; gap: 6px; border: 1px solid #3a4658; border-radius: 8px; font-size: 0.9rem; }
 .dialogue menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 14px 0 0; }
 .dialogue menu button { padding: 4px 12px; }
+.temps {
+  position: fixed; top: 100px; right: 12px; max-width: min(560px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 14px; border-radius: 10px; background: var(--panneau); font-size: 0.85rem;
+}
+.temps .ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.temps button, .temps select, .temps input[type=number] { font-size: 0.8rem; padding: 2px 6px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); }
+.temps button { cursor: pointer; }
+.temps input[type=number] { width: 4.2rem; }
+.temps input[type=range] { width: 12rem; }
+.temps .valeur { font-variant-numeric: tabular-nums; }
+.temps .discret, .discret { color: var(--discret); }
+.temps .alerte { color: #ffb347; }
+.temps .objectif { color: #ffd479; }
+.temps .champs-date[hidden], .temps [hidden] { display: none; }
