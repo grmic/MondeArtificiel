@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 14;
+    public const int VersionSchema = 15;
 
     private readonly string _connexion;
 
@@ -428,6 +428,27 @@ public sealed partial class DepotMonde
                 );
                 """);
         }
+        if (actuelle < 15)
+        {
+            // Version 15 : jardin secret de chacun, guerres en préparation, événements significatifs.
+            Executer(connexion, transaction, """
+                CREATE TABLE IF NOT EXISTS jardin (
+                    humain INTEGER NOT NULL,
+                    rang INTEGER NOT NULL,
+                    secondes INTEGER NOT NULL,
+                    type INTEGER NOT NULL,
+                    sujet INTEGER NOT NULL,
+                    texte TEXT NOT NULL,
+                    intensite REAL NOT NULL,
+                    cause INTEGER NOT NULL,
+                    cle TEXT NOT NULL,
+                    PRIMARY KEY (humain, rang)
+                );
+                ALTER TABLE communautes ADD COLUMN projet TEXT;
+                ALTER TABLE journal ADD COLUMN significatif INTEGER NOT NULL DEFAULT 0;
+                CREATE INDEX IF NOT EXISTS journal_significatif_id ON journal (significatif, id);
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -568,7 +589,7 @@ public sealed partial class DepotMonde
                    tolerance, usage, derniere_affaire, disette_evenement, nom_propre, sens, sens_cle, eponyme, lexique, origine,
                    fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations, disettes_surmontees,
                    installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
-                   soumission_evenement, paix_evenement, heritiere
+                   soumission_evenement, paix_evenement, heritiere, projet
             FROM communautes ORDER BY id;
             """;
         var communautes = new List<Communaute>();
@@ -593,6 +614,7 @@ public sealed partial class DepotMonde
                     Bellicisme = l.GetDouble(31), Raid = l.IsDBNull(32) ? null : JsonSerializer.Deserialize<Raid>(l.GetString(32)),
                     DernierRaidLe = l.GetInt64(33), SoumiseAId = l.GetInt32(34), SoumiseLe = l.GetInt64(35),
                     SoumissionEvenementId = l.GetInt64(36), PaixEvenementId = l.GetInt64(37), HeritiereId = l.GetInt32(38),
+                    Projet = l.IsDBNull(39) ? null : JsonSerializer.Deserialize<ProjetGuerre>(l.GetString(39)),
                 });
             }
         }
@@ -691,6 +713,15 @@ public sealed partial class DepotMonde
         {
             while (l.Read()) Trouver(l.GetInt64(0))?.Memoire.Pensees.Add(new Pensee(l.GetInt64(1), l.GetString(2)));
         }
+        commande.CommandText = "SELECT humain, secondes, type, sujet, texte, intensite, cause, cle FROM jardin ORDER BY humain, rang;";
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read())
+            {
+                Trouver(l.GetInt64(0))?.Memoire.Jardin.Add(new Intime(l.GetInt64(1), (TypeIntime)l.GetByte(2), l.GetInt32(3), l.GetString(4),
+                    l.GetDouble(5), l.GetInt64(6), l.GetString(7)));
+            }
+        }
         commande.CommandText = "SELECT humain, contre, motif, intensite, initiale, evenement, victime FROM griefs ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
         {
@@ -722,7 +753,7 @@ public sealed partial class DepotMonde
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
-                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres;");
+                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin;");
         }
 
         using (var commande = connexion.CreateCommand())
@@ -870,7 +901,10 @@ public sealed partial class DepotMonde
 
     private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
     {
-        Executer(connexion, transaction, "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM griefs; DELETE FROM raisons;");
+        Executer(connexion, transaction, "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM griefs; DELETE FROM raisons; DELETE FROM jardin;");
+        using var jardin = Preparer(connexion, transaction,
+            "INSERT INTO jardin (humain, rang, secondes, type, sujet, texte, intensite, cause, cle) VALUES ($h, $r, $s, $t, $su, $x, $i, $c, $k);",
+            "$h", "$r", "$s", "$t", "$su", "$x", "$i", "$c", "$k");
         using var griefs = Preparer(connexion, transaction,
             "INSERT INTO griefs (humain, rang, contre, motif, intensite, initiale, evenement, victime) VALUES ($h, $r, $c, $m, $i, $n, $e, $v);",
             "$h", "$r", "$c", "$m", "$i", "$n", "$e", "$v");
@@ -901,6 +935,11 @@ public sealed partial class DepotMonde
             {
                 Lancer(pensees, h.Id, r, m.Pensees[r].Secondes, m.Pensees[r].Texte);
             }
+            for (var r = 0; r < m.Jardin.Count; r++)
+            {
+                var x = m.Jardin[r];
+                Lancer(jardin, h.Id, r, x.Secondes, (int)x.Type, x.SujetId, x.Texte, x.Intensite, x.CauseId, x.Cle);
+            }
             for (var r = 0; r < h.Griefs.Count; r++)
             {
                 var g = h.Griefs[r];
@@ -921,12 +960,12 @@ public sealed partial class DepotMonde
                 destination_x, destination_y, tolerance, usage, derniere_affaire, disette_evenement, nom_propre, sens, sens_cle, eponyme,
                 lexique, origine, fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations,
                 disettes_surmontees, installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
-                soumission_evenement, paix_evenement, heritiere)
+                soumission_evenement, paix_evenement, heritiere, projet)
             VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy, $to, $u, $da, $de, $np, $s, $sc, $ep, $lx, $o, $fv, $fd, $fe,
-                $fi, $al, $mi, $ds, $ie, $te, $be, $ra, $dr, $sa, $sl, $se, $pe, $he);
+                $fi, $al, $mi, $ds, $ie, $te, $be, $ra, $dr, $sa, $sl, $se, $pe, $he, $pr);
             """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy", "$to", "$u", "$da", "$de", "$np", "$s",
             "$sc", "$ep", "$lx", "$o", "$fv", "$fd", "$fe", "$fi", "$al", "$mi", "$ds", "$ie", "$te", "$be", "$ra", "$dr", "$sa", "$sl",
-            "$se", "$pe", "$he");
+            "$se", "$pe", "$he", "$pr");
         foreach (var c in communautes)
         {
             Lancer(commande, c.Id, c.Nom, c.FondeeLe, c.DisperseeLe is { } d ? d : DBNull.Value, c.FigureId,
@@ -937,7 +976,8 @@ public sealed partial class DepotMonde
                 c.AccueilLe is { } al ? al : DBNull.Value, c.Migrations, c.DisettesSurmontees, c.InstallationEvenementId,
                 c.Territoire.Count == 0 ? DBNull.Value : EcrireTerritoire(c.Territoire),
                 c.Bellicisme, c.Raid is { } raid ? JsonSerializer.Serialize(raid) : DBNull.Value, c.DernierRaidLe, c.SoumiseAId,
-                c.SoumiseLe, c.SoumissionEvenementId, c.PaixEvenementId, c.HeritiereId);
+                c.SoumiseLe, c.SoumissionEvenementId, c.PaixEvenementId, c.HeritiereId,
+                c.Projet is { } projet ? JsonSerializer.Serialize(projet) : DBNull.Value);
         }
         EnregistrerNoms(connexion, transaction, communautes);
     }
@@ -976,14 +1016,14 @@ public sealed partial class DepotMonde
         // INSERT OR IGNORE : un événement déjà enregistré (même numéro) n'est pas dupliqué.
         using var commande = Preparer(connexion, transaction,
             """
-            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute)
-            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac);
+            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif)
+            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac, $si);
             """,
-            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac");
+            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac", "$si");
         foreach (var e in journal)
         {
             Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, e.Texte, (int)e.Origine, e.CauseId,
-                e.CommunauteId, e.AutreCommunauteId);
+                e.CommunauteId, e.AutreCommunauteId, e.Significatif);
         }
     }
 
@@ -1008,10 +1048,11 @@ public sealed partial class DepotMonde
 
     /// <summary>
     /// Lit le journal enregistré, du plus récent au plus ancien. Filtres facultatifs : types, humain concerné
-    /// (acteur ou autre), et pagination par numéro (événements de numéro inférieur à <paramref name="avantId"/>).
+    /// (acteur ou autre), communauté, événements significatifs seulement, et pagination par numéro (événements de numéro
+    /// inférieur à <paramref name="avantId"/>).
     /// </summary>
     public List<EvenementJournal> LireJournal(IReadOnlyCollection<TypeEvenement>? types = null, int? humain = null,
-        long? avantId = null, int limite = 100, int? communaute = null)
+        long? avantId = null, int limite = 100, int? communaute = null, bool significatifs = false)
     {
         limite = Math.Clamp(limite, 1, LimiteJournal);
         using var connexion = Ouvrir();
@@ -1037,6 +1078,7 @@ public sealed partial class DepotMonde
             conditions.Add("(communaute = $c OR autre_communaute = $c)");
             commande.Parameters.AddWithValue("$c", c);
         }
+        if (significatifs) conditions.Add("significatif = 1");
         if (avantId is { } a)
         {
             conditions.Add("id < $a");
@@ -1044,7 +1086,7 @@ public sealed partial class DepotMonde
         }
         commande.Parameters.AddWithValue("$limite", limite);
         var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
-        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute FROM journal {where} ORDER BY id DESC LIMIT $limite;";
+        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif FROM journal {where} ORDER BY id DESC LIMIT $limite;";
         return LireEvenements(commande);
     }
 
@@ -1053,7 +1095,7 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute FROM journal WHERE id = $id;";
+        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif FROM journal WHERE id = $id;";
         commande.Parameters.AddWithValue("$id", id);
         return LireEvenements(commande).FirstOrDefault();
     }
@@ -1065,7 +1107,7 @@ public sealed partial class DepotMonde
         while (l.Read())
         {
             resultat.Add(new EvenementJournal(l.GetInt64(1), (TypeEvenement)l.GetByte(2), l.GetInt32(3), l.GetInt32(4), l.GetString(5),
-                (Origine)l.GetByte(6)) { Id = l.GetInt64(0), CauseId = l.GetInt64(7), CommunauteId = l.GetInt32(8), AutreCommunauteId = l.GetInt32(9) });
+                (Origine)l.GetByte(6)) { Id = l.GetInt64(0), CauseId = l.GetInt64(7), CommunauteId = l.GetInt32(8), AutreCommunauteId = l.GetInt32(9), Significatif = l.GetBoolean(10) });
         }
         return resultat;
     }

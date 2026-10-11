@@ -15,7 +15,33 @@ interface Evenement {
   /** Communauté concernée, et l'autre pour ce qui se passe entre deux groupes (0 : aucune). */
   communaute: number;
   autreCommunaute: number;
+  /** Un tournant (projet de guerre, renoncement, raid, paix, catastrophe…). */
+  significatif: boolean;
 }
+
+/** Une chose du jardin secret. */
+interface Intime {
+  date: string;
+  type: string;
+  sujet: number;
+  nomSujet: string | null;
+  texte: string;
+  intensite: number;
+  cause: number;
+}
+
+/** Rubriques du jardin secret, dans l'ordre d'affichage. */
+const RUBRIQUES: [string, string][] = [
+  ["intention", "Intentions"],
+  ["peur", "Peurs"],
+  ["espoir", "Espoirs"],
+  ["joie", "Joies"],
+  ["peine", "Peines"],
+  ["opinion", "Ce qu'il pense des autres"],
+  ["image-de-soi", "Ce qu'il pense de lui-même"],
+  ["croyance", "Croyances"],
+  ["question", "Questions"],
+];
 
 interface Ame {
   etat: string;
@@ -45,6 +71,7 @@ interface Fiche {
   communaute: { id: number; nom: string } | null;
   enfants: number[];
   pensees: { date: string; texte: string }[];
+  jardin: Intime[];
   lieux: { type: string; x: number; y: number; vuLe: string; visites: number }[];
   liens: { id: number; nom: string; familiarite: number; affection: number; statut: string; vivant: boolean }[];
   histoire: Evenement[];
@@ -239,6 +266,24 @@ export class PanneauFiche {
     if (f.pensees.length === 0) pensees.append(el("li", "discret", "Aucune pour l'instant."));
     corps.append(pensees);
 
+    corps.append(el("h3", undefined, "Jardin secret"));
+    if (f.jardin.length === 0) corps.append(el("p", "discret", "Rien de confié pour l'instant."));
+    for (const [cle, titre] of RUBRIQUES) {
+      const choses = f.jardin.filter((x) => x.type === cle);
+      if (choses.length === 0) continue;
+      corps.append(el("h4", undefined, titre));
+      const ul = el("ul", "liste jardin");
+      for (const x of choses) {
+        const li = el("li");
+        li.title = `Force ${x.intensite} sur 100, depuis le ${x.date}`;
+        li.append(el("span", "date", x.date), ` ${x.texte} `, el("span", "discret", `(${x.intensite})`));
+        if (x.sujet > 0 && x.nomSujet) li.append(" ", this.lien(x.sujet, "→ " + x.nomSujet));
+        if (x.cause > 0) li.append(" ", boutonCause(li, x.cause, "pourquoi ?"));
+        ul.append(li);
+      }
+      corps.append(ul);
+    }
+
     corps.append(el("h3", undefined, "Mémoire"));
     const lieux = el("ul", "liste");
     for (const l of f.lieux) {
@@ -293,8 +338,10 @@ export class PanneauFiche {
 
 /** Ligne d'événement : date, texte, et la marque d'une intervention de l'Entité. */
 export function ligneEvenement(e: Evenement): HTMLElement {
-  const li = el("li", `evenement ${e.type}`);
-  li.append(el("span", "date", e.date), ` ${e.texte}`);
+  const li = el("li", `evenement ${e.type}${e.significatif ? " significatif" : ""}`);
+  li.append(el("span", "date", e.date));
+  if (e.significatif) li.append(el("span", "etoile", " ★"));
+  li.append(` ${e.texte}`);
   if (e.origine === "entite") li.append(el("span", "entite", " ✦ soufflé par l'Entité"));
   if (e.cause > 0) li.append(" ", boutonCause(li, e.cause, "pourquoi ?"));
   return li;

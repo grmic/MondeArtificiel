@@ -6,8 +6,9 @@ namespace Monde.Serveur;
 
 /// <summary>Un événement du journal tel qu'envoyé au navigateur.</summary>
 /// <param name="Cause">Numéro de l'événement qui l'a provoqué (0 : aucune cause notée).</param>
+/// <param name="Significatif">Un tournant (projet de guerre, renoncement, raid, paix, catastrophe…).</param>
 public sealed record EvenementDto(long Id, long Secondes, string Date, string Type, int Humain, int Autre, string Texte, string Origine,
-    long Cause, int Communaute, int AutreCommunaute)
+    long Cause, int Communaute, int AutreCommunaute, bool Significatif)
 {
     /// <summary>Clés des types, dans l'ordre de l'énumération (le navigateur filtre avec ces clés).</summary>
     public static readonly IReadOnlyDictionary<TypeEvenement, string> Cles = new Dictionary<TypeEvenement, string>
@@ -38,7 +39,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 
     public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, Calendrier.Decomposer(e.Secondes).ToString(),
         Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, e.Texte,
-        e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId);
+        e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId, e.Significatif);
 
     /// <summary>Traduit les clés reçues ; une clé inconnue rend la demande invalide (null).</summary>
     public static List<TypeEvenement>? TypesDepuis(IEnumerable<string>? cles)
@@ -56,11 +57,19 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 
 /// <summary>Filtre du journal demandé par le navigateur.</summary>
 /// <param name="Communaute">Chronologie d'une communauté : les événements qui la concernent.</param>
-public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, long? AvantId = null, int Limite = 100, int? Communaute = null);
+/// <param name="Significatifs">Seulement les événements significatifs.</param>
+public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, long? AvantId = null, int Limite = 100, int? Communaute = null,
+    bool Significatifs = false);
 
 public sealed record LieuDto(string Type, int X, int Y, string VuLe, int Visites);
 
 public sealed record PenseeDto(string Date, string Texte);
+
+/// <summary>
+/// Une chose du jardin secret : sa nature (intention, peur, espoir…), qui elle concerne (0 : personne), ce qu'il se dit,
+/// sa force (0 à 100) et l'événement qui l'a fait naître.
+/// </summary>
+public sealed record IntimeDto(string Date, string Type, int Sujet, string? NomSujet, string Texte, int Intensite, long Cause);
 
 /// <summary>Un trait affiché : nom, valeur (0 à 1, ou QI) et qualification en mots.</summary>
 public sealed record TraitDto(string Nom, double Valeur, string Mots, string Aide);
@@ -92,6 +101,7 @@ public sealed record FicheDto(
     CommunauteRefDto? Communaute,
     IReadOnlyList<int> Enfants,
     IReadOnlyList<PenseeDto> Pensees,
+    IReadOnlyList<IntimeDto> Jardin,
     IReadOnlyList<LieuDto> Lieux,
     IReadOnlyList<LienDto> Liens,
     IReadOnlyList<EvenementDto> Histoire,
@@ -157,6 +167,9 @@ public sealed record FicheDto(
             communaute is null ? null : new CommunauteRefDto(communaute.Id, communaute.Nom),
             humains.Where(e => e.MereId == id || e.PereId == id).Select(e => e.Id).ToList(),
             h.Memoire.Pensees.AsEnumerable().Reverse().Select(x => new PenseeDto(Date(x.Secondes), x.Texte)).ToList(),
+            h.Memoire.Jardin.OrderBy(x => x.Type).ThenByDescending(x => x.Intensite)
+                .Select(x => new IntimeDto(Date(x.Secondes), TypeIntime(x.Type), x.SujetId, x.SujetId > 0 && x.SujetId != id ? Nom(x.SujetId) : null,
+                    x.Texte, (int)Math.Round(x.Intensite), x.CauseId)).ToList(),
             h.Memoire.Lieux.OrderBy(l => l.Type).ThenByDescending(l => l.Rappels).ThenByDescending(l => l.VuLe)
                 .Select(l => new LieuDto(l.Type switch { TypeLieu.Eau => "eau", TypeLieu.Nourriture => "nourriture", _ => "abri" },
                     l.X, l.Y, Date(l.VuLe), l.Rappels + 1)).ToList(),
@@ -181,6 +194,19 @@ public sealed record FicheDto(
             h.EstVivant && h.Peur >= 1 ? Simulation.Nature.TypesCatastrophe.Nom(h.PeurType) : null,
             h.EstVivant && h.Peur >= 1 ? h.PeurEvenementId : 0);
     }
+
+    private static string TypeIntime(TypeIntime t) => t switch
+    {
+        Simulation.Humains.TypeIntime.Intention => "intention",
+        Simulation.Humains.TypeIntime.Peur => "peur",
+        Simulation.Humains.TypeIntime.Espoir => "espoir",
+        Simulation.Humains.TypeIntime.Joie => "joie",
+        Simulation.Humains.TypeIntime.Peine => "peine",
+        Simulation.Humains.TypeIntime.Opinion => "opinion",
+        Simulation.Humains.TypeIntime.ImageDeSoi => "image-de-soi",
+        Simulation.Humains.TypeIntime.Croyance => "croyance",
+        _ => "question",
+    };
 
     private static string Motif(Grief g, Func<int, string> nom) => g.Motif switch
     {
@@ -208,14 +234,19 @@ public sealed record FicheDto(
             (types.Count == 0 || types.Contains(e.Type))
             && (filtre.Humain is not { } h || e.HumainId == h || e.AutreId == h)
             && (filtre.AvantId is not { } a || e.Id < a)
-            && (filtre.Communaute is not { } c || e.CommunauteId == c || e.AutreCommunauteId == c);
+            && (filtre.Communaute is not { } c || e.CommunauteId == c || e.AutreCommunauteId == c)
+            && (!filtre.Significatifs || e.Significatif);
         var recents = service.Monde.JournalRecent().Where(Convient);
-        var enregistres = service.Depot.LireJournal(types, filtre.Humain, filtre.AvantId, limite, filtre.Communaute);
+        var enregistres = service.Depot.LireJournal(types, filtre.Humain, filtre.AvantId, limite, filtre.Communaute, filtre.Significatifs);
         return recents.Concat(enregistres).DistinctBy(e => e.Id).OrderByDescending(e => e.Id).Take(limite).ToList();
     }
 }
 
 public sealed record MembreDto(int Id, string Nom, string Etape);
+
+/// <summary>Une guerre en préparation : qui la veut, contre qui, pourquoi, depuis quand, et les alliés sollicités.</summary>
+public sealed record ProjetDto(int Instigateur, string NomInstigateur, int Cible, string NomCible, string Raison, string Depuis,
+    IReadOnlyList<string> Allies, long Evenement);
 
 /// <summary>Un nom qu'a porté une communauté, depuis quand, et l'événement qui le lui a donné.</summary>
 public sealed record NomDto(string Nom, string? Sens, string Depuis, long Evenement);
@@ -241,11 +272,12 @@ public sealed record GuerreDto(int Contre, string NomContre, string Debut, strin
 /// <param name="Temperament">Son goût pour la violence, en mots (null tant qu'il n'est pas établi).</param>
 /// <param name="Guerre">Raid en cours, soumission, vassaux, en phrases.</param>
 /// <param name="Guerres">Ses guerres, la plus récente d'abord.</param>
+/// <param name="Projet">Guerre qu'elle prépare (null : aucune).</param>
 public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? DisperseeLe, int Figure, string NomFigure,
     IReadOnlyList<MembreDto> Membres, int X, int Y, int Rayon, int Abondance, bool Disette, string? Destination,
     int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage, string? NomPropre, string? Sens,
     IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire,
-    string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres)
+    string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet)
 {
     /// <summary>Les idées des mots, en français, pour l'observateur.</summary>
     private static readonly Dictionary<string, string> Idees = new()
@@ -371,7 +403,12 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                             return new GuerreDto(contre, toutes[contre - 1].Nom, Calendrier.Decomposer(g.Debut).ToString(),
                                 g.Fin is { } f ? Calendrier.Decomposer(f).ToString() : null, g.Raids, siens, ennemis,
                                 g.Issue == IssueGuerre.EnCours ? null : IssueVue(g, c.Id), g.EvenementId, g.FinEvenementId);
-                        }).ToList());
+                        }).ToList(),
+                    c.Active && c.Projet is { } projet
+                        ? new ProjetDto(projet.InstigateurId, humains[projet.InstigateurId - 1].Nom, projet.CibleId, toutes[projet.CibleId - 1].Nom,
+                            projet.Raison, Calendrier.Decomposer(projet.Depuis).ToString(),
+                            projet.AlliesSollicites.Select(a => toutes[a - 1].Nom).ToList(), projet.EvenementId)
+                        : null);
             }).ToList();
     }
 }

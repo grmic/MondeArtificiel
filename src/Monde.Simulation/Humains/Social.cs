@@ -124,6 +124,9 @@ public sealed class Communaute
     public Raid? Raid { get; set; }
     public long DernierRaidLe { get; set; }
 
+    /// <summary>Guerre que le groupe prépare (null : aucune) : elle sera débattue, puis lancée ou abandonnée.</summary>
+    public ProjetGuerre? Projet { get; set; }
+
     /// <summary>Communauté à laquelle le groupe est soumis (0 : libre), depuis quand, et l'événement de la soumission.</summary>
     public int SoumiseAId { get; set; }
     public long SoumiseLe { get; set; }
@@ -145,6 +148,7 @@ public sealed class Communaute
         copie.Noms = [.. Noms];
         copie.Territoire = new Dictionary<int, long>(Territoire);
         copie.Raid = Raid?.Copier();
+        copie.Projet = Projet?.Copier();
         return copie;
     }
 }
@@ -180,12 +184,12 @@ public sealed partial class VieSociale(Alea alea)
     /// précisée, l'événement appartient à la chronologie de la communauté de <paramref name="h"/>.
     /// </summary>
     private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0,
-        int communaute = -1, int autreCommunaute = 0)
+        int communaute = -1, int autreCommunaute = 0, bool significatif = false)
     {
         var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte)
         {
             Id = Numeros.Suivant(), CauseId = cause, CommunauteId = communaute >= 0 ? communaute : h.CommunauteId,
-            AutreCommunauteId = autreCommunaute,
+            AutreCommunauteId = autreCommunaute, Significatif = significatif,
         };
         Journal.Add(e);
         return e.Id;
@@ -507,7 +511,11 @@ public sealed partial class VieSociale(Alea alea)
             }
             h.Chagrin = Math.Min(100, h.Chagrin + k);
             h.Humeur = Math.Max(0, h.Humeur - k / 2);
-            if (k >= 25) Noter(maintenant, TypeEvenement.Humeur, h, mort, $"{h.Nom} pleure {Parente(h, mort)}.", mort.MortEvenementId);
+            if (k >= 25)
+            {
+                Noter(maintenant, TypeEvenement.Humeur, h, mort, $"{h.Nom} pleure {Parente(h, mort)}.", mort.MortEvenementId);
+                Jardin.Pleurer(h, mort, Parente(h, mort), k, maintenant);
+            }
 
             // Un proche tué : la peine se double d'une soif de vengeance contre le meurtrier (Daly et Wilson, 1988).
             if (mort.CauseDeMort is CauseDeMort.Meurtre or CauseDeMort.Guerre && mort.MeurtrierId > 0 && mort.MeurtrierId != h.Id && k >= 20
@@ -516,6 +524,8 @@ public sealed partial class VieSociale(Alea alea)
                 var soif = Math.Min(100, 1.2 * k);
                 AjouterGrief(h, new Grief(meurtrier.Id, MotifGrief.Meurtre, soif, soif, mort.MortEvenementId, mort.Id));
                 h.Colere = Math.Max(h.Colere, k);
+                Jardin.Confier(h, TypeIntime.Intention, meurtrier.Id, $"Je vengerai {mort.Nom} : {meurtrier.Nom} paiera.", soif * (0.5 + 0.5 * (1 - h.Personnalite.Agreabilite)),
+                    mort.MortEvenementId, maintenant, $"vengeance:{meurtrier.Id}");
             }
         }
     }

@@ -53,9 +53,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private double _temperature = 20;
 
     /// <summary>Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause.</summary>
-    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0)
+    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0, bool significatif = false)
     {
-        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte) { Id = Numeros.Suivant(), CauseId = cause };
+        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte) { Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif };
         Journal.Add(e);
         return e.Id;
     }

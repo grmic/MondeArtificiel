@@ -64,6 +64,12 @@ public sealed record EvenementJournal(long Secondes, TypeEvenement Type, int Hum
     /// </summary>
     public int CommunauteId { get; init; }
     public int AutreCommunauteId { get; init; }
+
+    /// <summary>
+    /// Événement significatif : un tournant pour un groupe ou pour le monde (projet de guerre, renoncement, raid, début et
+    /// fin d'une guerre, pacte, soumission, catastrophe…). L'observateur peut ne suivre que ceux-là.
+    /// </summary>
+    public bool Significatif { get; init; }
 }
 
 /// <summary>

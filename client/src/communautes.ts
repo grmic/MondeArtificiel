@@ -33,6 +33,20 @@ interface Communaute {
   /** Raid en cours, soumission, vassaux. */
   guerre: string[];
   guerres: Guerre[];
+  /** Guerre qu'elle prépare (null : aucune). */
+  projet: Projet | null;
+}
+
+/** Une guerre en préparation : qui la veut, contre qui, pourquoi, et les alliés sollicités. */
+interface Projet {
+  instigateur: number;
+  nomInstigateur: string;
+  cible: number;
+  nomCible: string;
+  raison: string;
+  depuis: string;
+  allies: string[];
+  evenement: number;
 }
 
 /** Une guerre vue par la communauté (issue null : en cours). */
@@ -217,6 +231,18 @@ export class PanneauCommunautes {
       bloc.append(rel);
     }
     for (const g of c.guerre) bloc.append(el("p", "alerte", g));
+    if (c.projet) {
+      const p = c.projet;
+      const ligne = el("p", "alerte projet");
+      const instigateur = el("button", "lien", p.nomInstigateur);
+      instigateur.type = "button";
+      instigateur.addEventListener("click", () => this.ouvrirFiche(p.instigateur));
+      ligne.append("⚔ Prépare la guerre contre ", el("strong", undefined, p.nomCible), ` depuis ${p.depuis}, poussée par `, instigateur,
+        `, ${p.raison}.`, p.allies.length > 0 ? ` Alliés sollicités : ${p.allies.join(", ")}.` : " Aucun allié sollicité.",
+        " Le groupe en débattra : il peut encore y renoncer. ");
+      if (p.evenement > 0) ligne.append(boutonCause(ligne, p.evenement, "le projet"));
+      bloc.append(ligne);
+    }
     const enCours = c.guerres.filter((g) => g.issue === null);
     if (enCours.length > 0) {
       bloc.append(el("p", "relation-en", `En guerre contre ${enCours.map((g) => `${g.nomContre} (${g.raids} raid${g.raids > 1 ? "s" : ""}, ${g.mortsSiens} morts chez elle, ${g.mortsEnnemis} chez l'ennemi)`).join(", ")}.`));

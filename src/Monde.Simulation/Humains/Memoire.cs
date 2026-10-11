@@ -41,7 +41,10 @@ public sealed class Memoire
     public List<LieuConnu> Lieux { get; init; } = [];
     public List<Pensee> Pensees { get; init; } = [];
 
-    public Memoire Copier() => new() { Lieux = [.. Lieux], Pensees = [.. Pensees] };
+    /// <summary>Le jardin secret (voir <see cref="Humains.Jardin"/>).</summary>
+    public List<Intime> Jardin { get; init; } = [];
+
+    public Memoire Copier() => new() { Lieux = [.. Lieux], Pensees = [.. Pensees], Jardin = [.. Jardin] };
 
     /// <summary>Facteur de mémoire : ×2 tous les 15 points de QI de mémoire (×0,25 à 70, ×4 à 130).</summary>
     public static double Facteur(double aptitude) => Math.Pow(2, (aptitude - 100) / 15);

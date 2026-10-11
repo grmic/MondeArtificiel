@@ -19,6 +19,8 @@ interface Configuration {
   continentsMin: number;
   continentsMax: number;
   resume: string;
+  version: string;
+  auteur: string;
 }
 
 /** Réglages d'un nouveau monde (graine null : au hasard). */
@@ -78,6 +80,7 @@ export class PanneauConfiguration {
     return { ligne, choix };
   })();
   private readonly actuel = el("p");
+  private readonly apropos = el("p", "discret apropos");
   private readonly message = el("p", "message-config");
   private readonly hasard = el("button", undefined, "🎲");
   private apercuAffiche = false;
@@ -134,6 +137,7 @@ export class PanneauConfiguration {
     this.construireDialogue();
 
     this.corps.append(
+      this.apropos,
       el("h3", undefined, "Monde actuel"),
       this.actuel,
       el("h3", undefined, "Sauvegardes"),
@@ -170,6 +174,7 @@ export class PanneauConfiguration {
       return;
     }
     this.config = c;
+    this.apropos.textContent = `Monde artificiel, version ${c.version} · auteur : ${c.auteur}`;
     this.actuel.textContent = `Graine ${c.graine} · ${c.couples} couples · ${c.continents} continent${c.continents > 1 ? "s" : ""}${c.origine ? " (réglages d'origine)" : ""}. ${c.resume}`;
     const km = (cases: number) => Math.round(cases * c.kilometresParCase);
     const bornes = (e: HTMLInputElement, min: number, max: number) => {

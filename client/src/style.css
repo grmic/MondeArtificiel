@@ -186,3 +186,10 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .config-panneau .boutons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .config-panneau button.danger { background: #6b2323; border: 1px solid #ff6b6b; color: var(--texte); border-radius: 6px; cursor: pointer; }
 .config-panneau .message-config { white-space: pre-line; color: #ffe6a8; min-height: 1.2em; }
+
+/* Événements significatifs et jardin secret */
+.evenement.significatif { font-weight: 600; }
+.evenement .etoile { color: #e0a020; }
+.puce.significatifs { font-weight: 600; }
+.liste.jardin li { margin-bottom: 2px; }
+h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }

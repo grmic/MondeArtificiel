@@ -545,8 +545,16 @@ public sealed class MondeSimule
             var bebe = GenerateurPopulation.Naissance(_humains.Count + 1, mere, pere, _secondes, _alea, _noms);
             _humains.Add(bebe);
             var fils = bebe.Sexe == Sexe.Femme ? "fille" : "fils";
-            _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
-                $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}.") { Id = _numeros.Suivant() });
+            var naissance = new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
+                $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}.") { Id = _numeros.Suivant() };
+            _comportement.Journal.Add(naissance);
+            Jardin.Confier(mere, TypeIntime.Joie, bebe.Id, $"{bebe.Nom} est né{(bebe.Sexe == Sexe.Femme ? "e" : "")} de moi : quelle joie !",
+                30 + 60 * mere.Personnalite.Attachement, naissance.Id, _secondes, $"naissance:{bebe.Id}");
+            if (pere is { EstVivant: true } && pere.PartenaireId == mere.Id)
+            {
+                Jardin.Confier(pere, TypeIntime.Joie, bebe.Id, $"{mere.Nom} m'a donné {(bebe.Sexe == Sexe.Femme ? "une fille" : "un fils")}, {bebe.Nom}.",
+                    20 + 50 * pere.Personnalite.Attachement, naissance.Id, _secondes, $"naissance:{bebe.Id}");
+            }
             // Une naissance réjouit la mère, et le père s'il est là et attaché à ses enfants.
             VieSociale.Rejouir(mere, 20 * mere.Personnalite.Attachement);
             if (pere is { EstVivant: true }) VieSociale.Rejouir(pere, 15 * pere.Personnalite.Attachement);
@@ -566,6 +574,7 @@ public sealed class MondeSimule
             {
                 _social.Regrouper(_humains, _communautes, _secondes, _noms);
                 _social.Territoires(_humains, _communautes, _ecosysteme, Carte, _secondes);
+                foreach (var h in _humains) if (h.EstVivant || h.Memoire.Jardin.Count > Jardin.TailleApresLaMort) Jardin.Mediter(h, _humains, _communautes, _secondes);
             }
         }
         VerserJournal();

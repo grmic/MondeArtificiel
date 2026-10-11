@@ -35,6 +35,8 @@ export class PanneauJournal {
   /** Chronologie d'une communauté suivie (null : tout le monde). */
   private communaute: { id: number; nom: string } | null = null;
   private plusAncien = true;
+  /** Seulement les événements significatifs. */
+  private significatifs = false;
   /** Journal figé : la simulation continue, les nouveaux événements attendent la reprise. */
   private enPause = false;
   private enAttente: Evenement[] = [];
@@ -84,7 +86,7 @@ export class PanneauJournal {
   }
 
   private filtre(avantId?: number) {
-    return { types: [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100, communaute: this.communaute?.id ?? null };
+    return { types: [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100, communaute: this.communaute?.id ?? null, significatifs: this.significatifs };
   }
 
   private async lire(avantId?: number): Promise<Evenement[]> {
@@ -96,7 +98,7 @@ export class PanneauJournal {
     if (this.racine.hidden) return;
     const c = this.communaute?.id;
     const gardes = nouveaux.filter((e) => this.types.has(e.type) && (this.humain === null || e.humain === this.humain || e.autre === this.humain)
-      && (c === undefined || e.communaute === c || e.autreCommunaute === c));
+      && (c === undefined || e.communaute === c || e.autreCommunaute === c) && (!this.significatifs || e.significatif));
     if (gardes.length === 0) return;
     if (this.enPause) {
       this.enAttente.push(...gardes);
@@ -153,6 +155,17 @@ export class PanneauJournal {
       etiquette.append(case_, ` ${libelle}`);
       filtres.append(etiquette);
     }
+
+    const etiquette = el("label", "puce significatifs");
+    const seulement = el("input");
+    seulement.type = "checkbox";
+    seulement.addEventListener("change", () => {
+      this.significatifs = seulement.checked;
+      void this.recharger();
+    });
+    etiquette.title = "Projets de guerre et renoncements, raids, guerres et paix, pactes, soumissions, catastrophes…";
+    etiquette.append(seulement, " ★ Significatifs seulement");
+    filtres.append(etiquette);
 
     const recherche = el("div", "ligne");
     const champ = el("input");

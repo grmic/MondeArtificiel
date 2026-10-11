@@ -20,7 +20,15 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 9 (avant l'identité et l'histoire des communautés).</summary>
     /// <summary>Ramène un fichier au schéma 10 (avant les catastrophes et les maladies).</summary>
     /// <summary>Ramène un fichier au schéma 11 (avant les distances réelles et l'allure de marche).</summary>
-    internal const string RetourVersion13 = """
+    internal const string RetourVersion14 = """
+        DROP TABLE jardin;
+        ALTER TABLE communautes DROP COLUMN projet;
+        DROP INDEX journal_significatif_id;
+        ALTER TABLE journal DROP COLUMN significatif;
+        PRAGMA user_version = 14;
+        """;
+
+    internal const string RetourVersion13 = RetourVersion14 + """
         ALTER TABLE communautes DROP COLUMN bellicisme;
         ALTER TABLE communautes DROP COLUMN raid;
         ALTER TABLE communautes DROP COLUMN dernier_raid_le;

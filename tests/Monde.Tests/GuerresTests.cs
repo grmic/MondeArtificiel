@@ -85,22 +85,38 @@ public sealed class GuerresTests
     }
 
     [Fact]
-    public void Raid_LanceContreUnEnnemiHaiEtPlusFaible_PuisAssautALAube()
+    public void Raid_PrepareDebattuPuisLanceContreUnEnnemiHaiEtPlusFaible_PuisAssautALAube()
     {
         var (social, tous, communautes, nature) = DeuxGroupes();
         var (a, b) = (communautes[0], communautes[1]);
         Assert.Equal(1, tous[0].CommunauteId);
-        var t = Semaines(social, tous, communautes, nature, Maintenant, () => a.Raid is not null);
 
+        // D'abord le projet : qui le pousse, contre qui, pourquoi ; il est noté comme significatif.
+        var t = Semaines(social, tous, communautes, nature, Maintenant, () => a.Projet is not null);
+        var projet = a.Projet!;
+        Assert.Null(a.Raid);
+        Assert.Equal(b.Id, projet.CibleId);
+        var annonce = Assert.Single(social.Journal, j => j.Id == projet.EvenementId);
+        Assert.True(annonce.Significatif);
+        Assert.Contains("à préparer la guerre contre", annonce.Texte);
+        Assert.Contains(projet.Raison, annonce.Texte);
+        Assert.Equal((a.Id, b.Id), (annonce.CommunauteId, annonce.AutreCommunauteId));
+        Assert.Contains(tous[projet.InstigateurId - 1].Memoire.Jardin, x => x.Type == TypeIntime.Intention && x.CauseId == projet.EvenementId);
+
+        // Le groupe en débat la semaine suivante : les hommes, ardents et vengeurs, suivent ; la troupe part.
+        t = Semaines(social, tous, communautes, nature, t, () => a.Raid is not null, maximum: 2);
+        Assert.Null(a.Projet);
         var raid = a.Raid!;
         Assert.Equal(b.Id, raid.CibleId);
+        Assert.Equal(projet.InstigateurId, raid.Guerriers[0]);
         Assert.InRange(raid.Guerriers.Count, 2, 6);
         Assert.All(raid.Guerriers, id => Assert.Equal(Sexe.Homme, tous[id - 1].Sexe));
         Assert.Equal(EtatRelation.Hostiles, social.RelationEntre(a.Id, b.Id));
         var depart = Assert.Single(social.Journal, j => j.Type == TypeEvenement.Guerre && j.Texte.Contains("entraîne"));
-        Assert.Contains("pour venger les siens", depart.Texte);
+        Assert.Equal((projet.EvenementId, true), (depart.CauseId, depart.Significatif));
         Assert.Equal((a.Id, b.Id), (depart.CommunauteId, depart.AutreCommunauteId));
         Assert.Equal(raid.EvenementId, depart.Id);
+        Assert.All(raid.Guerriers.Skip(1), id => Assert.Contains(tous[id - 1].Memoire.Jardin, x => x.Texte.StartsWith("Je suivrai")));
 
         // La troupe arrive au camp ennemi pendant la nuit ; l'assaut part à l'aube.
         foreach (var id in raid.Guerriers) (tous[id - 1].X, tous[id - 1].Y) = (tous[8].X, tous[8].Y);
@@ -112,12 +128,65 @@ public sealed class GuerresTests
         Assert.Equal((a.Id, b.Id, 1, IssueGuerre.EnCours), (guerre.A, guerre.B, guerre.Raids, guerre.Issue));
         Assert.Equal(EtatRelation.EnGuerre, social.RelationEntre(a.Id, b.Id));
         var assaut = Assert.Single(comportement.Journal, j => j.Texte.StartsWith("Au petit jour"));
-        Assert.Equal(raid.EvenementId, assaut.CauseId);
+        Assert.Equal((raid.EvenementId, true), (assaut.CauseId, assaut.Significatif));
+        Assert.Matches(", (armés de (branches|pierres)|à mains nues)", assaut.Texte);
         Assert.Equal(assaut.Id, guerre.EvenementId);
         Assert.True(raid.Retour);
         // Les morts du combat sont reliés à la guerre et à leur tueur.
         Assert.Equal(guerre.MortsA + guerre.MortsB, tous.Count(h => h.CauseDeMort == CauseDeMort.Guerre));
         Assert.All(tous.Where(h => h.CauseDeMort == CauseDeMort.Guerre), h => Assert.NotEqual(0, h.MeurtrierId));
+    }
+
+    [Fact]
+    public void Projet_AbandonneQuandLaFaimOteSesForcesAuGroupe()
+    {
+        var (social, tous, communautes, nature) = DeuxGroupes();
+        var a = communautes[0];
+        var t = Semaines(social, tous, communautes, nature, Maintenant, () => a.Projet is not null);
+        var projet = a.Projet!;
+        foreach (var h in tous.Where(h => h.CommunauteId == a.Id)) h.Faim = 100;
+        Semaines(social, tous, communautes, nature, t, () => a.Projet is null, maximum: 2);
+
+        Assert.Null(a.Raid);
+        var renoncement = Assert.Single(social.Journal, j => j.Texte.Contains("renonce à la guerre"));
+        Assert.EndsWith("la faim a ôté toute force aux guerriers.", renoncement.Texte);
+        Assert.Equal((projet.EvenementId, true, a.Id), (renoncement.CauseId, renoncement.Significatif, renoncement.CommunauteId));
+        Assert.True(a.DernierRaidLe > Maintenant);
+        Assert.Contains(tous[projet.InstigateurId - 1].Memoire.Jardin, x => x.Cle == $"renoncement:{projet.CibleId}");
+        Assert.DoesNotContain(tous[projet.InstigateurId - 1].Memoire.Jardin, x => x.Cle == $"guerre:{projet.CibleId}");
+    }
+
+    [Fact]
+    public void Projet_AbandonneQuandPresquePersonneNeSuitLInstigateur()
+    {
+        var (social, tous, communautes, nature) = DeuxGroupes();
+        var a = communautes[0];
+        var t = Semaines(social, tous, communautes, nature, Maintenant, () => a.Projet is not null);
+        var projet = a.Projet!;
+        var instigateur = tous[projet.InstigateurId - 1];
+        // Les rancunes se sont apaisées et l'instigateur n'est guère aimé : chacun décide pour lui-même de ne pas le suivre.
+        var siens = tous.Where(h => h.CommunauteId == a.Id).ToList();
+        foreach (var h in siens)
+        {
+            h.Griefs.Clear();
+            h.Colere = 0;
+        }
+        Lier(siens, [instigateur], -100);
+        Semaines(social, tous, communautes, nature, t, () => a.Projet is null, maximum: 2);
+
+        Assert.Null(a.Raid);
+        var renoncement = Assert.Single(social.Journal, j => j.Texte.Contains("renonce à la guerre"));
+        Assert.Contains($"presque personne ne suit {instigateur.Nom}", renoncement.Texte);
+        Assert.True(renoncement.Significatif);
+        Assert.Contains(siens.Where(h => h.Id != instigateur.Id), h => h.Memoire.Jardin.Any(x => x.Texte.StartsWith("Je ne suivrai pas")));
+    }
+
+    [Theory]
+    [InlineData(Arme.Baton, Arme.Pierre, Arme.Poings)]
+    public void Armes_LaBrancheFrappePlusFortQueLaPierreEtLesPoingsTuentRarement(Arme forte, Arme moyenne, Arme faible)
+    {
+        Assert.True(Comportement.Puissance(forte) > Comportement.Puissance(moyenne));
+        Assert.True(Comportement.Puissance(moyenne) > 2 * Comportement.Puissance(faible));
     }
 
     [Fact]
@@ -185,6 +254,14 @@ public sealed class GuerresTests
                 EvenementId = 3, Guerriers = [membreA.Id],
             };
             a.DernierRaidLe = etat.Secondes - Jour;
+            a.Projet = new ProjetGuerre
+            {
+                CibleId = b.Id, InstigateurId = membreA.Id, Depuis = etat.Secondes - 3 * Jour, EvenementId = 8, Raison = "pour venger « Ako »",
+                AlliesSollicites = [3, 4],
+            };
+            Jardin.Confier(membreA, TypeIntime.Croyance, 0, "La montagne est vivante ; d'où vient sa colère ? « 'Robert'); DROP TABLE jardin;-- »", 70, 9,
+                etat.Secondes, "croyance:test");
+            Jardin.Confier(membreA, TypeIntime.Opinion, 3, "Je me méfie de lui.", 40, 0, etat.Secondes, "opinion:3");
             b.SoumiseAId = a.Id;
             b.SoumiseLe = etat.Secondes - 2 * Jour;
             b.SoumissionEvenementId = 4;
@@ -208,6 +285,8 @@ public sealed class GuerresTests
             var (ra, rb) = (relu.Communautes!.Single(c => c.Id == a.Id), relu.Communautes!.Single(c => c.Id == b.Id));
             Assert.Equal((0.42, a.DernierRaidLe), (ra.Bellicisme, ra.DernierRaidLe));
             Assert.Equivalent(a.Raid, ra.Raid);
+            Assert.Equivalent(a.Projet, ra.Projet);
+            Assert.Equal(membreA.Memoire.Jardin, relu.Humains!.Single(h => h.Id == membreA.Id).Memoire.Jardin);
             Assert.Equal((a.Id, b.SoumiseLe, 4L, 5L), (rb.SoumiseAId, rb.SoumiseLe, rb.SoumissionEvenementId, rb.PaixEvenementId));
 
             // Le monde rechargé continue exactement comme l'original.
@@ -217,6 +296,14 @@ public sealed class GuerresTests
             recharge.AvancerDe(10 * Jour);
             Assert.Equal(original.Etat.Humains!.Select(h => (h.X, h.Y, h.Sante, h.Activite)), recharge.Etat.Humains!.Select(h => (h.X, h.Y, h.Sante, h.Activite)));
             Assert.Equal(original.Guerres().Count, recharge.Guerres().Count);
+
+            // Un monde de la version 14 se met à jour : jardins vides, aucun projet, événements anciens non significatifs.
+            DepotMondeTests.ExecuterSql(fichier, DepotMondeTests.RetourVersion14);
+            var v14 = new DepotMonde(fichier).Charger()!;
+            Assert.All(v14.Humains!, h => Assert.Empty(h.Memoire.Jardin));
+            Assert.All(v14.Communautes!, c => Assert.Null(c.Projet));
+            Assert.DoesNotContain(new DepotMonde(fichier).LireJournal(limite: 500), e => e.Significatif);
+            new DepotMonde(fichier).Enregistrer(relu);
 
             // Un monde de la version 13 se met à jour : aucune guerre, tempéraments à établir.
             DepotMondeTests.ExecuterSql(fichier, DepotMondeTests.RetourVersion13);

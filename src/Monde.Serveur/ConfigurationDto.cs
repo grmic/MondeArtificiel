@@ -20,8 +20,19 @@ public sealed record DemandeConfiguration(long? Graine, int Couples, int Largeur
 /// <summary>Réglages du monde courant et limites acceptées, pour la fenêtre « Configuration ».</summary>
 public sealed record ConfigurationDto(
     uint Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement, bool Origine, double KilometresParCase,
-    int CouplesMin, int CouplesMax, int TailleMin, int TailleMax, int ContinentsMin, int ContinentsMax, string Resume)
+    int CouplesMin, int CouplesMax, int TailleMin, int TailleMax, int ContinentsMin, int ContinentsMax, string Resume,
+    string Version, string Auteur)
 {
+    private static readonly System.Reflection.Assembly Application = typeof(ConfigurationDto).Assembly;
+
+    /// <summary>Version de l'application (sans l'empreinte de commit ajoutée par le SDK).</summary>
+    public static string VersionApplication { get; } =
+        (System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(Application)
+            ?.InformationalVersion ?? "?").Split('+')[0];
+
+    public static string AuteurApplication { get; } =
+        System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyCompanyAttribute>(Application)?.Company ?? "";
+
     public static ConfigurationDto Depuis(ServiceMonde service)
     {
         var monde = service.Monde;
@@ -29,7 +40,7 @@ public sealed record ConfigurationDto(
         return new((uint)c.Graine, c.Couples, c.Largeur, c.Hauteur, c.Continents, c.Placement, c == ConfigurationMonde.ParDefaut(c.Graine),
             Echelle.KilometresParCase, ConfigurationMonde.CouplesMin, ConfigurationMonde.CouplesMax,
             ConfigurationMonde.TailleMin, ConfigurationMonde.TailleMax, ConfigurationMonde.ContinentsMin, ConfigurationMonde.ContinentsMax,
-            Resumer(c, monde.Carte));
+            Resumer(c, monde.Carte), VersionApplication, AuteurApplication);
     }
 
     /// <summary>Résumé d'une carte : dimensions, continents et îles, en mots.</summary>

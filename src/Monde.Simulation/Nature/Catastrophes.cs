@@ -418,6 +418,9 @@ public sealed partial class Catastrophes
             Noter(maintenant, h, $"{h.Nom} est terrifié{e} par {TypesCatastrophe.Nom(c.Type)}.", c.Id, type: TypeEvenement.Humeur);
         }
         Toucher(c, h);
+        // Une frayeur marquante laisse une croyance ou une question (une seule fois par catastrophe).
+        if (gain >= 25 && !h.Memoire.Jardin.Exists(x => x.CauseId == c.Id && x.Type is TypeIntime.Croyance or TypeIntime.Question))
+            Jardin.Interpreter(h, c.Type, c.Id, h.Peur, _alea, maintenant);
     }
 
     /// <summary>
@@ -450,6 +453,7 @@ public sealed partial class Catastrophes
                 _ => TypesCatastrophe.Nom(c.Type),
             };
             Noter(maintenant, h, $"{h.Nom} contemple {quoi}.", c.Id, type: TypeEvenement.Humeur);
+            Jardin.Interpreter(h, c.Type, c.Id, 50, _alea, maintenant);
         }
     }
 
@@ -505,11 +509,12 @@ public sealed partial class Catastrophes
     // ───────────── Journal et noms ─────────────
 
     private long Noter(long maintenant, Humain? h, string texte, long cause = 0, int communaute = 0, int autreCommunaute = 0,
-        TypeEvenement type = TypeEvenement.Catastrophe, Origine origine = Origine.Naturelle)
+        TypeEvenement type = TypeEvenement.Catastrophe, Origine origine = Origine.Naturelle, bool significatif = false)
     {
         var e = new EvenementJournal(maintenant, type, h?.Id ?? 0, 0, texte, origine)
         {
             Id = Numeros.Suivant(), CauseId = cause, CommunauteId = communaute, AutreCommunauteId = autreCommunaute,
+            Significatif = significatif,
         };
         Journal.Add(e);
         return e.Id;
@@ -522,20 +527,20 @@ public sealed partial class Catastrophes
     private Catastrophe Commencer(TypeCatastrophe type, int x, int y, int rayon, double intensite, string nom, string texte,
         List<Humain> humains, long maintenant, Origine origine = Origine.Naturelle, double direction = 0, int parametre = 0, long cause = 0, long duree = 0, bool alerter = true)
     {
-        var id = Noter(maintenant, null, texte, cause, origine: origine);
+        // Significative si elle menace des humains, ou si tous peuvent la voir (phénomène du ciel).
+        var menace = humains.Any(h => h.EstVivant && Distance(h.X, h.Y, x, y) <= rayon + 3);
+        var phenomene = TypesCatastrophe.EstPhenomene(type);
+        var id = Noter(maintenant, null, texte, cause, origine: origine, significatif: phenomene || menace);
         var c = new Catastrophe
         {
             Id = id, Type = type, Origine = origine, Debut = maintenant, X = x, Y = y, Rayon = rayon, Intensite = intensite,
             Nom = nom, Direction = direction, Parametre = parametre, Duree = duree,
         };
         _liste.Add(c);
-        if (TypesCatastrophe.EstPhenomene(type)) Alertes.Add(new AlerteCatastrophe(id, type, texte, Grave: false));
-        else if (alerter && Menace(c, humains)) Signaler(c, texte);
+        if (phenomene) Alertes.Add(new AlerteCatastrophe(id, type, texte, Grave: false));
+        else if (alerter && menace) Signaler(c, texte);
         return c;
     }
-
-    /// <summary>Des humains vivent-ils dans la zone touchée ?</summary>
-    private bool Menace(Catastrophe c, List<Humain> humains) => humains.Any(h => h.EstVivant && Distance(h.X, h.Y, c.X, c.Y) <= c.Rayon + 3);
 
     private void Signaler(Catastrophe c, string texte)
     {
