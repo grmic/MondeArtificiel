@@ -35,6 +35,11 @@ interface Communaute {
   guerres: Guerre[];
   /** Guerre qu'elle prépare (null : aucune). */
   projet: Projet | null;
+  /** Son regard sur les amours entre personnes de même sexe, et ce qu'elle trouve beau (null : pas encore établis). */
+  moeurs: string | null;
+  ideal: string | null;
+  /** Ceux qu'elle a chassés et dont l'exil dure encore. */
+  exiles: { id: number; nom: string; raison: string; jusqua: string | null; evenement: number }[];
 }
 
 /** Une guerre en préparation : qui la veut, contre qui, pourquoi, et les alliés sollicités. */
@@ -47,6 +52,8 @@ interface Projet {
   depuis: string;
   allies: string[];
   evenement: number;
+  /** Jour du débat. */
+  debat: string;
 }
 
 /** Une guerre vue par la communauté (issue null : en cours). */
@@ -239,7 +246,7 @@ export class PanneauCommunautes {
       instigateur.addEventListener("click", () => this.ouvrirFiche(p.instigateur));
       ligne.append("⚔ Prépare la guerre contre ", el("strong", undefined, p.nomCible), ` depuis ${p.depuis}, poussée par `, instigateur,
         `, ${p.raison}.`, p.allies.length > 0 ? ` Alliés sollicités : ${p.allies.join(", ")}.` : " Aucun allié sollicité.",
-        " Le groupe en débattra : il peut encore y renoncer. ");
+        ` Le groupe en débattra (${p.debat}) : il peut encore y renoncer. `);
       if (p.evenement > 0) ligne.append(boutonCause(ligne, p.evenement, "le projet"));
       bloc.append(ligne);
     }
@@ -247,7 +254,19 @@ export class PanneauCommunautes {
     if (enCours.length > 0) {
       bloc.append(el("p", "relation-en", `En guerre contre ${enCours.map((g) => `${g.nomContre} (${g.raids} raid${g.raids > 1 ? "s" : ""}, ${g.mortsSiens} morts chez elle, ${g.mortsEnnemis} chez l'ennemi)`).join(", ")}.`));
     }
-    if (!c.disperseeLe) bloc.append(el("p", "usage", `Usage : ${c.usage}.${c.temperament ? ` Tempérament : ${c.temperament}.` : ""}`));
+    if (!c.disperseeLe) {
+      bloc.append(el("p", "usage", `Usage : ${c.usage}.${c.moeurs ? ` Mœurs : ${c.moeurs}.` : ""}${c.temperament ? ` Tempérament : ${c.temperament}.` : ""}`));
+      if (c.ideal) bloc.append(el("p", "discret", `Trouve beaux : ${c.ideal}.`));
+    }
+    for (const x of c.exiles) {
+      const ligne = el("p", "alerte");
+      const qui = el("button", "lien", x.nom);
+      qui.type = "button";
+      qui.addEventListener("click", () => this.ouvrirFiche(x.id));
+      ligne.append("A chassé ", qui, ` ${x.raison} (${x.jusqua ? `fin prévue : ${x.jusqua}` : "pour toujours"}). `);
+      if (x.evenement > 0) ligne.append(boutonCause(ligne, x.evenement, "pourquoi ?"));
+      bloc.append(ligne);
+    }
     const figure = el("p");
     const lien = el("button", "lien", c.nomFigure);
     lien.type = "button";

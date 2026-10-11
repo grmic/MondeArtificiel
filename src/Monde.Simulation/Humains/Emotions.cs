@@ -13,6 +13,8 @@ public enum MotifGrief : byte
     Coups = 2,
     /// <summary>Il a tué un de ses proches (<see cref="Grief.VictimeId"/>).</summary>
     Meurtre = 3,
+    /// <summary>Ses amours avec une personne de son sexe, que l'on réprouve.</summary>
+    Moeurs = 4,
 }
 
 /// <summary>
@@ -214,6 +216,7 @@ public sealed partial class VieSociale
                     MotifGrief.Infidelite => $"{h.Nom} pardonne à {autre.Nom} sa trahison.",
                     MotifGrief.Rival => $"{h.Nom} ne garde plus rancune à {autre.Nom}.",
                     MotifGrief.Coups => $"{h.Nom} pardonne à {autre.Nom} les coups reçus.",
+                    MotifGrief.Moeurs => $"{h.Nom} cesse de reprocher ses amours à {autre.Nom}.",
                     _ => $"{h.Nom} renonce à se venger de {autre.Nom}.",
                 }, g.EvenementId);
                 continue;

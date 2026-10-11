@@ -245,11 +245,11 @@ public sealed partial class VieSociale
                 && humains[cible.FigureId - 1] is { EstVivant: true } figureCible && figure.EstVivant
                 && Math.Max(Math.Abs(figure.X - figureCible.X), Math.Abs(figure.Y - figureCible.Y)) <= 2 * DistanceCommunaute)
             {
-                foreach (var h in vivants.Where(h => h.CommunauteId == c.Id)) unir(h.Id, figureCible.Id);
+                foreach (var h in vivants.Where(h => h.CommunauteId == c.Id && !Bannissement.ExcluDe(h, c.Id, maintenant))) unir(h.Id, figureCible.Id);
             }
             if (c.AccueilLe is { } accueil && maintenant - accueil < DureeAccueil && figure.EstVivant)
             {
-                foreach (var h in vivants.Where(h => h.CommunauteId == c.Id
+                foreach (var h in vivants.Where(h => h.CommunauteId == c.Id && !Bannissement.ExcluDe(h, c.Id, maintenant)
                              && Math.Max(Math.Abs(h.X - figure.X), Math.Abs(h.Y - figure.Y)) <= 2 * DistanceCommunaute))
                 {
                     unir(h.Id, figure.Id);

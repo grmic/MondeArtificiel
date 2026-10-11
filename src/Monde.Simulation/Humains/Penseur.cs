@@ -85,6 +85,7 @@ public static class Penseur
             },
             Activite.Raid when h.CibleX < 0 => Choix("Je guette le camp ennemi. Nous frapperons à l'aube.", "Silence. Ils dorment encore."),
             Activite.Raid => Choix($"Nous marchons vers le camp ennemi{vers}.", $"Ils paieront. Nous allons{vers}."),
+            Activite.PartirEnExil => Choix($"Les miens m'ont chassé{e}. Je pars{vers}.", "Je ne peux plus rester ici."),
             Activite.RentrerDuRaid => Choix($"Je rentre auprès des miens{vers}.", "C'est fini. Je retourne au camp."),
             Activite.Repos when h.Reserves < 10 && h.Faim > 50 => Choix("Mes os percent ma peau.", "Je n'ai plus de forces."),
             Activite.Repos when h.EstDeprime => Choix("Rien n'a plus de goût.", "Je n'ai envie de rien."),

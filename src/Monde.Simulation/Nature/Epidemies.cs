@@ -20,12 +20,27 @@ public sealed partial class Catastrophes
     /// <summary>Nombre moyen de personnes sur la même case qu'un malade (contacts proches), pour régler la transmission.</summary>
     private const double ContactsProches = 2.5;
 
-    private static readonly string[] NomsMaladies =
+    /// <summary>
+    /// Noms réels des zoonoses qu'un chasseur peut attraper d'une bête, rangés selon leur profil : les plus mortelles
+    /// (peste, fièvre de Lassa, charbon), celles qui se transmettent le mieux d'un humain à l'autre (grippe, variole du singe,
+    /// fièvre récurrente) et les autres, qui passent peu d'un humain à l'autre (Wolfe et al., 2007 ; Jones et al., 2008).
+    /// Les humains ne savent pas les nommer : les noms sont pour l'observateur. La peste infectait déjà des humains il y a
+    /// 5 000 ans (Rasmussen et al., 2015).
+    /// </summary>
+    private static readonly string[] MaladiesMortelles = ["la peste", "la fièvre de Lassa", "le charbon"];
+    private static readonly string[] MaladiesContagieuses = ["la grippe", "la variole du singe", "la fièvre récurrente"];
+    private static readonly string[] MaladiesAnimales =
     [
-        "la fièvre rouge", "la toux sèche", "le flux de ventre", "la fièvre tachetée", "le mal des pustules", "la fièvre tremblante",
-        "la toux sanglante", "le mal noir", "la fièvre jaune", "la fièvre des marais", "le mal des yeux rouges", "la langueur",
-        "la fièvre des os", "le mal qui gonfle", "la toux des chiens", "la fièvre blanche",
+        "la leptospirose", "la tularémie", "la salmonellose", "la brucellose", "la fièvre Q", "la psittacose", "l'hantavirose",
     ];
+
+    private string NomMaladie(double r0, double letalite, int id)
+    {
+        var liste = letalite >= 0.15 ? MaladiesMortelles : r0 >= 1.5 ? MaladiesContagieuses : MaladiesAnimales;
+        var libres = liste.Where(n => _pathogenes.All(p => p.Nom != n)).ToList();
+        // Une souche nouvelle d'une maladie déjà apparue porte le même nom, numérotée.
+        return libres.Count > 0 ? libres[_alea.Entier(libres.Count)] : $"{liste[_alea.Entier(liste.Length)]} (souche {id})";
+    }
 
     /// <summary>Une bête vient d'être prise et dépecée : une maladie peut passer à l'humain.</summary>
     public void Prise(Humain h, long maintenant)
@@ -35,7 +50,7 @@ public sealed partial class Catastrophes
         var p = _pathogenes.Count > 0 && _alea.Reel() < 0.5 ? _pathogenes[_alea.Entier(_pathogenes.Count)] : NouveauPathogene(h, maintenant);
         if (EstImmunise(h, p, maintenant)) return;
         var texte = p.ApparuLe == maintenant
-            ? $"{h.Nom} a attrapé une maladie inconnue en dépeçant une bête : {p.Nom} vient d'apparaître."
+            ? $"{h.Nom} a attrapé une maladie nouvelle en dépeçant une bête : {p.Nom}, que personne ne sait nommer."
             : $"{h.Nom} a attrapé {p.Nom} en dépeçant une bête.";
         var id = Noter(maintenant, h, texte, p.EvenementId, type: TypeEvenement.Maladie);
         if (p.ApparuLe == maintenant)
@@ -59,8 +74,7 @@ public sealed partial class Catastrophes
         var immunite = _alea.Reel() < 0.7 ? 0 : Math.Clamp(LogNormale(5, 0.8), 0.5, 40);
         var transmission = r0 / (ContactsProches * 24 * duree);
         var id = _pathogenes.Count + 1;
-        var libres = NomsMaladies.Where(n => _pathogenes.All(p => p.Nom != n)).ToList();
-        var nom = libres.Count > 0 ? libres[_alea.Entier(libres.Count)] : $"{NomsMaladies[_alea.Entier(NomsMaladies.Length)]} ({id})";
+        var nom = NomMaladie(r0, letalite, id);
         var p = new Pathogene(id, nom, transmission, incubation, duree, letalite, immunite, maintenant, 0);
         _pathogenes.Add(p);
         return p;
@@ -142,6 +156,7 @@ public sealed partial class Catastrophes
             if (maintenant >= m.SymptomesLe && m.MaladeJusqua < m.GuerisonLe)
             {
                 m.MaladeJusqua = m.GuerisonLe;
+                m.Maladie = Maladie.Aucune;
                 Noter(maintenant, m, $"{m.Nom} tombe malade : {p.Nom}.", m.InfectionEvenementId, type: TypeEvenement.Maladie);
             }
             if (maintenant < m.GuerisonLe) continue;

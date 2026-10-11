@@ -34,6 +34,8 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Conflit] = "conflit",
         [TypeEvenement.Catastrophe] = "catastrophe",
         [TypeEvenement.Guerre] = "guerre",
+        [TypeEvenement.Attirance] = "attirance",
+        [TypeEvenement.Exclusion] = "exclusion",
     };
 
 
@@ -91,6 +93,16 @@ public sealed record CommunauteRefDto(int Id, string Nom);
 public sealed record EpreuvesDto(string? Maladie, string? MaladieDepuis, long MaladieEvenement, IReadOnlyList<string> Immunites,
     int Peur, string? PeurDe, long PeurEvenement);
 
+/// <summary>Une exclusion : par qui, depuis quand, jusqu'à quand (null : pour toujours), pourquoi, et si elle dure encore.</summary>
+public sealed record ExclusionDto(string Type, int Par, string NomPar, string Le, string? Jusqua, string Raison, bool EnCours, long Evenement);
+
+/// <summary>
+/// Attraits et orientation. Beauté et attractivité de 0 à 100, aux yeux de sa communauté ; orientation de 0 à 100 vers
+/// chaque sexe ; ce qu'il en sait (null s'il n'y a rien à savoir) ; idéal de beauté de son groupe.
+/// </summary>
+public sealed record AttraitsDto(int Beaute, int Attractivite, string Orientation, int VersHommes, int VersFemmes, string? Conscience,
+    string Ideal, IReadOnlyList<ExclusionDto> Exclusions);
+
 /// <summary>Fiche complète d'un humain : état, caractère, intelligence, humeur, liens, mémoire, pensées et histoire.</summary>
 public sealed record FicheDto(
     HumainDto Humain,
@@ -105,7 +117,8 @@ public sealed record FicheDto(
     IReadOnlyList<LieuDto> Lieux,
     IReadOnlyList<LienDto> Liens,
     IReadOnlyList<EvenementDto> Histoire,
-    EpreuvesDto Epreuves)
+    EpreuvesDto Epreuves,
+    AttraitsDto Attraits)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -177,15 +190,38 @@ public sealed record FicheDto(
                 .Select(l => new LienDto(l.Id, Nom(l.Id), (int)Math.Round(l.Familiarite), (int)Math.Round(l.Affection),
                     Statut(l), humains[l.Id - 1].EstVivant)).ToList(),
             Journal(service, new FiltreJournal(Humain: id, Limite: 200), types).Select(EvenementDto.Depuis).ToList(),
-            LireEpreuves(h, monde.Pathogenes(), maintenant));
+            LireEpreuves(h, monde.Pathogenes(), maintenant),
+            LireAttraits(h, humains, monde.Communautes(), maintenant));
+    }
+
+    private static AttraitsDto LireAttraits(Humain h, List<Humain> humains, List<Communaute> communautes, long maintenant)
+    {
+        var groupe = h.CommunauteId > 0 && h.CommunauteId <= communautes.Count ? communautes[h.CommunauteId - 1] : null;
+        var ideal = groupe?.Ideal ?? IdealBeaute.ParDefaut;
+        var tolerance = groupe is { ToleranceMoeurs: >= 0 } ? groupe.ToleranceMoeurs : VieSociale.TemperamentMoeurs(h.Personnalite);
+        var instant = h.MortLe ?? maintenant;
+        string Ref(Exclusion e) => e.Type == TypeExclusion.Famille
+            ? (e.De >= 1 && e.De <= humains.Count ? humains[e.De - 1].Nom : "?")
+            : (e.De >= 1 && e.De <= communautes.Count ? communautes[e.De - 1].Nom : "?");
+        return new AttraitsDto(
+            (int)Math.Round(Attirance.Beaute(h, ideal, instant)), (int)Math.Round(Attirance.Attractivite(h, ideal, instant)),
+            Attirance.Orienter(h), (int)Math.Round(100 * h.Orientation.VersHommes), (int)Math.Round(100 * h.Orientation.VersFemmes),
+            h.EstEnfant(instant) ? null : Attirance.Conscience(h, tolerance),
+            groupe is null ? "sans communauté : l'idéal commun" : Attirance.DireIdeal(ideal),
+            h.Exclusions.AsEnumerable().Reverse().Select(e => new ExclusionDto(
+                e.Type switch { TypeExclusion.Famille => "renié", TypeExclusion.Depart => "parti avec un exilé", _ => "exilé" },
+                e.De, Ref(e), Date(e.Le), e.Jusqua == 0 ? null : Date(e.Jusqua), e.Raison, e.Active(maintenant), e.EvenementId)).ToList());
     }
 
     private static EpreuvesDto LireEpreuves(Humain h, List<Simulation.Nature.Pathogene> maladies, long maintenant)
     {
         string NomMaladie(int id) => id >= 1 && id <= maladies.Count ? maladies[id - 1].Nom : "une maladie";
         var porteur = h.EstVivant && h.InfectionId != 0;
+        // Maladie ordinaire (non contagieuse) : nommée pour l'observateur, l'humain ne sait pas la nommer.
+        var ordinaire = !porteur && h.EstVivant && h.EstMalade(maintenant) && h.Maladie != Maladie.Aucune
+            ? Maladies.Fiche(h.Maladie).Nom + " (personne ne sait la nommer)" : null;
         return new EpreuvesDto(
-            porteur ? NomMaladie(h.InfectionId) + (maintenant < h.SymptomesLe ? " (pas encore de signes)" : "") : null,
+            porteur ? NomMaladie(h.InfectionId) + (maintenant < h.SymptomesLe ? " (pas encore de signes)" : "") : ordinaire,
             porteur ? Date(h.InfecteLe) : null, porteur ? h.InfectionEvenementId : 0,
             h.Immunites.Where(i => i.Jusqua is null || i.Jusqua > maintenant)
                 .Select(i => $"{NomMaladie(i.PathogeneId)} ({(i.Jusqua is { } j ? $"jusqu'à l'an {Calendrier.Decomposer(j).Annee}" : "à vie")})")
@@ -213,6 +249,7 @@ public sealed record FicheDto(
         MotifGrief.Infidelite => "trahison",
         MotifGrief.Rival => "rivalité amoureuse",
         MotifGrief.Coups => "coups",
+        MotifGrief.Moeurs => "amours réprouvées",
         _ => g.VictimeId > 0 ? $"a tué {nom(g.VictimeId)}" : "meurtre d'un proche",
     };
 
@@ -246,7 +283,10 @@ public sealed record MembreDto(int Id, string Nom, string Etape);
 
 /// <summary>Une guerre en préparation : qui la veut, contre qui, pourquoi, depuis quand, et les alliés sollicités.</summary>
 public sealed record ProjetDto(int Instigateur, string NomInstigateur, int Cible, string NomCible, string Raison, string Depuis,
-    IReadOnlyList<string> Allies, long Evenement);
+    IReadOnlyList<string> Allies, long Evenement, string Debat);
+
+/// <summary>Un membre chassé : qui, pourquoi, jusqu'à quand (null : pour toujours), et l'événement de l'exil.</summary>
+public sealed record ExileDto(int Id, string Nom, string Raison, string? Jusqua, long Evenement);
 
 /// <summary>Un nom qu'a porté une communauté, depuis quand, et l'événement qui le lui a donné.</summary>
 public sealed record NomDto(string Nom, string? Sens, string Depuis, long Evenement);
@@ -273,11 +313,15 @@ public sealed record GuerreDto(int Contre, string NomContre, string Debut, strin
 /// <param name="Guerre">Raid en cours, soumission, vassaux, en phrases.</param>
 /// <param name="Guerres">Ses guerres, la plus récente d'abord.</param>
 /// <param name="Projet">Guerre qu'elle prépare (null : aucune).</param>
+/// <param name="Moeurs">Son regard sur les amours entre personnes de même sexe, en mots.</param>
+/// <param name="Ideal">Ce qu'elle trouve beau.</param>
+/// <param name="Exiles">Ceux qu'elle a chassés et dont l'exil dure encore.</param>
 public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? DisperseeLe, int Figure, string NomFigure,
     IReadOnlyList<MembreDto> Membres, int X, int Y, int Rayon, int Abondance, bool Disette, string? Destination,
     int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage, string? NomPropre, string? Sens,
     IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire,
-    string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet)
+    string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet,
+    string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles)
 {
     /// <summary>Les idées des mots, en français, pour l'observateur.</summary>
     private static readonly Dictionary<string, string> Idees = new()
@@ -407,8 +451,20 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     c.Active && c.Projet is { } projet
                         ? new ProjetDto(projet.InstigateurId, humains[projet.InstigateurId - 1].Nom, projet.CibleId, toutes[projet.CibleId - 1].Nom,
                             projet.Raison, Calendrier.Decomposer(projet.Depuis).ToString(),
-                            projet.AlliesSollicites.Select(a => toutes[a - 1].Nom).ToList(), projet.EvenementId)
-                        : null);
+                            projet.AlliesSollicites.Select(a => toutes[a - 1].Nom).ToList(), projet.EvenementId,
+                            Calendrier.Decomposer(projet.Debat).ToString())
+                        : null,
+                    c.ToleranceMoeurs < 0 ? null : c.UsageMoeurs switch
+                    {
+                        UsageMoeurs.Reprouvees => "les amours entre hommes ou entre femmes y sont réprouvées",
+                        UsageMoeurs.Acceptees => "les amours entre hommes ou entre femmes y sont acceptées",
+                        _ => "pas d'usage établi sur les amours entre hommes ou entre femmes",
+                    },
+                    c.ToleranceMoeurs < 0 ? null : Attirance.DireIdeal(c.Ideal),
+                    humains.Where(m => m.EstVivant)
+                        .SelectMany(m => m.Exclusions.Where(e => e.Type == TypeExclusion.Communaute && e.De == c.Id && e.Active(maintenant))
+                            .Select(e => new ExileDto(m.Id, m.Nom, e.Raison, e.Jusqua == 0 ? null : Calendrier.Decomposer(e.Jusqua).ToString(), e.EvenementId)))
+                        .ToList());
             }).ToList();
     }
 }

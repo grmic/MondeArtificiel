@@ -77,8 +77,13 @@ public sealed class GuerresTests
         var t = depuis;
         for (var k = 0; k < maximum && !fini(); k++)
         {
-            t += 7 * Jour;
-            social.Territoires(tous, communautes, nature, Carte, t);
+            // Les projets se débattent le jour venu ; le reste de la vie des groupes, une fois par semaine.
+            for (var j = 0; j < 7 && !fini(); j++)
+            {
+                t += Jour;
+                social.Debattre(tous, communautes, t);
+            }
+            if (!fini()) social.Territoires(tous, communautes, nature, Carte, t);
         }
         Assert.True(fini(), $"rien après {maximum} semaines ; relation {social.RelationEntre(1, 2)}");
         return t;

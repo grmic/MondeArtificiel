@@ -138,6 +138,8 @@ public sealed class HumainsTests
         {
             var h = depart.Humains![index].Copier();
             (h.X, h.Y, h.Desir, h.MortLe) = (x, y, 100, mort);
+            // Tous deux attirés par l'autre sexe (l'orientation tirée au hasard pourrait en décider autrement).
+            h.Orientation = h.Sexe == Sexe.Femme ? new Orientation(0.9, 0) : new Orientation(0, 0.9);
             if (mort is not null) (h.Sante, h.CauseDeMort, h.Activite) = (0, CauseDeMort.Faim, Activite.Mort);
             return h;
         }

@@ -76,6 +76,19 @@ interface Fiche {
   liens: { id: number; nom: string; familiarite: number; affection: number; statut: string; vivant: boolean }[];
   histoire: Evenement[];
   epreuves: Epreuves;
+  attraits: Attraits;
+}
+
+/** Beauté et attractivité (0 à 100, aux yeux de sa communauté), orientation, ce qu'il en sait, exclusions. */
+interface Attraits {
+  beaute: number;
+  attractivite: number;
+  orientation: string;
+  versHommes: number;
+  versFemmes: number;
+  conscience: string | null;
+  ideal: string;
+  exclusions: { type: string; par: number; nomPar: string; le: string; jusqua: string | null; raison: string; enCours: boolean; evenement: number }[];
 }
 
 /** Maladie en cours, immunités, et peur laissée par une catastrophe. */
@@ -140,6 +153,30 @@ export class PanneauFiche {
     this.dessiner(fiche);
   }
 
+  /** Attraits, orientation et exclusions (exil, reniement), avec leur raison. */
+  private attraits(corps: HTMLElement, f: Fiche, e: string): void {
+    const a = f.attraits;
+    corps.append(el("h3", undefined, "Attraits et orientation"));
+    const p = el("p", "attraits");
+    p.title = "Beauté relative : selon ce que sa communauté trouve beau. Attractivité : beauté, jeunesse, allure et vigueur.";
+    p.append(`Beauté relative ${a.beaute}/100 · attractivité ${a.attractivite}/100`, el("br"),
+      `Idéal de beauté de son groupe : ${a.ideal}`, el("br"),
+      `Orientation : ${a.orientation} (attirance vers les hommes ${a.versHommes}/100, vers les femmes ${a.versFemmes}/100)`);
+    if (a.conscience) p.append(` ; ${a.conscience}`);
+    corps.append(p);
+    if (a.exclusions.length === 0) return;
+    const ul = el("ul", "liste exclusions");
+    for (const x of a.exclusions) {
+      const li = el("li", x.enCours ? "alerte" : "discret");
+      const duree = x.jusqua ? `fin prévue : ${x.jusqua}` : "pour toujours";
+      const qui = x.type === "renié" ? `Renié${e} par ${x.nomPar}` : x.type === "exilé" ? `Chassé${e} de la ${x.nomPar.charAt(0).toLowerCase()}${x.nomPar.slice(1)}` : `Parti${e} de la ${x.nomPar.charAt(0).toLowerCase()}${x.nomPar.slice(1)}`;
+      li.append(`${qui} ${x.raison} (${x.le} ; ${duree})${x.enCours ? "" : ", c'est fini"} `);
+      if (x.evenement > 0) li.append(boutonCause(li, x.evenement, "ce qui s'est passé"));
+      ul.append(li);
+    }
+    corps.append(ul);
+  }
+
   private lien(id: number, texte?: string): HTMLElement {
     const a = el("button", "lien", texte ?? this.nom(id));
     a.type = "button";
@@ -198,7 +235,7 @@ export class PanneauFiche {
     if (ep.maladie || ep.peur >= 5 || ep.immunites.length > 0) {
       const p = el("p", "epreuves");
       if (ep.maladie) {
-        p.append(`Porte ${ep.maladie}${h.contagieux ? ", contagieux" : ""} (depuis ${ep.maladieDepuis}) `);
+        p.append(`Porte ${ep.maladie}${h.contagieux ? ", contagieux" : ""}${ep.maladieDepuis ? ` (depuis ${ep.maladieDepuis})` : ""} `);
         if (ep.maladieEvenement > 0) p.append(boutonCause(p, ep.maladieEvenement, "comment ?"), " ");
         p.append(el("br"));
       }
@@ -210,6 +247,7 @@ export class PanneauFiche {
       if (ep.immunites.length > 0) p.append(`Immunisé${h.sexe === "femme" ? "e" : ""} contre : ${ep.immunites.join(", ")}`);
       corps.append(p);
     }
+    this.attraits(corps, f, h.sexe === "femme" ? "e" : "");
     if (f.communaute) {
       const c = el("p", "communaute");
       const bouton = el("button", "lien", f.communaute.nom);

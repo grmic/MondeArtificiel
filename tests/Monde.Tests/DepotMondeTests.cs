@@ -20,7 +20,28 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 9 (avant l'identité et l'histoire des communautés).</summary>
     /// <summary>Ramène un fichier au schéma 10 (avant les catastrophes et les maladies).</summary>
     /// <summary>Ramène un fichier au schéma 11 (avant les distances réelles et l'allure de marche).</summary>
-    internal const string RetourVersion14 = """
+    internal const string RetourVersion15 = """
+        DROP TABLE exclusions;
+        ALTER TABLE humains DROP COLUMN symetrie;
+        ALTER TABLE humains DROP COLUMN harmonie;
+        ALTER TABLE humains DROP COLUMN taille;
+        ALTER TABLE humains DROP COLUMN teint;
+        ALTER TABLE humains DROP COLUMN allure;
+        ALTER TABLE humains DROP COLUMN vers_hommes;
+        ALTER TABLE humains DROP COLUMN vers_femmes;
+        ALTER TABLE humains DROP COLUMN lucidite;
+        ALTER TABLE humains DROP COLUMN maladie;
+        ALTER TABLE communautes DROP COLUMN ideal_taille;
+        ALTER TABLE communautes DROP COLUMN ideal_teint;
+        ALTER TABLE communautes DROP COLUMN ideal_corpulence;
+        ALTER TABLE communautes DROP COLUMN ideal_note;
+        ALTER TABLE communautes DROP COLUMN tolerance_moeurs;
+        ALTER TABLE communautes DROP COLUMN usage_moeurs;
+        ALTER TABLE communautes DROP COLUMN affaire_moeurs;
+        PRAGMA user_version = 15;
+        """;
+
+    internal const string RetourVersion14 = RetourVersion15 + """
         DROP TABLE jardin;
         ALTER TABLE communautes DROP COLUMN projet;
         DROP INDEX journal_significatif_id;

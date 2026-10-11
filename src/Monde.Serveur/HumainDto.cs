@@ -57,6 +57,7 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.Raid] = "en raid",
         [Simulation.Humains.Activite.RentrerDuRaid] = "rentre d'un raid",
         [Simulation.Humains.Activite.Fuir] = "fuit le danger",
+        [Simulation.Humains.Activite.PartirEnExil] = "part en exil",
     };
 
 

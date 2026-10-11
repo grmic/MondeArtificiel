@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 15;
+    public const int VersionSchema = 16;
 
     private readonly string _connexion;
 
@@ -449,6 +449,40 @@ public sealed partial class DepotMonde
                 CREATE INDEX IF NOT EXISTS journal_significatif_id ON journal (significatif, id);
                 """);
         }
+        if (actuelle < 16)
+        {
+            // Version 16 : apparence, orientation et maladie de chacun, exclusions, mœurs et idéal de beauté des communautés.
+            Executer(connexion, transaction, """
+                ALTER TABLE humains ADD COLUMN symetrie REAL;
+                ALTER TABLE humains ADD COLUMN harmonie REAL;
+                ALTER TABLE humains ADD COLUMN taille REAL;
+                ALTER TABLE humains ADD COLUMN teint REAL;
+                ALTER TABLE humains ADD COLUMN allure REAL;
+                ALTER TABLE humains ADD COLUMN vers_hommes REAL;
+                ALTER TABLE humains ADD COLUMN vers_femmes REAL;
+                ALTER TABLE humains ADD COLUMN lucidite REAL;
+                ALTER TABLE humains ADD COLUMN maladie INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN ideal_taille REAL;
+                ALTER TABLE communautes ADD COLUMN ideal_teint REAL;
+                ALTER TABLE communautes ADD COLUMN ideal_corpulence REAL;
+                ALTER TABLE communautes ADD COLUMN ideal_note INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN tolerance_moeurs REAL;
+                ALTER TABLE communautes ADD COLUMN usage_moeurs INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN affaire_moeurs INTEGER NOT NULL DEFAULT 0;
+                CREATE TABLE IF NOT EXISTS exclusions (
+                    humain INTEGER NOT NULL,
+                    rang INTEGER NOT NULL,
+                    type INTEGER NOT NULL,
+                    de INTEGER NOT NULL,
+                    le INTEGER NOT NULL,
+                    jusqua INTEGER NOT NULL,
+                    evenement INTEGER NOT NULL,
+                    raison TEXT NOT NULL,
+                    levee INTEGER NOT NULL,
+                    PRIMARY KEY (humain, rang)
+                );
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -506,7 +540,8 @@ public sealed partial class DepotMonde
                    humeur, chagrin, deuil_de, jours_sombres, deprime_depuis, communaute, inconfort, compagnie,
                    reserves, metabolisme,
                    faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
-                   marche, progression, bebe_porte_le
+                   marche, progression, bebe_porte_le,
+                   symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -571,7 +606,21 @@ public sealed partial class DepotMonde
                     MeurtrierId = lecteur.GetInt32(62),
                     Progression = lecteur.GetDouble(64),
                     BebePorteLe = lecteur.GetInt64(65),
+                    Maladie = (Maladie)lecteur.GetByte(74),
                 });
+                var h = humains[^1];
+                if (lecteur.IsDBNull(66))
+                {
+                    // Monde enregistré avant que ces traits existent : ils sont tirés du numéro de l'humain.
+                    (h.Apparence, h.Orientation, h.Lucidite) = Attirance.De(id, sexe, h.Personnalite.Ouverture);
+                }
+                else
+                {
+                    h.Apparence = new Apparence(lecteur.GetDouble(66), lecteur.GetDouble(67), lecteur.GetDouble(68), lecteur.GetDouble(69),
+                        lecteur.GetDouble(70));
+                    h.Orientation = new Orientation(lecteur.GetDouble(71), lecteur.GetDouble(72));
+                    h.Lucidite = lecteur.GetDouble(73);
+                }
             }
         }
         if (humains.Count > 0)
@@ -589,7 +638,8 @@ public sealed partial class DepotMonde
                    tolerance, usage, derniere_affaire, disette_evenement, nom_propre, sens, sens_cle, eponyme, lexique, origine,
                    fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations, disettes_surmontees,
                    installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
-                   soumission_evenement, paix_evenement, heritiere, projet
+                   soumission_evenement, paix_evenement, heritiere, projet,
+                   ideal_taille, ideal_teint, ideal_corpulence, ideal_note, tolerance_moeurs, usage_moeurs, affaire_moeurs
             FROM communautes ORDER BY id;
             """;
         var communautes = new List<Communaute>();
@@ -615,6 +665,12 @@ public sealed partial class DepotMonde
                     DernierRaidLe = l.GetInt64(33), SoumiseAId = l.GetInt32(34), SoumiseLe = l.GetInt64(35),
                     SoumissionEvenementId = l.GetInt64(36), PaixEvenementId = l.GetInt64(37), HeritiereId = l.GetInt32(38),
                     Projet = l.IsDBNull(39) ? null : JsonSerializer.Deserialize<ProjetGuerre>(l.GetString(39)),
+                    // Enregistrée avant que ces mœurs existent : −1, elles naîtront du tempérament des membres (voir VieSociale.Moeurs).
+                    Ideal = l.IsDBNull(40) ? IdealBeaute.ParDefaut : new IdealBeaute(l.GetDouble(40), l.GetDouble(41), l.GetDouble(42)),
+                    IdealNote = l.GetInt32(43),
+                    ToleranceMoeurs = l.IsDBNull(44) ? -1 : l.GetDouble(44),
+                    UsageMoeurs = (UsageMoeurs)l.GetInt32(45),
+                    AffaireMoeursId = l.GetInt64(46),
                 });
             }
         }
@@ -722,6 +778,15 @@ public sealed partial class DepotMonde
                     l.GetDouble(5), l.GetInt64(6), l.GetString(7)));
             }
         }
+        commande.CommandText = "SELECT humain, type, de, le, jusqua, evenement, raison, levee FROM exclusions ORDER BY humain, rang;";
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read())
+            {
+                Trouver(l.GetInt64(0))?.Exclusions.Add(new Exclusion((TypeExclusion)l.GetByte(1), l.GetInt32(2), l.GetInt64(3), l.GetInt64(4),
+                    l.GetInt64(5), l.GetString(6), l.GetBoolean(7)));
+            }
+        }
         commande.CommandText = "SELECT humain, contre, motif, intensite, initiale, evenement, victime FROM griefs ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
         {
@@ -753,7 +818,7 @@ public sealed partial class DepotMonde
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
-                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin;");
+                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions;");
         }
 
         using (var commande = connexion.CreateCommand())
@@ -827,7 +892,8 @@ public sealed partial class DepotMonde
                     humeur, chagrin, deuil_de, jours_sombres, deprime_depuis, communaute, inconfort, compagnie,
                     reserves, metabolisme,
                     faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
-                    marche, progression, bebe_porte_le)
+                    marche, progression, bebe_porte_le,
+                    symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -838,7 +904,8 @@ public sealed partial class DepotMonde
                     $humeur, $chagrin, $deuil_de, $jours_sombres, $deprime_depuis, $communaute, $inconfort, $compagnie,
                     $reserves, $metabolisme,
                     $faim_soif_jour, $froid_jour, $jours_seul, $colere, $deuil_evenement, $depression_evenement, $mort_evenement, $meurtrier,
-                    $marche, $progression, $bebe_porte_le);
+                    $marche, $progression, $bebe_porte_le,
+                    $symetrie, $harmonie, $taille, $teint, $allure, $vers_hommes, $vers_femmes, $lucidite, $maladie);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -850,7 +917,8 @@ public sealed partial class DepotMonde
                 "$humeur", "$chagrin", "$deuil_de", "$jours_sombres", "$deprime_depuis", "$communaute", "$inconfort", "$compagnie",
                 "$reserves", "$metabolisme",
                 "$faim_soif_jour", "$froid_jour", "$jours_seul", "$colere", "$deuil_evenement", "$depression_evenement", "$mort_evenement", "$meurtrier",
-                "$marche", "$progression", "$bebe_porte_le"];
+                "$marche", "$progression", "$bebe_porte_le",
+                "$symetrie", "$harmonie", "$taille", "$teint", "$allure", "$vers_hommes", "$vers_femmes", "$lucidite", "$maladie"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -876,6 +944,8 @@ public sealed partial class DepotMonde
                     h.FaimSoifDuJour, h.FroidDuJour, h.JoursSeul, h.Colere, h.DeuilEvenementId, h.DepressionEvenementId,
                     h.MortEvenementId, h.MeurtrierId,
                     h.Biologie.Marche, h.Progression, h.BebePorteLe,
+                    h.Apparence.Symetrie, h.Apparence.Harmonie, h.Apparence.Taille, h.Apparence.Teint, h.Apparence.Allure,
+                    h.Orientation.VersHommes, h.Orientation.VersFemmes, h.Lucidite, (int)h.Maladie,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
@@ -901,7 +971,11 @@ public sealed partial class DepotMonde
 
     private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
     {
-        Executer(connexion, transaction, "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM griefs; DELETE FROM raisons; DELETE FROM jardin;");
+        Executer(connexion, transaction,
+            "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM griefs; DELETE FROM raisons; DELETE FROM jardin; DELETE FROM exclusions;");
+        using var exclusions = Preparer(connexion, transaction,
+            "INSERT INTO exclusions (humain, rang, type, de, le, jusqua, evenement, raison, levee) VALUES ($h, $r, $t, $d, $l, $j, $e, $x, $v);",
+            "$h", "$r", "$t", "$d", "$l", "$j", "$e", "$x", "$v");
         using var jardin = Preparer(connexion, transaction,
             "INSERT INTO jardin (humain, rang, secondes, type, sujet, texte, intensite, cause, cle) VALUES ($h, $r, $s, $t, $su, $x, $i, $c, $k);",
             "$h", "$r", "$s", "$t", "$su", "$x", "$i", "$c", "$k");
@@ -950,6 +1024,11 @@ public sealed partial class DepotMonde
                 var x = h.Raisons[r];
                 Lancer(raisons, h.Id, r, (int)x.Type, x.AutreId, x.Poids);
             }
+            for (var r = 0; r < h.Exclusions.Count; r++)
+            {
+                var x = h.Exclusions[r];
+                Lancer(exclusions, h.Id, r, (int)x.Type, x.De, x.Le, x.Jusqua, x.EvenementId, x.Raison, x.Levee);
+            }
         }
     }
 
@@ -960,12 +1039,13 @@ public sealed partial class DepotMonde
                 destination_x, destination_y, tolerance, usage, derniere_affaire, disette_evenement, nom_propre, sens, sens_cle, eponyme,
                 lexique, origine, fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations,
                 disettes_surmontees, installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
-                soumission_evenement, paix_evenement, heritiere, projet)
+                soumission_evenement, paix_evenement, heritiere, projet,
+                ideal_taille, ideal_teint, ideal_corpulence, ideal_note, tolerance_moeurs, usage_moeurs, affaire_moeurs)
             VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy, $to, $u, $da, $de, $np, $s, $sc, $ep, $lx, $o, $fv, $fd, $fe,
-                $fi, $al, $mi, $ds, $ie, $te, $be, $ra, $dr, $sa, $sl, $se, $pe, $he, $pr);
+                $fi, $al, $mi, $ds, $ie, $te, $be, $ra, $dr, $sa, $sl, $se, $pe, $he, $pr, $it, $iq, $ic, $in, $tm, $um, $am);
             """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy", "$to", "$u", "$da", "$de", "$np", "$s",
             "$sc", "$ep", "$lx", "$o", "$fv", "$fd", "$fe", "$fi", "$al", "$mi", "$ds", "$ie", "$te", "$be", "$ra", "$dr", "$sa", "$sl",
-            "$se", "$pe", "$he", "$pr");
+            "$se", "$pe", "$he", "$pr", "$it", "$iq", "$ic", "$in", "$tm", "$um", "$am");
         foreach (var c in communautes)
         {
             Lancer(commande, c.Id, c.Nom, c.FondeeLe, c.DisperseeLe is { } d ? d : DBNull.Value, c.FigureId,
@@ -977,7 +1057,9 @@ public sealed partial class DepotMonde
                 c.Territoire.Count == 0 ? DBNull.Value : EcrireTerritoire(c.Territoire),
                 c.Bellicisme, c.Raid is { } raid ? JsonSerializer.Serialize(raid) : DBNull.Value, c.DernierRaidLe, c.SoumiseAId,
                 c.SoumiseLe, c.SoumissionEvenementId, c.PaixEvenementId, c.HeritiereId,
-                c.Projet is { } projet ? JsonSerializer.Serialize(projet) : DBNull.Value);
+                c.Projet is { } projet ? JsonSerializer.Serialize(projet) : DBNull.Value,
+                c.Ideal.Taille, c.Ideal.Teint, c.Ideal.Corpulence, c.IdealNote,
+                c.ToleranceMoeurs < 0 ? DBNull.Value : c.ToleranceMoeurs, (int)c.UsageMoeurs, c.AffaireMoeursId);
         }
         EnregistrerNoms(connexion, transaction, communautes);
     }

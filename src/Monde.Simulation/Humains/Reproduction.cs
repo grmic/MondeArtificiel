@@ -54,44 +54,58 @@ public sealed partial class Comportement
     private bool ChercherAccouplement(Humain h, Humain? partenaire, IReadOnlyList<Humain> tous, long maintenant)
     {
         if (!h.EstFecond(maintenant)) return false;
+        var ideal = Social?.IdealDe(h) ?? IdealBeaute.ParDefaut;
+        var exigence = Attirance.Exigence(h, ideal, maintenant);
 
-        // Partenaires possibles à portée immédiate : de l'autre sexe, adultes, éveillés et disposés.
-        Humain? choisi = null;
-        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) <= 1 && EstDispose(partenaire, maintenant))
+        // Son compagnon, s'il est là et disposé : on s'unit à lui d'autant plus volontiers qu'on est attiré par son sexe.
+        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) <= 1 && EstDispose(partenaire, maintenant)
+            && alea.Reel() < 0.3 + 0.7 * h.Orientation.Vers(partenaire.Sexe))
         {
-            choisi = partenaire;
-        }
-        else
-        {
-            foreach (var autre in tous)
-            {
-                if (autre.Id == h.Id || autre.Sexe == h.Sexe || !autre.EstVivant) continue;
-                if (Distance(h.X, h.Y, autre.X, autre.Y) > 1 || !EstDispose(autre, maintenant) || SontParents(h, autre)) continue;
-                // On ne s'unit pas à qui l'on déteste ; il faut que les deux le veuillent.
-                if (h.AffectionPour(autre.Id) > VieSociale.SeuilHostilite
-                    && alea.Reel() < Math.Min(Ouverture(h, autre, tous), Ouverture(autre, h, tous))) choisi = autre;
-                break;
-            }
-        }
-
-        if (choisi is not null)
-        {
-            _autre = choisi;
-            SAccoupler(h, choisi, tous, maintenant);
+            _autre = partenaire;
+            SAccoupler(h, partenaire, tous, maintenant);
             return true;
         }
 
-        // Désir fort : aller vers son compagnon, ou vers l'humain disposé le plus proche si l'on est seul.
+        // Sinon, celui ou celle qui lui plaît le plus parmi ceux qui sont tout près : l'attrait physique pèse plus que tout le reste.
+        Humain? prefere = null;
+        double meilleur = 0;
+        foreach (var autre in tous)
+        {
+            if (autre.Id == h.Id || autre.Id == partenaire?.Id || !autre.EstVivant || autre.EstEnfant(maintenant)) continue;
+            if (Distance(h.X, h.Y, autre.X, autre.Y) > 1 || !EstDispose(autre, maintenant) || SontParents(h, autre)) continue;
+            if (h.AffectionPour(autre.Id) <= VieSociale.SeuilHostilite || Bannissement.Separes(h, autre, maintenant)) continue;
+            if (CompagnonVeille(autre, h, tous)) continue;
+            var desir = Attirance.Desir(h, autre, ideal, maintenant);
+            // Qui nous a repoussé, on ne le sollicite plus de quelque temps.
+            if (desir >= exigence && desir > meilleur && !Recent(h, $"refus:{autre.Id}", 90, maintenant)) (prefere, meilleur) = (autre, desir);
+        }
+        // Un désir refoulé laisse l'humain libre d'aller vers son compagnon.
+        if (prefere is not null && Proposer(h, prefere, meilleur, tous, maintenant))
+        {
+            _autre = prefere;
+            return true;
+        }
+
+        // Désir fort : aller vers son compagnon, ou vers celui ou celle qui lui plaît le plus alentour si l'on est seul.
         if (h.Desir < 70) return false;
         var cible = partenaire;
         if (cible is null)
         {
             var rayon = RayonPerception(h);
-            cible = tous
-                .Where(a => a.EstVivant && a.Sexe != h.Sexe && a.EstFecond(maintenant) && !SontParents(h, a)
-                            && Distance(h.X, h.Y, a.X, a.Y) <= rayon && h.AffectionPour(a.Id) > VieSociale.SeuilHostilite)
-                .OrderBy(a => Distance(h.X, h.Y, a.X, a.Y) - h.AffectionPour(a.Id) / 20).ThenBy(a => a.Id)
-                .FirstOrDefault();
+            var ose = Ose(h);
+            double score = 0;
+            foreach (var a in tous)
+            {
+                if (a.Id == h.Id || !a.EstVivant || !a.EstFecond(maintenant) || SontParents(h, a)) continue;
+                var d = Distance(h.X, h.Y, a.X, a.Y);
+                if (d > rayon || h.AffectionPour(a.Id) <= VieSociale.SeuilHostilite || Bannissement.Separes(h, a, maintenant)) continue;
+                if (CompagnonVeille(a, h, tous)) continue;
+                var desir = Attirance.Desir(h, a, ideal, maintenant);
+                if (desir < exigence || Recent(h, $"refus:{a.Id}", 90, maintenant)) continue;
+                // On ne va vers quelqu'un de son sexe que si l'on ose ; plus il est loin, moins on y va.
+                var s = desir * (a.Sexe == h.Sexe ? ose : 1) / (1 + 0.1 * d);
+                if (s > score) (cible, score) = (a, s);
+            }
         }
         if (cible is null || Distance(h.X, h.Y, cible.X, cible.Y) == 0) return false;
         (_autre, _motif) = (cible, Motif.Desir);
@@ -100,20 +114,26 @@ public sealed partial class Comportement
     }
 
     /// <summary>
-    /// Envie de <paramref name="h"/> de s'unir à <paramref name="autre"/>. Seul (ou avec son propre compagnon), volontiers,
-    /// d'autant plus qu'il l'aime. En couple avec un autre, rarement : les relations hors du couple restent minoritaires dans
+    /// On ne fait pas d'avances à quelqu'un dont le compagnon est tout près : partout, les compagnons veillent l'un sur l'autre
+    /// et écartent les rivaux (Buss, 2002, sur la surveillance du partenaire).
+    /// </summary>
+    private static bool CompagnonVeille(Humain autre, Humain h, IReadOnlyList<Humain> tous) =>
+        Vivant(tous, autre.PartenaireId) is { } c && c.Id != h.Id && c.Activite != Activite.Dormir && Distance(c.X, c.Y, autre.X, autre.Y) <= 2;
+
+    /// <summary>
+    /// Envie de <paramref name="h"/> de s'unir à <paramref name="autre"/>, une fois le désir là. Seul (ou avec son propre
+    /// compagnon), sans réserve. En couple avec un autre, rarement : les relations hors du couple restent minoritaires dans
     /// les sociétés étudiées (quelques pour cent des naissances en moyenne ; Anderson, 2006), avec de grands écarts d'une
     /// société à l'autre (Scelza et al., 2020). Elles sont plus probables quand le compagnon est loin, moins fréquentes chez
     /// les consciencieux (Schmitt, 2004), chez ceux qui sont attachés à leur compagnon (Allen et al., 2005) et là où
     /// l'usage les réprouve.
     /// </summary>
-    private double Ouverture(Humain h, Humain autre, IReadOnlyList<Humain> tous)
+    private double Ouverture(Humain h, Humain autre, double desir, IReadOnlyList<Humain> tous)
     {
-        var attirance = Math.Max(0, h.AffectionPour(autre.Id)) / 100;
         var compagnon = Vivant(tous, h.PartenaireId);
-        if (compagnon is null || compagnon.Id == autre.Id) return Math.Clamp(0.6 + attirance / 2, 0, 1);
+        if (compagnon is null || compagnon.Id == autre.Id) return 1;
         var occasion = Distance(h.X, h.Y, compagnon.X, compagnon.Y) > 8 ? 0.04 : 0.01;
-        return (occasion + 0.02 * attirance) * (0.4 + 0.6 * (Social?.ToleranceDe(h) ?? 0.5)) * (1.4 - 0.8 * h.Personnalite.Conscience)
+        return (occasion + 0.02 * desir) * (0.4 + 0.6 * (Social?.ToleranceDe(h) ?? 0.5)) * (1.4 - 0.8 * h.Personnalite.Conscience)
                * Math.Clamp(1.2 - h.AffectionPour(compagnon.Id) / 100, 0.2, 1.2);
     }
 
@@ -132,6 +152,11 @@ public sealed partial class Comportement
         a.Activite = b.Activite = Activite.SAccoupler;
         a.CibleX = a.CibleY = b.CibleX = b.CibleY = -1;
         a.Desir = b.Desir = 0;
+        if (a.Sexe == b.Sexe)
+        {
+            SAimer(a, b, tous, maintenant);
+            return;
+        }
 
         var femme = a.Sexe == Sexe.Femme ? a : b;
         var homme = a.Sexe == Sexe.Femme ? b : a;
@@ -384,6 +409,12 @@ public sealed partial class Comportement
         var taux = MortaliteParAge.First(t => age < t.AgeMax).TauxAnnuel;
         if (alea.Reel() < taux / Calendrier.JoursParAn)
         {
+            // Avant 50 ans, ces morts sont surtout des infections, des poumons et du ventre (Gurven et Kaplan, 2007).
+            if (age < 50 && !h.EstMalade(maintenant))
+            {
+                h.Maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
+                h.MaladeJusqua = maintenant + Calendrier.SecondesParJour;
+            }
             Mourir(h, maintenant, age >= 50 ? CauseDeMort.Vieillesse : CauseDeMort.Maladie);
             return;
         }

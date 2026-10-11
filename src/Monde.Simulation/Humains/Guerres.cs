@@ -85,7 +85,8 @@ public sealed class Raid
 
 /// <summary>
 /// Une guerre en préparation : qui la veut (l'instigateur), contre qui, pourquoi, et quels alliés il compte entraîner.
-/// Une semaine plus tard, le groupe en débat : chacun suit ou non, les alliés répondent, et la guerre est lancée ou abandonnée.
+/// Quelques jours ou quelques semaines plus tard (<see cref="DebatLe"/>), le groupe en débat : chacun suit ou non, les
+/// alliés répondent, et la guerre est lancée ou abandonnée.
 /// </summary>
 public sealed class ProjetGuerre
 {
@@ -98,6 +99,11 @@ public sealed class ProjetGuerre
     public required string Raison { get; init; }
     /// <summary>Communautés alliées sollicitées.</summary>
     public List<int> AlliesSollicites { get; set; } = [];
+
+    /// <summary>Jour du débat (0 : projet enregistré avant que la date varie, débattu six jours après son annonce).</summary>
+    public long DebatLe { get; set; }
+
+    public long Debat => DebatLe > 0 ? DebatLe : Depuis + 6 * Temps.Calendrier.SecondesParJour;
 
     public ProjetGuerre Copier()
     {
@@ -228,11 +234,8 @@ public sealed partial class VieSociale
 
         foreach (var a in actives)
         {
-            if (a.Projet is not null)
-            {
-                if (maintenant - a.Projet.Depuis >= 6 * Calendrier.SecondesParJour) Deliberer(a, humains, actives, guerriers, maintenant);
-                continue;
-            }
+            // Un projet en cours se débat le jour venu (voir Debattre).
+            if (a.Projet is not null) continue;
             if (a.Raid is not null || maintenant - a.DernierRaidLe < RepitEntreRaids || guerriers[a.Id].Count < 2 || a.FusionVersId != 0) continue;
             Communaute? cible = null;
             var meilleure = 0.0;
@@ -267,6 +270,36 @@ public sealed partial class VieSociale
     }
 
     // ───────────── Projet de guerre ─────────────
+
+    /// <summary>
+    /// Délai avant le débat, de deux jours à quatre semaines : le temps de rassembler tout le monde et de parler, plus long
+    /// dans un grand groupe ; une vengeance brûlante et un instigateur charismatique le pressent. Chez les peuples sans chef,
+    /// les décisions se prennent en discutant jusqu'à ce qu'un avis l'emporte (Boehm, 1999) ; aucune étude ne mesure ce
+    /// délai : ces valeurs sont des ordres de grandeur.
+    /// </summary>
+    internal long DelaiDebat(int adultes, bool vengeanceBrulante, Humain instigateur)
+    {
+        var jours = (3 + 0.4 * adultes) * (vengeanceBrulante ? 0.6 : 1) * (1.4 - 0.8 * instigateur.Personnalite.Charisme)
+                    * Math.Exp(0.4 * Biologie.Normale(alea));
+        return (long)(Math.Clamp(jours, 2, 28) * Calendrier.SecondesParJour);
+    }
+
+    /// <summary>Chaque jour : les groupes dont le jour du débat est venu débattent de leur projet de guerre.</summary>
+    public void Debattre(List<Humain> humains, List<Communaute> communautes, long maintenant)
+    {
+        var dus = communautes.Where(c => c.Active && c.Projet is { } p && p.Debat <= maintenant).ToList();
+        if (dus.Count == 0) return;
+        var actives = communautes.Where(c => c.Active).ToList();
+        var guerriers = actives.ToDictionary(c => c.Id, _ => new List<Humain>());
+        foreach (var h in humains)
+        {
+            if (h.EstVivant && guerriers.TryGetValue(h.CommunauteId, out var liste) && EstGuerrier(h, maintenant)) liste.Add(h);
+        }
+        foreach (var a in dus)
+        {
+            if (a.Projet is not null && a.Active) Deliberer(a, humains, actives, guerriers, maintenant);
+        }
+    }
 
     /// <summary>
     /// Un guerrier ardent pousse son groupe à frapper : le projet est annoncé avec sa raison, sa cible et les alliés sollicités.
@@ -327,6 +360,7 @@ public sealed partial class VieSociale
         a.Projet = new ProjetGuerre
         {
             CibleId = b.Id, InstigateurId = instigateur.Id, Depuis = maintenant, EvenementId = id, Raison = raison, AlliesSollicites = allies,
+            DebatLe = maintenant + DelaiDebat(adultesDe(a).Count, meurtre is not null && Vengeance(adultesDe(a), b.Id, humains) > 0.6, instigateur),
         };
         Jardin.Confier(instigateur, TypeIntime.Intention, b.FigureId, $"Frapper la {nb}, {raison}.", 50 + 25 * Math.Min(2, Ardeur(instigateur, b.Id, humains)),
             id, maintenant, $"guerre:{b.Id}");

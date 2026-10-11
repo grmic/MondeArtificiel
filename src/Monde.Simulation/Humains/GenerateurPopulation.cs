@@ -36,6 +36,9 @@ public static class GenerateurPopulation
                     Fatigue = alea.Reel() * 30,
                     Reserves = 40 + alea.Reel() * 30,
                 });
+                // Apparence et orientation viennent d'un flux à part, tiré du numéro : le reste du monde n'en dépend pas.
+                var h = humains[^1];
+                (h.Apparence, h.Orientation, h.Lucidite) = Attirance.De(id, sexe, h.Personnalite.Ouverture);
             }
         }
         return humains;
@@ -49,14 +52,19 @@ public static class GenerateurPopulation
     public const double ProportionGarcons = 0.512;
 
     /// <summary>
-    /// Un nouveau-né. Son caractère et son intelligence viennent en partie de ses parents, en partie du hasard.
+    /// Un nouveau-né. Son caractère, son intelligence, son apparence et en partie son orientation viennent de ses parents,
+    /// le reste du hasard. Un enfant attiré par son propre sexe ne le sait pas encore : il le découvrira peut-être en grandissant.
     /// </summary>
-    public static Humain Naissance(int id, Humain mere, Humain? pere, long maintenant, Alea alea, ISet<string> nomsPris)
+    public static Humain Naissance(int id, Humain mere, Humain? pere, long maintenant, Alea alea, ISet<string> nomsPris,
+        IReadOnlyList<Humain>? tous = null)
     {
         var attachement = Math.Clamp((pere is null ? mere.Personnalite.Attachement
             : (mere.Personnalite.Attachement + pere.Personnalite.Attachement) / 2) + (alea.Reel() - 0.5) * 0.4, 0, 1);
 
         var sexe = alea.Reel() < ProportionGarcons ? Sexe.Homme : Sexe.Femme;
+        var penchant = pere is null ? Attirance.PourSonSexe(mere) : Math.Max(Attirance.PourSonSexe(mere), Attirance.PourSonSexe(pere));
+        var freresAines = sexe == Sexe.Homme ? (tous ?? []).Count(a => a.MereId == mere.Id && a.Sexe == Sexe.Homme) : 0;
+        var orientation = Attirance.TirerOrientation(sexe, alea, penchant, freresAines);
         return new Humain
         {
             Id = id,
@@ -69,6 +77,9 @@ public static class GenerateurPopulation
             Naissance = maintenant,
             Personnalite = Psyche.Heriter(mere, pere, alea, attachement),
             Biologie = Biologie.Heriter(sexe, mere, pere, alea),
+            Apparence = Attirance.HeriterApparence(mere.Apparence, pere?.Apparence, alea),
+            Orientation = orientation,
+            Lucidite = orientation.Vers(sexe) < 0.15 ? 1 : 0,
             X = mere.X,
             Y = mere.Y,
             Activite = Activite.PorteParSaMere,

@@ -115,6 +115,25 @@ public sealed class Communaute
     public long DerniereAffaireId { get; set; }
 
     /// <summary>
+    /// Tolérance du groupe envers les amours entre personnes de même sexe, de 0 (réprouvées) à 1 (acceptées). Elle naît du
+    /// tempérament de ses membres (l'ouverture d'esprit en est le meilleur prédicteur : Shackelford et Besser, 2007) et
+    /// change avec ce que le groupe vit : côtoyer ceux qui les vivent sans drame l'habitue (Herek et Capitanio, 1996), un
+    /// scandale le durcit. Les sociétés humaines vont de l'acceptation au rejet (Ford et Beach, 1951 : la majorité des
+    /// sociétés étudiées en admettaient certaines formes).
+    /// </summary>
+    public double ToleranceMoeurs { get; set; } = 0.5;
+
+    /// <summary>Usage constaté envers ces amours, et la dernière affaire qui a marqué le groupe.</summary>
+    public UsageMoeurs UsageMoeurs { get; set; }
+    public long AffaireMoeursId { get; set; }
+
+    /// <summary>Ce que le groupe trouve beau (taille, teint, corpulence) : il change avec les générations et les disettes.</summary>
+    public IdealBeaute Ideal { get; set; } = IdealBeaute.ParDefaut;
+
+    /// <summary>Corpulence admirée, telle qu'elle a été notée au journal (−1 : minces, 0 : ni l'un ni l'autre, 1 : en chair).</summary>
+    public int IdealNote { get; set; }
+
+    /// <summary>
     /// Goût du groupe pour la violence, de 0 (pacifique) à 1 (guerrier) ; −1 tant qu'il n'est pas établi. Il naît du
     /// tempérament de ses membres et se forge avec les raids subis, menés, gagnés ou payés cher.
     /// </summary>
@@ -566,7 +585,9 @@ public sealed partial class VieSociale(Alea alea)
             // Bébés et enfants vont avec leurs parents.
             if (h.EstEnfant(maintenant))
             {
-                foreach (var pid in new[] { h.MereId, h.PereId })
+                // Parents séparés par un exil ou un reniement : l'enfant reste avec sa mère.
+                var separes = h.MereId > 0 && h.PereId > 0 && Bannissement.Separes(humains[h.MereId - 1], humains[h.PereId - 1], maintenant);
+                foreach (var pid in separes && humains[h.MereId - 1].EstVivant ? [h.MereId] : new[] { h.MereId, h.PereId })
                 {
                     if (pid > 0 && humains[pid - 1].EstVivant) Unir(h.Id, pid);
                 }
@@ -576,7 +597,7 @@ public sealed partial class VieSociale(Alea alea)
             {
                 if (l.Id < h.Id || !parent.ContainsKey(l.Id)) continue;
                 var autre = humains[l.Id - 1];
-                if (autre.EstEnfant(maintenant)) continue;
+                if (autre.EstEnfant(maintenant) || Bannissement.Separes(h, autre, maintenant)) continue;
                 // Une communauté vit ensemble : des amis qui vivent loin l'un de l'autre n'en font pas une.
                 if (Math.Max(Math.Abs(h.X - autre.X), Math.Abs(h.Y - autre.Y)) > DistanceCommunaute
                     && !enRaid.Contains(h.Id) && !enRaid.Contains(autre.Id)) continue;
@@ -623,6 +644,7 @@ public sealed partial class VieSociale(Alea alea)
                 var homonymes = communautes.Select(c => c.Noms.Count > 0 ? c.Noms[0].Nom : c.Nom)
                     .Count(n => n == nom || n.StartsWith(nom + " (", StringComparison.Ordinal));
                 var tolerance = ToleranceInitiale(g, communautes, maintenant);
+                var (toleranceMoeurs, ideal) = MoeursInitiales(g, communautes, maintenant);
                 // Groupe venu en majorité d'une même communauté : c'est une scission.
                 var origine = g.Where(h => h.CommunauteId != 0).GroupBy(h => h.CommunauteId)
                     .Select(c => (Id: c.Key, Nombre: c.Count())).OrderByDescending(c => c.Nombre).ThenBy(c => c.Id).FirstOrDefault();
@@ -635,6 +657,10 @@ public sealed partial class VieSociale(Alea alea)
                     FigureId = figure.Id,
                     Tolerance = tolerance,
                     Usage = Classer(tolerance, UsageFidelite.Neutre),
+                    ToleranceMoeurs = toleranceMoeurs,
+                    UsageMoeurs = ClasserMoeurs(toleranceMoeurs, UsageMoeurs.Neutre),
+                    Ideal = ideal,
+                    IdealNote = NoteIdeal(ideal.Corpulence, 0),
                     OrigineId = scission ? origine.Id : 0,
                     // Ceux qui partent emportent les mots de leur ancien groupe.
                     Lexique = scission ? new Dictionary<string, string>(communautes[origine.Id - 1].Lexique) : [],
@@ -712,6 +738,7 @@ public sealed partial class VieSociale(Alea alea)
             }
         }
         Usages(humains, communautes, maintenant);
+        Moeurs(humains, communautes, maintenant);
     }
 
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];

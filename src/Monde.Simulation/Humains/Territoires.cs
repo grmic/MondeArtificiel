@@ -113,6 +113,7 @@ public sealed partial class VieSociale
         }
         Relier(humains, actives, membres, maintenant);
         Guerroyer(humains, actives, membres, maintenant);
+        Exiler(humains, actives, membres, maintenant);
         Identites(humains, communautes, membres, carte, maintenant);
     }
 

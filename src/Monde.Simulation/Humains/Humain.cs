@@ -35,6 +35,8 @@ public enum Activite : byte
     Raid = 20,
     /// <summary>Rentrer d'un raid.</summary>
     RentrerDuRaid = 21,
+    /// <summary>Quitter les terres de la communauté qui l'a chassé.</summary>
+    PartirEnExil = 22,
 }
 
 public enum CauseDeMort : byte
@@ -131,6 +133,30 @@ public sealed class Humain
     public required Personnalite Personnalite { get; init; }
 
     public required Biologie Biologie { get; init; }
+
+    /// <summary>Traits physiques (symétrie, harmonie, taille, teint, allure) : la beauté en découle, selon l'idéal de chaque groupe.</summary>
+    public Apparence Apparence { get; set; } = new(0.5, 0.5, 0, 0.5, 0.5);
+
+    private Orientation? _orientation;
+
+    /// <summary>Orientation sexuelle (attirance vers les hommes, vers les femmes). Par défaut : vers l'autre sexe.</summary>
+    public Orientation Orientation
+    {
+        get => _orientation ??= Sexe == Sexe.Femme ? new Orientation(1, 0) : new Orientation(0, 1);
+        set => _orientation = value;
+    }
+
+    /// <summary>
+    /// Ce qu'il sait de son attirance pour son propre sexe, de 0 (il l'ignore) à 1 (il la connaît). Elle grandit à chaque
+    /// trouble ressenti, plus vite chez les esprits ouverts.
+    /// </summary>
+    public double Lucidite { get; set; } = 1;
+
+    /// <summary>Exclusions : chassé de sa communauté, renié par un parent, ou parti avec un exclu.</summary>
+    public List<Exclusion> Exclusions { get; set; } = [];
+
+    /// <summary>Maladie ordinaire en cours (non contagieuse), pour le journal : l'humain ne sait pas la nommer.</summary>
+    public Maladie Maladie { get; set; }
 
     public int X { get; set; }
     public int Y { get; set; }
@@ -313,6 +339,7 @@ public sealed class Humain
         copie.Griefs = [.. Griefs];
         copie.Raisons = [.. Raisons];
         copie.Immunites = [.. Immunites];
+        copie.Exclusions = [.. Exclusions];
         return copie;
     }
 }

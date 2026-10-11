@@ -35,6 +35,10 @@ public enum TypeEvenement : byte
     Catastrophe = 19,
     /// <summary>Raid, guerre, pacte, soumission, paix : la violence entre communautés et ses suites.</summary>
     Guerre = 20,
+    /// <summary>Désirs, avances acceptées ou repoussées, désirs refoulés, amours entre personnes de même sexe.</summary>
+    Attirance = 21,
+    /// <summary>Exil hors de la communauté, rejet par un parent, retour d'exil.</summary>
+    Exclusion = 22,
 }
 
 /// <summary>

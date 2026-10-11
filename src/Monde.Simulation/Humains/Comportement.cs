@@ -19,6 +19,25 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private const double TemperatureConfort = 15;
     private const double ChaleurCorporelle = 0.5;
 
+    /// <summary>Humains vivants dans le monde (mis à jour chaque jour) : certaines maladies n'existent que dans les grandes populations.</summary>
+    public int Population { get; set; }
+
+    /// <summary>« de » devant le nom d'une maladie : « d'une pneumonie », « du paludisme », « des vers intestinaux ».</summary>
+    internal static string De(string nom) => nom switch
+    {
+        _ when nom.StartsWith("le ", StringComparison.Ordinal) => "du " + nom[3..],
+        _ when nom.StartsWith("les ", StringComparison.Ordinal) => "des " + nom[4..],
+        _ when nom.StartsWith("des ", StringComparison.Ordinal) => "de " + nom[4..],
+        _ when nom.StartsWith("une ", StringComparison.Ordinal) || nom.StartsWith("un ", StringComparison.Ordinal) => "d'" + nom,
+        _ => "de " + nom,
+    };
+
+    /// <summary>
+    /// Santé perdue par pas pour une maladie de gravité 1. Réglé pour qu'une maladie moyenne (gravité × durée) coûte
+    /// autant de santé qu'avant que les maladies soient distinguées : la mortalité d'ensemble reste calée.
+    /// </summary>
+    private const double DegatsMaladie = 0.021;
+
     private const double ProbabiliteMaladieDeBase = 0.000012; // environ une maladie tous les deux ans
 
     private static readonly (int Dx, int Dy)[] Voisins8 =
@@ -176,7 +195,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         h.Froid += perte - ChaleurCorporelle;
 
         // Le désir monte chez les adultes en âge d'avoir des enfants, s'ils ne sont pas en détresse.
-        if (h.EstFecond(maintenant) && !h.EstMalade(maintenant) && h.Faim < 70 && h.Soif < 70)
+        // Une maladie légère (des vers, une infection de la peau) ne l'éteint pas.
+        if (h.EstFecond(maintenant) && !(h.EstMalade(maintenant) && Maladies.Fiche(h.Maladie).Gravite >= 0.5) && h.Faim < 70 && h.Soif < 70)
         {
             h.Desir = Math.Min(100, h.Desir + DesirParPas);
         }
@@ -259,7 +279,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (h.Soif >= 85) degats[(int)CauseDeMort.Soif] = 0.25;
         if (h.Froid >= 70) degats[(int)CauseDeMort.Froid] = 0.05 + 0.15 * (h.Froid - 70) / 30;
         if (h.Fatigue >= 95) degats[(int)CauseDeMort.Epuisement] = 0.05;
-        if (h.EstMalade(maintenant)) degats[(int)CauseDeMort.Maladie] = 0.03 * (1.3 - 0.6 * p.Endurance);
+        if (h.EstMalade(maintenant)) degats[(int)CauseDeMort.Maladie] = DegatsMaladie * Maladies.Fiche(h.Maladie).Gravite * (1.3 - 0.6 * p.Endurance);
         // Coup de chaleur : au-delà de 36 °C, le corps ne se refroidit plus assez, surtout s'il manque d'eau.
         if (_temperature >= 36) degats[(int)CauseDeMort.Chaleur] = 0.01 * (_temperature - 35) * (h.Soif > 60 ? 2 : 1);
 
@@ -288,8 +308,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                          * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25);
             if (alea.Reel() < risque * fragilite)
             {
-                h.MaladeJusqua = maintenant + (3 + alea.Entier(8)) * Calendrier.SecondesParJour;
-                Noter(maintenant, TypeEvenement.Maladie, h, null, $"{h.Nom} tombe malade.");
+                h.Maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
+                var fiche = Maladies.Fiche(h.Maladie);
+                h.MaladeJusqua = maintenant + Maladies.Duree(fiche, h, alea);
+                Noter(maintenant, TypeEvenement.Maladie, h, null, $"{h.Nom} tombe malade : {fiche.Nom} (personne ne sait la nommer).");
             }
         }
     }
@@ -309,6 +331,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 h.DepressionEvenementId),
             CauseDeMort.Meurtre when meurtrier is not null => Noter(maintenant, TypeEvenement.Mort, h, meurtrier,
                 $"{h.Nom} meurt sous les coups de {meurtrier.Nom}, à {AgeEnMots(h, maintenant)}.", causeId),
+            CauseDeMort.Maladie when h.Maladie != Maladie.Aucune && h.EstMalade(maintenant) => Noter(maintenant, TypeEvenement.Mort, h, null,
+                $"{h.Nom} meurt {De(Maladies.Fiche(h.Maladie).Nom)}, à {AgeEnMots(h, maintenant)}.", causeId),
             _ => Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}, à {AgeEnMots(h, maintenant)}.", causeId),
         };
         h.MeurtrierId = meurtrier?.Id ?? 0;
@@ -411,7 +435,18 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         if (h.Desir >= SeuilDesir && ChercherAccouplement(h, partenaire, tous, maintenant)) return;
 
-        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) > 2 + (1 - p.Sociabilite) * 8)
+        // Un exilé quitte les terres de ceux qui l'ont chassé.
+        if (Bannissement.Exil(h, maintenant) is > 0 and var exil && Social is not null && exil <= Social.Communautes.Count
+            && Social.Communautes[exil - 1] is { Active: true } chasse
+            && Distance(h.X, h.Y, chasse.CentreX, chasse.CentreY) <= VieSociale.DistanceCommunaute + 4)
+        {
+            int dx = Math.Sign(h.X - chasse.CentreX), dy = Math.Sign(h.Y - chasse.CentreY);
+            if (dx == 0 && dy == 0) dx = h.Id % 2 == 0 ? 1 : -1;
+            Avancer(h, Math.Clamp(h.X + 10 * dx, 0, carte.Largeur - 1), Math.Clamp(h.Y + 10 * dy, 0, carte.Hauteur - 1), Activite.PartirEnExil);
+            if (h.CibleX >= 0) return;
+        }
+        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) > 2 + (1 - p.Sociabilite) * 8
+            && !Bannissement.Separes(h, partenaire, maintenant))
         {
             _autre = partenaire;
             Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
@@ -437,7 +472,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         // Les sociables vont retrouver ceux qu'ils aiment ; c'est ainsi que les groupes se forment.
         if (!abattu && (h.Activite == Activite.RejoindreProche || alea.Reel() < 0.1 + 0.4 * p.Extraversion)
-            && ProcheARejoindre(h, tous) is { } proche)
+            && ProcheARejoindre(h, tous) is { } proche && !Bannissement.Separes(h, proche, maintenant))
         {
             _autre = proche;
             Avancer(h, proche.X, proche.Y, Activite.RejoindreProche);

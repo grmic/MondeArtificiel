@@ -542,7 +542,7 @@ public sealed class MondeSimule
         foreach (var (mere, pereId) in _comportement.Accouchements)
         {
             var pere = pereId > 0 ? _humains[pereId - 1] : null;
-            var bebe = GenerateurPopulation.Naissance(_humains.Count + 1, mere, pere, _secondes, _alea, _noms);
+            var bebe = GenerateurPopulation.Naissance(_humains.Count + 1, mere, pere, _secondes, _alea, _noms, _humains);
             _humains.Add(bebe);
             var fils = bebe.Sexe == Sexe.Femme ? "fille" : "fils";
             var naissance = new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
@@ -566,8 +566,10 @@ public sealed class MondeSimule
 
         if (nouveauJour)
         {
+            _comportement.Population = _humains.Count(h => h.EstVivant);
             _comportement.Journal.AddRange(_comportement.Routine.Resumer(_humains, _secondes).Select(e => e with { Id = _numeros.Suivant() }));
             _social.Journee(_humains, _secondes);
+            _social.Debattre(_humains, _communautes, _secondes);
             Oublier();
             _social.Humeurs(_humains, _secondes);
             if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
