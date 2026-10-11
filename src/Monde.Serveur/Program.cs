@@ -1,6 +1,7 @@
 using Monde.Serveur;
 using Monde.Serveur.Hubs;
 using Monde.Simulation;
+using Monde.Simulation.Monde;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,10 +48,25 @@ app.MapGet("/api/etat", () => Results.Ok(new
     HeureServeur = DateTimeOffset.UtcNow,
 }));
 
-// Carte du continent. Le paramètre « graine » (entier de 0 à 4 294 967 295) est facultatif ;
-// une valeur invalide est refusée par la liaison de paramètres (réponse 400).
-app.MapGet("/api/carte", (uint? graine, ServiceCarte cartes) =>
-    Results.Ok(CarteDto.Depuis(cartes.Obtenir(graine))));
+// Carte du monde courant, ou aperçu d'autres réglages. Les paramètres sont facultatifs (absents : ceux du monde
+// courant) : graine (0 à 4 294 967 295), couples, largeur et hauteur en cases, continents. Une valeur mal formée
+// est refusée par la liaison de paramètres (400) ; des réglages hors limites aussi (400) ; un continent trop petit
+// pour les couples demandés donne 422 avec la raison.
+app.MapGet("/api/carte", (uint? graine, int? couples, int? largeur, int? hauteur, int? continents, ServiceMonde service, ServiceCarte cartes) =>
+{
+    var actuelle = service.Monde.Configuration;
+    var configuration = new ConfigurationMonde(graine ?? (uint)actuelle.Graine, couples ?? actuelle.Couples,
+        largeur ?? actuelle.Largeur, hauteur ?? actuelle.Hauteur, continents ?? actuelle.Continents);
+    if (configuration.Erreur() is { } erreur) return Results.Problem(erreur, statusCode: StatusCodes.Status400BadRequest);
+    try
+    {
+        return Results.Ok(CarteDto.Depuis(cartes.Obtenir(configuration)));
+    }
+    catch (InvalidOperationException e)
+    {
+        return Results.Problem(e.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+    }
+});
 
 app.MapHub<MondeHub>(MondeHub.Route);
 

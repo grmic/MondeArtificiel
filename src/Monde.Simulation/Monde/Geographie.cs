@@ -15,13 +15,13 @@ public sealed record TemperaturesSaison(Saison Saison, double Min, double Max);
 public sealed record Trajet(IReadOnlyList<int> Cases, double Kilometres, double Effort, double Heures);
 
 /// <summary>
-/// Mesures du continent, en kilomètres réels : surface, dimensions, côtes, relief, eaux, terrains et climat.
+/// Mesures du continent (le plus grand, celui des couples de départ), en kilomètres réels : surface, dimensions, côtes, relief, eaux, terrains et climat.
 /// Elles ne dépendent que de la carte : on les calcule une fois par monde.
 /// </summary>
 public sealed record Geographie(
     double LargeurCarteKm, double HauteurCarteKm, double SurfaceCarteKm2,
     double ContinentKm2, double TerresKm2, double LacsKm2, int Lacs, double RivieresKm,
-    int Iles, double IlesKm2,
+    int Iles, double IlesKm2, IReadOnlyList<double> AutresContinentsKm2,
     double EtendueEstOuestKm, double EtendueNordSudKm, double PlusGrandeLongueurKm, int LongueurDe, int LongueurA,
     double CotesKm, double PlusLoinDeLaMerKm, int PlusLoinDeLaMer,
     int AltitudeMaxM, int Sommet, int AltitudeMoyenneM, IReadOnlyList<(string Tranche, double Km2)> Altitudes,
@@ -108,12 +108,16 @@ public sealed record Geographie(
             .Where(s => s.Cases > 0).OrderByDescending(s => s.Cases).ToList();
 
         string[] nomsTranches = ["moins de 200 m", "200 à 1 000 m", "1 000 à 2 000 m", "plus de 2 000 m"];
-        var iles = tailles.Count - 2;
-        var autres = tailles.Skip(1).Sum() - (continent == 0 ? 0 : tailles[continent]);
+        // Les autres masses de terre : un continent si elle fait au moins le quart du plus grand (et 200 km²), une île sinon.
+        // Repère : le Groenland, plus grande île (2,2 millions de km²), fait un peu plus du quart de l'Australie (7,7).
+        var autresMasses = tailles.Skip(1).Where((_, k) => k + 1 != continent).ToList();
+        var seuilContinent = Math.Max(200 / km2, continent == 0 ? 0 : tailles[continent] * 0.25);
+        var autresContinents = autresMasses.Where(t => t >= seuilContinent).OrderDescending().Select(t => t * km2).ToList();
+        var ilesListe = autresMasses.Where(t => t < seuilContinent).ToList();
         return new Geographie(
             Echelle.Kilometres(carte.Largeur), Echelle.Kilometres(carte.Hauteur), Echelle.KilometresCarres(n),
             (terres + lacs) * km2, terres * km2, lacs * km2, lacsSepares, Echelle.Kilometres(rivieres),
-            Math.Max(0, iles), autres * km2,
+            ilesListe.Count, ilesListe.Sum() * km2, autresContinents,
             maxX < 0 ? 0 : Echelle.Kilometres(maxX - minX + 1), maxY < 0 ? 0 : Echelle.Kilometres(maxY - minY + 1),
             longueur2 < 0 ? 0 : Echelle.Kilometres(Math.Sqrt(longueur2)), de, a,
             Echelle.Kilometres(cotes), loinKm, loin,
@@ -121,6 +125,24 @@ public sealed record Geographie(
             [.. nomsTranches.Select((t, k) => (t, tranches[k] * km2))],
             biomes, TemperaturesDesSaisons(carte, masse, continent),
             de >= 0 && a >= 0 ? CalculerTrajet(carte, de, a) : null);
+    }
+
+    /// <summary>
+    /// Continents et îles, en cases, du plus grand au plus petit : une masse de terre est un continent si elle fait
+    /// au moins le quart du plus grand et 200 km² (voir <see cref="Calculer"/>). Calcul rapide, pour un aperçu.
+    /// </summary>
+    public static (IReadOnlyList<int> Continents, IReadOnlyList<int> Iles) MassesDeTerre(Carte carte)
+    {
+        var masse = new int[carte.Largeur * carte.Hauteur];
+        var tailles = new List<int>();
+        for (var i = 0; i < masse.Length; i++)
+        {
+            if (masse[i] != 0 || Simulation.Monde.Biomes.EstEauSalee((Biome)carte.Biomes[i])) continue;
+            tailles.Add(Remplir(carte, i, masse, tailles.Count + 1, j => !Simulation.Monde.Biomes.EstEauSalee((Biome)carte.Biomes[j])));
+        }
+        tailles.Sort((a, b) => b.CompareTo(a));
+        var seuil = tailles.Count == 0 ? 0 : Math.Max(200 / Echelle.KilometresCarres(1), tailles[0] * 0.25);
+        return (tailles.Where((t, k) => k == 0 || t >= seuil).ToList(), tailles.Where((t, k) => k > 0 && t < seuil).ToList());
     }
 
     /// <summary>Remplit une zone (voisins par les côtés) et renvoie son nombre de cases.</summary>

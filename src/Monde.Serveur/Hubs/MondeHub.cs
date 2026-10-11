@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using Monde.Simulation;
+using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
 namespace Monde.Serveur.Hubs;
@@ -8,7 +9,7 @@ namespace Monde.Serveur.Hubs;
 /// Canal temps réel entre le serveur et les navigateurs.
 /// Le serveur diffuse le message « Horloge » plusieurs fois par seconde.
 /// </summary>
-public sealed class MondeHub(ServiceMonde service) : Hub
+public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
 {
     public const string Route = "/hub/monde";
 
@@ -124,6 +125,52 @@ public sealed class MondeHub(ServiceMonde service) : Hub
     /// <summary>Caractéristiques du Monde : échelle, surface et dimensions du continent, relief, climat, population, marche.</summary>
     public CaracteristiquesDto Caracteristiques() => CaracteristiquesDto.Depuis(service);
 
+    /// <summary>Réglages du monde courant et limites acceptées.</summary>
+    public ConfigurationDto Configuration() => ConfigurationDto.Depuis(service);
+
+    /// <summary>Aperçu de réglages : la carte est générée (et gardée pour l'afficher), le monde courant ne change pas.</summary>
+    public ApercuDto ApercuConfiguration(DemandeConfiguration demande)
+    {
+        ConfigurationMonde configuration;
+        try
+        {
+            configuration = (demande with { Graine = demande.Graine ?? (uint)service.Monde.Graine }).Valider();
+        }
+        catch (ArgumentException e)
+        {
+            return new ApercuDto(false, e.Message);
+        }
+        try
+        {
+            return new ApercuDto(true, ConfigurationDto.Resumer(configuration, cartes.Obtenir(configuration)));
+        }
+        catch (InvalidOperationException e)
+        {
+            return new ApercuDto(false, e.Message);
+        }
+    }
+
+    /// <summary>
+    /// Crée un monde neuf avec ces réglages (graine absente : au hasard). L'ancien monde est gardé en copie.
+    /// Des réglages impossibles sont refusés sans rien changer.
+    /// </summary>
+    public async Task<HorlogeDto> CreerMonde(DemandeConfiguration demande)
+    {
+        MondeSimule monde;
+        try
+        {
+            monde = service.Reinitialiser(demande.Valider());
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+        {
+            throw new HubException(e.Message);
+        }
+        service.FacteurAtteint = 0;
+        await Clients.All.SendAsync("MondeReinitialise", (uint)monde.Graine);
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        return await DiffuserHorloge();
+    }
+
     /// <summary>Trajet à pied le moins pénible entre deux cases (null si l'une est dans l'eau ou si on ne peut pas y aller à pied).</summary>
     public TrajetDto? Trajet(int x1, int y1, int x2, int y2)
     {
@@ -209,7 +256,7 @@ public sealed class MondeHub(ServiceMonde service) : Hub
     }
 
     /// <summary>
-    /// Recommence le monde à l'an 1 avec la graine donnée (ou une graine au hasard si elle est absente).
+    /// Recommence le monde à l'an 1 avec la graine donnée (ou une graine au hasard si elle est absente), et les mêmes réglages.
     /// Tous les navigateurs connectés sont prévenus pour recharger la carte.
     /// </summary>
     public async Task<HorlogeDto> Reinitialiser(long? graine)
@@ -219,7 +266,16 @@ public sealed class MondeHub(ServiceMonde service) : Hub
             throw new HubException("La graine doit être un entier entre 0 et 4294967295.");
         }
         var valeur = graine is { } g ? (uint)g : (uint)Random.Shared.NextInt64(0, (long)uint.MaxValue + 1);
-        var monde = service.Reinitialiser(valeur);
+        MondeSimule monde;
+        try
+        {
+            monde = service.Reinitialiser(valeur);
+        }
+        catch (InvalidOperationException e)
+        {
+            // Avec cette graine, les réglages du monde ne laissent pas la place aux couples : rien n'a changé.
+            throw new HubException(e.Message);
+        }
         service.FacteurAtteint = 0;
         await Clients.All.SendAsync("MondeReinitialise", valeur);
         await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));

@@ -87,10 +87,19 @@ function decoderBase64(texte: string): Uint8Array {
   return Uint8Array.from(atob(texte), (c) => c.charCodeAt(0));
 }
 
-export async function chargerCarte(graine?: number): Promise<Carte> {
-  const url = graine === undefined ? "/api/carte" : `/api/carte?graine=${encodeURIComponent(String(graine))}`;
-  const reponse = await fetch(url);
-  if (!reponse.ok) throw new Error(`Le serveur a répondu ${reponse.status}`);
+/**
+ * Charge la carte du monde courant, ou l'aperçu d'autres réglages (graine, couples, largeur et hauteur en cases,
+ * continents). En cas de refus, l'erreur porte la raison donnée par le serveur.
+ */
+export async function chargerCarte(reglages?: Record<string, number | null>): Promise<Carte> {
+  const parametres = new URLSearchParams();
+  for (const [k, v] of Object.entries(reglages ?? {})) if (v !== null) parametres.set(k, String(v));
+  const requete = parametres.size === 0 ? "/api/carte" : `/api/carte?${parametres}`;
+  const reponse = await fetch(requete);
+  if (!reponse.ok) {
+    const probleme = (await reponse.json().catch(() => null)) as { detail?: string } | null;
+    throw new Error(probleme?.detail ?? `Le serveur a répondu ${reponse.status}`);
+  }
   const json = (await reponse.json()) as CarteJson;
   if (json.kilometresParCase > 0) kmParCase = json.kilometresParCase;
   return {
@@ -393,7 +402,9 @@ export class VueCarte {
     this.afficherTrajet(null, [{ x, y }]);
   }
 
-  afficher(carte: Carte): void {
+  /** Affiche une carte ; un aperçu (autres réglages) cache les humains du monde courant. */
+  afficher(carte: Carte, apercu = false): void {
+    this.calqueHumains.visible = !apercu;
     this.afficherNature(null);
     this.afficherTerritoires(null);
     this.afficherCatastrophes(null, [], null);

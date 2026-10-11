@@ -46,6 +46,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Dégâts des catastrophes sur la nature, par tuile (voir <see cref="Ecosysteme.Degats"/>).</summary>
     public ushort[]? DegatsNature { get; init; }
+
+    /// <summary>Réglages choisis à la création du monde (absents : réglages d'origine, voir <see cref="ConfigurationMonde.ParDefaut"/>).</summary>
+    public ConfigurationMonde? Configuration { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -99,8 +102,15 @@ public sealed class MondeSimule
         {
             throw new ArgumentException("La carte ne correspond pas à la graine du monde.", nameof(carte));
         }
+        var configuration = etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine);
+        if (configuration.Graine != etat.Graine || configuration.Largeur != carte.Largeur || configuration.Hauteur != carte.Hauteur
+            || configuration.Couples != carte.Emplacements.Count)
+        {
+            throw new ArgumentException("La carte ne correspond pas aux réglages du monde.", nameof(carte));
+        }
 
         Carte = carte;
+        Configuration = configuration;
         Graine = etat.Graine;
         _secondes = etat.Secondes;
         _pas = etat.Pas;
@@ -132,9 +142,16 @@ public sealed class MondeSimule
     }
 
     /// <summary>Nouveau monde : il commence à l'aube du premier jour, en pause.</summary>
-    public static EtatMonde Nouveau(ulong graine) => new(graine, 6 * Calendrier.SecondesParHeure, 0, 0);
+    public static EtatMonde Nouveau(ulong graine) => Nouveau(ConfigurationMonde.ParDefaut(graine));
+
+    /// <summary>Nouveau monde avec ses réglages : il commence à l'aube du premier jour, en pause.</summary>
+    public static EtatMonde Nouveau(ConfigurationMonde configuration) =>
+        new(configuration.Graine, 6 * Calendrier.SecondesParHeure, 0, 0) { Configuration = configuration };
 
     public Carte Carte { get; }
+
+    /// <summary>Réglages choisis à la création du monde.</summary>
+    public ConfigurationMonde Configuration { get; }
 
     public ulong Graine { get; }
 
@@ -177,6 +194,7 @@ public sealed class MondeSimule
                     Catastrophes = _catastrophes.EnMemoire,
                     Pathogenes = _catastrophes.Pathogenes.ToList(),
                     DegatsNature = _ecosysteme.Degats.ToArray(),
+                    Configuration = Configuration,
                 };
             }
         }

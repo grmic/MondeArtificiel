@@ -4,31 +4,42 @@ using Monde.Simulation.Monde;
 namespace Monde.Serveur;
 
 /// <summary>
-/// Fournit les cartes générées. Une carte est calculée une seule fois par graine,
-/// et le cache est borné pour ne pas grossir indéfiniment.
+/// Fournit les cartes générées : celle du monde courant, ou un aperçu pour d'autres réglages.
+/// Une carte est calculée une seule fois par réglages, et le cache est borné pour ne pas grossir indéfiniment.
 /// </summary>
 public sealed class ServiceCarte(ServiceMonde service)
 {
     private const int TailleMaxCache = 8;
-    private readonly ConcurrentDictionary<ulong, Lazy<Carte>> _cache = new();
+    private readonly ConcurrentDictionary<ConfigurationMonde, Lazy<Carte>> _cache = new();
 
     /// <summary>Graine du monde courant (fixée à sa création, enregistrée dans sa sauvegarde).</summary>
     public uint GraineParDefaut => (uint)service.Monde.Graine;
 
-    public Carte Obtenir(uint? graine = null)
+    /// <summary>Carte du monde courant, ou celle d'une autre graine avec les mêmes réglages.</summary>
+    public Carte Obtenir(uint? graine = null) =>
+        Obtenir(service.Monde.Configuration with { Graine = graine ?? (uint)service.Monde.Graine });
+
+    /// <exception cref="ArgumentOutOfRangeException">Réglages hors limites.</exception>
+    /// <exception cref="InvalidOperationException">Pas assez de place pour les couples.</exception>
+    public Carte Obtenir(ConfigurationMonde configuration)
     {
         var monde = service.Monde;
-        var cle = (ulong)(graine ?? (uint)monde.Graine);
-        if (cle == monde.Graine) return monde.Carte;
-        if (_cache.Count >= TailleMaxCache && !_cache.ContainsKey(cle))
+        if (configuration == monde.Configuration) return monde.Carte;
+        if (_cache.Count >= TailleMaxCache && !_cache.ContainsKey(configuration))
         {
-            // Garde seulement la carte par défaut quand le cache est plein.
-            foreach (var autre in _cache.Keys.Where(k => k != GraineParDefaut))
-            {
-                _cache.TryRemove(autre, out _);
-            }
+            _cache.Clear();
         }
-        return _cache.GetOrAdd(cle, g => new Lazy<Carte>(() => GenerateurContinent.Generer(g))).Value;
+        var lazy = _cache.GetOrAdd(configuration, c => new Lazy<Carte>(() => GenerateurContinent.Generer(c)));
+        try
+        {
+            return lazy.Value;
+        }
+        catch
+        {
+            // Une génération impossible n'est pas gardée : le cache ne retient que des cartes.
+            _cache.TryRemove(configuration, out _);
+            throw;
+        }
     }
 }
 

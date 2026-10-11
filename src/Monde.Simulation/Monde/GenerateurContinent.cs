@@ -1,13 +1,13 @@
 namespace Monde.Simulation.Monde;
 
 /// <summary>
-/// Génère un continent entouré d'océan à partir d'une graine.
-/// Tout le calcul est déterministe : même graine, même taille, même carte.
+/// Génère un ou plusieurs continents entourés d'océan à partir d'une graine et des réglages du monde.
+/// Tout le calcul est déterministe : même graine, mêmes réglages, même carte.
 /// </summary>
 public static class GenerateurContinent
 {
-    public const int NombreEmplacements = 33;
-    public const int TailleParDefaut = 256;
+    public const int NombreEmplacements = ConfigurationMonde.CouplesParDefaut;
+    public const int TailleParDefaut = ConfigurationMonde.TailleParDefaut;
 
     private const int DistanceMaxEauDouce = 4;
     private const int ProfondeurMinLac = 16;
@@ -17,12 +17,22 @@ public static class GenerateurContinent
 
     private static readonly (int Dx, int Dy)[] Voisins4 = [(0, -1), (-1, 0), (1, 0), (0, 1)];
 
-    public static Carte Generer(ulong graine, int largeur = TailleParDefaut, int hauteur = TailleParDefaut)
+    public static Carte Generer(ulong graine, int largeur = TailleParDefaut, int hauteur = TailleParDefaut) =>
+        Generer(new ConfigurationMonde(graine, NombreEmplacements, largeur, hauteur, 1));
+
+    /// <exception cref="ArgumentOutOfRangeException">Réglages hors limites.</exception>
+    /// <exception cref="InvalidOperationException">Le continent est trop petit pour le nombre de couples demandé.</exception>
+    public static Carte Generer(ConfigurationMonde configuration)
     {
-        ArgumentOutOfRangeException.ThrowIfLessThan(largeur, 64);
-        ArgumentOutOfRangeException.ThrowIfLessThan(hauteur, 64);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(largeur, 1024);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(hauteur, 1024);
+        var (graine, couples, largeur, hauteur, continents) = configuration;
+        ArgumentOutOfRangeException.ThrowIfLessThan(largeur, ConfigurationMonde.TailleMin);
+        ArgumentOutOfRangeException.ThrowIfLessThan(hauteur, ConfigurationMonde.TailleMin);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(largeur, ConfigurationMonde.TailleMax);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(hauteur, ConfigurationMonde.TailleMax);
+        ArgumentOutOfRangeException.ThrowIfLessThan(couples, ConfigurationMonde.CouplesMin);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(couples, ConfigurationMonde.CouplesMax);
+        ArgumentOutOfRangeException.ThrowIfLessThan(continents, ConfigurationMonde.ContinentsMin);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(continents, ConfigurationMonde.ContinentsMax);
 
         var n = largeur * hauteur;
         var alea = new Alea(graine);
@@ -30,7 +40,9 @@ public static class GenerateurContinent
         var humidite = new Bruit(alea.Suivant());
         var abondance = new Bruit(alea.Suivant());
 
-        var altitudes = CalculerAltitudes(relief, largeur, hauteur);
+        // Un hasard à part pour placer les continents : le monde d'origine (un seul continent) reste identique.
+        var centres = continents == 1 ? null : PlacerContinents(new Alea(graine ^ 0x434F4E54494EUL), continents, largeur, hauteur);
+        var altitudes = CalculerAltitudes(relief, largeur, hauteur, centres);
         var biomes = new byte[n];
         var climat = new double[n];
 
@@ -77,8 +89,8 @@ public static class GenerateurContinent
             }
         }
 
-        // 4. Les 33 emplacements de départ, tous sur la plus grande terre.
-        var emplacements = PlacerEmplacements(alea, biomes, gibier, plantes, largeur, hauteur);
+        // 4. Les emplacements de départ (un par couple), tous sur la plus grande terre.
+        var emplacements = PlacerEmplacements(alea, biomes, gibier, plantes, largeur, hauteur, couples, continents);
 
         return new Carte
         {
@@ -96,21 +108,78 @@ public static class GenerateurContinent
     /// <summary>Altitude relative au niveau de la mer, de -1 à environ 1.</summary>
     private static double Hauteur(byte altitude) => (altitude - Carte.NiveauMer) / 127.0;
 
-    private static byte[] CalculerAltitudes(Bruit relief, int largeur, int hauteur)
+    /// <summary>
+    /// Centre et demi-taille (en cases) de chaque continent : la carte est découpée en une grille de cellules à peu près
+    /// carrées, au moins une par continent ; chaque continent occupe une cellule tirée au hasard, son centre légèrement décalé.
+    /// </summary>
+    private static (double X, double Y, double Rx, double Ry)[] PlacerContinents(Alea alea, int nombre, int largeur, int hauteur)
+    {
+        var (colonnes, lignes) = (nombre, 1);
+        var meilleur = double.MaxValue;
+        for (var c = 1; c <= nombre + 1; c++)
+        {
+            for (var r = 1; r <= nombre + 1; r++)
+            {
+                if (c * r < nombre || c * r > nombre + 1) continue;
+                // Cellules les plus carrées possible, puis le moins de cellules vides.
+                var ecart = Math.Abs(Math.Log(largeur / (double)c / (hauteur / (double)r))) + (c * r - nombre) * 0.3;
+                if (ecart < meilleur) (meilleur, colonnes, lignes) = (ecart, c, r);
+            }
+        }
+        var cellules = Enumerable.Range(0, colonnes * lignes).ToList();
+        alea.Melanger(cellules);
+        double cw = largeur / (double)colonnes, ch = hauteur / (double)lignes;
+        return [.. cellules.Take(nombre).Order().Select(k =>
+        {
+            var x = (k % colonnes + 0.5 + (alea.Reel() - 0.5) * 0.2) * cw;
+            var y = (k / colonnes + 0.5 + (alea.Reel() - 0.5) * 0.2) * ch;
+            return (x, y, cw / 2, ch / 2);
+        })];
+    }
+
+    private static byte[] CalculerAltitudes(Bruit relief, int largeur, int hauteur, (double X, double Y, double Rx, double Ry)[]? centres)
     {
         var altitudes = new byte[largeur * hauteur];
         for (var y = 0; y < hauteur; y++)
         {
             for (var x = 0; x < largeur; x++)
             {
-                // Distance au centre, normalisée : 0 au centre, 1 au bord.
-                var dx = (x + 0.5) / largeur * 2 - 1;
-                var dy = (y + 0.5) / hauteur * 2 - 1;
-                var d2 = dx * dx + dy * dy;
+                double d2, detroit = 0, relief1 = 1;
+                if (centres is null)
+                {
+                    // Distance au centre, normalisée : 0 au centre, 1 au bord.
+                    var dx = (x + 0.5) / largeur * 2 - 1;
+                    var dy = (y + 0.5) / hauteur * 2 - 1;
+                    d2 = dx * dx + dy * dy;
+                }
+                else
+                {
+                    // Distance normalisée au centre du continent le plus proche, et au deuxième : entre deux continents,
+                    // le terrain plonge pour qu'un bras de mer les sépare.
+                    double p1 = double.MaxValue, p2 = double.MaxValue;
+                    foreach (var (cx, cy, rx, ry) in centres)
+                    {
+                        var dx = (x + 0.5 - cx) / rx;
+                        var dy = (y + 0.5 - cy) / ry;
+                        var d = dx * dx + dy * dy;
+                        if (d < p1) (p1, p2) = (d, p1);
+                        else if (d < p2) p2 = d;
+                    }
+                    d2 = p1;
+                    // Relief moins heurté au cœur : un continent plus petit ne se brise pas en archipel.
+                    relief1 = Math.Min(1, 0.45 + p1);
+                    var marge = Math.Sqrt(p2) - Math.Sqrt(p1);
+                    if (marge < 0.35) detroit += (0.35 - marge) * 2.5;
+                    // Les bords de la carte restent en mer.
+                    var bx = Math.Abs((x + 0.5) / largeur * 2 - 1);
+                    var by = Math.Abs((y + 0.5) / hauteur * 2 - 1);
+                    var bord = Math.Max(bx, by);
+                    if (bord > 0.9) detroit += (bord - 0.9) * 8;
+                }
 
                 var bruit = relief.Fractal(x / 64.0, y / 64.0, 6);
                 // Le terrain s'abaisse vers les bords pour former un continent entouré d'océan.
-                var h = 0.28 + (bruit - 0.5) * 1.8 - d2 * 0.55 - Math.Max(0, d2 - 0.6) * 1.2;
+                var h = 0.28 + (bruit - 0.5) * 1.8 * relief1 - d2 * 0.55 - Math.Max(0, d2 - 0.6) * 1.2 - detroit;
                 // Les terres basses sont étendues, les reliefs plus rares (courbe quadratique).
                 if (h > 0) h = Math.Min(1, h * h * 1.6);
                 var valeur = (int)(Carte.NiveauMer + h * 127);
@@ -263,7 +332,7 @@ public static class GenerateurContinent
     };
 
     private static List<Emplacement> PlacerEmplacements(
-        Alea alea, byte[] biomes, byte[] gibier, byte[] plantes, int largeur, int hauteur)
+        Alea alea, byte[] biomes, byte[] gibier, byte[] plantes, int largeur, int hauteur, int couples, int continents)
     {
         var continent = PlusGrandeTerre(biomes, largeur, hauteur);
         var distanceEau = DistanceEauDouce(biomes, largeur, hauteur);
@@ -281,11 +350,12 @@ public static class GenerateurContinent
 
         var avecEau = candidats.Where(i => distanceEau[i] <= DistanceMaxEauDouce && gibier[i] + plantes[i] >= 60).ToList();
 
-        // Écart minimal entre deux couples, réduit progressivement si le continent est petit.
-        var ecartInitial = Math.Max(largeur, hauteur) / 12;
+        // Écart minimal entre deux couples, réduit progressivement si le continent est petit : 1/12 de la carte pour
+        // 33 couples sur un continent, plus serré s'il y a plus de couples ou si le continent est plus petit.
+        var ecartInitial = (int)(Math.Max(largeur, hauteur) / 12.0 * Math.Sqrt((double)NombreEmplacements / couples / continents));
         foreach (var liste in new[] { avecEau, candidats })
         {
-            for (var ecart = ecartInitial; ecart >= 2; ecart--)
+            for (var ecart = Math.Max(2, ecartInitial); ecart >= 2; ecart--)
             {
                 var choisis = new List<int>();
                 foreach (var i in liste)
@@ -299,10 +369,10 @@ public static class GenerateurContinent
                     if (assezLoin)
                     {
                         choisis.Add(i);
-                        if (choisis.Count == NombreEmplacements) break;
+                        if (choisis.Count == couples) break;
                     }
                 }
-                if (choisis.Count == NombreEmplacements)
+                if (choisis.Count == couples)
                 {
                     // Numérotation d'ouest en est puis du nord au sud, pour une lecture stable.
                     return choisis
@@ -313,7 +383,7 @@ public static class GenerateurContinent
             }
         }
         throw new InvalidOperationException(
-            $"Le continent généré est trop petit pour {NombreEmplacements} emplacements.");
+            $"Le continent généré est trop petit pour {couples} couples : agrandissez la carte, réduisez le nombre de continents ou de couples.");
     }
 
     /// <summary>Marque les tuiles de la plus grande terre (tout ce qui n'est pas mer, reliée en 4-voisinage).</summary>

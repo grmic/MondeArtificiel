@@ -176,3 +176,11 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
   height: 16px; border: 2px solid #e8edf3; border-top: none; text-align: center;
   font-size: 0.75rem; line-height: 12px; color: #e8edf3; text-shadow: 0 0 3px #000, 0 0 3px #000;
 }
+.config-panneau .config { display: flex; flex-direction: column; gap: 8px; }
+.config-panneau .reglage { display: grid; grid-template-columns: 11rem 1fr auto; align-items: center; gap: 2px 8px; }
+.config-panneau .reglage input { width: 100%; min-width: 0; }
+.config-panneau .reglage .aide { grid-column: 1 / -1; font-size: 0.78rem; color: var(--discret); }
+.config-panneau .reglage button { padding: 0 6px; }
+.config-panneau .boutons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.config-panneau button.danger { background: #6b2323; border: 1px solid #ff6b6b; color: var(--texte); border-radius: 6px; cursor: pointer; }
+.config-panneau .message-config { white-space: pre-line; color: #ffe6a8; min-height: 1.2em; }

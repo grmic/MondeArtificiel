@@ -3,10 +3,11 @@ using System.Globalization;
 namespace Monde.Simulation.Nature;
 
 /// <summary>
-/// Échelle du monde : une case mesure 800 m de côté (le continent de 256 cases fait donc environ 205 km de côté),
+/// Échelle du monde : une case mesure 800 m de côté (la carte d'origine, 256 cases, fait donc environ 205 km de côté),
 /// une unité d'altitude 40 m. Les humains marchent en mètres par seconde (voir <see cref="Humains.Marche"/>) :
 /// une case droite fait 800 m, une case en diagonale environ 1 130 m. Les catastrophes s'étendent en kilomètres
-/// réels, convertis en cases. La taille du monde deviendra réglable avec la configuration.
+/// réels, convertis en cases. La taille de la carte se règle en nombre de cases (voir <see cref="Monde.ConfigurationMonde"/>) ;
+/// la finesse d'une case reste fixe, car la marche et les ressources sont calibrées sur elle.
 /// </summary>
 public static class Echelle
 {

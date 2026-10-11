@@ -134,15 +134,17 @@ public sealed class Geologie
         }
 
         // La fosse court au large, parallèle à la côte, à 8 à 14 cases (6 à 11 km) du rivage.
+        // Le long de la côte : les lignes pour une côte ouest ou est, les colonnes pour le nord ou le sud (carte pas forcément carrée).
         var points = new List<(int X, int Y)>();
-        var pasLong = carte.Largeur / 12;
+        var pasLong = (meilleure < 2 ? carte.Hauteur : carte.Largeur) / 12;
+        var travers = meilleure < 2 ? carte.Largeur : carte.Hauteur;
         for (var k = 1; k < 12; k++)
         {
             var le = k * pasLong;
             var cote = PremiereTerre(carte, meilleure, le);
             if (cote < 0) continue;
             var large = 8 + alea.Entier(7);
-            var profondeur = meilleure is 0 or 2 ? Math.Max(1, cote - large) : Math.Min(carte.Largeur - 2, cote + large);
+            var profondeur = meilleure is 0 or 2 ? Math.Max(1, cote - large) : Math.Min(travers - 2, cote + large);
             points.Add(meilleure < 2 ? (profondeur, le) : (le, profondeur));
         }
         var failles = Segments(carte, points);

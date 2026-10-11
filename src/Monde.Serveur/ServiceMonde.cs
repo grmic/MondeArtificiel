@@ -36,7 +36,7 @@ public sealed class ServiceMonde
         if (etat is null)
         {
             var graine = configuration.GetValue<uint>("Monde:Graine", 42);
-            etat = MondeSimule.Nouveau(graine);
+            etat = MondeSimule.Nouveau(ConfigurationMonde.ParDefaut(graine));
             journal.LogInformation("Nouveau monde créé (graine {Graine}) dans {Fichier}", graine, Depot.CheminFichier);
         }
         else
@@ -44,7 +44,7 @@ public sealed class ServiceMonde
             journal.LogInformation("Monde repris dans {Fichier}", Depot.CheminFichier);
         }
 
-        var carte = GenerateurContinent.Generer(etat.Graine);
+        var carte = GenerateurContinent.Generer(etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine));
         _reprendreVitesse = Depot.LireReglage(CleRedemarrage) == "vitesse";
         _pauseSurCatastrophe = Depot.LireReglage(ClePauseCatastrophe) != "non";
         _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 }) { PauseSurCatastrophe = _pauseSurCatastrophe };
@@ -104,22 +104,28 @@ public sealed class ServiceMonde
         }
     }
 
+    /// <summary>Remplace le monde par un monde neuf avec une autre graine et les mêmes réglages.</summary>
+    public MondeSimule Reinitialiser(uint graine) => Reinitialiser(_monde.Configuration with { Graine = graine });
+
     /// <summary>
-    /// Remplace le monde par un monde neuf (an 1, 66 humains de départ), en pause.
+    /// Remplace le monde par un monde neuf (an 1, deux humains par couple de départ), en pause, avec ses réglages.
     /// L'ancien monde est d'abord enregistré puis gardé (fichier renommé) dans <see cref="CheminCopieAvantReinitialisation"/> (seule la dernière copie est gardée).
     /// </summary>
-    public MondeSimule Reinitialiser(uint graine)
+    /// <exception cref="InvalidOperationException">Les réglages ne laissent pas la place aux couples : rien n'est changé.</exception>
+    public MondeSimule Reinitialiser(ConfigurationMonde configuration)
     {
-        var etat = MondeSimule.Nouveau(graine);
-        var nouveau = new MondeSimule(GenerateurContinent.Generer(graine), etat) { PauseSurCatastrophe = _pauseSurCatastrophe };
+        if (configuration.Erreur() is { } erreur) throw new ArgumentException(erreur, nameof(configuration));
+        // La carte est générée avant de toucher à l'ancien monde : un réglage impossible ne détruit rien.
+        var etat = MondeSimule.Nouveau(configuration);
+        var nouveau = new MondeSimule(GenerateurContinent.Generer(configuration), etat) { PauseSurCatastrophe = _pauseSurCatastrophe };
         lock (_verrou)
         {
             Sauvegarder();
             Depot.RecommencerApresCopie(CheminCopieAvantReinitialisation, nouveau.Etat);
             _monde = nouveau;
         }
-        _journal.LogInformation("Monde réinitialisé (graine {Graine}) ; ancien monde copié dans {Copie}",
-            graine, CheminCopieAvantReinitialisation);
+        _journal.LogInformation("Monde réinitialisé ({Configuration}) ; ancien monde copié dans {Copie}",
+            configuration, CheminCopieAvantReinitialisation);
         return nouveau;
     }
 }

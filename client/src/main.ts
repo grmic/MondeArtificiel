@@ -2,6 +2,7 @@ import { chargerCarte, distanceEnMots, VueCarte, type HumainVue, type InfoTuile,
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
+import { PanneauConfiguration, type Reglages } from "./configuration";
 import { PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
@@ -11,14 +12,12 @@ import "./style.css";
 
 const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
 const infos = element("#infos");
-const formulaire = element<HTMLFormElement>("#formGraine");
-const champGraine = element<HTMLInputElement>("#graine");
 
 const population = element("#population");
-const boutonReinit = element<HTMLButtonElement>("#boutonReinit");
 const dialogueReinit = element<HTMLDialogElement>("#dialogueReinit");
-const GRAINE_MAX = 4_294_967_295;
 let nomsParId = new Map<number, string>();
+/** Humains du départ (deux par couple) : les identifiants suivants sont des naissances. */
+let humainsDeDepart = 66;
 
 function decrireHumain(h: HumainVue): string {
   const nom = (id: number) => nomsParId.get(id) ?? "?";
@@ -97,7 +96,7 @@ async function demarrer(): Promise<void> {
     const vivants = humains.filter((h) => h.vivant);
     const enfants = vivants.filter((h) => h.etape !== "adulte").length;
     const enceintes = vivants.filter((h) => h.enceinte).length;
-    const naissances = Math.max(0, Math.max(...humains.map((h) => h.id)) - 66);
+    const naissances = Math.max(0, Math.max(...humains.map((h) => h.id)) - humainsDeDepart);
     population.textContent = `Vivants : ${vivants.length} (dont ${enfants} enfants) · enceintes : ${enceintes} · naissances : ${naissances}`;
   };
   connexion.on("Humains", (humains: HumainVue[]) => {
@@ -141,6 +140,7 @@ async function demarrer(): Promise<void> {
     journal.fermer();
     communautes?.fermer();
     panneauMonde?.fermer();
+    configuration.fermer();
     catastrophes.basculer();
   });
 
@@ -150,6 +150,7 @@ async function demarrer(): Promise<void> {
     journal.fermer();
     communautes?.fermer();
     catastrophes.fermer();
+    configuration.fermer();
     panneauMonde.basculer();
   });
 
@@ -176,12 +177,14 @@ async function demarrer(): Promise<void> {
     communautes?.fermer();
     catastrophes.fermer();
     panneauMonde.fermer();
+    configuration.fermer();
     journal.basculer();
   });
   element("#boutonCommunautes").addEventListener("click", () => {
     journal.fermer();
     catastrophes.fermer();
     panneauMonde.fermer();
+    configuration.fermer();
     communautes?.basculer();
   });
 
@@ -191,32 +194,34 @@ async function demarrer(): Promise<void> {
     await journal.recharger();
   });
 
-  const charger = async (graine?: number) => {
+  // Carte du monde courant (sans réglages) ou aperçu d'autres réglages : rend un message d'erreur, ou null.
+  const charger = async (reglages?: Reglages): Promise<string | null> => {
     infos.textContent = "Génération de la carte…";
     try {
-      const carte = await chargerCarte(graine);
-      champGraine.value = String(carte.graine);
-      if (graine === undefined) graineMonde = carte.graine;
-      vue.afficher(carte);
-      const apercu = graine === undefined ? "Monde courant" : "Aperçu";
+      const carte = await chargerCarte(reglages ? { ...reglages } : undefined);
+      vue.afficher(carte, reglages !== undefined);
+      if (!reglages) humainsDeDepart = carte.emplacements.length * 2;
+      const apercu = reglages ? "Aperçu (le monde courant ne change pas)" : "Monde courant";
       infos.textContent = `${apercu} · graine ${carte.graine} · ${carte.emplacements.length} emplacements de départ.\nMolette : zoom · glisser : déplacer · double-clic : recadrer.`;
-    } catch {
-      infos.textContent = "Impossible de charger la carte.";
+      return null;
+    } catch (e) {
+      const raison = e instanceof Error ? e.message : "";
+      infos.textContent = `Impossible de charger la carte. ${raison}`;
+      return raison || "Impossible de charger la carte.";
     }
   };
 
-  formulaire.addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    const graine = Number(champGraine.value);
-    if (!Number.isInteger(graine) || graine < 0 || graine > GRAINE_MAX) {
-      infos.textContent = `La graine doit être un entier entre 0 et ${GRAINE_MAX}.`;
-      return;
-    }
-    void charger(graine);
+  const configuration = new PanneauConfiguration(element("#configuration"), dialogueReinit,
+    (reglages) => charger(reglages ?? undefined), (texte) => (infos.textContent = texte));
+  element("#boutonConfiguration").addEventListener("click", () => {
+    journal.fermer();
+    communautes?.fermer();
+    catastrophes.fermer();
+    panneauMonde.fermer();
+    configuration.basculer();
   });
 
-  // Réinitialisation : demandée ici, annoncée par le serveur à tous les navigateurs ouverts.
-  let graineMonde: number | undefined;
+  // Nouveau monde : demandé depuis la configuration, annoncé par le serveur à tous les navigateurs ouverts.
   connexion.on("MondeReinitialise", (graine: number) => {
     fiche.fermer();
     territoires.fermer();
@@ -226,29 +231,10 @@ async function demarrer(): Promise<void> {
     if (mesure.enCours) mesure.arreter();
     element("#alerte").hidden = true;
     void journal.recharger();
-    void charger().then(() => (infos.textContent = `Monde réinitialisé · graine ${graine}. Le temps est en pause.`));
-  });
-  boutonReinit.addEventListener("click", () => {
-    const champ = Number(champGraine.value);
-    element("#graineCourante").textContent = String(graineMonde ?? "?");
-    element("#graineChamp").textContent = Number.isInteger(champ) && champ >= 0 && champ <= GRAINE_MAX ? String(champ) : "invalide";
-    dialogueReinit.returnValue = "";
-    dialogueReinit.showModal();
-  });
-  dialogueReinit.addEventListener("close", () => {
-    if (dialogueReinit.returnValue !== "confirmer") return;
-    const choix = new FormData(dialogueReinit.querySelector("form")!).get("choixGraine");
-    let graine: number | null = null;
-    if (choix === "courante") graine = graineMonde ?? null;
-    if (choix === "champ") {
-      graine = Number(champGraine.value);
-      if (!Number.isInteger(graine) || graine < 0 || graine > GRAINE_MAX) {
-        infos.textContent = `La graine doit être un entier entre 0 et ${GRAINE_MAX}.`;
-        return;
-      }
-    }
-    infos.textContent = "Réinitialisation du monde…";
-    connexion.invoke("Reinitialiser", graine).catch(() => (infos.textContent = "Le serveur a refusé la réinitialisation."));
+    void charger().then(() => {
+      configuration.mondeRecree();
+      infos.textContent = `Nouveau monde · graine ${graine}. Le temps est en pause.`;
+    });
   });
 
   window.addEventListener("resize", () => vue.cadrer());

@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-CzJVvpjw.js"></script>
+    <script type="module" crossorigin src="/assets/index-BuhSuUle.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/CanvasPool-CT7OQSgs.js">
     <link rel="modulepreload" crossorigin href="/assets/canvasUtils-vHj9HkKG.js">
     <link rel="modulepreload" crossorigin href="/assets/RenderTargetSystem-FtcCc_-0.js">
     <link rel="modulepreload" crossorigin href="/assets/getTextureBatchBindGroup-DWZkPDHl.js">
     <link rel="modulepreload" crossorigin href="/assets/getTexelRangeRects-Dz82KJmA.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-drr5kNdi.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-Ra-kaZAQ.css">
   </head>
   <body>
     <div id="scene"></div>
@@ -22,9 +22,6 @@
       <span id="population" class="population"></span>
       <div id="vitesses" class="vitesses" role="group" aria-label="Vitesse du temps"></div>
       <form id="formGraine" class="graine">
-        <label for="graine">Graine</label>
-        <input id="graine" type="number" min="0" max="4294967295" step="1" required />
-        <button type="submit" title="Voir le continent d'une autre graine (aperçu, le monde courant ne change pas)">Aperçu</button>
         <button type="button" id="boutonRessources" title="Ressources des terres (rouge : épuisées) et régions en sécheresse (cadre orange) ou très arrosées (cadre bleu)">Ressources</button>
         <button type="button" id="boutonCommunautes" title="Les groupes qui vivent ensemble">Communautés</button>
         <button type="button" id="boutonTerritoires" title="Terres parcourues par chaque communauté, aujourd'hui et au fil des saisons">Territoires</button>
@@ -32,7 +29,7 @@
         <button type="button" id="boutonJournal" title="Naissances, morts, couples… filtrables par humain">Journal</button>
         <button type="button" id="boutonMonde" title="Surface et dimensions du continent, relief, eaux, terrains, climat, population, marche">Monde</button>
         <button type="button" id="boutonMesure" title="Mesurer une distance et le temps de marche entre deux points de la carte">📏 Mesurer</button>
-        <button type="button" id="boutonReinit" class="danger" title="Recommencer le monde à l'an 1">↺ Réinitialiser</button>
+        <button type="button" id="boutonConfiguration" title="Réglages du monde (graine, couples de départ, taille de la carte, continents) ; aperçu et création d'un nouveau monde">⚙ Configuration</button>
       </form>
     </header>
     <section id="panneauTemps" class="temps" aria-label="Contrôle du temps">
@@ -75,24 +72,18 @@
     </section>
     <dialog id="dialogueReinit" class="dialogue">
       <form method="dialog">
-        <h2>Réinitialiser le monde ?</h2>
-        <p>Le monde recommence à l'an 1 avec 33 nouveaux couples. Toute son histoire est effacée ;
-          une copie de l'ancien monde est gardée dans <code>monde-avant-reinitialisation.db</code> (seule la dernière).</p>
-        <fieldset>
-          <legend>Continent</legend>
-          <label><input type="radio" name="choixGraine" value="courante" checked /> Même graine (<span id="graineCourante"></span>)</label>
-          <label><input type="radio" name="choixGraine" value="champ" /> Graine du champ « Graine » (<span id="graineChamp"></span>)</label>
-          <label><input type="radio" name="choixGraine" value="hasard" /> Graine au hasard</label>
-        </fieldset>
+        <h2>Créer un nouveau monde ?</h2>
+        <p id="texteNouveauMonde"></p>
         <menu>
           <button value="annuler" autofocus>Annuler</button>
-          <button value="confirmer" class="danger">Réinitialiser</button>
+          <button value="confirmer" class="danger">Créer ce monde</button>
         </menu>
       </form>
     </dialog>
     <aside id="fiche" class="fiche panneau-lateral" aria-label="Fiche de l'humain" hidden></aside>
     <aside id="journal" class="journal-panneau panneau-lateral" aria-label="Journal du monde" hidden></aside>
     <aside id="catastrophes" class="catastrophes-panneau panneau-lateral" aria-label="Catastrophes" hidden></aside>
+    <aside id="configuration" class="monde-panneau config-panneau panneau-lateral" aria-label="Configuration" hidden></aside>
     <aside id="caracteristiques" class="monde-panneau panneau-lateral" aria-label="Caractéristiques du Monde" hidden></aside>
     <div id="alerte" class="alerte-catastrophe" role="alert" hidden></div>
     <aside id="communautes" class="communautes-panneau panneau-lateral" aria-label="Communautés" hidden></aside>

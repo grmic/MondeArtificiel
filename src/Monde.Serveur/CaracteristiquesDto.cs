@@ -58,13 +58,19 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
 
         var rubriques = new List<RubriqueDto>
         {
+            new("Réglages", [
+                new("Couples de départ", N(monde.Configuration.Couples, 0), $"{N(monde.Configuration.Couples * 2, 0)} humains au départ"),
+                new("Continents demandés", N(monde.Configuration.Continents, 0)),
+                new("Graine", monde.Graine.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    monde.Configuration == ConfigurationMonde.ParDefaut(monde.Graine) ? "réglages d'origine" : "réglages choisis à la création du monde"),
+            ]),
             new("Échelle", [
                 new("Carte", $"{Km(g.LargeurCarteKm)} × {Km(g.HauteurCarteKm)}", $"{carte.Largeur} × {carte.Hauteur} cases, {Km2(g.SurfaceCarteKm2)}"),
                 new("Une case", $"{N(Echelle.KilometresParCase * 1000, 0)} m de côté",
                     $"{Km2(Echelle.KilometresCarres(1))} ; un adulte la traverse en une dizaine de minutes en terrain plat"),
                 new("Relief", $"{N(Echelle.MetresParUnite, 0)} m par degré d'altitude", "la carte compte 127 degrés au-dessus de la mer"),
             ]),
-            new("Continent", [
+            new(g.AutresContinentsKm2.Count == 0 ? "Continent" : "Continent des couples de départ", [
                 new("Surface", Km2(g.ContinentKm2), $"terres {Km2(g.TerresKm2)}, lacs {Km2(g.LacsKm2)}"),
                 new("Étendue est-ouest", Km(g.EtendueEstOuestKm)),
                 new("Étendue nord-sud", Km(g.EtendueNordSudKm)),
@@ -74,6 +80,10 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
                 new("Côtes", $"environ {Km(g.CotesKm)}", $"mesurées case par case ({N(Echelle.KilometresParCase * 1000, 0)} m) : une côte réelle, plus découpée, serait plus longue"),
                 new("Point le plus éloigné de la mer", Km(g.PlusLoinDeLaMerKm), null, g.PlusLoinDeLaMer),
                 new("Îles au large", g.Iles == 0 ? "aucune" : $"{g.Iles} ({Km2(g.IlesKm2)})", "inaccessibles à pied"),
+                .. g.AutresContinentsKm2.Count == 0 ? Array.Empty<MesureDto>() : [
+                    new("Autres continents", $"{g.AutresContinentsKm2.Count} ({string.Join(", ", g.AutresContinentsKm2.Select(Km2))})",
+                        "séparés par la mer : inaccessibles à pied"),
+                ],
             ]),
             new("Relief", [
                 new("Point culminant", $"{N(g.AltitudeMaxM, 0)} m", null, g.Sommet),
