@@ -19,7 +19,15 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 8 (avant les causes, les rancunes et les usages).</summary>
     /// <summary>Ramène un fichier au schéma 9 (avant l'identité et l'histoire des communautés).</summary>
     /// <summary>Ramène un fichier au schéma 10 (avant les catastrophes et les maladies).</summary>
-    internal const string RetourVersion10 = """
+    /// <summary>Ramène un fichier au schéma 11 (avant les distances réelles et l'allure de marche).</summary>
+    internal const string RetourVersion11 = """
+        ALTER TABLE humains DROP COLUMN marche;
+        ALTER TABLE humains DROP COLUMN progression;
+        ALTER TABLE humains DROP COLUMN bebe_porte_le;
+        PRAGMA user_version = 11;
+        """;
+
+    internal const string RetourVersion10 = RetourVersion11 + """
         ALTER TABLE humains DROP COLUMN peur;
         ALTER TABLE humains DROP COLUMN peur_evenement;
         ALTER TABLE humains DROP COLUMN peur_type;
@@ -248,7 +256,7 @@ public sealed class DepotMondeTests : IDisposable
         Assert.All(relu, h =>
         {
             Assert.Equal(0.8, h.Personnalite.Attachement);
-            Assert.Equal(Simulation.Humains.Biologie.ParDefaut(h.Sexe), h.Biologie);
+            Assert.Equal(Simulation.Humains.Biologie.ParDefaut(h.Sexe) with { Marche = Simulation.Humains.Biologie.MarcheDe(h.Id) }, h.Biologie);
             Assert.Null(h.TermeGrossesse);
         });
     }

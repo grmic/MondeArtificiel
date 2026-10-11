@@ -232,7 +232,8 @@ public sealed class RessourcesTests
         var marcheur = tous[1];
         marcheur.Activite = Activite.Migrer;
         var depart = Math.Max(Math.Abs(marcheur.X - riche.X), Math.Abs(marcheur.Y - riche.Y));
-        comportement.Vivre(marcheur, tous, maintenant + 12 * Calendrier.SecondesParHeure);
+        // Selon le terrain, il faut parfois plus de dix minutes pour passer d'une case à la suivante.
+        for (var pas = 0; pas < 6; pas++) comportement.Vivre(marcheur, tous, maintenant + 12 * Calendrier.SecondesParHeure + pas * MondeSimule.SecondesParPas);
         Assert.Equal(Activite.Migrer, marcheur.Activite);
         Assert.True(Math.Max(Math.Abs(marcheur.X - riche.X), Math.Abs(marcheur.Y - riche.Y)) < depart);
 

@@ -41,8 +41,12 @@ public sealed partial class VieSociale
     private const double SeuilInimitie = -15;
     private const double FinInimitie = -5;
 
-    /// <summary>Distance maximale (en cases) des terres connues vers lesquelles un groupe en disette accepte de partir.</summary>
-    private const int DistanceMigrationMax = 40;
+    /// <summary>
+    /// Distance maximale des terres connues vers lesquelles un groupe en disette accepte de partir : environ 32 km,
+    /// une à deux journées de marche avec les enfants. Les bandes de chasseurs-cueilleurs déplacent leur camp de
+    /// quelques kilomètres à quelques dizaines de kilomètres (Kelly, 2013 ; Binford, 2001).
+    /// </summary>
+    private static readonly int DistanceMigrationMax = Nature.Echelle.Cases(32);
 
     private readonly Dictionary<(int A, int B), EtatRelation> _relations = [];
     private readonly Dictionary<(int A, int B), long> _debutsRelations = [];
@@ -155,7 +159,7 @@ public sealed partial class VieSociale
         {
             (c.DestinationX, c.DestinationY) = (meilleur.X, meilleur.Y);
             Noter(maintenant, TypeEvenement.Communaute, guide, null,
-                $"La {Minuscule(c.Nom)} part vers {Lieux.Vers(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)}, vers des terres plus riches dont se souvient {guide.Nom}.",
+                $"La {Minuscule(c.Nom)} part vers {Lieux.Vers(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)}, à {Lieux.Distance(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)}, vers des terres plus riches dont se souvient {guide.Nom}.",
                 c.DisetteEvenementId, communaute: c.Id);
             return;
         }
@@ -164,13 +168,14 @@ public sealed partial class VieSociale
         for (var essai = 0; essai < 8; essai++)
         {
             var angle = alea.Reel() * 2 * Math.PI;
-            var distance = 15 + alea.Entier(11);
+            // Une à deux journées de marche, comme un déplacement de camp ordinaire : 12 à 20 km.
+            var distance = Nature.Echelle.Cases(12) + alea.Entier(Nature.Echelle.Cases(8) + 1);
             var x = Math.Clamp(c.CentreX + (int)Math.Round(Math.Cos(angle) * distance), 0, carte.Largeur - 1);
             var y = Math.Clamp(c.CentreY + (int)Math.Round(Math.Sin(angle) * distance), 0, carte.Hauteur - 1);
             if (!Climat.EstPraticable(carte.BiomeEn(x, y)) || carte.Plantes[carte.Indice(x, y)] + carte.Gibier[carte.Indice(x, y)] < 40) continue;
             (c.DestinationX, c.DestinationY) = (x, y);
             Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                $"La {Minuscule(c.Nom)} quitte ses terres épuisées et part à l'aventure vers {Lieux.Vers(c.CentreX, c.CentreY, x, y)}.",
+                $"La {Minuscule(c.Nom)} quitte ses terres épuisées et part à l'aventure vers {Lieux.Vers(c.CentreX, c.CentreY, x, y)}, à quelque {Lieux.Distance(c.CentreX, c.CentreY, x, y)}.",
                 c.DisetteEvenementId, communaute: c.Id);
             return;
         }
@@ -268,6 +273,9 @@ public static class Lieux
         var secteur = (int)Math.Round(angle / (Math.PI / 4));
         return Directions[(secteur + 8) % 8];
     }
+
+    /// <summary>Distance à vol d'oiseau en mots (« 18 km »), pour le journal.</summary>
+    public static string Distance(int x0, int y0, int x1, int y1) => Nature.Echelle.Distance(Nature.Echelle.Kilometres(x0, y0, x1, y1));
 
     /// <summary>Partie du continent où se trouve un point (« au nord-ouest », « au centre »).</summary>
     public static string Direction(Carte carte, int x, int y)

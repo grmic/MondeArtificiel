@@ -1,5 +1,5 @@
 import { connexion } from "./connexion";
-import { couleurCommunaute, type Territoires, type VueCarte } from "./carte";
+import { couleurCommunaute, surfaceDeCases, type Territoires, type VueCarte } from "./carte";
 import { el } from "./fiche";
 
 interface DateArchive {
@@ -97,7 +97,7 @@ export class PanneauTerritoires {
       lien.type = "button";
       lien.addEventListener("click", () => this.ouvrirCommunaute(c.id));
       const cases = c.plages.reduce((n, v, i) => (i % 2 === 1 ? n + v : n), 0);
-      li.append(pastille, lien, ` · ${c.membres} membres · ${cases} cases`);
+      li.append(pastille, lien, ` · ${c.membres} membres · ${surfaceDeCases(cases)}`);
       this.legende.append(li);
     }
     if (t && t.communautes.length === 0) this.legende.append(el("li", "discret", "Aucune communauté à cette date."));

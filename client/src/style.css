@@ -166,3 +166,13 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .alerte-catastrophe.grave { background: rgba(90, 20, 20, 0.94); border-color: #ff6b6b; }
 .alerte-catastrophe .lien { color: var(--texte); text-align: left; }
 .alerte-catastrophe .fermer { background: none; border: none; color: var(--discret); font-size: 1.2rem; cursor: pointer; }
+.monde-panneau { right: 12px; top: 290px; bottom: 12px; width: min(440px, calc(100vw - 24px)); }
+.monde-panneau table.mesures { width: 100%; border-collapse: collapse; }
+.monde-panneau .mesures th { text-align: left; font-weight: normal; color: var(--discret); vertical-align: top; padding: 2px 8px 2px 0; width: 42%; }
+.monde-panneau .mesures td { padding: 2px 0; font-variant-numeric: tabular-nums; }
+.monde-panneau .mesures .aide { display: block; font-size: 0.78rem; color: var(--discret); }
+.barre-echelle {
+  position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); pointer-events: none;
+  height: 16px; border: 2px solid #e8edf3; border-top: none; text-align: center;
+  font-size: 0.75rem; line-height: 12px; color: #e8edf3; text-shadow: 0 0 3px #000, 0 0 3px #000;
+}

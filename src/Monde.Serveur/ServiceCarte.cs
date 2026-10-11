@@ -43,9 +43,12 @@ public sealed record CarteDto(
     byte[] Altitudes,
     byte[] Gibier,
     byte[] Plantes,
-    IReadOnlyList<Emplacement> Emplacements)
+    IReadOnlyList<Emplacement> Emplacements,
+    double KilometresParCase,
+    double MetresParUnite)
 {
     public static CarteDto Depuis(Carte carte) => new(
         (uint)carte.Graine, carte.Largeur, carte.Hauteur, Carte.NiveauMer, Simulation.Monde.Biomes.Noms,
-        carte.Biomes, carte.Altitudes, carte.Gibier, carte.Plantes, carte.Emplacements);
+        carte.Biomes, carte.Altitudes, carte.Gibier, carte.Plantes, carte.Emplacements,
+        Simulation.Nature.Echelle.KilometresParCase, Simulation.Nature.Echelle.MetresParUnite);
 }

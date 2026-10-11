@@ -18,10 +18,14 @@ public sealed class CatastrophesTests
     private const long Heure = Calendrier.SecondesParHeure;
     private const long Jour = Calendrier.SecondesParJour;
 
-    /// <summary>Monde neuf de la graine 42, avec tous les humains déplacés en (x, y) s'il est donné.</summary>
-    private static MondeSimule Monde((int X, int Y)? lieu = null)
+    /// <summary>
+    /// Monde neuf de la graine 42, avec tous les humains déplacés en (x, y) s'il est donné. <paramref name="anneeNormale"/> :
+    /// des pluies ordinaires partout (les feux se propagent mal pendant une année très arrosée).
+    /// </summary>
+    private static MondeSimule Monde((int X, int Y)? lieu = null, bool anneeNormale = false)
     {
         var etat = MondeSimule.Nouveau(42);
+        if (anneeNormale) etat = etat with { Pluies = new MondeSimule(Carte, etat).Etat.Pluies!.Select(_ => 1.0).ToArray() };
         if (lieu is not { } l) return new MondeSimule(Carte, etat);
         var humains = new MondeSimule(Carte, etat).Etat.Humains!.ToList();
         foreach (var h in humains) (h.X, h.Y) = (l.X, l.Y);
@@ -110,10 +114,10 @@ public sealed class CatastrophesTests
         Assert.Contains(monde.PrendreAlertes(), a => a.CatastropheId == id && a.Grave);
 
         // La peur s'apaise de jour en jour ; la secousse est finie au plus tard après la dernière réplique (un mois au plus).
+        // (Une forte réplique peut raviver la peur entre-temps.)
         var peurAvant = monde.InstantaneHumains().Humains.Where(h => h.EstVivant).Sum(h => h.Peur);
-        monde.AvancerDe(10 * Jour);
+        monde.AvancerDe(31 * Jour);
         Assert.True(monde.InstantaneHumains().Humains.Where(h => h.EstVivant).Sum(h => h.Peur) < peurAvant / 2);
-        monde.AvancerDe(21 * Jour);
         Assert.NotNull(monde.CatastrophesEnMemoire().Single(c => c.Id == id).Fin);
     }
 
@@ -141,7 +145,7 @@ public sealed class CatastrophesTests
     {
         var foyer = Case((x, y) => Carte.BiomeEn(x, y) is Biome.ForetDeConiferes or Biome.PlaineDeFougeres
                                    && Carte.BiomeEn(x + 1, y) == Carte.BiomeEn(x, y) && Carte.BiomeEn(x, y + 1) == Carte.BiomeEn(x, y));
-        var monde = Monde(foyer);
+        var monde = Monde(foyer, anneeNormale: true);
         var id = monde.Declencher(TypeCatastrophe.Incendie, foyer.X, foyer.Y, 0);
         Assert.True(id > 0);
         Assert.True(monde.Etat.DegatsNature![Carte.Indice(foyer.X, foyer.Y)] > 0);
@@ -154,10 +158,26 @@ public sealed class CatastrophesTests
             else Assert.Equal(CauseDeMort.Brulure, h.CauseDeMort);
         }
 
-        monde.AvancerDe(Jour);
-        var feu = monde.CatastrophesEnMemoire().Single(c => c.Id == id);
-        Assert.True(feu.Cases.Count + feu.Front.Count > 1, "le feu ne s'est pas propagé");
-        Assert.All(feu.Cases, i => Assert.True(monde.Etat.DegatsNature![i] > 0));
+        // Un feu ne prend pas toujours (vent, humidité, nuit, printemps) : en plein été, par une année ordinaire, on allume
+        // plusieurs foyers ; au moins un se propage, et toutes les terres brûlées sont abîmées.
+        var ete = Monde(anneeNormale: true);
+        ete.AvancerDe(Calendrier.JoursParSaison * Jour + 12 * Heure);
+        var feux = new List<long>();
+        for (var essai = 0; essai < 8; essai++)
+        {
+            var f = ete.Declencher(TypeCatastrophe.Incendie, foyer.X + 6 * essai, foyer.Y, 0);
+            if (f > 0) feux.Add(f);
+        }
+        Assert.NotEmpty(feux);
+        ete.AvancerDe(Jour);
+        var propage = false;
+        foreach (var f in feux)
+        {
+            var feu = ete.CatastrophesEnMemoire().Single(c => c.Id == f);
+            propage |= feu.Cases.Count + feu.Front.Count > 1;
+            Assert.All(feu.Cases, i => Assert.True(ete.Etat.DegatsNature![i] > 0));
+        }
+        Assert.True(propage, "aucun feu ne s'est propagé");
     }
 
     [Fact]

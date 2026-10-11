@@ -121,6 +121,20 @@ public sealed class MondeHub(ServiceMonde service) : Hub
     /// <summary>Failles, volcans et sismicité du continent.</summary>
     public GeologieDto Geologie() => GeologieDto.Depuis(service.Monde);
 
+    /// <summary>Caractéristiques du Monde : échelle, surface et dimensions du continent, relief, climat, population, marche.</summary>
+    public CaracteristiquesDto Caracteristiques() => CaracteristiquesDto.Depuis(service);
+
+    /// <summary>Trajet à pied le moins pénible entre deux cases (null si l'une est dans l'eau ou si on ne peut pas y aller à pied).</summary>
+    public TrajetDto? Trajet(int x1, int y1, int x2, int y2)
+    {
+        var carte = service.Monde.Carte;
+        if (Math.Min(Math.Min(x1, y1), Math.Min(x2, y2)) < 0 || Math.Max(x1, x2) >= carte.Largeur || Math.Max(y1, y2) >= carte.Hauteur)
+        {
+            throw new HubException("Points hors de la carte.");
+        }
+        return TrajetDto.Depuis(carte, x1, y1, x2, y2);
+    }
+
     /// <summary>Maladies apparues depuis le début du monde.</summary>
     public List<MaladieDto> Maladies() => MaladieDto.Toutes(service.Monde);
 

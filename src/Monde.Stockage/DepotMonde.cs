@@ -14,7 +14,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 11;
+    public const int VersionSchema = 12;
 
     private readonly string _connexion;
 
@@ -375,6 +375,15 @@ public sealed partial class DepotMonde
             // Version 11 : catastrophes naturelles, maladies, peur et infections, dégâts sur la nature.
             MigrerVersion11(connexion, transaction);
         }
+        if (actuelle < 12)
+        {
+            // Version 12 : distances réelles (allure de marche de chacun, chemin fait vers la case suivante).
+            Executer(connexion, transaction, """
+                ALTER TABLE humains ADD COLUMN marche REAL;
+                ALTER TABLE humains ADD COLUMN progression REAL NOT NULL DEFAULT 0;
+                ALTER TABLE humains ADD COLUMN bebe_porte_le INTEGER NOT NULL DEFAULT -1;
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -424,7 +433,8 @@ public sealed partial class DepotMonde
                    agreabilite, nevrosisme, transcendance, qi, qi_verbal, qi_spatial, qi_manuel, qi_memoire, qi_art,
                    humeur, chagrin, deuil_de, jours_sombres, deprime_depuis, communaute, inconfort, compagnie,
                    reserves, metabolisme,
-                   faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier
+                   faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
+                   marche, progression, bebe_porte_le
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -433,13 +443,15 @@ public sealed partial class DepotMonde
             while (lecteur.Read())
             {
                 var sexe = (Sexe)lecteur.GetByte(2);
-                var biologie = lecteur.IsDBNull(32)
+                var id = lecteur.GetInt32(0);
+                var marche = lecteur.IsDBNull(63) ? Biologie.MarcheDe(id) : lecteur.GetDouble(63);
+                var biologie = (lecteur.IsDBNull(32)
                     ? Biologie.ParDefaut(sexe)
                     : new Biologie(lecteur.GetDouble(32), lecteur.GetDouble(33), lecteur.GetDouble(34),
-                        lecteur.IsDBNull(54) ? 1 : lecteur.GetDouble(54));
+                        lecteur.IsDBNull(54) ? 1 : lecteur.GetDouble(54))) with { Marche = marche };
                 humains.Add(new Humain
                 {
-                    Id = lecteur.GetInt32(0),
+                    Id = id,
                     Nom = lecteur.GetString(1),
                     Sexe = sexe,
                     Biologie = biologie,
@@ -485,6 +497,8 @@ public sealed partial class DepotMonde
                     DepressionEvenementId = lecteur.GetInt64(60),
                     MortEvenementId = lecteur.GetInt64(61),
                     MeurtrierId = lecteur.GetInt32(62),
+                    Progression = lecteur.GetDouble(64),
+                    BebePorteLe = lecteur.GetInt64(65),
                 });
             }
         }
@@ -693,7 +707,8 @@ public sealed partial class DepotMonde
                     agreabilite, nevrosisme, transcendance, qi, qi_verbal, qi_spatial, qi_manuel, qi_memoire, qi_art,
                     humeur, chagrin, deuil_de, jours_sombres, deprime_depuis, communaute, inconfort, compagnie,
                     reserves, metabolisme,
-                    faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier)
+                    faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
+                    marche, progression, bebe_porte_le)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -703,7 +718,8 @@ public sealed partial class DepotMonde
                     $agreabilite, $nevrosisme, $transcendance, $qi, $qi_verbal, $qi_spatial, $qi_manuel, $qi_memoire, $qi_art,
                     $humeur, $chagrin, $deuil_de, $jours_sombres, $deprime_depuis, $communaute, $inconfort, $compagnie,
                     $reserves, $metabolisme,
-                    $faim_soif_jour, $froid_jour, $jours_seul, $colere, $deuil_evenement, $depression_evenement, $mort_evenement, $meurtrier);
+                    $faim_soif_jour, $froid_jour, $jours_seul, $colere, $deuil_evenement, $depression_evenement, $mort_evenement, $meurtrier,
+                    $marche, $progression, $bebe_porte_le);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -714,7 +730,8 @@ public sealed partial class DepotMonde
                 "$agreabilite", "$nevrosisme", "$transcendance", "$qi", "$qi_verbal", "$qi_spatial", "$qi_manuel", "$qi_memoire", "$qi_art",
                 "$humeur", "$chagrin", "$deuil_de", "$jours_sombres", "$deprime_depuis", "$communaute", "$inconfort", "$compagnie",
                 "$reserves", "$metabolisme",
-                "$faim_soif_jour", "$froid_jour", "$jours_seul", "$colere", "$deuil_evenement", "$depression_evenement", "$mort_evenement", "$meurtrier"];
+                "$faim_soif_jour", "$froid_jour", "$jours_seul", "$colere", "$deuil_evenement", "$depression_evenement", "$mort_evenement", "$meurtrier",
+                "$marche", "$progression", "$bebe_porte_le"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -739,6 +756,7 @@ public sealed partial class DepotMonde
                     h.Reserves, h.Biologie.Metabolisme,
                     h.FaimSoifDuJour, h.FroidDuJour, h.JoursSeul, h.Colere, h.DeuilEvenementId, h.DepressionEvenementId,
                     h.MortEvenementId, h.MeurtrierId,
+                    h.Biologie.Marche, h.Progression, h.BebePorteLe,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();

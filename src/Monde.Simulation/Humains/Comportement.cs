@@ -352,6 +352,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (!reveil) return;
         }
 
+        // Dans une crue qui ne fait que monter, l'assoiffé boit d'abord : l'eau est à ses pieds.
+        if (danger is { Niveau: 1, Source.Type: TypeCatastrophe.Crue } && h.Soif > 50)
+        {
+            AllerBoire(h);
+            return;
+        }
+
         // Le danger passe avant tout le reste.
         if (danger is { } menace && Fuir(h, menace.Niveau, menace.Source)) return;
 
@@ -544,7 +551,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     private void AllerBoire(Humain h)
     {
-        if (EauDouceAPortee(h.X, h.Y))
+        if (EauDouceAPortee(h.X, h.Y) || Catastrophes?.DangerEn(h.X, h.Y) is { Source.Type: TypeCatastrophe.Crue })
         {
             h.Soif = 0;
             h.Activite = Activite.Boire;
@@ -702,10 +709,15 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         Avancer(h, h.CibleX, h.CibleY, activite);
     }
 
+    /// <summary>Au plus deux cases (1,6 à 2,3 km) en dix minutes : au-delà, il faudrait courir longtemps.</summary>
+    internal const int CasesParPasMax = 2;
+
     /// <summary>
-    /// Un pas vers la cible. En terrain dégagé, on prend la case voisine qui rapproche le plus du but ;
-    /// si un obstacle (côte, lac) bloque, on passe en mode détour : un chemin est calculé à chaque pas
-    /// jusqu'à l'arrivée.
+    /// Marche vers la cible pendant le pas : l'humain dispose de dix minutes à sa vitesse du moment
+    /// (<see cref="Marche.Vitesse"/>), et chaque case coûte sa longueur réelle allongée par le terrain et la pente.
+    /// Ce qui ne suffit pas pour la case suivante est gardé pour le pas d'après. En terrain dégagé, on prend la case
+    /// voisine qui rapproche le plus du but ; si un obstacle (côte, lac) bloque, on passe en mode détour : un chemin
+    /// est calculé à chaque case jusqu'à l'arrivée.
     /// </summary>
     private void Avancer(Humain h, int cibleX, int cibleY, Activite activite)
     {
@@ -713,30 +725,42 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         h.Activite = activite;
         h.CibleX = cibleX;
         h.CibleY = cibleY;
-        if (EstArrive(h))
+        var budget = h.Progression + Marche.Vitesse(h, _maintenant) * MondeSimule.SecondesParPas;
+        h.Progression = 0;
+        for (var n = 0; n < CasesParPasMax; n++)
         {
-            h.Detour = false;
-            return;
-        }
-
-        var (bx, by) = h.Detour ? (-1, -1) : PasDirect(h.X, h.Y, cibleX, cibleY);
-        if (bx < 0)
-        {
-            var pas = PremierPasDuChemin(carte.Indice(h.X, h.Y), carte.Indice(cibleX, cibleY));
-            if (pas < 0)
+            if (EstArrive(h))
             {
-                // Inaccessible : on abandonne cette destination.
-                h.CibleX = h.CibleY = -1;
                 h.Detour = false;
                 return;
             }
-            h.Detour = true;
-            (bx, by) = (pas % carte.Largeur, pas / carte.Largeur);
-        }
 
-        h.X = bx;
-        h.Y = by;
-        if (carte.BiomeEn(bx, by) is Biome.Montagne or Biome.SommetEnneige) h.Fatigue = Math.Min(100, h.Fatigue + 0.8);
+            var (bx, by) = h.Detour ? (-1, -1) : PasDirect(h.X, h.Y, cibleX, cibleY);
+            if (bx < 0)
+            {
+                var pas = PremierPasDuChemin(carte.Indice(h.X, h.Y), carte.Indice(cibleX, cibleY));
+                if (pas < 0)
+                {
+                    // Inaccessible : on abandonne cette destination.
+                    h.CibleX = h.CibleY = -1;
+                    h.Detour = false;
+                    return;
+                }
+                h.Detour = true;
+                (bx, by) = (pas % carte.Largeur, pas / carte.Largeur);
+            }
+
+            var effort = Marche.Effort(carte, h.X, h.Y, bx, by);
+            if (budget < effort)
+            {
+                h.Progression = budget;
+                return;
+            }
+            budget -= effort;
+            h.X = bx;
+            h.Y = by;
+            if (carte.BiomeEn(bx, by) is Biome.Montagne or Biome.SommetEnneige) h.Fatigue = Math.Min(100, h.Fatigue + 0.8);
+        }
     }
 
     /// <summary>Arrivé : sur la cible, ou à côté si la cible elle-même est de l'eau.</summary>

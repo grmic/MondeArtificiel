@@ -141,6 +141,8 @@ public sealed record FicheDto(
                 ["fin de fertilité (ans)"] = Math.Round(b.AgeFinFertilite, 1),
                 ["fertilité"] = Math.Round(b.Fertilite, 2),
                 ["métabolisme"] = Math.Round(b.Metabolisme, 2),
+                ["allure"] = Math.Round(b.Marche, 2),
+                ["marche (km/h)"] = h.EstVivant && !h.EstBebe(maintenant) ? Math.Round(Marche.Vitesse(h, maintenant) * 3.6, 1) : 0,
             },
             h.EstVivant && !h.EstBebe(maintenant)
                 ? new AmeDto(Libelles.Humeur(h), (int)Math.Round(h.Humeur), (int)Math.Round(h.Chagrin), h.DeuilDeId,

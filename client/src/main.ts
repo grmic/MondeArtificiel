@@ -1,10 +1,11 @@
-import { chargerCarte, VueCarte, type HumainVue, type InfoTuile, type Nature } from "./carte";
+import { chargerCarte, distanceEnMots, VueCarte, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
 import { PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
+import { OutilMesure, PanneauMonde } from "./monde";
 import { PanneauTerritoires } from "./territoires";
 import "./style.css";
 
@@ -42,10 +43,11 @@ function decrire(info: InfoTuile): void {
   if (!info) return;
   const { x, y, carte, emplacement } = info;
   const i = y * carte.largeur + x;
-  const altitude = carte.altitudes[i] - carte.niveauMer;
+  const altitude = Math.round((carte.altitudes[i] - carte.niveauMer) * carte.metresParUnite);
+  const km = (cases: number) => distanceEnMots((cases + 0.5) * carte.kilometresParCase);
   const lignes = [
-    `Tuile ${x}, ${y} · ${carte.nomsBiomes[carte.biomes[i]] ?? "?"}`,
-    `Altitude ${altitude} · gibier ${carte.gibier[i]} · plantes ${carte.plantes[i]}`,
+    `Tuile ${x}, ${y} (${km(x)} du bord ouest, ${km(y)} du bord nord) · ${carte.nomsBiomes[carte.biomes[i]] ?? "?"}`,
+    `Altitude ${altitude.toLocaleString("fr-FR").replace(/\u202f|\u00a0/g, " ")} m · gibier ${carte.gibier[i]} · plantes ${carte.plantes[i]}`,
   ];
   const nature = natureEn(x, y);
   if (nature && nature.abondance > 0) {
@@ -138,10 +140,24 @@ async function demarrer(): Promise<void> {
   element("#boutonCatastrophes").addEventListener("click", () => {
     journal.fermer();
     communautes?.fermer();
+    panneauMonde?.fermer();
     catastrophes.basculer();
   });
 
+  const panneauMonde = new PanneauMonde(element("#caracteristiques"), vue);
+  const mesure = new OutilMesure(element<HTMLButtonElement>("#boutonMesure"), vue, (message) => (infos.textContent = message));
+  element("#boutonMonde").addEventListener("click", () => {
+    journal.fermer();
+    communautes?.fermer();
+    catastrophes.fermer();
+    panneauMonde.basculer();
+  });
+
   vue.quandClic((info) => {
+    if (info && mesure.enCours) {
+      void mesure.cliquer(info.x, info.y);
+      return;
+    }
     if (info && catastrophes.enVisee) {
       catastrophes.viserEn(info.x, info.y);
       return;
@@ -159,11 +175,13 @@ async function demarrer(): Promise<void> {
   element("#boutonJournal").addEventListener("click", () => {
     communautes?.fermer();
     catastrophes.fermer();
+    panneauMonde.fermer();
     journal.basculer();
   });
   element("#boutonCommunautes").addEventListener("click", () => {
     journal.fermer();
     catastrophes.fermer();
+    panneauMonde.fermer();
     communautes?.basculer();
   });
 
@@ -204,6 +222,8 @@ async function demarrer(): Promise<void> {
     territoires.fermer();
     communautes?.fermer();
     catastrophes.fermer();
+    panneauMonde.fermer();
+    if (mesure.enCours) mesure.arreter();
     element("#alerte").hidden = true;
     void journal.recharger();
     void charger().then(() => (infos.textContent = `Monde réinitialisé · graine ${graine}. Le temps est en pause.`));

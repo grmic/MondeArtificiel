@@ -14,17 +14,27 @@ namespace Monde.Simulation.Humains;
 /// d'un individu à l'autre (Johnstone et al., 2005) et se transmet à environ 40 % (Bouchard et al., 1989).
 /// Un humain au métabolisme élevé a faim plus souvent et souffre plus vite de la disette.
 /// </param>
-public sealed record Biologie(double AgePuberte, double AgeFinFertilite, double Fertilite, double Metabolisme = 1)
+/// <param name="Marche">
+/// Allure propre à chacun, autour de 1 : la vitesse de marche spontanée des adultes varie d'environ 10 % d'un individu
+/// à l'autre au même âge (Bohannon et Andrews, 2011). La part héritée est supposée d'un tiers (hypothèse : les études
+/// de jumeaux donnent des valeurs dispersées). Voir <see cref="Humains.Marche"/>.
+/// </param>
+public sealed record Biologie(double AgePuberte, double AgeFinFertilite, double Fertilite, double Metabolisme = 1, double Marche = 1)
 {
     private const double EcartMetabolisme = 0.07;
     private const double HeritabiliteMetabolisme = 0.4;
+    private const double EcartMarche = 0.1;
+    private const double HeritabiliteMarche = 0.33;
 
     /// <summary>Valeurs pour un humain enregistré avant l'existence de ces traits.</summary>
     public static Biologie ParDefaut(Sexe sexe) => new(16, sexe == Sexe.Femme ? 49 : 90, 1);
 
     /// <summary>Tirage pour un humain de départ (créé par l'Entité, sans parents).</summary>
     public static Biologie Tirer(Sexe sexe, Alea alea) =>
-        Construire(sexe, alea, 16, sexe == Sexe.Femme ? 49 : 90, 1) with { Metabolisme = Metabolique(alea, 0) };
+        Construire(sexe, alea, 16, sexe == Sexe.Femme ? 49 : 90, 1) with
+        {
+            Metabolisme = Metabolique(alea, 0), Marche = Heritable(alea, 0, HeritabiliteMarche, EcartMarche, 0.7, 1.3),
+        };
 
     /// <summary>Tirage pour un nouveau-né : moyenne des parents de même nature, plus une variation propre.</summary>
     public static Biologie Heriter(Sexe sexe, Humain mere, Humain? pere, Alea alea)
@@ -36,7 +46,26 @@ public sealed record Biologie(double AgePuberte, double AgeFinFertilite, double 
         // Moitié héritée, moitié propre : un enfant de parents peu féconds ne l'est pas forcément.
         var biologie = Construire(sexe, alea, puberte, fin, 0.5 + parents / 2);
         var metabolismeParents = pere is null ? mere.Biologie.Metabolisme : (mere.Biologie.Metabolisme + pere.Biologie.Metabolisme) / 2;
-        return biologie with { Metabolisme = Metabolique(alea, (metabolismeParents - 1) / EcartMetabolisme) };
+        var marcheParents = pere is null ? mere.Biologie.Marche : (mere.Biologie.Marche + pere.Biologie.Marche) / 2;
+        return biologie with
+        {
+            Metabolisme = Metabolique(alea, (metabolismeParents - 1) / EcartMetabolisme),
+            Marche = Heritable(alea, (marcheParents - 1) / EcartMarche, HeritabiliteMarche, EcartMarche, 0.7, 1.3),
+        };
+    }
+
+    /// <summary>Allure d'un humain enregistré avant qu'elle existe : tirée de son numéro, pour qu'un même monde la retrouve.</summary>
+    public static double MarcheDe(int id)
+    {
+        var alea = new Alea(0x6d61726368650000UL ^ (ulong)id);
+        return Heritable(alea, 0, HeritabiliteMarche, EcartMarche, 0.7, 1.3);
+    }
+
+    /// <summary>Trait autour de 1 : écart des parents transmis selon l'héritabilité (modèle de Falconer), plus une part propre.</summary>
+    private static double Heritable(Alea alea, double ecartParents, double h2, double ecart, double min, double max)
+    {
+        var z = h2 * ecartParents + Math.Sqrt(1 - h2 * h2 / 2) * Normale(alea);
+        return Math.Clamp(1 + ecart * z, min, max);
     }
 
     /// <summary>Métabolisme : écart des parents transmis selon l'héritabilité (modèle de Falconer), plus une part propre.</summary>

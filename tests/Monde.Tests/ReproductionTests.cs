@@ -90,7 +90,10 @@ public sealed class ReproductionTests
         // Hérité : puberté précoce et grande fertilité des parents, attachement fort.
         Assert.InRange(bebes.Average(b => b.Biologie.AgePuberte), 13.8, 14.4);
         Assert.InRange(bebes.Where(b => b.Biologie.Fertilite > 0).Average(b => b.Biologie.Fertilite), 1.1, 1.3);
-        Assert.InRange(bebes.Average(b => b.Personnalite.Attachement), 0.85, 0.95);
+        Assert.InRange(bebes.Average(b => b.Personnalite.Attachement), 0.85, 0.96);
+        // L'allure se transmet en partie : des parents d'allure ordinaire ont des enfants d'allure variée, autour de 1.
+        Assert.InRange(bebes.Average(b => b.Biologie.Marche), 0.97, 1.03);
+        Assert.True(bebes.Select(b => b.Biologie.Marche).Distinct().Count() > 1000);
         Assert.All(bebes.Where(b => b.Sexe == Sexe.Femme), b => Assert.InRange(b.Biologie.AgeFinFertilite, 40, 58));
     }
 

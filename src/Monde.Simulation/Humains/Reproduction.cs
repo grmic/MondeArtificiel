@@ -334,7 +334,8 @@ public sealed partial class Comportement
     {
         b.Fatigue = 0;
         b.Desir = 0;
-        var proche = mere is not null && Distance(b.X, b.Y, mere.X, mere.Y) <= 1;
+        // La mère a pu faire deux cases dans le pas (fuite, descente) avant que son bébé ne soit compté.
+        var proche = mere is not null && Distance(b.X, b.Y, mere.X, mere.Y) <= Comportement.CasesParPasMax;
         var porte = proche && !Delaisse(mere!);
         if (proche && !porte && b.Activite is Activite.PorteParSaMere or Activite.Dormir)
         {
@@ -344,6 +345,7 @@ public sealed partial class Comportement
         {
             b.X = mere.X;
             b.Y = mere.Y;
+            mere.BebePorteLe = maintenant;
         }
 
         // L'allaitement nourrit le bébé et coûte à la mère (environ 25 % d'énergie en plus) ; le lait se tarit quand

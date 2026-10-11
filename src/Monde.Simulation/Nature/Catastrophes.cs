@@ -558,11 +558,7 @@ public sealed partial class Catastrophes
     private string Ou(int x, int y) => Lieux.Direction(_carte, x, y) + " du continent";
 
     /// <summary>Surface en km² d'un nombre de cases, en mots.</summary>
-    public static string Surface(int cases)
-    {
-        var km2 = cases * Echelle.KilometresParCase * Echelle.KilometresParCase;
-        return km2 < 1 ? $"{Math.Round(km2 * 100)} hectares" : $"{km2:0.#} km²";
-    }
+    public static string Surface(int cases) => Echelle.Surface(cases);
 
     private Volcan VolcanDe(Catastrophe c) =>
         Geologie.Volcans.FirstOrDefault(v => v.Numero == c.Parametre) ?? new Volcan(0, c.X, c.Y, 100, "le volcan");

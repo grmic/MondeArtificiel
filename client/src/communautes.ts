@@ -1,5 +1,5 @@
 import { connexion } from "./connexion";
-import type { Indicateurs } from "./carte";
+import { distanceDeCases, surfaceDeCases, type Indicateurs } from "./carte";
 import { boutonCause, el } from "./fiche";
 
 interface Communaute {
@@ -178,7 +178,7 @@ export class PanneauCommunautes {
     bloc.append(titre);
     if (c.nomPropre && c.sens) bloc.append(el("p", "nom-propre", `« ${c.nomPropre} » : ${c.sens}`));
     const adultes = c.membres.filter((m) => m.etape === "adulte").length;
-    const info = el("p", "discret", `Née ${c.fondeeLe} · vers (${c.x}, ${c.y}) · ${adultes} adultes, ${c.membres.length - adultes} enfants · terres : ${c.terres} cases`);
+    const info = el("p", "discret", `Née ${c.fondeeLe} · vers (${c.x}, ${c.y}), dans un rayon de ${distanceDeCases(c.rayon)} · ${adultes} adultes, ${c.membres.length - adultes} enfants · terres parcourues : ${surfaceDeCases(c.terres)}`);
     bloc.append(info);
     if (c.histoire.length > 0) {
       const ul = el("ul", "histoire");

@@ -19,6 +19,8 @@ interface CarteJson {
   gibier: string;
   plantes: string;
   emplacements: Emplacement[];
+  kilometresParCase: number;
+  metresParUnite: number;
 }
 
 export interface Carte {
@@ -32,6 +34,37 @@ export interface Carte {
   gibier: Uint8Array;
   plantes: Uint8Array;
   emplacements: Emplacement[];
+  /** Côté d'une case en km, et dénivelé d'un degré d'altitude en mètres. */
+  kilometresParCase: number;
+  metresParUnite: number;
+}
+
+const nombreFr = (v: number, decimales: number) =>
+  v.toLocaleString("fr-FR", { maximumFractionDigits: decimales }).replace(/\u202f|\u00a0/g, " ");
+
+/** Distance en mots : « 600 m », « 3,2 km », « 48 km ». */
+export function distanceEnMots(km: number): string {
+  if (km < 1) return `${Math.round((km * 1000) / 50) * 50} m`;
+  return `${nombreFr(km, km < 10 ? 1 : 0)} km`;
+}
+
+/** Surface en mots : « 40 hectares », « 3,8 km² », « 1 250 km² ». */
+export function surfaceEnMots(km2: number): string {
+  if (km2 < 1) return `${Math.round(km2 * 100)} hectares`;
+  return `${nombreFr(km2, km2 < 100 ? 1 : 0)} km²`;
+}
+
+/** Côté d'une case en km, tel que l'a donné le serveur avec la dernière carte chargée. */
+let kmParCase = 0.8;
+
+/** Surface d'un nombre de cases de la carte, en mots. */
+export function surfaceDeCases(cases: number): string {
+  return surfaceEnMots(cases * kmParCase * kmParCase);
+}
+
+/** Distance d'un nombre de cases, en mots. */
+export function distanceDeCases(cases: number): string {
+  return distanceEnMots(cases * kmParCase);
 }
 
 /** Couleurs des biomes, dans l'ordre de l'énumération côté serveur. */
@@ -59,6 +92,7 @@ export async function chargerCarte(graine?: number): Promise<Carte> {
   const reponse = await fetch(url);
   if (!reponse.ok) throw new Error(`Le serveur a répondu ${reponse.status}`);
   const json = (await reponse.json()) as CarteJson;
+  if (json.kilometresParCase > 0) kmParCase = json.kilometresParCase;
   return {
     ...json,
     biomes: decoderBase64(json.biomes),
@@ -291,6 +325,8 @@ export class VueCarte {
   private readonly calqueTerritoires = new Container();
   private territoires?: { donnees: Territoires; proprietaires: Int32Array };
   private readonly calqueCatastrophes = new Container();
+  private readonly calqueTrajet = new Container();
+  private barreEchelle?: HTMLElement;
   private catastrophes: { actives: CatastropheVue[]; detail: DetailCatastrophe | null; cases: Set<number> } = { actives: [], detail: null, cases: new Set() };
 
   private constructor(
@@ -305,7 +341,56 @@ export class VueCarte {
     const app = new Application();
     await app.init({ resizeTo: window, background: "#0f1a2b", antialias: true });
     hote.appendChild(app.canvas);
-    return new VueCarte(app, surSurvol);
+    const vue = new VueCarte(app, surSurvol);
+    // Barre d'échelle en bas à gauche : sa longueur suit le zoom.
+    vue.barreEchelle = document.createElement("div");
+    vue.barreEchelle.className = "barre-echelle";
+    vue.barreEchelle.setAttribute("aria-label", "Échelle de la carte");
+    hote.appendChild(vue.barreEchelle);
+    return vue;
+  }
+
+  /** Met la barre d'échelle à une longueur ronde (1, 2, 5, 10, 20, 50… km) qui tient en 60 à 150 pixels. */
+  private ajusterEchelle(): void {
+    const barre = this.barreEchelle;
+    if (!barre || !this.carte) return;
+    const pixelsParKm = this.monde.scale.x / this.carte.kilometresParCase;
+    const ronds = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+    const km = ronds.find((r) => r * pixelsParKm >= 60) ?? ronds[ronds.length - 1];
+    barre.style.width = `${Math.round(km * pixelsParKm)}px`;
+    barre.textContent = distanceEnMots(km);
+  }
+
+  /** Trace un trajet (cases dans l'ordre) et ses deux bouts ; null : efface. */
+  afficherTrajet(cases: number[] | null, points: { x: number; y: number }[] = []): void {
+    for (const c of this.calqueTrajet.removeChildren()) c.destroy({ children: true });
+    if (!this.carte) return;
+    const g = new Graphics();
+    const l = this.carte.largeur;
+    if (cases && cases.length > 1) {
+      g.moveTo((cases[0] % l) + 0.5, Math.floor(cases[0] / l) + 0.5);
+      for (const i of cases.slice(1)) g.lineTo((i % l) + 0.5, Math.floor(i / l) + 0.5);
+      g.stroke({ width: 0.9, color: 0xfff27a, alpha: 0.95 });
+    }
+    for (const p of points) {
+      g.circle(p.x + 0.5, p.y + 0.5, 1.6).fill({ color: 0xfff27a, alpha: 0.9 }).stroke({ width: 0.5, color: 0x000000 });
+    }
+    this.calqueTrajet.addChild(g);
+  }
+
+  /** Largeur de la carte affichée, en cases (0 si aucune). */
+  largeurCarte(): number {
+    return this.carte?.largeur ?? 0;
+  }
+
+  /** Centre la carte sur une case et zoome un peu si besoin, puis la marque. */
+  montrer(x: number, y: number): void {
+    const { width, height } = this.app.screen;
+    const echelle = Math.max(this.monde.scale.x, 6);
+    this.monde.scale.set(echelle);
+    this.monde.position.set(width / 2 - (x + 0.5) * echelle, height / 2 - (y + 0.5) * echelle);
+    this.ajusterMarqueurs();
+    this.afficherTrajet(null, [{ x, y }]);
   }
 
   afficher(carte: Carte): void {
@@ -329,7 +414,8 @@ export class VueCarte {
       this.marqueurs.addChild(point);
     }
     this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
-    this.monde.addChild(this.nuit, this.calqueTerritoires, this.calqueNature, this.calqueCatastrophes, this.marqueurs, this.calqueHumains);
+    this.afficherTrajet(null);
+    this.monde.addChild(this.nuit, this.calqueTerritoires, this.calqueNature, this.calqueCatastrophes, this.calqueTrajet, this.marqueurs, this.calqueHumains);
     this.cadrer();
   }
 
@@ -552,6 +638,7 @@ export class VueCarte {
     const inverse = 1 / this.monde.scale.x;
     for (const m of this.marqueurs.children) m.scale.set(inverse);
     for (const m of this.calqueHumains.children) m.scale.set(inverse);
+    this.ajusterEchelle();
   }
 
   /** Humains sous le pointeur, du plus proche au plus éloigné. */

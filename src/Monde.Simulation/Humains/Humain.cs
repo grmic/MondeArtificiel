@@ -149,6 +149,17 @@ public sealed class Humain
     /// <summary>Vrai quand l'humain contourne un obstacle pour atteindre sa cible.</summary>
     public bool Detour { get; set; }
 
+    /// <summary>
+    /// Chemin déjà fait vers la case suivante, en mètres « de terrain plat » : à pas lents (enfant, âgé, terrain
+    /// difficile), il faut plus de dix minutes pour passer d'une case à l'autre. Le chemin fait est gardé même si
+    /// l'humain s'arrête ou change d'idée en route : sans cela, un humain épuisé qui hésite n'atteindrait jamais
+    /// la case voisine.
+    /// </summary>
+    public double Progression { get; set; }
+
+    /// <summary>Dernier instant où cette mère portait un bébé (ce pas-ci ou le précédent, selon l'ordre) : ralentit sa marche.</summary>
+    public long BebePorteLe { get; set; } = -1;
+
     /// <summary>Fin de la maladie en secondes du monde (0 si en bonne santé).</summary>
     public long MaladeJusqua { get; set; }
 
