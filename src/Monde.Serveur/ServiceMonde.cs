@@ -13,8 +13,10 @@ public sealed class ServiceMonde
     private readonly Lock _verrou = new();
     private readonly ILogger<ServiceMonde> _journal;
     private const string CleRedemarrage = "redemarrage";
+    private const string ClePauseCatastrophe = "pause_catastrophe";
     private volatile MondeSimule _monde;
     private volatile bool _reprendreVitesse;
+    private volatile bool _pauseSurCatastrophe;
     private double _facteurAtteint;
 
     public ServiceMonde(IConfiguration configuration, ILogger<ServiceMonde> journal)
@@ -44,7 +46,8 @@ public sealed class ServiceMonde
 
         var carte = GenerateurContinent.Generer(etat.Graine);
         _reprendreVitesse = Depot.LireReglage(CleRedemarrage) == "vitesse";
-        _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 });
+        _pauseSurCatastrophe = Depot.LireReglage(ClePauseCatastrophe) != "non";
+        _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 }) { PauseSurCatastrophe = _pauseSurCatastrophe };
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
     }
@@ -62,6 +65,18 @@ public sealed class ServiceMonde
         {
             Depot.EcrireReglage(CleRedemarrage, value ? "vitesse" : "pause");
             _reprendreVitesse = value;
+        }
+    }
+
+    /// <summary>Mettre le monde en pause quand une catastrophe menace des humains (oui par défaut).</summary>
+    public bool PauseSurCatastrophe
+    {
+        get => _pauseSurCatastrophe;
+        set
+        {
+            Depot.EcrireReglage(ClePauseCatastrophe, value ? "oui" : "non");
+            _pauseSurCatastrophe = value;
+            _monde.PauseSurCatastrophe = value;
         }
     }
 
@@ -83,7 +98,9 @@ public sealed class ServiceMonde
             var monde = _monde;
             var etat = monde.Etat;
             Depot.Enregistrer(etat);
-            monde.MarquerJournalEnregistre(etat.JournalNonEnregistre?.Count ?? 0, etat.ArchivesNonEnregistrees?.Count ?? 0);
+            // Les catastrophes terminées et enregistrées quittent la mémoire du monde (elles restent dans la base).
+            var terminees = (etat.Catastrophes ?? []).Where(c => !c.Active).Select(c => c.Id).ToHashSet();
+            monde.MarquerJournalEnregistre(etat.JournalNonEnregistre?.Count ?? 0, etat.ArchivesNonEnregistrees?.Count ?? 0, terminees);
         }
     }
 
@@ -94,7 +111,7 @@ public sealed class ServiceMonde
     public MondeSimule Reinitialiser(uint graine)
     {
         var etat = MondeSimule.Nouveau(graine);
-        var nouveau = new MondeSimule(GenerateurContinent.Generer(graine), etat);
+        var nouveau = new MondeSimule(GenerateurContinent.Generer(graine), etat) { PauseSurCatastrophe = _pauseSurCatastrophe };
         lock (_verrou)
         {
             Sauvegarder();

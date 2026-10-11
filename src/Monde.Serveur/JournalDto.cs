@@ -31,6 +31,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Journee] = "journee",
         [TypeEvenement.Nature] = "nature",
         [TypeEvenement.Conflit] = "conflit",
+        [TypeEvenement.Catastrophe] = "catastrophe",
     };
 
 
@@ -74,6 +75,12 @@ public sealed record AmeDto(string Etat, int Humeur, int Chagrin, int DeuilDe, s
 
 public sealed record CommunauteRefDto(int Id, string Nom);
 
+/// <summary>Maladie en cours, immunités et peur laissée par une catastrophe.</summary>
+/// <param name="Maladie">Maladie qu'il porte (null s'il n'en porte pas), et depuis quand.</param>
+/// <param name="Immunites">« fièvre des marais (à vie) », « toux rouge (jusqu'à l'an 12) ».</param>
+public sealed record EpreuvesDto(string? Maladie, string? MaladieDepuis, long MaladieEvenement, IReadOnlyList<string> Immunites,
+    int Peur, string? PeurDe, long PeurEvenement);
+
 /// <summary>Fiche complète d'un humain : état, caractère, intelligence, humeur, liens, mémoire, pensées et histoire.</summary>
 public sealed record FicheDto(
     HumainDto Humain,
@@ -86,7 +93,8 @@ public sealed record FicheDto(
     IReadOnlyList<PenseeDto> Pensees,
     IReadOnlyList<LieuDto> Lieux,
     IReadOnlyList<LienDto> Liens,
-    IReadOnlyList<EvenementDto> Histoire)
+    IReadOnlyList<EvenementDto> Histoire,
+    EpreuvesDto Epreuves)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -152,7 +160,23 @@ public sealed record FicheDto(
             h.Liens.OrderByDescending(l => Math.Abs(l.Affection)).ThenByDescending(l => l.Familiarite)
                 .Select(l => new LienDto(l.Id, Nom(l.Id), (int)Math.Round(l.Familiarite), (int)Math.Round(l.Affection),
                     Statut(l), humains[l.Id - 1].EstVivant)).ToList(),
-            Journal(service, new FiltreJournal(Humain: id, Limite: 200), types).Select(EvenementDto.Depuis).ToList());
+            Journal(service, new FiltreJournal(Humain: id, Limite: 200), types).Select(EvenementDto.Depuis).ToList(),
+            LireEpreuves(h, monde.Pathogenes(), maintenant));
+    }
+
+    private static EpreuvesDto LireEpreuves(Humain h, List<Simulation.Nature.Pathogene> maladies, long maintenant)
+    {
+        string NomMaladie(int id) => id >= 1 && id <= maladies.Count ? maladies[id - 1].Nom : "une maladie";
+        var porteur = h.EstVivant && h.InfectionId != 0;
+        return new EpreuvesDto(
+            porteur ? NomMaladie(h.InfectionId) + (maintenant < h.SymptomesLe ? " (pas encore de signes)" : "") : null,
+            porteur ? Date(h.InfecteLe) : null, porteur ? h.InfectionEvenementId : 0,
+            h.Immunites.Where(i => i.Jusqua is null || i.Jusqua > maintenant)
+                .Select(i => $"{NomMaladie(i.PathogeneId)} ({(i.Jusqua is { } j ? $"jusqu'à l'an {Calendrier.Decomposer(j).Annee}" : "à vie")})")
+                .ToList(),
+            h.EstVivant ? (int)Math.Round(h.Peur) : 0,
+            h.EstVivant && h.Peur >= 1 ? Simulation.Nature.TypesCatastrophe.Nom(h.PeurType) : null,
+            h.EstVivant && h.Peur >= 1 ? h.PeurEvenementId : 0);
     }
 
     private static string Motif(Grief g, Func<int, string> nom) => g.Motif switch

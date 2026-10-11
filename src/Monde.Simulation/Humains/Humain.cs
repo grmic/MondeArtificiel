@@ -29,6 +29,8 @@ public enum Activite : byte
     EviterRival = 17,
     /// <summary>Partir avec sa communauté vers des terres plus riches.</summary>
     Migrer = 18,
+    /// <summary>Fuir un danger : feu, eau qui monte, volcan ; ou chercher un abri contre la tempête.</summary>
+    Fuir = 19,
 }
 
 public enum CauseDeMort : byte
@@ -45,6 +47,18 @@ public enum CauseDeMort : byte
     Desespoir = 8,
     /// <summary>Tué par un autre humain (voir <see cref="Humain.MeurtrierId"/>).</summary>
     Meurtre = 9,
+    /// <summary>Noyé : crue, vague géante, onde de tempête.</summary>
+    Noyade = 10,
+    /// <summary>Pris dans les flammes d'un incendie ou le souffle d'un impact.</summary>
+    Brulure = 11,
+    /// <summary>Écrasé par des rochers tombés pendant un séisme.</summary>
+    Eboulement = 12,
+    /// <summary>Lave, nuée brûlante ou cendres d'un volcan.</summary>
+    Eruption = 13,
+    /// <summary>Arbre ou branche abattus par la tempête, et autres accidents.</summary>
+    Accident = 14,
+    /// <summary>Coup de chaleur pendant une canicule.</summary>
+    Chaleur = 15,
 }
 
 /// <summary>
@@ -211,6 +225,25 @@ public sealed class Humain
     /// <summary>Humains aimés côtoyés aujourd'hui, pour l'humeur.</summary>
     public int CompagnieDuJour { get; set; }
 
+    /// <summary>Peur, de 0 à 100 : laissée par une catastrophe ou un phénomène du ciel, elle s'apaise plus ou moins vite selon chacun.</summary>
+    public double Peur { get; set; }
+
+    /// <summary>Catastrophe à l'origine de la peur (événement du journal qui l'annonce), et son type.</summary>
+    public long PeurEvenementId { get; set; }
+    public Nature.TypeCatastrophe PeurType { get; set; }
+
+    /// <summary>Maladie contagieuse en cours (0 : aucune) : contamination, premiers signes, fin de la maladie.</summary>
+    public int InfectionId { get; set; }
+    public long InfecteLe { get; set; }
+    public long SymptomesLe { get; set; }
+    public long GuerisonLe { get; set; }
+
+    /// <summary>Événement du journal qui rapporte la contamination (cause des suites : symptômes, mort, contagion).</summary>
+    public long InfectionEvenementId { get; set; }
+
+    /// <summary>Maladies contre lesquelles il est immunisé, jusqu'à quand.</summary>
+    public List<Nature.Immunite> Immunites { get; set; } = [];
+
     public bool EstDeprime => DeprimeDepuis is not null;
 
     /// <summary>Lien avec un autre humain, ou null.</summary>
@@ -262,6 +295,7 @@ public sealed class Humain
         copie.Liens = [.. Liens];
         copie.Griefs = [.. Griefs];
         copie.Raisons = [.. Raisons];
+        copie.Immunites = [.. Immunites];
         return copie;
     }
 }

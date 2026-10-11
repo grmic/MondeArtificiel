@@ -47,7 +47,7 @@ public sealed class Ecosysteme
     private readonly int _regionsX;
     private readonly int _regionsY;
 
-    public Ecosysteme(Carte carte, ushort[]? gibier = null, ushort[]? plantes = null, double[]? pluies = null)
+    public Ecosysteme(Carte carte, ushort[]? gibier = null, ushort[]? plantes = null, double[]? pluies = null, ushort[]? degats = null)
     {
         _carte = carte;
         _regionsX = (carte.Largeur + TailleRegion - 1) / TailleRegion;
@@ -55,7 +55,9 @@ public sealed class Ecosysteme
         Gibier = gibier ?? carte.Gibier.Select(v => (ushort)(v * 100)).ToArray();
         Plantes = plantes ?? carte.Plantes.Select(v => (ushort)(v * 100)).ToArray();
         Pluies = pluies ?? Enumerable.Repeat(1.0, _regionsX * _regionsY).ToArray();
-        if (Gibier.Length != carte.Gibier.Length || Plantes.Length != carte.Plantes.Length || Pluies.Length != _regionsX * _regionsY)
+        Degats = degats ?? new ushort[carte.Plantes.Length];
+        if (Gibier.Length != carte.Gibier.Length || Plantes.Length != carte.Plantes.Length || Pluies.Length != _regionsX * _regionsY
+            || Degats.Length != carte.Plantes.Length)
         {
             throw new ArgumentException("Les ressources sauvegardées ne correspondent pas à la taille de la carte.");
         }
@@ -67,6 +69,24 @@ public sealed class Ecosysteme
 
     public ushort[] Gibier { get; }
     public ushort[] Plantes { get; }
+
+    /// <summary>
+    /// Dégâts laissés par les catastrophes sur chaque tuile, en centièmes de pour cent (10 000 : terre dévastée) :
+    /// cendres, terre brûlée, sol arraché. La végétation et le gibier n'y reviennent qu'à mesure que la terre guérit.
+    /// </summary>
+    public ushort[] Degats { get; }
+
+    /// <summary>
+    /// Effet du climat du moment sur la végétation de tout le continent (1 : normal ; moins après une grande éruption,
+    /// quand les cendres voilent le soleil : « hiver volcanique »).
+    /// </summary>
+    public double FacteurClimat { get; set; } = 1;
+
+    /// <summary>
+    /// Guérison de la terre : environ 0,3 % des dégâts disparaissent chaque jour (une forêt brûlée reverdit en
+    /// un à deux ans, une coulée de cendres en quelques années ; ordres de grandeur des successions écologiques).
+    /// </summary>
+    private const int GuerisonParJour = 30;
 
     /// <summary>Pluies de l'année par région (1 : année normale ; 0,6 : sécheresse ; 1,4 : année très arrosée).</summary>
     public double[] Pluies { get; }
@@ -82,10 +102,11 @@ public sealed class Ecosysteme
     private static double EffetPluie(double pluie) => Math.Clamp(pluie, 0.3, 1.3);
 
     /// <summary>Niveau des plantes vers lequel la tuile repousse aujourd'hui (centièmes).</summary>
-    public double NiveauPlantes(int i, double saison) => _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i));
+    public double NiveauPlantes(int i, double saison) =>
+        _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i)) * (1 - Degats[i] / 10_000.0) * FacteurClimat;
 
     /// <summary>Capacité d'accueil du gibier sur la tuile cette année (centièmes) : il dépend moins des pluies que les plantes.</summary>
-    public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i)));
+    public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i))) * (1 - Degats[i] / 20_000.0);
 
     /// <summary>Saison des plantes (0,45 à 1), interpolée pour éviter les à-coups entre saisons.</summary>
     public static double FacteurSaison(long secondes)
@@ -105,6 +126,7 @@ public sealed class Ecosysteme
         var croissanceDuJour = CroissanceGibierParAn / Calendrier.JoursParAn;
         for (var i = 0; i < Plantes.Length; i++)
         {
+            if (Degats[i] > 0) Degats[i] = (ushort)Math.Max(0, Degats[i] - GuerisonParJour);
             if (_carte.Plantes[i] == 0 && _carte.Gibier[i] == 0) continue;
 
             // Plantes : la repousse suit la saison ; une tuile dépouillée (moins de 20 % de son niveau) repart plus lentement.

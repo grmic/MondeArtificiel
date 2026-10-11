@@ -31,6 +31,8 @@ public enum TypeEvenement : byte
     Nature = 17,
     /// <summary>Jalousie, querelle, coups, séparation, pardon, réprobation : les offenses et leurs suites.</summary>
     Conflit = 18,
+    /// <summary>Séisme, éruption, crue, incendie, tempête, épidémie, phénomène du ciel : ce que fait la nature d'extraordinaire.</summary>
+    Catastrophe = 19,
 }
 
 /// <summary>
@@ -97,6 +99,12 @@ public static class Libelles
         Humains.CauseDeMort.Accouchement => "en couches",
         Humains.CauseDeMort.Desespoir => "de sa propre main",
         Humains.CauseDeMort.Meurtre => "sous les coups d'un autre",
+        Humains.CauseDeMort.Noyade => "noyé",
+        Humains.CauseDeMort.Brulure => "dans les flammes",
+        Humains.CauseDeMort.Eboulement => "sous un éboulement",
+        Humains.CauseDeMort.Eruption => "dans une éruption",
+        Humains.CauseDeMort.Accident => "par accident",
+        Humains.CauseDeMort.Chaleur => "de chaleur",
         _ => "",
     };
 

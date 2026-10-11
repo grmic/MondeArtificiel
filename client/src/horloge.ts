@@ -16,6 +16,8 @@ export interface Horloge {
   facteurAtteint: number;
   objectif: string | null;
   reprendreVitesse: boolean;
+  /** Le monde se met en pause quand une catastrophe menace des humains. */
+  pauseCatastrophe: boolean;
 }
 
 interface Vitesse {
@@ -142,6 +144,8 @@ export class PanneauHorloge {
 
     const reprendre = this.el<HTMLInputElement>("#reprendreVitesse");
     reprendre.addEventListener("change", () => void this.envoyer("ChoisirRedemarrage", reprendre.checked));
+    const pause = this.el<HTMLInputElement>("#pauseCatastrophe");
+    pause.addEventListener("change", () => void this.envoyer("ChoisirPauseCatastrophe", pause.checked));
   }
 
   private async envoyer(methode: string, ...args: unknown[]): Promise<void> {
@@ -177,6 +181,7 @@ export class PanneauHorloge {
     zoneObjectif.hidden = !h.objectif;
     this.el("#texteObjectif").textContent = h.objectif ? `En route vers : ${h.objectif}` : "";
     this.el<HTMLInputElement>("#reprendreVitesse").checked = h.reprendreVitesse;
+    this.el<HTMLInputElement>("#pauseCatastrophe").checked = h.pauseCatastrophe;
 
     // Pré-remplit la date cible avec la date courante, une seule fois.
     if (!precedente) {

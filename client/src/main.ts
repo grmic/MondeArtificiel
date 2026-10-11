@@ -1,4 +1,5 @@
 import { chargerCarte, VueCarte, type HumainVue, type InfoTuile, type Nature } from "./carte";
+import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
 import { PanneauFiche } from "./fiche";
@@ -27,13 +28,15 @@ function decrireHumain(h: HumainVue): string {
   if (h.partenaire) liens.push(`avec ${nom(h.partenaire)}`);
   const qui = `${h.nom} (${h.sexe}, ${age}, ${liens.join(", ")})`;
   if (!h.vivant) return `✝ ${qui}, mort ${h.causeDeMort ?? ""}`;
-  const etat = [h.activite, h.humeur ?? "", h.enceinte ? "enceinte" : "", h.malade ? "malade" : ""].filter(Boolean).join(" · ");
+  const etat = [h.activite, h.humeur ?? "", h.enceinte ? "enceinte" : "", h.malade ? "malade" : "", h.contagieux ? "contagieux" : "",
+    h.peur >= 20 ? "apeuré" : ""].filter(Boolean).join(" · ");
   const pensee = h.pensee ? `\n   « ${h.pensee} »` : "";
   return `${qui} ${etat}${pensee}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante} · réserves ${h.reserves}`;
 }
 
 let natureEn: (x: number, y: number) => { abondance: number; pluie: number } | null = () => null;
 let territoireEn: (x: number, y: number) => { nom: string } | null = () => null;
+let catastrophesEn: (x: number, y: number) => { nom: string; intensite: string }[] = () => [];
 
 function decrire(info: InfoTuile): void {
   if (!info) return;
@@ -50,6 +53,7 @@ function decrire(info: InfoTuile): void {
   }
   const terres = territoireEn(x, y);
   if (terres) lignes.push(`Terres de la ${terres.nom.charAt(0).toLowerCase()}${terres.nom.slice(1)}`);
+  for (const c of catastrophesEn(x, y)) lignes.push(`⚠ ${c.nom}${c.intensite ? ` (${c.intensite})` : ""}`);
   if (emplacement) lignes.unshift(`Emplacement de départ n° ${emplacement.numero}`);
   if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 5).map(decrireHumain));
   infos.textContent = lignes.join("\n");
@@ -59,6 +63,7 @@ async function demarrer(): Promise<void> {
   const vue = await VueCarte.creer(element("#scene"), decrire);
   natureEn = (x, y) => vue.natureEn(x, y);
   territoireEn = (x, y) => vue.territoireEn(x, y);
+  catastrophesEn = (x, y) => vue.catastrophesEn(x, y);
 
   // Couche des ressources : relue toutes les 5 secondes tant qu'elle est affichée.
   const boutonRessources = element<HTMLButtonElement>("#boutonRessources");
@@ -120,7 +125,27 @@ async function demarrer(): Promise<void> {
   communautes.surChoix = (id) => territoires.choisir(id);
   element("#boutonTerritoires").addEventListener("click", () => territoires.basculer());
 
+  const catastrophes = new PanneauCatastrophes(element("#catastrophes"), vue, (id) => {
+    catastrophes.fermer();
+    journal.fermer();
+    void communautes?.ouvrir(id);
+  }, (message) => (infos.textContent = message));
+  new BandeauAlertes(element("#alerte"), (id) => {
+    journal.fermer();
+    communautes?.fermer();
+    void catastrophes.ouvrir(id);
+  });
+  element("#boutonCatastrophes").addEventListener("click", () => {
+    journal.fermer();
+    communautes?.fermer();
+    catastrophes.basculer();
+  });
+
   vue.quandClic((info) => {
+    if (info && catastrophes.enVisee) {
+      catastrophes.viserEn(info.x, info.y);
+      return;
+    }
     const h = vue.humainsSous(info)[0];
     if (h) void fiche.ouvrir(h.id);
   });
@@ -133,10 +158,12 @@ async function demarrer(): Promise<void> {
   // Journal et communautés occupent la même place : ouvrir l'un ferme l'autre.
   element("#boutonJournal").addEventListener("click", () => {
     communautes?.fermer();
+    catastrophes.fermer();
     journal.basculer();
   });
   element("#boutonCommunautes").addEventListener("click", () => {
     journal.fermer();
+    catastrophes.fermer();
     communautes?.basculer();
   });
 
@@ -176,6 +203,8 @@ async function demarrer(): Promise<void> {
     fiche.fermer();
     territoires.fermer();
     communautes?.fermer();
+    catastrophes.fermer();
+    element("#alerte").hidden = true;
     void journal.recharger();
     void charger().then(() => (infos.textContent = `Monde réinitialisé · graine ${graine}. Le temps est en pause.`));
   });

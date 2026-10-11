@@ -18,7 +18,25 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 7 (avant les réserves, les pluies et les territoires).</summary>
     /// <summary>Ramène un fichier au schéma 8 (avant les causes, les rancunes et les usages).</summary>
     /// <summary>Ramène un fichier au schéma 9 (avant l'identité et l'histoire des communautés).</summary>
-    internal const string RetourVersion9 = """
+    /// <summary>Ramène un fichier au schéma 10 (avant les catastrophes et les maladies).</summary>
+    internal const string RetourVersion10 = """
+        ALTER TABLE humains DROP COLUMN peur;
+        ALTER TABLE humains DROP COLUMN peur_evenement;
+        ALTER TABLE humains DROP COLUMN peur_type;
+        ALTER TABLE humains DROP COLUMN infection;
+        ALTER TABLE humains DROP COLUMN infecte_le;
+        ALTER TABLE humains DROP COLUMN symptomes_le;
+        ALTER TABLE humains DROP COLUMN guerison_le;
+        ALTER TABLE humains DROP COLUMN infection_evenement;
+        ALTER TABLE humains DROP COLUMN immunites;
+        ALTER TABLE ressources DROP COLUMN degats;
+        DROP INDEX catastrophes_debut;
+        DROP TABLE catastrophes;
+        DROP TABLE pathogenes;
+        PRAGMA user_version = 10;
+        """;
+
+    internal const string RetourVersion9 = RetourVersion10 + """
         DROP INDEX journal_communaute_id;
         DROP INDEX journal_autre_communaute_id;
         ALTER TABLE journal DROP COLUMN communaute;

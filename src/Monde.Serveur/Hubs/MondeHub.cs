@@ -97,6 +97,51 @@ public sealed class MondeHub(ServiceMonde service) : Hub
         return await DiffuserHorloge();
     }
 
+    /// <summary>Mettre le monde en pause quand une catastrophe menace des humains.</summary>
+    public async Task<HorlogeDto> ChoisirPauseCatastrophe(bool pause)
+    {
+        service.PauseSurCatastrophe = pause;
+        return await DiffuserHorloge();
+    }
+
+    /// <summary>Catastrophes et phénomènes, du plus récent au plus ancien, éventuellement ceux qui ont touché une communauté.</summary>
+    public List<CatastropheDto> Catastrophes(int? communaute, int limite = 200)
+    {
+        if (limite is < 1 or > Stockage.DepotMonde.LimiteJournal || communaute is < 1) throw new HubException("Filtre des catastrophes invalide.");
+        return CatastropheDto.Liste(service, communaute, limite);
+    }
+
+    /// <summary>Une catastrophe avec ses cases touchées (null si elle n'existe pas).</summary>
+    public DetailCatastropheDto? Catastrophe(long id)
+    {
+        if (id < 1 || CatastropheDto.Trouver(service, id) is not { } c) return null;
+        return new DetailCatastropheDto(CatastropheDto.Depuis(c, service.Monde.Communautes()), [.. c.Cases.Order()], [.. c.Front.Keys.Order()]);
+    }
+
+    /// <summary>Failles, volcans et sismicité du continent.</summary>
+    public GeologieDto Geologie() => GeologieDto.Depuis(service.Monde);
+
+    /// <summary>Maladies apparues depuis le début du monde.</summary>
+    public List<MaladieDto> Maladies() => MaladieDto.Toutes(service.Monde);
+
+    /// <summary>L'Entité provoque une catastrophe. Renvoie le numéro de l'événement qui l'annonce (0 si elle n'a pas pu avoir lieu).</summary>
+    public async Task<long> Declencher(DemandeCatastrophe demande)
+    {
+        var monde = service.Monde;
+        if (CatastropheDto.TypeDepuis(demande.Type) is not { } type || type == Simulation.Nature.TypeCatastrophe.HiverVolcanique)
+        {
+            throw new HubException("Type de catastrophe inconnu.");
+        }
+        if (demande.X < 0 || demande.Y < 0 || demande.X >= monde.Carte.Largeur || demande.Y >= monde.Carte.Hauteur || !double.IsFinite(demande.Intensite))
+        {
+            throw new HubException("Lieu ou intensité invalide.");
+        }
+        var id = monde.Declencher(type, demande.X, demande.Y, demande.Intensite);
+        service.Sauvegarder();
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        return id;
+    }
+
     /// <summary>Au redémarrage du serveur : reprendre la dernière vitesse (vrai) ou repartir en pause (faux).</summary>
     public async Task<HorlogeDto> ChoisirRedemarrage(bool reprendreVitesse)
     {
@@ -193,7 +238,8 @@ public sealed record HorlogeDto(
     double Facteur,
     double FacteurAtteint,
     string? Objectif,
-    bool ReprendreVitesse)
+    bool ReprendreVitesse,
+    bool PauseCatastrophe)
 {
     public static HorlogeDto Depuis(ServiceMonde service)
     {
@@ -203,6 +249,6 @@ public sealed record HorlogeDto(
         return new HorlogeDto(secondes, pas, date.ToString(), date.Annee, date.NomSaison,
             date.JourDeSaison, date.Heure, date.Minute, date.EstJour, date.Lumiere,
             objectif is null ? Vitesse.NiveauDe(facteur) : -1, facteur,
-            facteur == 0 ? 0 : service.FacteurAtteint, objectif?.Description, service.ReprendreVitesse);
+            facteur == 0 ? 0 : service.FacteurAtteint, objectif?.Description, service.ReprendreVitesse, service.PauseSurCatastrophe);
     }
 }

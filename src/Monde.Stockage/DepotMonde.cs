@@ -2,6 +2,7 @@ using System.Buffers.Binary;
 using Microsoft.Data.Sqlite;
 using Monde.Simulation;
 using Monde.Simulation.Humains;
+using Monde.Simulation.Nature;
 
 namespace Monde.Stockage;
 
@@ -13,7 +14,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 10;
+    public const int VersionSchema = 11;
 
     private readonly string _connexion;
 
@@ -369,6 +370,11 @@ public sealed partial class DepotMonde
                 """);
             RattacherJournalAuxCommunautes(connexion, transaction);
         }
+        if (actuelle < 11)
+        {
+            // Version 11 : catastrophes naturelles, maladies, peur et infections, dégâts sur la nature.
+            MigrerVersion11(connexion, transaction);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -393,12 +399,16 @@ public sealed partial class DepotMonde
             };
         }
 
-        commande.CommandText = "SELECT gibier, plantes FROM ressources WHERE id = 1;";
+        commande.CommandText = "SELECT gibier, plantes, degats FROM ressources WHERE id = 1;";
         using (var lecteur = commande.ExecuteReader())
         {
             if (lecteur.Read())
             {
-                etat = etat with { Gibier = VersUShort((byte[])lecteur[0]), Plantes = VersUShort((byte[])lecteur[1]) };
+                etat = etat with
+                {
+                    Gibier = VersUShort((byte[])lecteur[0]), Plantes = VersUShort((byte[])lecteur[1]),
+                    DegatsNature = lecteur.IsDBNull(2) ? null : VersUShort((byte[])lecteur[2]),
+                };
             }
         }
         commande.CommandText = "SELECT pluies FROM climat WHERE id = 1;";
@@ -478,7 +488,15 @@ public sealed partial class DepotMonde
                 });
             }
         }
-        if (humains.Count > 0) LireMemoires(connexion, humains);
+        if (humains.Count > 0)
+        {
+            LireMemoires(connexion, humains);
+            LireSanteNature(commande, humains);
+        }
+        var catastrophes = LireCatastrophesEnCours(commande);
+        if (catastrophes.Count > 0) etat = etat with { Catastrophes = catastrophes };
+        var pathogenes = LirePathogenes(commande);
+        if (pathogenes.Count > 0) etat = etat with { Pathogenes = pathogenes };
 
         commande.CommandText = """
             SELECT id, nom, fondee_le, dispersee_le, figure, centre_x, centre_y, rayon, abondance, disette, destination_x, destination_y,
@@ -611,7 +629,8 @@ public sealed partial class DepotMonde
                 "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; " +
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
-                "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes;");
+                "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
+                "DELETE FROM catastrophes; DELETE FROM pathogenes;");
         }
 
         using (var commande = connexion.CreateCommand())
@@ -642,11 +661,12 @@ public sealed partial class DepotMonde
             using var commande = connexion.CreateCommand();
             commande.Transaction = transaction;
             commande.CommandText = """
-                INSERT INTO ressources (id, gibier, plantes) VALUES (1, $gibier, $plantes)
-                ON CONFLICT (id) DO UPDATE SET gibier = excluded.gibier, plantes = excluded.plantes;
+                INSERT INTO ressources (id, gibier, plantes, degats) VALUES (1, $gibier, $plantes, $degats)
+                ON CONFLICT (id) DO UPDATE SET gibier = excluded.gibier, plantes = excluded.plantes, degats = excluded.degats;
                 """;
             commande.Parameters.AddWithValue("$gibier", VersOctets(gibier));
             commande.Parameters.AddWithValue("$plantes", VersOctets(plantes));
+            commande.Parameters.AddWithValue("$degats", etat.DegatsNature is { } degats ? VersOctets(degats) : DBNull.Value);
             commande.ExecuteNonQuery();
         }
 
@@ -725,7 +745,13 @@ public sealed partial class DepotMonde
             }
         }
 
-        if (etat.Humains is { } tous) EnregistrerMemoires(connexion, transaction, tous);
+        if (etat.Humains is { } tous)
+        {
+            EnregistrerMemoires(connexion, transaction, tous);
+            EnregistrerSanteNature(connexion, transaction, tous);
+        }
+        if (etat.Catastrophes is { Count: > 0 } catastrophes) EnregistrerCatastrophes(connexion, transaction, catastrophes);
+        if (etat.Pathogenes is { Count: > 0 } pathogenes) EnregistrerPathogenes(connexion, transaction, pathogenes);
         if (etat.Communautes is { } communautes) EnregistrerCommunautes(connexion, transaction, communautes);
         if (etat.Relations is { } relations) EnregistrerRelations(connexion, transaction, relations);
         if (etat.Offenses is { } offensesAEnregistrer) EnregistrerOffenses(connexion, transaction, offensesAEnregistrer);

@@ -48,6 +48,18 @@ interface Fiche {
   lieux: { type: string; x: number; y: number; vuLe: string; visites: number }[];
   liens: { id: number; nom: string; familiarite: number; affection: number; statut: string; vivant: boolean }[];
   histoire: Evenement[];
+  epreuves: Epreuves;
+}
+
+/** Maladie en cours, immunités, et peur laissée par une catastrophe. */
+interface Epreuves {
+  maladie: string | null;
+  maladieDepuis: string | null;
+  maladieEvenement: number;
+  immunites: string[];
+  peur: number;
+  peurDe: string | null;
+  peurEvenement: number;
 }
 
 export type { Evenement };
@@ -154,6 +166,22 @@ export class PanneauFiche {
         }
         corps.append(rancunes);
       }
+    }
+    const ep = f.epreuves;
+    if (ep.maladie || ep.peur >= 5 || ep.immunites.length > 0) {
+      const p = el("p", "epreuves");
+      if (ep.maladie) {
+        p.append(`Porte ${ep.maladie}${h.contagieux ? ", contagieux" : ""} (depuis ${ep.maladieDepuis}) `);
+        if (ep.maladieEvenement > 0) p.append(boutonCause(p, ep.maladieEvenement, "comment ?"), " ");
+        p.append(el("br"));
+      }
+      if (ep.peur >= 5 && ep.peurDe) {
+        p.append(`Peur : ${ep.peur}/100, hanté${h.sexe === "femme" ? "e" : ""} par ${ep.peurDe} `);
+        if (ep.peurEvenement > 0) p.append(boutonCause(p, ep.peurEvenement, "pourquoi ?"));
+        p.append(el("br"));
+      }
+      if (ep.immunites.length > 0) p.append(`Immunisé${h.sexe === "femme" ? "e" : ""} contre : ${ep.immunites.join(", ")}`);
+      corps.append(p);
     }
     if (f.communaute) {
       const c = el("p", "communaute");

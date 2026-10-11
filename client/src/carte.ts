@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
+import type { CatastropheVue, DetailCatastrophe, Geologie } from "./catastrophes";
 
 export interface Emplacement {
   numero: number;
@@ -121,6 +122,10 @@ export interface HumainVue {
   humeur: string | null;
   communaute: number;
   reserves: number;
+  /** Peur laissée par une catastrophe (0 à 100). */
+  peur: number;
+  /** Porteur d'une maladie qui se transmet. */
+  contagieux: boolean;
 }
 
 /** Indicateurs du monde, tels que renvoyés par le hub (méthode « Nature »). */
@@ -231,6 +236,35 @@ function dessinerTerritoires(t: Territoires, largeur: number, hauteur: number, c
   return { canvas, proprietaires };
 }
 
+/** Couleur de chaque type de catastrophe sur la carte. */
+const COULEURS_CATASTROPHES: Record<string, number> = {
+  seisme: 0xc8a060, tsunami: 0x3fa9ff, eruption: 0xff4020, crue: 0x4fc3f7, incendie: 0xff8c1a, cyclone: 0xb0c4de,
+  froid: 0x9fd8ff, canicule: 0xffb347, epidemie: 0xa0e060, impact: 0xff3030, bolide: 0xffe080,
+};
+
+/** Terres touchées par une catastrophe (cases), et le feu qui brûle encore (front) plus vif. */
+function dessinerCases(detail: DetailCatastrophe, largeur: number, hauteur: number): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = largeur;
+  canvas.height = hauteur;
+  const ctx = canvas.getContext("2d")!;
+  const image = ctx.createImageData(largeur, hauteur);
+  const couleur = COULEURS_CATASTROPHES[detail.catastrophe.type] ?? 0xffffff;
+  const peindre = (i: number, c: number, alpha: number) => {
+    if (i < 0 || i >= largeur * hauteur) return;
+    const p = i * 4;
+    image.data[p] = (c >> 16) & 255;
+    image.data[p + 1] = (c >> 8) & 255;
+    image.data[p + 2] = c & 255;
+    image.data[p + 3] = alpha;
+  };
+  // Une terre brûlée est sombre ; ailleurs, la couleur de la catastrophe.
+  for (const i of detail.cases) peindre(i, detail.catastrophe.type === "incendie" ? 0x2a1a10 : couleur, 150);
+  for (const i of detail.front) peindre(i, 0xffd040, 230);
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}
+
 export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement; humains: HumainVue[] } | null;
 
 const COULEUR_FEMME = 0xffb347;
@@ -256,6 +290,8 @@ export class VueCarte {
   private nature?: Nature;
   private readonly calqueTerritoires = new Container();
   private territoires?: { donnees: Territoires; proprietaires: Int32Array };
+  private readonly calqueCatastrophes = new Container();
+  private catastrophes: { actives: CatastropheVue[]; detail: DetailCatastrophe | null; cases: Set<number> } = { actives: [], detail: null, cases: new Set() };
 
   private constructor(
     private readonly app: Application,
@@ -275,6 +311,7 @@ export class VueCarte {
   afficher(carte: Carte): void {
     this.afficherNature(null);
     this.afficherTerritoires(null);
+    this.afficherCatastrophes(null, [], null);
     this.carte = carte;
     this.monde.removeChildren();
     this.sprite?.texture.destroy(true);
@@ -292,7 +329,7 @@ export class VueCarte {
       this.marqueurs.addChild(point);
     }
     this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
-    this.monde.addChild(this.nuit, this.calqueTerritoires, this.calqueNature, this.marqueurs, this.calqueHumains);
+    this.monde.addChild(this.nuit, this.calqueTerritoires, this.calqueNature, this.calqueCatastrophes, this.marqueurs, this.calqueHumains);
     this.cadrer();
   }
 
@@ -338,6 +375,51 @@ export class VueCarte {
     this.territoires = { donnees: t, proprietaires };
   }
 
+  /**
+   * Montre la géologie (failles, volcans), les catastrophes en cours (un cercle par zone touchée) et les terres
+   * touchées par la catastrophe choisie. Tout à null : rien.
+   */
+  afficherCatastrophes(geologie: Geologie | null, actives: CatastropheVue[], detail: DetailCatastrophe | null): void {
+    for (const c of this.calqueCatastrophes.removeChildren()) c.destroy({ children: true, texture: true });
+    this.catastrophes = { actives, detail, cases: new Set([...(detail?.cases ?? []), ...(detail?.front ?? [])]) };
+    if (!this.carte) return;
+    if (detail) {
+      const texture = Texture.from(dessinerCases(detail, this.carte.largeur, this.carte.hauteur));
+      texture.source.scaleMode = "nearest";
+      this.calqueCatastrophes.addChild(new Sprite(texture));
+    }
+    const g = new Graphics();
+    for (const f of geologie?.failles ?? []) {
+      g.moveTo(f.x1 + 0.5, f.y1 + 0.5).lineTo(f.x2 + 0.5, f.y2 + 0.5)
+        .stroke({ width: 0.7, color: f.sousMarine ? 0x7a6cff : 0xc0503a, alpha: 0.75 });
+    }
+    for (const v of geologie?.volcans ?? []) {
+      g.poly([v.x + 0.5, v.y - 1.5, v.x - 1.3, v.y + 1.8, v.x + 2.3, v.y + 1.8])
+        .fill({ color: v.enEruption ? 0xff4020 : 0x5a3a2a, alpha: 0.95 }).stroke({ width: 0.4, color: 0xffd0a0 });
+    }
+    const zones = [...actives];
+    if (detail && !zones.some((c) => c.id === detail.catastrophe.id)) zones.push(detail.catastrophe);
+    for (const c of zones) {
+      // Ce qui couvre tout le continent (froid, canicule, ciel) n'a pas de zone à dessiner.
+      if (c.rayon >= this.carte.largeur || c.phenomene && c.type !== "bolide") continue;
+      const couleur = COULEURS_CATASTROPHES[c.type] ?? 0xffffff;
+      const choisie = detail?.catastrophe.id === c.id;
+      g.circle(c.x + 0.5, c.y + 0.5, Math.max(1.5, c.rayon))
+        .fill({ color: couleur, alpha: choisie ? 0.05 : 0.12 })
+        .stroke({ width: choisie ? 1.2 : 0.8, color: couleur, alpha: c.active ? 0.9 : 0.5 });
+    }
+    this.calqueCatastrophes.addChild(g);
+  }
+
+  /** Catastrophes qui touchent une tuile (zones en cours, ou cases de la catastrophe choisie). */
+  catastrophesEn(x: number, y: number): CatastropheVue[] {
+    if (!this.carte) return [];
+    const { actives, detail, cases } = this.catastrophes;
+    const resultat = actives.filter((c) => c.rayon < this.carte!.largeur && !c.phenomene && Math.hypot(c.x - x, c.y - y) <= c.rayon);
+    if (detail && cases.has(y * this.carte.largeur + x) && !resultat.some((c) => c.id === detail.catastrophe.id)) resultat.push(detail.catastrophe);
+    return resultat;
+  }
+
   /** Communauté dont la tuile fait partie des terres, si la couche des territoires est affichée. */
   territoireEn(x: number, y: number): Territoire | null {
     const t = this.territoires;
@@ -378,14 +460,16 @@ export class VueCarte {
         this.pointsHumains.delete(h.id);
         continue;
       }
-      if (!point || point.label !== etat) {
+      const etatComplet = `${etat}-${h.vivant && h.contagieux}`;
+      if (!point || point.label !== etatComplet) {
         point?.destroy();
         point = new Graphics();
-        point.label = etat;
+        point.label = etatComplet;
         if (h.vivant) {
           const rayon = h.etape === "enfant" ? 2.3 : 3.5;
+          // Un malade contagieux est cerclé de vert.
           point.circle(0, 0, rayon).fill({ color: h.sexe === "femme" ? COULEUR_FEMME : COULEUR_HOMME })
-            .stroke({ width: h.enceinte ? 2 : 1, color: h.enceinte ? 0xffffff : 0x000000 });
+            .stroke({ width: h.enceinte || h.contagieux ? 2 : 1, color: h.contagieux ? 0x7cdc50 : h.enceinte ? 0xffffff : 0x000000 });
         } else {
           point.moveTo(-3, -3).lineTo(3, 3).moveTo(3, -3).lineTo(-3, 3).stroke({ width: 1.5, color: 0x9aa7b8 });
         }

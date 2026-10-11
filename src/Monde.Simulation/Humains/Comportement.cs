@@ -1,4 +1,5 @@
 using Monde.Simulation.Monde;
+using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
 namespace Monde.Simulation.Humains;
@@ -41,6 +42,15 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     /// <summary>Numéros des événements (partagés avec tout le monde simulé).</summary>
     public Numeroteur Numeros { get; set; } = new();
+
+    /// <summary>Catastrophes en cours (dangers à fuir, écart de température) ; fourni par le monde.</summary>
+    public Catastrophes? Catastrophes { get; set; }
+
+    /// <summary>Température de la case, avec l'écart dû aux vagues de froid, canicules et hivers volcaniques.</summary>
+    private double Temperature(int x, int y, long maintenant) => Climat.Temperature(carte, x, y, maintenant) + (Catastrophes?.Anomalie ?? 0);
+
+    /// <summary>Température ressentie par l'humain en cours, pour le coup de chaleur.</summary>
+    private double _temperature = 20;
 
     /// <summary>Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause.</summary>
     private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0)
@@ -156,7 +166,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             : FatigueParPas * (1.2 - 0.4 * p.Endurance) * (h.Activite == Activite.Repos ? 0.5 : 1) * (enceinte ? 1.2 : 1);
 
         // Froid : la perte de chaleur dépend de l'écart au confort et de l'abri ; le corps en produit un peu.
-        var temperature = Climat.Temperature(carte, h.X, h.Y, maintenant);
+        var temperature = Temperature(h.X, h.Y, maintenant);
+        _temperature = temperature;
+        // Au-delà de 28 °C, on transpire : la soif vient bien plus vite (jusqu'à un litre d'eau par heure d'effort).
+        if (temperature > 28) h.Soif += SoifParPas * (temperature - 28) / 8 * (h.Activite is Activite.Repos or Activite.Dormir ? 0.5 : 1);
         var abri = Climat.Abri(carte.BiomeEn(h.X, h.Y));
         if (chaleurPartagee) abri += 0.3; // se tenir chaud avec son compagnon ou sa famille
         var perte = Math.Max(0, TemperatureConfort - temperature) * 0.05 * Math.Max(0, 1 - abri);
@@ -241,12 +254,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private void Souffrir(Humain h, long maintenant, double fragilite)
     {
         var p = h.Personnalite;
-        Span<double> degats = stackalloc double[8];
+        Span<double> degats = stackalloc double[16];
         if (h.Faim >= 85) degats[(int)CauseDeMort.Faim] = 0.06;
         if (h.Soif >= 85) degats[(int)CauseDeMort.Soif] = 0.25;
         if (h.Froid >= 70) degats[(int)CauseDeMort.Froid] = 0.05 + 0.15 * (h.Froid - 70) / 30;
         if (h.Fatigue >= 95) degats[(int)CauseDeMort.Epuisement] = 0.05;
         if (h.EstMalade(maintenant)) degats[(int)CauseDeMort.Maladie] = 0.03 * (1.3 - 0.6 * p.Endurance);
+        // Coup de chaleur : au-delà de 36 °C, le corps ne se refroidit plus assez, surtout s'il manque d'eau.
+        if (_temperature >= 36) degats[(int)CauseDeMort.Chaleur] = 0.01 * (_temperature - 35) * (h.Soif > 60 ? 2 : 1);
 
         double total = 0, pire = 0;
         var cause = CauseDeMort.Aucune;
@@ -285,6 +300,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// </summary>
     private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null)
     {
+        // Mort de froid pendant une vague de froid, de chaleur pendant une canicule, d'une maladie contagieuse : la cause est notée.
+        if (causeId == 0 && Catastrophes is not null) causeId = Catastrophes.Attribuer(h, cause);
         h.MortEvenementId = cause switch
         {
             CauseDeMort.Desespoir => Noter(maintenant, TypeEvenement.Mort, h, null,
@@ -303,17 +320,40 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         h.EnceinteDepuis = null;
     }
 
+    /// <summary>
+    /// Mort causée par une catastrophe ou une épidémie, avec son récit : notée comme les autres (journal, deuil des proches),
+    /// et rattachée à sa cause.
+    /// </summary>
+    internal void Tuer(Humain h, long maintenant, CauseDeMort cause, string texte, long causeId)
+    {
+        if (!h.EstVivant) return;
+        h.MortEvenementId = Noter(maintenant, TypeEvenement.Mort, h, null, texte, causeId);
+        h.MeurtrierId = 0;
+        Deces.Add(h);
+        h.Sante = 0;
+        h.MortLe = maintenant;
+        h.CauseDeMort = cause;
+        h.Activite = Activite.Mort;
+        h.EnceinteDepuis = null;
+    }
+
     private void Decider(Humain h, Humain? partenaire, IReadOnlyList<Humain> tous, long maintenant)
     {
         var p = h.Personnalite;
         var date = Calendrier.Decomposer(maintenant);
+        var danger = Catastrophes?.DangerEn(h.X, h.Y);
 
-        // Un dormeur ne se réveille que si un besoin devient pressant ou s'il est reposé.
+        // Un dormeur ne se réveille que si un besoin devient pressant ou s'il est reposé, ou si le danger le réveille
+        // (la fumée, l'eau qui monte, la terre qui gronde).
         if (h.Activite == Activite.Dormir)
         {
-            var reveil = h.Soif > 80 || h.Faim > 90 || h.Froid > 80 || h.Fatigue < 5 || (date.EstJour && h.Fatigue < 35);
+            var reveil = h.Soif > 80 || h.Faim > 90 || h.Froid > 80 || h.Fatigue < 5 || (date.EstJour && h.Fatigue < 35)
+                         || (danger is { } d && alea.Reel() < (d.Niveau == 2 ? 0.6 : 0.1));
             if (!reveil) return;
         }
+
+        // Le danger passe avant tout le reste.
+        if (danger is { } menace && Fuir(h, menace.Niveau, menace.Source)) return;
 
         // Urgence de chaque besoin (0 à 1 environ). Les prudents réagissent plus tôt ; le désespoir fait négliger ses besoins.
         var abattu = h.EstDeprime || h.Chagrin > 50;
@@ -404,6 +444,60 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // Au repos, l'endeuillé pense à celui qu'il a perdu.
             if (h.Chagrin > 30 && h.DeuilDeId > 0) _autre = tous[h.DeuilDeId - 1];
         }
+    }
+
+    /// <summary>
+    /// Fuir un danger qu'on a remarqué : vers le lieu sûr le plus proche (en hauteur s'il s'agit d'eau), sinon droit
+    /// devant, loin de la catastrophe. Contre la tempête, on cherche un abri. Les prudents réagissent les premiers ;
+    /// devant une menace sourde (un volcan qui gronde, la mer qui se retire), beaucoup hésitent ou ne comprennent pas.
+    /// </summary>
+    private bool Fuir(Humain h, byte niveau, Catastrophe source)
+    {
+        var prudence = h.Personnalite.Prudence;
+        if (h.Activite != Activite.Fuir)
+        {
+            var vigilance = source.Type switch
+            {
+                TypeCatastrophe.Tsunami when source.Phase == 0 => 0.03 + 0.25 * prudence,
+                TypeCatastrophe.Eruption when source.Phase == 0 => 0.02 + 0.15 * prudence,
+                _ => niveau == 2 ? 0.6 + 0.4 * prudence : 0.25 + 0.6 * prudence,
+            };
+            if (h.EstEnfant(_maintenant)) vigilance *= 0.7;
+            if (alea.Reel() >= vigilance) return false;
+        }
+        _motif = source.Type switch
+        {
+            TypeCatastrophe.Incendie or TypeCatastrophe.Impact => Motif.Feu,
+            TypeCatastrophe.Crue or TypeCatastrophe.Tsunami => Motif.Eau,
+            TypeCatastrophe.Eruption => Motif.Volcan,
+            TypeCatastrophe.Cyclone => Motif.Tempete,
+            _ => Motif.Aucun,
+        };
+        if (source.Type == TypeCatastrophe.Cyclone)
+        {
+            if (Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4)
+            {
+                h.Activite = Activite.SAbriter;
+                h.CibleX = h.CibleY = -1;
+                return true;
+            }
+            var abri = Chercher(h, j => Climat.Abri((Biome)carte.Biomes[j]) >= 0.4, _ => 0, rayonMax: 8);
+            if (abri is not { } a) return false;
+            Avancer(h, a.X, a.Y, Activite.Fuir);
+            return h.CibleX >= 0;
+        }
+        var eau = source.Type is TypeCatastrophe.Crue or TypeCatastrophe.Tsunami;
+        var refuge = Chercher(h, j => !Catastrophes!.EstDangereuse(j), j => eau ? carte.Altitudes[j] * 50 : 0, rayonMax: 12);
+        if (refuge is { } r)
+        {
+            Avancer(h, r.X, r.Y, Activite.Fuir);
+            if (h.CibleX >= 0) return true;
+        }
+        // Rien de sûr en vue : s'éloigner de la catastrophe.
+        int dx = Math.Sign(h.X - source.X), dy = Math.Sign(h.Y - source.Y);
+        if (dx == 0 && dy == 0) (dx, dy) = (alea.Entier(2) * 2 - 1, alea.Entier(2) * 2 - 1);
+        Avancer(h, Math.Clamp(h.X + 12 * dx, 0, carte.Largeur - 1), Math.Clamp(h.Y + 12 * dy, 0, carte.Hauteur - 1), Activite.Fuir);
+        return h.CibleX >= 0;
     }
 
     /// <summary>Un humain hostile à moins de 3 cases, ou null.</summary>
@@ -520,6 +614,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 var pris = Ecosysteme.Prelever(ecosysteme.Gibier, i, Math.Clamp((int)Math.Ceiling(h.Faim / ValeurGibier), 1, 5));
                 h.Faim = Math.Max(0, h.Faim - pris * ValeurGibier);
                 h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h));
+                if (pris > 0) Catastrophes?.Prise(h, _maintenant);
             }
             else
             {
@@ -574,7 +669,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             return;
         }
         // Chercher l'endroit le plus chaud à portée : plus bas, mieux abrité.
-        int Confort(int i) => (int)((Climat.Temperature(carte, i % carte.Largeur, i / carte.Largeur, maintenant)
+        int Confort(int i) => (int)((Temperature(i % carte.Largeur, i / carte.Largeur, maintenant)
                                      + Climat.Abri((Biome)carte.Biomes[i]) * 12) * 1000);
         var ici = Confort(carte.Indice(h.X, h.Y));
         var mieux = Chercher(h, j => Confort(j) > ici + 1500, Confort);

@@ -35,6 +35,8 @@ public enum TypeRaison : byte
     Colere = 7,
     /// <summary>Un naturel anxieux ou sombre.</summary>
     Temperament = 8,
+    /// <summary>La peur laissée par une catastrophe (l'autre humain porte alors le type de catastrophe).</summary>
+    Peur = 9,
 }
 
 /// <summary>Une raison de l'humeur du jour, avec l'humain concerné (0 si aucun) et son poids en points d'humeur.</summary>
@@ -119,6 +121,7 @@ public sealed partial class VieSociale
                 TypeRaison.Trahison when r.AutreId > 0 => $"{Parente(h, humains[r.AutreId - 1])} l'a trahi{e}",
                 TypeRaison.Colere => $"la colère {le} ronge",
                 TypeRaison.Temperament => $"{il} est d'un naturel sombre",
+                TypeRaison.Peur => $"la peur {Nature.TypesCatastrophe.De((Nature.TypeCatastrophe)r.AutreId)} {le} hante",
                 _ => null,
             };
             if (phrase is not null) phrases.Add(phrase);
@@ -139,6 +142,7 @@ public sealed partial class VieSociale
         TypeRaison.Deuil => h.DeuilEvenementId,
         TypeRaison.Trahison => h.Griefs.FirstOrDefault(g => g.Motif == MotifGrief.Infidelite && g.ContreId == raison.AutreId)?.EvenementId ?? 0,
         TypeRaison.Colere => h.Griefs.MaxBy(g => g.Intensite)?.EvenementId ?? 0,
+        TypeRaison.Peur => h.PeurEvenementId,
         _ => 0,
     };
 

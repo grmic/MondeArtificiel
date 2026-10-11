@@ -14,6 +14,14 @@ public enum Motif : byte
     Desir = 4,
     /// <summary>Le groupe part ; c'est lui qui en a le souvenir ou l'élan.</summary>
     Guide = 5,
+    /// <summary>Il fuit le feu.</summary>
+    Feu = 6,
+    /// <summary>Il fuit l'eau qui monte.</summary>
+    Eau = 7,
+    /// <summary>Il fuit le volcan.</summary>
+    Volcan = 8,
+    /// <summary>Il cherche un abri contre la tempête.</summary>
+    Tempete = 9,
 }
 
 /// <summary>
@@ -67,6 +75,14 @@ public static class Penseur
             Activite.Migrer => motif == Motif.Guide
                 ? Choix($"Ici, la terre ne nous nourrit plus. Je mène les miens{vers}.", $"Il faut partir. Je montre le chemin{vers}.")
                 : Choix($"Les miens partent{vers}. Je les suis.", $"Ici, il n'y a plus rien. Nous partons{vers}."),
+            Activite.Fuir => motif switch
+            {
+                Motif.Feu => Choix($"Le feu ! Je fuis les flammes{vers}.", $"La fumée m'étouffe. Je cours{vers}."),
+                Motif.Eau => Choix($"L'eau monte ! Je cours vers les hauteurs{vers}.", $"L'eau arrive. Vite, plus haut{vers} !"),
+                Motif.Volcan => Choix($"La montagne gronde et fume. Je m'en éloigne{vers}.", $"La montagne crache le feu. Je fuis{vers}."),
+                Motif.Tempete => Choix($"Le vent hurle. Je cherche un abri{vers}.", "Les arbres plient. Il faut s'abriter."),
+                _ => $"Il faut fuir{vers} !",
+            },
             Activite.Repos when h.Reserves < 10 && h.Faim > 50 => Choix("Mes os percent ma peau.", "Je n'ai plus de forces."),
             Activite.Repos when h.EstDeprime => Choix("Rien n'a plus de goût.", "Je n'ai envie de rien."),
             Activite.Repos when h.Humeur > 75 => Choix("Il fait bon vivre ici.", "Je me sens bien."),

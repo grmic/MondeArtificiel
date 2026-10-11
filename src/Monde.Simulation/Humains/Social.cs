@@ -382,9 +382,10 @@ public sealed partial class VieSociale(Alea alea)
                 Math.Min(12, 2.5 * hostiles.Count) * (0.6 + 0.8 * p.Nevrosisme),
                 0.25 * (trahison?.Intensite ?? 0),
                 0.25 * h.Colere,
+                (0.15 + 0.35 * p.Nevrosisme) * h.Peur,                             // la peur d'une catastrophe
             ];
             TypeRaison[] types = [TypeRaison.Temperament, TypeRaison.FaimSoif, TypeRaison.Froid, TypeRaison.Maladie, TypeRaison.Deuil,
-                TypeRaison.Solitude, TypeRaison.Rejet, TypeRaison.Trahison, TypeRaison.Colere];
+                TypeRaison.Solitude, TypeRaison.Rejet, TypeRaison.Trahison, TypeRaison.Colere, TypeRaison.Peur];
             var peines = 0.0;
             for (var i = 1; i < poids.Length; i++) peines += poids[i];
             var cible = base_ + compagnie - peines;
@@ -399,6 +400,7 @@ public sealed partial class VieSociale(Alea alea)
                     TypeRaison.Deuil => h.DeuilDeId,
                     TypeRaison.Rejet => hostiles[0],
                     TypeRaison.Trahison => trahison!.ContreId,
+                    TypeRaison.Peur => (int)h.PeurType,
                     _ => 0,
                 };
                 h.Raisons.Add(new Raison(types[i], autre, Math.Round(poids[i], 1)));

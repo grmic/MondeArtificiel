@@ -29,7 +29,9 @@ public sealed record HumainDto(
     string? Pensee,
     string? Humeur,
     int Communaute,
-    double Reserves)
+    double Reserves,
+    double Peur,
+    bool Contagieux)
 {
     private static readonly Dictionary<Activite, string> Activites = new()
     {
@@ -52,6 +54,7 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.RejoindreProche] = "rejoint un proche",
         [Simulation.Humains.Activite.EviterRival] = "s'éloigne d'un rival",
         [Simulation.Humains.Activite.Migrer] = "part avec les siens",
+        [Simulation.Humains.Activite.Fuir] = "fuit le danger",
     };
 
 
@@ -79,6 +82,9 @@ public sealed record HumainDto(
             h.EstVivant && h.Memoire.Pensees.Count > 0 ? h.Memoire.Pensees[^1].Texte : null,
             h.EstVivant && !h.EstBebe(maintenant) ? Libelles.Humeur(h) : null,
             h.EstVivant ? h.CommunauteId : 0,
-            Math.Round(h.Reserves));
+            Math.Round(h.Reserves),
+            h.EstVivant ? Math.Round(h.Peur) : 0,
+            // Porteur d'une maladie : contagieux dès la veille des premiers signes (voir Catastrophes.Contagion).
+            h.EstVivant && h.InfectionId != 0 && maintenant >= h.SymptomesLe - Simulation.Temps.Calendrier.SecondesParJour);
     }
 }

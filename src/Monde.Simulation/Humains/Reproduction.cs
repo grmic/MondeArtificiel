@@ -364,12 +364,13 @@ public sealed partial class Comportement
         }
         else
         {
-            var temperature = Climat.Temperature(carte, b.X, b.Y, maintenant);
+            var temperature = Temperature(b.X, b.Y, maintenant);
             var perte = Math.Max(0, TemperatureConfort - temperature) * 0.065 * Math.Max(0, 1 - Climat.Abri(carte.BiomeEn(b.X, b.Y)));
             b.Froid = Math.Clamp(b.Froid + perte - 0.4, 0, 100);
         }
 
         b.Activite = porte ? (mere!.Activite == Activite.Dormir ? Activite.Dormir : Activite.PorteParSaMere) : Activite.Repos;
+        _temperature = Temperature(b.X, b.Y, maintenant);
         Souffrir(b, maintenant, fragilite: 1.5);
     }
 

@@ -294,7 +294,8 @@ public sealed class IdentiteTests
             var formation = etat.JournalNonEnregistre!.First(e => e.Type == TypeEvenement.Communaute
                 && e.Texte.StartsWith("Une communauté se forme", StringComparison.Ordinal));
             Assert.Equal(0, migre.LireEvenement(formation.Id)!.CommunauteId); // le texte ne cite pas de nom : rien à rattacher
-            var dispersion = etat.JournalNonEnregistre!.FirstOrDefault(e => e.Texte.EndsWith("se disperse.", StringComparison.Ordinal));
+            // (la communauté renommée plus haut ne porte plus le nom cité par le texte : on en prend une autre)
+            var dispersion = etat.JournalNonEnregistre!.FirstOrDefault(e => e.Texte.EndsWith("se disperse.", StringComparison.Ordinal) && e.CommunauteId != c.Id);
             if (dispersion is not null) Assert.Equal(dispersion.CommunauteId, migre.LireEvenement(dispersion.Id)!.CommunauteId);
             new MondeSimule(Carte, etatMigre).AvancerDe(Jour);
         }

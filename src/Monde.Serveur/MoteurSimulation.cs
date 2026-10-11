@@ -54,6 +54,15 @@ public sealed class MoteurSimulation(
                     (secondesMesure, debutMesure) = (secondes, maintenant);
                 }
 
+                // Catastrophes et phénomènes : alerte aux navigateurs ; une catastrophe qui menace des humains a pu mettre le monde en pause.
+                if (monde.PrendreAlertes() is { Count: > 0 } alertes)
+                {
+                    if (monde.Facteur == 0 && monde.Objectif is null) service.FacteurAtteint = 0;
+                    if (alertes.Any(a => a.Grave)) service.Sauvegarder();
+                    await hub.Clients.All.SendAsync("Alertes", alertes.Select(AlerteDto.Depuis).ToList(), arret);
+                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
+                }
+
                 if (monde.PrendreObjectifAtteint() is { } objectif)
                 {
                     service.FacteurAtteint = 0;

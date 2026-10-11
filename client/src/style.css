@@ -136,3 +136,33 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .courbe .adultes { stroke: #b8f0c4; stroke-dasharray: 3 2; }
 .journal-panneau .suivi { padding: 0 14px 6px; color: #ffe6a8; display: flex; gap: 8px; align-items: center; }
 .journal-panneau .suivi[hidden] { display: none; }
+
+/* Catastrophes */
+.catastrophes-panneau { right: 12px; top: 290px; bottom: 12px; }
+.catastrophes-panneau .corps { padding-bottom: 14px; }
+.catastrophes-panneau .catastrophe { border-bottom: 1px solid #1f2a3c; padding: 3px 0; }
+.catastrophes-panneau .catastrophe.choisie { background: #23304a; }
+.catastrophes-panneau .catastrophe.phenomene .lien { color: #d9c8ff; }
+.catastrophes-panneau .maladie.active strong { color: #a0e060; }
+.catastrophes-panneau .alerte { color: #ffb347; }
+.catastrophes-panneau .suivi { color: #ffe6a8; }
+.catastrophes-panneau .suivi button, .entite-bloc button, .entite-bloc select, .entite-bloc input { font-size: 0.8rem; padding: 2px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); }
+.entite-bloc { margin-top: 12px; border: 1px solid #4a3a66; border-radius: 8px; padding: 6px 10px; }
+.entite-bloc summary { cursor: pointer; }
+.entite-bloc .ligne { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+.entite-bloc input[type=number] { width: 5rem; }
+.entite-bloc input[hidden] { display: none; }
+.entite-bloc button { cursor: pointer; }
+.entite-bloc button.danger { background: #6b2323; border-color: #ff6b6b; }
+.entite-bloc button:disabled { opacity: 0.5; cursor: default; }
+.evenement.catastrophe { color: #ffc27a; }
+.fiche .epreuves { margin: 4px 0; color: #ffd6a8; }
+.alerte-catastrophe {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); max-width: min(720px, calc(100vw - 24px));
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 10px;
+  background: rgba(40, 30, 60, 0.92); border: 1px solid #8a6cc0; font-size: 0.9rem; z-index: 5;
+}
+.alerte-catastrophe[hidden] { display: none; }
+.alerte-catastrophe.grave { background: rgba(90, 20, 20, 0.94); border-color: #ff6b6b; }
+.alerte-catastrophe .lien { color: var(--texte); text-align: left; }
+.alerte-catastrophe .fermer { background: none; border: none; color: var(--discret); font-size: 1.2rem; cursor: pointer; }

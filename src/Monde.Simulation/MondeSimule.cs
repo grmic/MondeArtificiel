@@ -1,5 +1,6 @@
 using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
+using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
 namespace Monde.Simulation;
@@ -36,6 +37,15 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Instantanés de saison des communautés pas encore enregistrés (ils s'ajoutent à leur histoire sauvegardée).</summary>
     public IReadOnlyList<ArchiveCommunaute>? ArchivesNonEnregistrees { get; init; }
+
+    /// <summary>Catastrophes en cours, et celles terminées pas encore enregistrées.</summary>
+    public IReadOnlyList<Catastrophe>? Catastrophes { get; init; }
+
+    /// <summary>Maladies apparues depuis le début du monde (numérotées de 1 à N).</summary>
+    public IReadOnlyList<Pathogene>? Pathogenes { get; init; }
+
+    /// <summary>Dégâts des catastrophes sur la nature, par tuile (voir <see cref="Ecosysteme.Degats"/>).</summary>
+    public ushort[]? DegatsNature { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -61,6 +71,9 @@ public sealed class MondeSimule
     private readonly Ecosysteme _ecosysteme;
     private readonly Alea _alea;
     private readonly Comportement _comportement;
+    private readonly Catastrophes _catastrophes;
+    private readonly List<AlerteCatastrophe> _alertes = [];
+    private bool _pauseDemandee;
     private readonly VieSociale _social;
     private readonly List<Communaute> _communautes;
     private readonly HashSet<string> _noms;
@@ -95,7 +108,7 @@ public sealed class MondeSimule
         _humains = etat.Humains is { Count: > 0 } h
             ? h.Select(x => x.Copier()).OrderBy(x => x.Id).ToList()
             : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes);
-        _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray());
+        _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray(), etat.DegatsNature?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
         _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
@@ -103,6 +116,11 @@ public sealed class MondeSimule
         _social.ChargerRelations(etat.Relations ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
         _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social, Numeros = _numeros };
+        _catastrophes = new Catastrophes(carte, _ecosysteme, _alea, etat.Catastrophes, etat.Pathogenes)
+        {
+            Numeros = _numeros, Comportement = _comportement, Communautes = _communautes,
+        };
+        _comportement.Catastrophes = _catastrophes;
         _noms = _humains.Select(x => x.Nom).ToHashSet();
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
         _archivesNonEnregistrees.AddRange(etat.ArchivesNonEnregistrees ?? []);
@@ -156,6 +174,9 @@ public sealed class MondeSimule
                     Relations = _social.Relations,
                     Offenses = _social.Offenses,
                     ArchivesNonEnregistrees = _archivesNonEnregistrees.ToList(),
+                    Catastrophes = _catastrophes.EnMemoire,
+                    Pathogenes = _catastrophes.Pathogenes.ToList(),
+                    DegatsNature = _ecosysteme.Degats.ToArray(),
                 };
             }
         }
@@ -163,14 +184,64 @@ public sealed class MondeSimule
 
     /// <summary>
     /// Après une sauvegarde : les <paramref name="nombre"/> premiers événements et les <paramref name="archives"/>
-    /// premiers instantanés en attente sont enregistrés.
+    /// premiers instantanés en attente sont enregistrés, ainsi que les catastrophes terminées <paramref name="terminees"/>.
     /// </summary>
-    public void MarquerJournalEnregistre(int nombre, int archives = 0)
+    public void MarquerJournalEnregistre(int nombre, int archives = 0, IReadOnlySet<long>? terminees = null)
     {
         lock (_verrou)
         {
             _journalNonEnregistre.RemoveRange(0, Math.Min(nombre, _journalNonEnregistre.Count));
             _archivesNonEnregistrees.RemoveRange(0, Math.Min(archives, _archivesNonEnregistrees.Count));
+            if (terminees is { Count: > 0 }) _catastrophes.Oublier(terminees);
+        }
+    }
+
+    /// <summary>Contexte géologique du continent : failles et volcans (fixés par la graine).</summary>
+    public Geologie Geologie => _catastrophes.Geologie;
+
+    /// <summary>Catastrophes en cours et celles terminées pas encore enregistrées (copies).</summary>
+    public List<Catastrophe> CatastrophesEnMemoire()
+    {
+        lock (_verrou) return _catastrophes.EnMemoire;
+    }
+
+    /// <summary>Maladies apparues depuis le début du monde.</summary>
+    public List<Pathogene> Pathogenes()
+    {
+        lock (_verrou) return [.. _catastrophes.Pathogenes];
+    }
+
+    /// <summary>Écart de température du moment (°C) dû aux vagues de froid, canicules et hivers volcaniques.</summary>
+    public double AnomalieTemperature
+    {
+        get { lock (_verrou) return _catastrophes.Anomalie; }
+    }
+
+    /// <summary>Si vrai, le monde se met en pause quand une catastrophe menace des humains (le serveur l'active par défaut).</summary>
+    public bool PauseSurCatastrophe { get; set; }
+
+    /// <summary>Alertes survenues depuis le dernier appel (elles ne sont rendues qu'une fois).</summary>
+    public List<AlerteCatastrophe> PrendreAlertes()
+    {
+        lock (_verrou)
+        {
+            var alertes = _alertes.ToList();
+            _alertes.Clear();
+            return alertes;
+        }
+    }
+
+    /// <summary>
+    /// Provoque une catastrophe (voir <see cref="Catastrophes.Declencher"/>). Renvoie le numéro de l'événement qui
+    /// l'annonce, ou 0 si elle n'a pas pu avoir lieu.
+    /// </summary>
+    public long Declencher(TypeCatastrophe type, int x, int y, double intensite, Origine origine = Origine.Entite)
+    {
+        lock (_verrou)
+        {
+            var id = _catastrophes.Declencher(type, x, y, intensite, _humains, _secondes, origine);
+            VerserJournal();
+            return id;
         }
     }
 
@@ -352,6 +423,20 @@ public sealed class MondeSimule
         var evenement = false;
         while (true)
         {
+            // Une catastrophe menace des humains (survenue au pas précédent, ou provoquée par l'Entité) :
+            // le monde s'arrête pour que l'observateur voie ce qui se passe.
+            if (_pauseDemandee)
+            {
+                _pauseDemandee = false;
+                if (PauseSurCatastrophe)
+                {
+                    _objectif = null;
+                    _facteur = 0;
+                    _reliquat = 0;
+                    return (pas, false);
+                }
+            }
+
             // Chaque pas s'exécute à l'instant exact où il tombe.
             var prochain = (_secondes / SecondesParPas + 1) * SecondesParPas;
             if (prochain > fin)
@@ -399,7 +484,9 @@ public sealed class MondeSimule
         {
             if (_secondes % Calendrier.SecondesParAn < Calendrier.SecondesParJour) NouvelleAnnee();
             _ecosysteme.Journee(_secondes);
+            _catastrophes.Jour(_humains, _secondes);
         }
+        if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0) _catastrophes.Heure(_humains, _secondes);
 
         // Toutes les heures, chacun marque les terres de son groupe ; au début de chaque saison, l'histoire des groupes est archivée.
         if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0) _social.Parcourir(_humains, Carte, _secondes);
@@ -448,10 +535,23 @@ public sealed class MondeSimule
                 _social.Territoires(_humains, _communautes, _ecosysteme, Carte, _secondes);
             }
         }
-        // Tous les événements sont numérotés dès leur création : versés dans l'ordre des numéros, le journal suit l'ordre des faits.
-        foreach (var e in _comportement.Journal.Concat(_social.Journal).OrderBy(e => e.Id)) Ajouter(e);
+        VerserJournal();
+    }
+
+    /// <summary>
+    /// Tous les événements sont numérotés dès leur création : versés dans l'ordre des numéros, le journal suit l'ordre des faits.
+    /// </summary>
+    private void VerserJournal()
+    {
+        foreach (var mort in _comportement.Deces) _social.Endeuiller(mort, _humains, _secondes);
+        _comportement.Deces.Clear();
+        foreach (var e in _comportement.Journal.Concat(_social.Journal).Concat(_catastrophes.Journal).OrderBy(e => e.Id)) Ajouter(e);
         _comportement.Journal.Clear();
         _social.Journal.Clear();
+        _catastrophes.Journal.Clear();
+        if (_catastrophes.Alertes.Any(a => a.Grave)) _pauseDemandee = true;
+        _alertes.AddRange(_catastrophes.Alertes);
+        _catastrophes.Alertes.Clear();
     }
 
     /// <summary>
