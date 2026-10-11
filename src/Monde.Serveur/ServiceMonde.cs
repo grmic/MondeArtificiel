@@ -89,7 +89,7 @@ public sealed class ServiceMonde
 
     /// <summary>
     /// Remplace le monde par un monde neuf (an 1, 66 humains de départ), en pause.
-    /// L'ancien monde est d'abord copié dans <see cref="CheminCopieAvantReinitialisation"/> (seule la dernière copie est gardée).
+    /// L'ancien monde est d'abord enregistré puis gardé (fichier renommé) dans <see cref="CheminCopieAvantReinitialisation"/> (seule la dernière copie est gardée).
     /// </summary>
     public MondeSimule Reinitialiser(uint graine)
     {
@@ -98,8 +98,7 @@ public sealed class ServiceMonde
         lock (_verrou)
         {
             Sauvegarder();
-            Depot.CopierVers(CheminCopieAvantReinitialisation);
-            Depot.Enregistrer(nouveau.Etat, remplacer: true);
+            Depot.RecommencerApresCopie(CheminCopieAvantReinitialisation, nouveau.Etat);
             _monde = nouveau;
         }
         _journal.LogInformation("Monde réinitialisé (graine {Graine}) ; ancien monde copié dans {Copie}",

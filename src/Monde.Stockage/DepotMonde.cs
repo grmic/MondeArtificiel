@@ -941,6 +941,85 @@ public sealed partial class DepotMonde
     }
 
     /// <summary>
+    /// Recommence avec un monde neuf : le fichier actuel devient <paramref name="cheminCopie"/> (un fichier existant
+    /// à cet emplacement est remplacé), puis un fichier neuf reçoit <paramref name="etat"/> et garde les réglages.
+    /// Renommer le fichier prend un instant quelle que soit la taille du monde, alors qu'une copie (VACUUM INTO)
+    /// suivie d'un effacement réécrit tout le fichier. Si le renommage est impossible (fichier ouvert ailleurs,
+    /// sous Windows), le monde est copié puis effacé comme avant. L'appelant doit avoir enregistré l'ancien monde.
+    /// </summary>
+    public void RecommencerApresCopie(string cheminCopie, EtatMonde etat)
+    {
+        var copie = Path.GetFullPath(cheminCopie);
+        if (string.Equals(copie, CheminFichier, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("La copie doit aller dans un autre fichier.", nameof(cheminCopie));
+        }
+        if (!Path.GetDirectoryName(copie)!.Equals(Path.GetDirectoryName(CheminFichier), StringComparison.Ordinal))
+        {
+            throw new ArgumentException("La copie doit rester dans le dossier du monde.", nameof(cheminCopie));
+        }
+
+        var reglages = LireReglages();
+        if (!Renommer(copie))
+        {
+            CopierVers(copie);
+            Enregistrer(etat, remplacer: true);
+            return;
+        }
+        Initialiser();
+        foreach (var (cle, valeur) in reglages) EcrireReglage(cle, valeur);
+        Enregistrer(etat);
+    }
+
+    /// <summary>
+    /// Déplace le fichier du monde vers <paramref name="copie"/>. Le journal d'écriture anticipée (WAL) est d'abord
+    /// reversé dans le fichier et vidé : sinon, ce qu'il contient serait perdu pour la copie ou appliqué au fichier neuf.
+    /// Rend faux, sans rien changer, si une autre connexion empêche de vider le journal ou de déplacer le fichier.
+    /// </summary>
+    private bool Renommer(string copie)
+    {
+        using (var connexion = Ouvrir())
+        using (var commande = connexion.CreateCommand())
+        {
+            commande.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+            using var l = commande.ExecuteReader();
+            // busy = 0 et journal vide (0 page) : tout est dans le fichier principal.
+            if (!l.Read() || l.GetInt32(0) != 0 || l.GetInt32(1) > 0) return false;
+        }
+        try
+        {
+            // Un -wal ou -shm laissé par la copie précédente serait relu avec le nouveau fichier copié.
+            foreach (var reste in new[] { copie + "-wal", copie + "-shm", copie + "-journal" }) File.Delete(reste);
+            File.Move(CheminFichier, copie, overwrite: true);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        // Le journal vidé et l'index partagé de l'ancien fichier ne doivent pas être rattachés au fichier neuf.
+        foreach (var reste in new[] { CheminFichier + "-wal", CheminFichier + "-shm" })
+        {
+            try { File.Delete(reste); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+        return true;
+    }
+
+    private List<(string Cle, string Valeur)> LireReglages()
+    {
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = "SELECT cle, valeur FROM reglages;";
+        var resultat = new List<(string, string)>();
+        using var l = commande.ExecuteReader();
+        while (l.Read()) resultat.Add((l.GetString(0), l.GetString(1)));
+        return resultat;
+    }
+
+    /// <summary>
     /// Copie cohérente du monde dans un autre fichier (VACUUM INTO), même pendant que le serveur écrit.
     /// Un fichier existant à cet emplacement est remplacé.
     /// </summary>

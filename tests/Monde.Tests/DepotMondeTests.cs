@@ -258,6 +258,74 @@ public sealed class DepotMondeTests : IDisposable
     }
 
     [Fact]
+    public void RecommencerApresCopie_DeplaceLAncienMonde_EtRepartDUnFichierNeuf()
+    {
+        var depot = new DepotMonde(Fichier);
+        var ancien = MondeSimule.Nouveau(42);
+        depot.Enregistrer(ancien with { Secondes = 5_000_000 });
+        depot.EcrireReglage("redemarrage", "vitesse");
+        ExecuterSql(Fichier, "CREATE TABLE temoin (x);");
+        var copie = Path.Combine(Path.GetDirectoryName(Fichier)!, "avant.db");
+        File.WriteAllText(copie, "ancienne copie");
+        File.WriteAllText(copie + "-wal", "reste d'une copie précédente");
+
+        var neuf = MondeSimule.Nouveau(7);
+        depot.RecommencerApresCopie(copie, neuf);
+
+        Assert.Equal(neuf, depot.Charger());
+        Assert.Equal("vitesse", depot.LireReglage("redemarrage"));
+        Assert.Empty(depot.LireJournal(null, null, null, 10));
+        Assert.False(TableExiste(Fichier, "temoin"));   // fichier neuf : la table témoin est partie avec la copie
+        Assert.True(TableExiste(copie, "temoin"));
+        Assert.False(File.Exists(copie + "-wal"));
+        var garde = new DepotMonde(copie).Charger()!;
+        Assert.Equal(42UL, garde.Graine);
+        Assert.Equal(5_000_000, garde.Secondes);
+        Assert.Throws<ArgumentException>(() => depot.RecommencerApresCopie(Fichier, neuf));
+        Assert.Throws<ArgumentException>(() => depot.RecommencerApresCopie(Path.Combine(_dossier, "ailleurs.db"), neuf));
+    }
+
+    [Fact]
+    public void RecommencerApresCopie_FichierOccupe_CopieEtEfface()
+    {
+        var depot = new DepotMonde(Fichier);
+        depot.Enregistrer(MondeSimule.Nouveau(42) with { Secondes = 9_000 });
+        depot.EcrireReglage("redemarrage", "vitesse");
+        ExecuterSql(Fichier, "CREATE TABLE temoin (x);");
+        var copie = Path.Combine(Path.GetDirectoryName(Fichier)!, "avant.db");
+
+        // Une lecture en cours empêche de vider le journal WAL (comme un fichier ouvert empêche de le déplacer sous Windows).
+        using var lecteur = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = Fichier, Pooling = false }.ToString());
+        lecteur.Open();
+        using var transaction = lecteur.BeginTransaction(deferred: true);
+        using (var lecture = lecteur.CreateCommand())
+        {
+            lecture.Transaction = transaction;
+            lecture.CommandText = "SELECT COUNT(*) FROM humains;";
+            lecture.ExecuteScalar();
+        }
+        depot.EcrireReglage("langue", "fr"); // écrit après le début de la lecture : le journal WAL ne peut pas être vidé
+        var neuf = MondeSimule.Nouveau(7);
+        depot.RecommencerApresCopie(copie, neuf);
+
+        Assert.Equal(neuf, depot.Charger());
+        Assert.Equal("vitesse", depot.LireReglage("redemarrage"));
+        Assert.Equal("fr", depot.LireReglage("langue"));
+        Assert.Equal(9_000, new DepotMonde(copie).Charger()!.Secondes);
+        Assert.True(TableExiste(Fichier, "temoin"));    // même fichier, vidé : le monde n'a pas été déplacé
+    }
+
+    private static bool TableExiste(string fichier, string table)
+    {
+        using var connexion = new SqliteConnection($"Data Source={fichier};Pooling=False");
+        connexion.Open();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = $t;";
+        commande.Parameters.AddWithValue("$t", table);
+        return Convert.ToInt32(commande.ExecuteScalar()) == 1;
+    }
+
+    [Fact]
     public void FichierVersion4_NiveauDeVitesseConvertiEnFacteur()
     {
         new DepotMonde(Fichier).Enregistrer(new EtatMonde(42, 1000, 1, 0));
