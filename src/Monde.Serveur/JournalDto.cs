@@ -32,6 +32,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Nature] = "nature",
         [TypeEvenement.Conflit] = "conflit",
         [TypeEvenement.Catastrophe] = "catastrophe",
+        [TypeEvenement.Guerre] = "guerre",
     };
 
 
@@ -219,8 +220,15 @@ public sealed record MembreDto(int Id, string Nom, string Etape);
 /// <summary>Un nom qu'a porté une communauté, depuis quand, et l'événement qui le lui a donné.</summary>
 public sealed record NomDto(string Nom, string? Sens, string Depuis, long Evenement);
 
-/// <summary>Ce qu'une autre communauté est pour celle-ci.</summary>
-public sealed record RelationDto(int Id, string Nom, string Etat);
+/// <summary>Ce qu'une autre communauté est pour celle-ci ; Evenement : ce qui a fait naître la relation ou le pacte.</summary>
+public sealed record RelationDto(int Id, string Nom, string Etat, long Evenement);
+
+/// <summary>
+/// Une guerre vue par une communauté : contre qui, quand, combien de raids, ses morts et ceux de l'ennemi, et comment elle a
+/// fini (null : en cours). Evenement : le premier sang ; Fin : l'événement qui l'a close.
+/// </summary>
+public sealed record GuerreDto(int Contre, string NomContre, string Debut, string? FinLe, int Raids, int MortsSiens, int MortsEnnemis,
+    string? Issue, long Evenement, long Fin);
 
 /// <summary>Une communauté : qui en fait partie, depuis quand, où elle vit, autour de qui, et ce que ses terres lui donnent.</summary>
 /// <param name="Abondance">Ressources autour d'elle, en % de leur niveau naturel.</param>
@@ -230,10 +238,14 @@ public sealed record RelationDto(int Id, string Nom, string Etat);
 /// <param name="Mots">Premiers mots du groupe (« rivière : kalu »).</param>
 /// <param name="Terres">Nombre de cases de ses terres parcourues.</param>
 /// <param name="Histoire">Ce qu'elle a traversé, en phrases (origine, fusions, migrations, disettes).</param>
+/// <param name="Temperament">Son goût pour la violence, en mots (null tant qu'il n'est pas établi).</param>
+/// <param name="Guerre">Raid en cours, soumission, vassaux, en phrases.</param>
+/// <param name="Guerres">Ses guerres, la plus récente d'abord.</param>
 public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? DisperseeLe, int Figure, string NomFigure,
     IReadOnlyList<MembreDto> Membres, int X, int Y, int Rayon, int Abondance, bool Disette, string? Destination,
     int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage, string? NomPropre, string? Sens,
-    IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire)
+    IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire,
+    string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres)
 {
     /// <summary>Les idées des mots, en français, pour l'observateur.</summary>
     private static readonly Dictionary<string, string> Idees = new()
@@ -254,14 +266,57 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
         if (c.Active && c.FusionVersId > 0) histoire.Add($"En route pour rejoindre la {Minuscule(Ref(c.FusionVersId))}.");
         if (c.Migrations > 0) histoire.Add(c.Migrations == 1 ? "A migré une fois vers de nouvelles terres." : $"A migré {c.Migrations} fois vers de nouvelles terres.");
         if (c.DisettesSurmontees > 0) histoire.Add(c.DisettesSurmontees == 1 ? "A surmonté une disette." : $"A surmonté {c.DisettesSurmontees} disettes.");
+        foreach (var p in toutes.Where(x => x.HeritiereId == c.Id)) histoire.Add($"Continue la {Minuscule(p.Nom)}, dont elle a gardé les querelles.");
+        if (!c.Active && c.HeritiereId > 0) histoire.Add($"Ses membres ont formé la {Minuscule(Ref(c.HeritiereId))}.");
         return histoire;
     }
 
+    private static string? DireTemperament(double bellicisme) => bellicisme switch
+    {
+        < 0 => null,
+        < 0.15 => "pacifique",
+        < 0.35 => "peu portée à la violence",
+        < 0.6 => "prompte à se battre",
+        _ => "guerrière",
+    };
+
+    private static List<string> SituationDeGuerre(Communaute c, List<Communaute> toutes, List<Humain> humains)
+    {
+        var lignes = new List<string>();
+        if (!c.Active) return lignes;
+        string Ref(int id) => Minuscule(toutes[id - 1].Nom);
+        if (c.Raid is { } raid)
+        {
+            var n = raid.Guerriers.Count;
+            lignes.Add(raid.Retour
+                ? $"{(n == 1 ? "Un guerrier rentre" : $"{n} guerriers rentrent")} d'un raid contre la {Ref(raid.CibleId)}."
+                : $"{(n == 1 ? "Un guerrier est parti" : $"{n} guerriers sont partis")} en raid contre la {Ref(raid.CibleId)}.");
+        }
+        if (c.SoumiseAId > 0)
+        {
+            lignes.Add($"Soumise à la {Ref(c.SoumiseAId)} depuis {Calendrier.Decomposer(c.SoumiseLe)} : elle lui livre une part de sa nourriture.");
+        }
+        var vassaux = toutes.Where(x => x.Active && x.SoumiseAId == c.Id).Select(x => "la " + Minuscule(x.Nom)).ToList();
+        if (vassaux.Count > 0) lignes.Add($"Reçoit le tribut de {string.Join(", ", vassaux)}.");
+        return lignes;
+    }
+
+    private static string IssueVue(Guerre g, int id) => g.Issue switch
+    {
+        IssueGuerre.EnCours => "en cours",
+        IssueGuerre.Paix => "paix conclue",
+        IssueGuerre.Soumission => g.VainqueurId == id ? "victoire : l'ennemi s'est soumis" : "défaite : soumission",
+        IssueGuerre.Fuite => g.VainqueurId == id ? "victoire : l'ennemi a fui" : "défaite : fuite au loin",
+        IssueGuerre.Absorption => g.VainqueurId == id ? "victoire : les derniers ennemis ont rejoint le groupe" : "défaite : les derniers sont allés vivre chez le vainqueur",
+        _ => g.VainqueurId == id ? "l'ennemi s'est dispersé" : "le groupe s'est dispersé",
+    };
+
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 
-    private static string Etat(EtatRelation e) => e switch
+    private static string Etat(EtatRelation e, bool pacte) => e switch
     {
-        EtatRelation.Alliees => "alliée",
+        EtatRelation.Alliees => pacte ? "alliée par un pacte" : "alliée",
+        EtatRelation.EnGuerre => "en guerre",
         EtatRelation.Rivales => "rivale pour les terres",
         EtatRelation.Hostiles => "hostile",
         _ => "indifférente",
@@ -274,6 +329,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
         var parCommunaute = humains.Where(h => h.EstVivant && h.CommunauteId != 0).ToLookup(h => h.CommunauteId);
         var toutes = monde.Communautes();
         var relations = monde.Relations();
+        var guerres = monde.Guerres();
         return toutes
             .OrderBy(c => c.DisperseeLe is null ? 0 : 1).ThenByDescending(c => parCommunaute[c.Id].Count()).ThenBy(c => c.Id)
             .Select(c =>
@@ -291,8 +347,9 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     adultes.Count == 0 ? 0 : (int)Math.Round(adultes.Average(m => m.Faim)),
                     adultes.Count == 0 ? 0 : (int)Math.Round(adultes.Average(m => m.Reserves)),
                     relations.Where(r => r.A == c.Id || r.B == c.Id)
-                        .Select(r => (Autre: r.A == c.Id ? r.B : r.A, r.Etat))
-                        .Select(r => new RelationDto(r.Autre, toutes[r.Autre - 1].Nom, Etat(r.Etat)))
+                        .Select(r => (Autre: r.A == c.Id ? r.B : r.A, r.Etat, r.EvenementId, r.PacteEvenementId))
+                        .Select(r => new RelationDto(r.Autre, toutes[r.Autre - 1].Nom, Etat(r.Etat, r.PacteEvenementId > 0),
+                            r.PacteEvenementId > 0 ? r.PacteEvenementId : r.EvenementId))
                         .ToList(),
                     c.Usage switch
                     {
@@ -304,7 +361,17 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     c.Noms.Select(n => new NomDto(n.Nom, n.Sens, Calendrier.Decomposer(n.Depuis).ToString(), n.EvenementId)).ToList(),
                     c.Lexique.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => $"{Idees.GetValueOrDefault(m.Key, m.Key)} : {m.Value}").ToList(),
                     c.Active ? VieSociale.Etendue(VieSociale.Frequentees(c.Territoire), monde.Carte).Length : 0,
-                    Raconter(c, toutes));
+                    Raconter(c, toutes),
+                    DireTemperament(c.Bellicisme),
+                    SituationDeGuerre(c, toutes, humains),
+                    guerres.Where(g => g.A == c.Id || g.B == c.Id).Reverse()
+                        .Select(g =>
+                        {
+                            var (contre, siens, ennemis) = g.A == c.Id ? (g.B, g.MortsA, g.MortsB) : (g.A, g.MortsB, g.MortsA);
+                            return new GuerreDto(contre, toutes[contre - 1].Nom, Calendrier.Decomposer(g.Debut).ToString(),
+                                g.Fin is { } f ? Calendrier.Decomposer(f).ToString() : null, g.Raids, siens, ennemis,
+                                g.Issue == IssueGuerre.EnCours ? null : IssueVue(g, c.Id), g.EvenementId, g.FinEvenementId);
+                        }).ToList());
             }).ToList();
     }
 }

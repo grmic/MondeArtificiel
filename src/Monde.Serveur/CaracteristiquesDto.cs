@@ -61,6 +61,7 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
             new("Réglages", [
                 new("Couples de départ", N(monde.Configuration.Couples, 0), $"{N(monde.Configuration.Couples * 2, 0)} humains au départ"),
                 new("Continents demandés", N(monde.Configuration.Continents, 0)),
+                new("Départ des couples", monde.Configuration.DecrirePlacement()),
                 new("Graine", monde.Graine.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     monde.Configuration == ConfigurationMonde.ParDefaut(monde.Graine) ? "réglages d'origine" : "réglages choisis à la création du monde"),
             ]),
@@ -70,7 +71,7 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
                     $"{Km2(Echelle.KilometresCarres(1))} ; un adulte la traverse en une dizaine de minutes en terrain plat"),
                 new("Relief", $"{N(Echelle.MetresParUnite, 0)} m par degré d'altitude", "la carte compte 127 degrés au-dessus de la mer"),
             ]),
-            new(g.AutresContinentsKm2.Count == 0 ? "Continent" : "Continent des couples de départ", [
+            new(g.AutresContinentsKm2.Count == 0 ? "Continent" : monde.Configuration.Placement == 1 ? "Continent des couples de départ" : "Plus grand continent", [
                 new("Surface", Km2(g.ContinentKm2), $"terres {Km2(g.TerresKm2)}, lacs {Km2(g.LacsKm2)}"),
                 new("Étendue est-ouest", Km(g.EtendueEstOuestKm)),
                 new("Étendue nord-sud", Km(g.EtendueNordSudKm)),

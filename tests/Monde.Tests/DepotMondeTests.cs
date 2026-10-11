@@ -20,7 +20,22 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 9 (avant l'identité et l'histoire des communautés).</summary>
     /// <summary>Ramène un fichier au schéma 10 (avant les catastrophes et les maladies).</summary>
     /// <summary>Ramène un fichier au schéma 11 (avant les distances réelles et l'allure de marche).</summary>
-    internal const string RetourVersion12 = """
+    internal const string RetourVersion13 = """
+        ALTER TABLE communautes DROP COLUMN bellicisme;
+        ALTER TABLE communautes DROP COLUMN raid;
+        ALTER TABLE communautes DROP COLUMN dernier_raid_le;
+        ALTER TABLE communautes DROP COLUMN soumise_a;
+        ALTER TABLE communautes DROP COLUMN soumise_le;
+        ALTER TABLE communautes DROP COLUMN soumission_evenement;
+        ALTER TABLE communautes DROP COLUMN paix_evenement;
+        ALTER TABLE communautes DROP COLUMN heritiere;
+        ALTER TABLE relations_communautes DROP COLUMN pacte;
+        DROP TABLE guerres;
+        ALTER TABLE etat DROP COLUMN placement;
+        PRAGMA user_version = 13;
+        """;
+
+    internal const string RetourVersion12 = RetourVersion13 + """
         ALTER TABLE etat DROP COLUMN couples;
         ALTER TABLE etat DROP COLUMN largeur;
         ALTER TABLE etat DROP COLUMN hauteur;

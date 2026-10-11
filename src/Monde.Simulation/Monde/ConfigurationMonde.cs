@@ -8,12 +8,19 @@ namespace Monde.Simulation.Monde;
 /// (<see cref="ParDefaut"/>), qui redonnent exactement la même carte.
 /// </summary>
 /// <param name="Graine">Graine du hasard : même graine et mêmes réglages, même monde de départ.</param>
-/// <param name="Couples">Couples de départ, un par emplacement, tous sur le plus grand continent.</param>
+/// <param name="Couples">Couples de départ, un par emplacement.</param>
 /// <param name="Largeur">Largeur de la carte en cases (une case : <see cref="Echelle.KilometresParCase"/> km).</param>
 /// <param name="Hauteur">Hauteur de la carte en cases.</param>
 /// <param name="Continents">Nombre de continents séparés par la mer.</param>
-public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, int Hauteur, int Continents)
+/// <param name="Placement">
+/// Où partent les couples : sur le n-ième continent par la taille (1 : le plus grand, par défaut), ou répartis sur tous
+/// (<see cref="PlacementTous"/>).
+/// </param>
+public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement = 1)
 {
+    /// <summary>Couples répartis sur tous les continents, en proportion de leurs terres habitables.</summary>
+    public const int PlacementTous = 0;
+
     public const int CouplesParDefaut = 33;
     public const int TailleParDefaut = 256;
     public const int CouplesMin = 1;
@@ -33,5 +40,14 @@ public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, 
         : Largeur is < TailleMin or > TailleMax || Hauteur is < TailleMin or > TailleMax
             ? $"La carte doit mesurer entre {Echelle.Distance(Echelle.Kilometres(TailleMin))} et {Echelle.Distance(Echelle.Kilometres(TailleMax))} de côté."
         : Continents is < ContinentsMin or > ContinentsMax ? $"Le nombre de continents doit être compris entre {ContinentsMin} et {ContinentsMax}."
+        : Placement < PlacementTous || Placement > Continents ? "Le continent de départ des couples doit être l'un des continents du monde."
         : null;
+
+    /// <summary>Où partent les couples, en mots.</summary>
+    public string DecrirePlacement() => Placement switch
+    {
+        PlacementTous => "répartis sur tous les continents",
+        1 => Continents == 1 ? "sur le continent" : "sur le plus grand continent",
+        var n => $"sur le {n}e continent par la taille",
+    };
 }

@@ -54,6 +54,8 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.RejoindreProche] = "rejoint un proche",
         [Simulation.Humains.Activite.EviterRival] = "s'éloigne d'un rival",
         [Simulation.Humains.Activite.Migrer] = "part avec les siens",
+        [Simulation.Humains.Activite.Raid] = "en raid",
+        [Simulation.Humains.Activite.RentrerDuRaid] = "rentre d'un raid",
         [Simulation.Humains.Activite.Fuir] = "fuit le danger",
     };
 

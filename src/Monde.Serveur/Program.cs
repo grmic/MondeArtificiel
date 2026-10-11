@@ -49,14 +49,17 @@ app.MapGet("/api/etat", () => Results.Ok(new
 }));
 
 // Carte du monde courant, ou aperçu d'autres réglages. Les paramètres sont facultatifs (absents : ceux du monde
-// courant) : graine (0 à 4 294 967 295), couples, largeur et hauteur en cases, continents. Une valeur mal formée
+// courant) : graine (0 à 4 294 967 295), couples, largeur et hauteur en cases, continents, placement des couples
+// (0 : sur tous les continents, n : sur le n-ième par la taille). Une valeur mal formée
 // est refusée par la liaison de paramètres (400) ; des réglages hors limites aussi (400) ; un continent trop petit
 // pour les couples demandés donne 422 avec la raison.
-app.MapGet("/api/carte", (uint? graine, int? couples, int? largeur, int? hauteur, int? continents, ServiceMonde service, ServiceCarte cartes) =>
+app.MapGet("/api/carte", (uint? graine, int? couples, int? largeur, int? hauteur, int? continents, int? placement,
+    ServiceMonde service, ServiceCarte cartes) =>
 {
     var actuelle = service.Monde.Configuration;
+    var nombre = continents ?? actuelle.Continents;
     var configuration = new ConfigurationMonde(graine ?? (uint)actuelle.Graine, couples ?? actuelle.Couples,
-        largeur ?? actuelle.Largeur, hauteur ?? actuelle.Hauteur, continents ?? actuelle.Continents);
+        largeur ?? actuelle.Largeur, hauteur ?? actuelle.Hauteur, nombre, placement ?? Math.Min(actuelle.Placement, nombre));
     if (configuration.Erreur() is { } erreur) return Results.Problem(erreur, statusCode: StatusCodes.Status400BadRequest);
     try
     {

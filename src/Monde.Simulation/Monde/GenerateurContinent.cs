@@ -1,3 +1,5 @@
+using Monde.Simulation.Nature;
+
 namespace Monde.Simulation.Monde;
 
 /// <summary>
@@ -24,7 +26,7 @@ public static class GenerateurContinent
     /// <exception cref="InvalidOperationException">Le continent est trop petit pour le nombre de couples demandé.</exception>
     public static Carte Generer(ConfigurationMonde configuration)
     {
-        var (graine, couples, largeur, hauteur, continents) = configuration;
+        var (graine, couples, largeur, hauteur, continents, placement) = configuration;
         ArgumentOutOfRangeException.ThrowIfLessThan(largeur, ConfigurationMonde.TailleMin);
         ArgumentOutOfRangeException.ThrowIfLessThan(hauteur, ConfigurationMonde.TailleMin);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(largeur, ConfigurationMonde.TailleMax);
@@ -33,6 +35,8 @@ public static class GenerateurContinent
         ArgumentOutOfRangeException.ThrowIfGreaterThan(couples, ConfigurationMonde.CouplesMax);
         ArgumentOutOfRangeException.ThrowIfLessThan(continents, ConfigurationMonde.ContinentsMin);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(continents, ConfigurationMonde.ContinentsMax);
+        ArgumentOutOfRangeException.ThrowIfLessThan(placement, ConfigurationMonde.PlacementTous);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(placement, continents);
 
         var n = largeur * hauteur;
         var alea = new Alea(graine);
@@ -89,8 +93,8 @@ public static class GenerateurContinent
             }
         }
 
-        // 4. Les emplacements de départ (un par couple), tous sur la plus grande terre.
-        var emplacements = PlacerEmplacements(alea, biomes, gibier, plantes, largeur, hauteur, couples, continents);
+        // 4. Les emplacements de départ (un par couple), sur le continent choisi ou répartis sur tous.
+        var emplacements = PlacerEmplacements(alea, biomes, gibier, plantes, largeur, hauteur, couples, continents, placement);
 
         return new Carte
         {
@@ -332,27 +336,70 @@ public static class GenerateurContinent
     };
 
     private static List<Emplacement> PlacerEmplacements(
-        Alea alea, byte[] biomes, byte[] gibier, byte[] plantes, int largeur, int hauteur, int couples, int continents)
+        Alea alea, byte[] biomes, byte[] gibier, byte[] plantes, int largeur, int hauteur, int couples, int continents, int placement)
     {
-        var continent = PlusGrandeTerre(biomes, largeur, hauteur);
+        var (composante, rangs) = Terres(biomes, largeur, hauteur);
         var distanceEau = DistanceEauDouce(biomes, largeur, hauteur);
+        // Les terres qui reçoivent des couples : le continent choisi (1 : le plus grand), ou tous les continents.
+        var visees = placement == ConfigurationMonde.PlacementTous ? rangs.Count : 1;
+        if (placement > rangs.Count)
+        {
+            throw new InvalidOperationException(
+                $"Cette carte n'a que {rangs.Count} continent{(rangs.Count > 1 ? "s" : "")} : impossible d'y placer les couples sur le continent n° {placement}.");
+        }
+        var rangDe = new Dictionary<int, int>();
+        for (var r = 0; r < visees; r++) rangDe[rangs[placement == ConfigurationMonde.PlacementTous ? r : placement - 1]] = r;
 
-        // Candidats : terrain habitable du continent principal, proche d'eau douce, assez riche.
+        // Candidats : terrain habitable des terres visées, proche d'eau douce, assez riche.
         var candidats = new List<int>();
         for (var i = 0; i < biomes.Length; i++)
         {
-            if (continent[i] && Biomes.EstHabitable((Biome)biomes[i]))
+            if (composante[i] >= 0 && rangDe.ContainsKey(composante[i]) && Biomes.EstHabitable((Biome)biomes[i]))
             {
                 candidats.Add(i);
             }
         }
         alea.Melanger(candidats);
 
-        var avecEau = candidats.Where(i => distanceEau[i] <= DistanceMaxEauDouce && gibier[i] + plantes[i] >= 60).ToList();
-
         // Écart minimal entre deux couples, réduit progressivement si le continent est petit : 1/12 de la carte pour
         // 33 couples sur un continent, plus serré s'il y a plus de couples ou si le continent est plus petit.
-        var ecartInitial = (int)(Math.Max(largeur, hauteur) / 12.0 * Math.Sqrt((double)NombreEmplacements / couples / continents));
+        if (visees == 1)
+        {
+            var ecartInitial = (int)(Math.Max(largeur, hauteur) / 12.0 * Math.Sqrt((double)NombreEmplacements / couples / continents));
+            return Numeroter(Choisir(candidats, distanceEau, gibier, plantes, largeur, couples, ecartInitial)
+                ?? throw TropPetit(couples), largeur);
+        }
+
+        // Sur tous les continents : des couples sur chacun, en proportion de ses terres habitables (au moins un par continent
+        // tant qu'il y a assez de couples), chaque groupe espacé sur son continent.
+        var parTerre = Enumerable.Range(0, visees).Select(r => candidats.Where(i => rangDe[composante[i]] == r).ToList()).ToList();
+        var parts = Repartir(couples, parTerre.Select(l => l.Count).ToList());
+        var tous = new List<int>();
+        for (var r = 0; r < visees; r++)
+        {
+            if (parts[r] == 0) continue;
+            var ecart = (int)(Math.Max(largeur, hauteur) / 12.0 * Math.Sqrt((double)NombreEmplacements / parts[r] / continents));
+            tous.AddRange(Choisir(parTerre[r], distanceEau, gibier, plantes, largeur, parts[r], ecart) ?? throw TropPetit(couples));
+        }
+        return Numeroter(tous, largeur);
+    }
+
+    private static InvalidOperationException TropPetit(int couples) => new(
+        $"Le continent généré est trop petit pour {couples} couples : agrandissez la carte, réduisez le nombre de continents ou de couples.");
+
+    /// <summary>Numérotation d'ouest en est puis du nord au sud, pour une lecture stable.</summary>
+    private static List<Emplacement> Numeroter(List<int> choisis, int largeur) => choisis
+        .OrderBy(i => i % largeur).ThenBy(i => i / largeur)
+        .Select((i, rang) => new Emplacement(rang + 1, i % largeur, i / largeur))
+        .ToList();
+
+    /// <summary>
+    /// Choisit <paramref name="nombre"/> cases parmi les candidats (dans leur ordre), d'abord près de l'eau douce et riches,
+    /// en desserrant l'écart minimal jusqu'à ce qu'elles tiennent ; null si c'est impossible.
+    /// </summary>
+    private static List<int>? Choisir(List<int> candidats, int[] distanceEau, byte[] gibier, byte[] plantes, int largeur, int nombre, int ecartInitial)
+    {
+        var avecEau = candidats.Where(i => distanceEau[i] <= DistanceMaxEauDouce && gibier[i] + plantes[i] >= 60).ToList();
         foreach (var liste in new[] { avecEau, candidats })
         {
             for (var ecart = Math.Max(2, ecartInitial); ecart >= 2; ecart--)
@@ -369,25 +416,44 @@ public static class GenerateurContinent
                     if (assezLoin)
                     {
                         choisis.Add(i);
-                        if (choisis.Count == couples) break;
+                        if (choisis.Count == nombre) return choisis;
                     }
-                }
-                if (choisis.Count == couples)
-                {
-                    // Numérotation d'ouest en est puis du nord au sud, pour une lecture stable.
-                    return choisis
-                        .OrderBy(i => i % largeur).ThenBy(i => i / largeur)
-                        .Select((i, rang) => new Emplacement(rang + 1, i % largeur, i / largeur))
-                        .ToList();
                 }
             }
         }
-        throw new InvalidOperationException(
-            $"Le continent généré est trop petit pour {couples} couples : agrandissez la carte, réduisez le nombre de continents ou de couples.");
+        return null;
     }
 
-    /// <summary>Marque les tuiles de la plus grande terre (tout ce qui n'est pas mer, reliée en 4-voisinage).</summary>
-    private static bool[] PlusGrandeTerre(byte[] biomes, int largeur, int hauteur)
+    /// <summary>
+    /// Partage des couples entre continents, en proportion de leurs cases habitables (plus forts restes), au moins un
+    /// chacun quand il y a assez de couples ; sinon les plus grands d'abord.
+    /// </summary>
+    internal static int[] Repartir(int couples, IReadOnlyList<int> habitables)
+    {
+        var parts = new int[habitables.Count];
+        var avecPlace = Enumerable.Range(0, habitables.Count).Where(r => habitables[r] > 0).ToList();
+        if (avecPlace.Count == 0) return parts;
+        if (couples <= avecPlace.Count)
+        {
+            foreach (var r in avecPlace.Take(couples)) parts[r] = 1;
+            return parts;
+        }
+        foreach (var r in avecPlace) parts[r] = 1;
+        var reste = couples - avecPlace.Count;
+        double total = avecPlace.Sum(r => (double)habitables[r]);
+        var exacts = avecPlace.ToDictionary(r => r, r => reste * habitables[r] / total);
+        foreach (var r in avecPlace) parts[r] += (int)exacts[r];
+        var manquants = couples - parts.Sum();
+        foreach (var r in avecPlace.OrderByDescending(r => exacts[r] - Math.Floor(exacts[r])).ThenBy(r => r).Take(manquants)) parts[r]++;
+        return parts;
+    }
+
+    /// <summary>
+    /// Masses de terre (tout ce qui n'est pas mer, reliée en 4-voisinage) : le numéro de masse de chaque tuile (−1 en mer) et
+    /// les continents, du plus grand au plus petit (une masse d'au moins le quart de la plus grande et de 200 km², comme
+    /// dans <see cref="Geographie"/>).
+    /// </summary>
+    private static (int[] Composante, List<int> Continents) Terres(byte[] biomes, int largeur, int hauteur)
     {
         var composante = new int[biomes.Length];
         Array.Fill(composante, -1);
@@ -421,8 +487,13 @@ public static class GenerateurContinent
             tailles.Add(taille);
         }
 
-        var plusGrande = tailles.Count == 0 ? -1 : tailles.IndexOf(tailles.Max());
-        return composante.Select(c => c == plusGrande && c >= 0).ToArray();
+        if (tailles.Count == 0) return (composante, []);
+        var seuil = Math.Max(200 / Echelle.KilometresCarres(1), tailles.Max() * 0.25);
+        // À taille égale, la première trouvée d'abord : le « plus grand continent » reste celui d'avant.
+        var plusGrande = tailles.IndexOf(tailles.Max());
+        var continents = Enumerable.Range(0, tailles.Count).Where(k => k == plusGrande || tailles[k] >= seuil)
+            .OrderByDescending(k => tailles[k]).ThenBy(k => k).ToList();
+        return (composante, continents);
     }
 
     /// <summary>Distance (en tuiles, 4-voisinage) à l'eau douce la plus proche.</summary>

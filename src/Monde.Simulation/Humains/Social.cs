@@ -114,12 +114,37 @@ public sealed class Communaute
     /// <summary>Dernière affaire d'infidélité qui a marqué le groupe (événement du journal), cause des changements d'usage.</summary>
     public long DerniereAffaireId { get; set; }
 
+    /// <summary>
+    /// Goût du groupe pour la violence, de 0 (pacifique) à 1 (guerrier) ; −1 tant qu'il n'est pas établi. Il naît du
+    /// tempérament de ses membres et se forge avec les raids subis, menés, gagnés ou payés cher.
+    /// </summary>
+    public double Bellicisme { get; set; } = -1;
+
+    /// <summary>Raid en cours (null : aucun), et date du dernier raid lancé.</summary>
+    public Raid? Raid { get; set; }
+    public long DernierRaidLe { get; set; }
+
+    /// <summary>Communauté à laquelle le groupe est soumis (0 : libre), depuis quand, et l'événement de la soumission.</summary>
+    public int SoumiseAId { get; set; }
+    public long SoumiseLe { get; set; }
+    public long SoumissionEvenementId { get; set; }
+
+    /// <summary>Dernière paix conclue (événement du journal).</summary>
+    public long PaixEvenementId { get; set; }
+
+    /// <summary>
+    /// Après sa dispersion : la communauté qui la continue (0 : aucune), celle où vit désormais la plupart de ses membres
+    /// et dont ils forment la majorité. Elle hérite de ses guerres et de sa soumission.
+    /// </summary>
+    public int HeritiereId { get; set; }
+
     public Communaute Copier()
     {
         var copie = (Communaute)MemberwiseClone();
         copie.Lexique = new Dictionary<string, string>(Lexique);
         copie.Noms = [.. Noms];
         copie.Territoire = new Dictionary<int, long>(Territoire);
+        copie.Raid = Raid?.Copier();
         return copie;
     }
 }
@@ -250,6 +275,7 @@ public sealed partial class VieSociale(Alea alea)
                 EtatRelation.Alliees => 0.5,
                 EtatRelation.Rivales => -1.0,
                 EtatRelation.Hostiles => -1.5,
+                EtatRelation.EnGuerre => -2.0,
                 _ => 0,
             };
         }
@@ -484,7 +510,7 @@ public sealed partial class VieSociale(Alea alea)
             if (k >= 25) Noter(maintenant, TypeEvenement.Humeur, h, mort, $"{h.Nom} pleure {Parente(h, mort)}.", mort.MortEvenementId);
 
             // Un proche tué : la peine se double d'une soif de vengeance contre le meurtrier (Daly et Wilson, 1988).
-            if (mort.CauseDeMort == CauseDeMort.Meurtre && mort.MeurtrierId > 0 && mort.MeurtrierId != h.Id && k >= 20
+            if (mort.CauseDeMort is CauseDeMort.Meurtre or CauseDeMort.Guerre && mort.MeurtrierId > 0 && mort.MeurtrierId != h.Id && k >= 20
                 && humains[mort.MeurtrierId - 1] is { EstVivant: true } meurtrier)
             {
                 var soif = Math.Min(100, 1.2 * k);
@@ -519,6 +545,11 @@ public sealed partial class VieSociale(Alea alea)
         }
         void Unir(int a, int b) => parent[Racine(a)] = Racine(b);
         foreach (var h in membres) parent[h.Id] = h.Id;
+        // Les guerriers partis en raid restent membres de leur groupe, même loin du camp.
+        var enRaid = communautes.Where(c => c.Active && c.Raid is not null).SelectMany(c => c.Raid!.Guerriers).ToHashSet();
+        // Un groupe en guerre se serre les coudes : la menace commune renforce la cohésion du groupe (Bauer et al., 2016).
+        var actifs = communautes.Where(c => c.Active).Select(c => c.Id).ToList();
+        var enGuerre = actifs.Where(a => actifs.Any(b => b != a && RelationEntre(a, b) == EtatRelation.EnGuerre)).ToHashSet();
 
         foreach (var h in membres)
         {
@@ -537,10 +568,15 @@ public sealed partial class VieSociale(Alea alea)
                 var autre = humains[l.Id - 1];
                 if (autre.EstEnfant(maintenant)) continue;
                 // Une communauté vit ensemble : des amis qui vivent loin l'un de l'autre n'en font pas une.
-                if (Math.Max(Math.Abs(h.X - autre.X), Math.Abs(h.Y - autre.Y)) > DistanceCommunaute) continue;
-                // Pour entrer, il faut une amitié ; pour rester, un lien d'affection suffit.
+                if (Math.Max(Math.Abs(h.X - autre.X), Math.Abs(h.Y - autre.Y)) > DistanceCommunaute
+                    && !enRaid.Contains(h.Id) && !enRaid.Contains(autre.Id)) continue;
+                // Tant que la guerre dure, on ne passe pas chez l'ennemi, même par amitié.
+                if (h.CommunauteId != autre.CommunauteId && h.CommunauteId != 0 && autre.CommunauteId != 0
+                    && RelationEntre(h.CommunauteId, autre.CommunauteId) == EtatRelation.EnGuerre) continue;
+                // Pour entrer, il faut une amitié ; pour rester, un lien d'affection suffit (ou, en guerre, de ne pas se détester).
                 var dejaEnsemble = h.CommunauteId != 0 && h.CommunauteId == autre.CommunauteId;
-                if (dejaEnsemble ? l.Affection >= 15 && l.Familiarite >= 20 : l.Amis) Unir(h.Id, l.Id);
+                var attache = enGuerre.Contains(h.CommunauteId) ? 0 : 15;
+                if (dejaEnsemble ? l.Affection >= attache && l.Familiarite >= 20 : l.Amis) Unir(h.Id, l.Id);
             }
         }
         Rassembler(humains, membres, communautes, maintenant, Unir);
@@ -621,6 +657,8 @@ public sealed partial class VieSociale(Alea alea)
             var accueil = membres.Where(h => anciens[h.Id] == c.Id && nouvelles.ContainsKey(h.Id))
                 .GroupBy(h => nouvelles[h.Id]).Select(x => (Id: x.Key, Nombre: x.Count()))
                 .OrderByDescending(x => x.Nombre).ThenBy(x => x.Id).FirstOrDefault();
+            // Ses membres forment la majorité d'un groupe : c'est elle, sous un autre nom (souvent après des morts ou des départs).
+            if (accueil.Id != 0 && accueil.Nombre * 2 > nouvelles.Values.Count(v => v == accueil.Id)) c.HeritiereId = accueil.Id;
             if (accueil.Id != 0 && accueil.Nombre * 2 >= tailles.GetValueOrDefault(c.Id))
             {
                 var cible = communautes[accueil.Id - 1];

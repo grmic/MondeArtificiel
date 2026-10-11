@@ -49,6 +49,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Réglages choisis à la création du monde (absents : réglages d'origine, voir <see cref="ConfigurationMonde.ParDefaut"/>).</summary>
     public ConfigurationMonde? Configuration { get; init; }
+
+    /// <summary>Guerres entre communautés, en cours ou finies.</summary>
+    public IReadOnlyList<Guerre>? Guerres { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -122,7 +125,8 @@ public sealed class MondeSimule
         _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
         _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
-        _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros };
+        _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros, Carte = carte };
+        _social.ChargerGuerres(etat.Guerres ?? []);
         _social.ChargerRelations(etat.Relations ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
         _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social, Numeros = _numeros };
@@ -195,6 +199,7 @@ public sealed class MondeSimule
                     Pathogenes = _catastrophes.Pathogenes.ToList(),
                     DegatsNature = _ecosysteme.Degats.ToArray(),
                     Configuration = Configuration,
+                    Guerres = _social.Guerres.Select(g => g.Copier()).ToList(),
                 };
             }
         }
@@ -314,6 +319,12 @@ public sealed class MondeSimule
     public List<RelationCommunautes> Relations()
     {
         lock (_verrou) return _social.Relations;
+    }
+
+    /// <summary>Copie des guerres entre communautés, en cours ou finies.</summary>
+    public List<Guerre> Guerres()
+    {
+        lock (_verrou) return _social.Guerres.Select(g => g.Copier()).ToList();
     }
 
     /// <summary>Abondance de chaque tuile (0 à 255, 128 = ce que la saison et les pluies permettent), pour la carte des ressources.</summary>
@@ -504,7 +515,11 @@ public sealed class MondeSimule
             _ecosysteme.Journee(_secondes);
             _catastrophes.Jour(_humains, _secondes);
         }
-        if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0) _catastrophes.Heure(_humains, _secondes);
+        if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0)
+        {
+            _catastrophes.Heure(_humains, _secondes);
+            _comportement.Raids(_humains, _secondes);
+        }
 
         // Toutes les heures, chacun marque les terres de son groupe ; au début de chaque saison, l'histoire des groupes est archivée.
         if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0) _social.Parcourir(_humains, Carte, _secondes);

@@ -1,5 +1,6 @@
 using Monde.Simulation;
 using Monde.Simulation.Monde;
+using Monde.Simulation.Temps;
 using Monde.Stockage;
 
 namespace Monde.Serveur;
@@ -127,5 +128,76 @@ public sealed class ServiceMonde
         _journal.LogInformation("Monde réinitialisé ({Configuration}) ; ancien monde copié dans {Copie}",
             configuration, CheminCopieAvantReinitialisation);
         return nouveau;
+    }
+
+    /// <summary>Dossier des sauvegardes faites à la demande (à côté du monde).</summary>
+    public string DossierSauvegardes => Path.Combine(Path.GetDirectoryName(Depot.CheminFichier)!, "sauvegardes");
+
+    /// <summary>
+    /// Fichiers que l'on peut restaurer : les sauvegardes faites à la demande (et avant chaque restauration), plus la copie
+    /// gardée avant la dernière création d'un monde. Clé : le nom affiché et demandé par le navigateur.
+    /// </summary>
+    public Dictionary<string, string> FichiersRestaurables()
+    {
+        var fichiers = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (Directory.Exists(DossierSauvegardes))
+        {
+            foreach (var f in Directory.EnumerateFiles(DossierSauvegardes, "*.db")) fichiers[Path.GetFileName(f)] = f;
+        }
+        if (File.Exists(CheminCopieAvantReinitialisation)) fichiers[Path.GetFileName(CheminCopieAvantReinitialisation)] = CheminCopieAvantReinitialisation;
+        return fichiers;
+    }
+
+    /// <summary>Copie cohérente du monde courant dans le dossier des sauvegardes ; rend le chemin du fichier créé.</summary>
+    public string SauvegarderMaintenant(string prefixe = "sauvegarde")
+    {
+        lock (_verrou)
+        {
+            Sauvegarder();
+            Directory.CreateDirectory(DossierSauvegardes);
+            var date = Calendrier.Decomposer(_monde.Secondes);
+            var nom = $"{prefixe}-an{date.Annee}-{DateTime.Now:yyyyMMdd-HHmmss}";
+            var chemin = Path.Combine(DossierSauvegardes, nom + ".db");
+            for (var k = 2; File.Exists(chemin); k++) chemin = Path.Combine(DossierSauvegardes, $"{nom}-{k}.db");
+            Depot.CopierVers(chemin);
+            _journal.LogInformation("Monde sauvegardé dans {Fichier}", chemin);
+            return chemin;
+        }
+    }
+
+    /// <summary>
+    /// Remplace le monde courant par une sauvegarde, en pause. Le monde courant est d'abord sauvegardé
+    /// (« avant-restauration-… » dans le dossier des sauvegardes). La sauvegarde restaurée n'est pas modifiée.
+    /// </summary>
+    /// <exception cref="ArgumentException">Ce nom n'est pas celui d'une sauvegarde.</exception>
+    /// <exception cref="InvalidDataException">La sauvegarde est illisible ou d'une version plus récente : rien n'est changé.</exception>
+    public MondeSimule Restaurer(string nom)
+    {
+        // Seuls les noms de la liste sont acceptés : aucun chemin venu du navigateur n'est utilisé tel quel.
+        if (!FichiersRestaurables().TryGetValue(nom, out var source)) throw new ArgumentException("Cette sauvegarde n'existe pas.", nameof(nom));
+        lock (_verrou)
+        {
+            var (prepare, etat) = Depot.PreparerRestauration(source);
+            MondeSimule restaure;
+            try
+            {
+                var configuration = etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine);
+                restaure = new MondeSimule(GenerateurContinent.Generer(configuration), etat with { Facteur = 0 })
+                {
+                    PauseSurCatastrophe = _pauseSurCatastrophe,
+                };
+            }
+            catch (Exception e) when (e is ArgumentException or InvalidOperationException)
+            {
+                File.Delete(prepare);
+                _journal.LogWarning(e, "Sauvegarde {Source} impossible à restaurer", source);
+                throw new InvalidDataException("Cette sauvegarde ne correspond à aucun monde possible.", e);
+            }
+            var copie = SauvegarderMaintenant("avant-restauration");
+            Depot.RemplacerPar(prepare);
+            _monde = restaure;
+            _journal.LogInformation("Sauvegarde {Source} restaurée ; l'ancien monde est dans {Copie}", source, copie);
+            return restaure;
+        }
     }
 }

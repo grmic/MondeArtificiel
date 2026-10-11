@@ -8,6 +8,8 @@ interface Configuration {
   largeur: number;
   hauteur: number;
   continents: number;
+  /** Où partent les couples : 0 sur tous les continents, n sur le n-ième par la taille (1 : le plus grand). */
+  placement: number;
   origine: boolean;
   kilometresParCase: number;
   couplesMin: number;
@@ -26,6 +28,18 @@ export interface Reglages {
   largeur: number;
   hauteur: number;
   continents: number;
+  placement: number;
+}
+
+/** Une sauvegarde restaurable (possible : faux si elle vient d'une version plus récente ou est illisible). */
+interface Sauvegarde {
+  nom: string;
+  dateMonde: string;
+  faiteLe: string;
+  mo: number;
+  vivants: number;
+  graine: number;
+  possible: boolean;
 }
 
 interface Apercu {
@@ -56,11 +70,21 @@ export class PanneauConfiguration {
   private readonly couples = champ("Couples de départ", "", { step: "1" });
   private readonly largeur = champ("Largeur de la carte (km)", "", { step: "1" });
   private readonly hauteur = champ("Hauteur de la carte (km)", "", { step: "1" });
-  private readonly continents = champ("Continents", "les couples partent tous du plus grand ; les autres ne sont pas accessibles à pied", { step: "1" });
+  private readonly continents = champ("Continents", "séparés par la mer : on ne passe pas de l'un à l'autre à pied", { step: "1" });
+  private readonly placement = (() => {
+    const ligne = el("label", "reglage");
+    const choix = el("select");
+    ligne.append(el("span", "libelle", "Départ des couples"), choix, el("span", "aide", "sur tous les continents : en proportion de leurs terres habitables"));
+    return { ligne, choix };
+  })();
   private readonly actuel = el("p");
   private readonly message = el("p", "message-config");
   private readonly hasard = el("button", undefined, "🎲");
   private apercuAffiche = false;
+  private readonly listeSauvegardes = el("ul", "liste sauvegardes");
+  private readonly messageSauvegardes = el("p", "message-config");
+  private readonly dialogueRestaurer = el("dialog", "dialogue");
+  private aRestaurer: string | null = null;
 
   constructor(
     private readonly racine: HTMLElement,
@@ -94,15 +118,29 @@ export class PanneauConfiguration {
     creer.type = "button";
     creer.addEventListener("click", () => this.demanderCreation());
     boutons.append(apercu, revenir, creer);
-    formulaire.append(this.graine.ligne, this.couples.ligne, this.largeur.ligne, this.hauteur.ligne, this.continents.ligne, boutons, this.message);
+    this.continents.entree.addEventListener("input", () => this.remplirPlacement(Number(this.placement.choix.value)));
+    formulaire.append(this.graine.ligne, this.couples.ligne, this.largeur.ligne, this.hauteur.ligne, this.continents.ligne, this.placement.ligne,
+      boutons, this.message);
     formulaire.addEventListener("submit", (ev) => {
       ev.preventDefault();
       void this.apercu();
     });
 
+    const sauver = el("button", undefined, "Sauvegarder maintenant");
+    sauver.type = "button";
+    sauver.addEventListener("click", () => void this.sauvegarder());
+    const boutonsSauvegarde = el("div", "boutons");
+    boutonsSauvegarde.append(sauver);
+    this.construireDialogue();
+
     this.corps.append(
       el("h3", undefined, "Monde actuel"),
       this.actuel,
+      el("h3", undefined, "Sauvegardes"),
+      el("p", "discret", "Une sauvegarde garde tout le monde à cet instant. La restaurer remplace le monde actuel, qui est d'abord sauvegardé lui aussi."),
+      boutonsSauvegarde,
+      this.messageSauvegardes,
+      this.listeSauvegardes,
       el("h3", undefined, "Nouveau monde"),
       el("p", "discret", "Ces réglages sont enregistrés dans la base du monde créé. Une case de la carte mesure 800 m : cette finesse reste fixe, la carte grandit en nombre de cases. Au-delà de 400 km de côté, la simulation ralentit."),
       formulaire,
@@ -151,7 +189,105 @@ export class PanneauConfiguration {
     this.largeur.entree.value = String(km(c.largeur));
     this.hauteur.entree.value = String(km(c.hauteur));
     this.continents.entree.value = String(c.continents);
+    this.remplirPlacement(c.placement);
     this.message.textContent = "";
+    await this.lireSauvegardes();
+  }
+
+  private construireDialogue(): void {
+    const formulaire = el("form");
+    formulaire.method = "dialog";
+    const texte = el("p");
+    texte.id = "texteRestaurer";
+    const menu = el("menu");
+    const annuler = el("button", undefined, "Annuler");
+    annuler.value = "annuler";
+    annuler.autofocus = true;
+    const confirmer = el("button", "danger", "Restaurer");
+    confirmer.value = "confirmer";
+    menu.append(annuler, confirmer);
+    formulaire.append(el("h2", undefined, "Restaurer cette sauvegarde ?"), texte, menu);
+    this.dialogueRestaurer.append(formulaire);
+    document.body.append(this.dialogueRestaurer);
+    this.dialogueRestaurer.addEventListener("close", () => {
+      if (this.dialogueRestaurer.returnValue === "confirmer" && this.aRestaurer) void this.restaurer(this.aRestaurer);
+    });
+  }
+
+  private async lireSauvegardes(): Promise<void> {
+    const liste = await connexion.invoke<Sauvegarde[]>("Sauvegardes").catch(() => null);
+    this.afficherSauvegardes(liste);
+  }
+
+  private afficherSauvegardes(liste: Sauvegarde[] | null): void {
+    if (!liste) {
+      this.listeSauvegardes.replaceChildren(el("li", "discret", "Le serveur n'a pas répondu."));
+      return;
+    }
+    if (liste.length === 0) {
+      this.listeSauvegardes.replaceChildren(el("li", "discret", "Aucune sauvegarde pour l'instant."));
+      return;
+    }
+    this.listeSauvegardes.replaceChildren(...liste.map((s) => {
+      const li = el("li");
+      li.append(el("span", "date", s.faiteLe), ` ${s.dateMonde} · graine ${s.graine} · ${s.vivants} vivants · ${s.mo} Mo `);
+      if (s.possible) {
+        const b = el("button", "lien", "restaurer");
+        b.type = "button";
+        b.title = s.nom;
+        b.addEventListener("click", () => {
+          this.aRestaurer = s.nom;
+          const texte = this.dialogueRestaurer.querySelector("#texteRestaurer");
+          if (texte) {
+            texte.textContent = `Le monde reprend tel qu'il était (${s.dateMonde}, ${s.vivants} humains vivants), en pause. `
+              + "Le monde actuel est d'abord sauvegardé : vous pourrez y revenir depuis cette liste.";
+          }
+          this.dialogueRestaurer.returnValue = "";
+          this.dialogueRestaurer.showModal();
+        });
+        li.append(b);
+      } else {
+        li.append(el("span", "discret", "(version plus récente ou illisible)"));
+      }
+      li.title = s.nom;
+      return li;
+    }));
+  }
+
+  private async sauvegarder(): Promise<void> {
+    this.messageSauvegardes.textContent = "Sauvegarde…";
+    const liste = await connexion.invoke<Sauvegarde[]>("Sauvegarder").catch(() => null);
+    this.messageSauvegardes.textContent = liste ? "Monde sauvegardé." : "La sauvegarde a échoué.";
+    this.afficherSauvegardes(liste);
+  }
+
+  private async restaurer(nom: string): Promise<void> {
+    this.messageSauvegardes.textContent = "Restauration…";
+    this.informer("Restauration d'une sauvegarde…");
+    try {
+      await connexion.invoke("Restaurer", nom);
+      this.messageSauvegardes.textContent = "Sauvegarde restaurée.";
+    } catch (e) {
+      const raison = e instanceof Error ? e.message.replace(/^.*HubException: /, "") : "";
+      this.messageSauvegardes.textContent = `Impossible : ${raison || "sauvegarde illisible"}`;
+      this.informer("Le monde n'a pas changé.");
+    }
+    await this.lireSauvegardes();
+  }
+
+  /** Choix du continent de départ, selon le nombre de continents saisi ; garde le choix s'il reste possible. */
+  private remplirPlacement(voulu: number): void {
+    const n = Number(this.continents.entree.value);
+    const nombre = Number.isInteger(n) && n >= 1 && n <= 6 ? n : 1;
+    const options: [number, string][] = [[1, nombre === 1 ? "sur le continent" : "sur le plus grand continent"]];
+    for (let k = 2; k <= nombre; k++) options.push([k, `sur le ${k}e continent par la taille`]);
+    if (nombre > 1) options.push([0, "répartis sur tous les continents"]);
+    this.placement.choix.replaceChildren(...options.map(([v, t]) => {
+      const o = el("option", undefined, t);
+      o.value = String(v);
+      return o;
+    }));
+    this.placement.choix.value = String(options.some(([v]) => v === voulu) ? voulu : 1);
   }
 
   fermer(): void {
@@ -184,7 +320,8 @@ export class PanneauConfiguration {
     const continents = entier(this.continents.entree, "Continents");
     if (graine === null || couples === null || largeur === null || hauteur === null || continents === null) return null;
     const cases = (km: number) => Math.min(c.tailleMax, Math.max(c.tailleMin, Math.round(km / c.kilometresParCase)));
-    return { graine, couples, largeur: cases(largeur), hauteur: cases(hauteur), continents };
+    const placement = Number(this.placement.choix.value);
+    return { graine, couples, largeur: cases(largeur), hauteur: cases(hauteur), continents, placement: placement <= continents ? placement : 1 };
   }
 
   private async apercu(): Promise<boolean> {
@@ -218,7 +355,7 @@ export class PanneauConfiguration {
     if (texte) {
       texte.textContent = `Le monde recommence à l'an 1 avec ${r.couples} couple${r.couples > 1 ? "s" : ""} (graine ${r.graine}, ` +
         `carte de ${Math.round(r.largeur * (this.config?.kilometresParCase ?? 0.8))} × ${Math.round(r.hauteur * (this.config?.kilometresParCase ?? 0.8))} km, ` +
-        `${r.continents} continent${r.continents > 1 ? "s" : ""}). Toute son histoire est effacée ; une copie de l'ancien monde est gardée dans monde-avant-reinitialisation.db (seule la dernière).`;
+        `${r.continents} continent${r.continents > 1 ? "s" : ""}, couples ${this.placement.choix.selectedOptions[0]?.textContent ?? ""}). Toute son histoire est effacée ; une copie de l'ancien monde est gardée dans monde-avant-reinitialisation.db (seule la dernière).`;
     }
     this.dialogue.returnValue = "";
     this.dialogue.showModal();

@@ -18,7 +18,7 @@ interface Communaute {
   destination: string | null;
   faim: number;
   reserves: number;
-  relations: { id: number; nom: string; etat: string }[];
+  relations: { id: number; nom: string; etat: string; evenement: number }[];
   /** Usage du groupe envers ceux qui s'unissent hors de leur couple. */
   usage: string;
   /** Nom que se donnent ses membres, et ce qu'il veut dire (null tant qu'ils ne se sont pas nommés). */
@@ -28,6 +28,25 @@ interface Communaute {
   mots: string[];
   terres: number;
   histoire: string[];
+  /** Goût du groupe pour la violence, en mots (null tant qu'il n'est pas établi). */
+  temperament: string | null;
+  /** Raid en cours, soumission, vassaux. */
+  guerre: string[];
+  guerres: Guerre[];
+}
+
+/** Une guerre vue par la communauté (issue null : en cours). */
+interface Guerre {
+  contre: number;
+  nomContre: string;
+  debut: string;
+  finLe: string | null;
+  raids: number;
+  mortsSiens: number;
+  mortsEnnemis: number;
+  issue: string | null;
+  evenement: number;
+  fin: number;
 }
 
 interface Taille {
@@ -197,7 +216,12 @@ export class PanneauCommunautes {
       });
       bloc.append(rel);
     }
-    if (!c.disperseeLe) bloc.append(el("p", "usage", `Usage : ${c.usage}.`));
+    for (const g of c.guerre) bloc.append(el("p", "alerte", g));
+    const enCours = c.guerres.filter((g) => g.issue === null);
+    if (enCours.length > 0) {
+      bloc.append(el("p", "relation-en", `En guerre contre ${enCours.map((g) => `${g.nomContre} (${g.raids} raid${g.raids > 1 ? "s" : ""}, ${g.mortsSiens} morts chez elle, ${g.mortsEnnemis} chez l'ennemi)`).join(", ")}.`));
+    }
+    if (!c.disperseeLe) bloc.append(el("p", "usage", `Usage : ${c.usage}.${c.temperament ? ` Tempérament : ${c.temperament}.` : ""}`));
     const figure = el("p");
     const lien = el("button", "lien", c.nomFigure);
     lien.type = "button";
@@ -228,6 +252,19 @@ export class PanneauCommunautes {
         bloc.append(ul);
       }
       if (c.mots.length > 0) bloc.append(el("p", "discret", `Premiers mots : ${c.mots.join(" · ")}`));
+      if (c.guerres.length > 0) {
+        bloc.append(el("h3", undefined, "Guerres"));
+        const ul = el("ul", "liste");
+        for (const g of c.guerres) {
+          const li = el("li");
+          li.append(el("span", "date", g.finLe ? `${g.debut} → ${g.finLe}` : `depuis ${g.debut}`),
+            ` contre ${g.nomContre} : ${g.raids} raid${g.raids > 1 ? "s" : ""}, ${g.mortsSiens} morts chez elle, ${g.mortsEnnemis} chez l'ennemi · ${g.issue ?? "en cours"} `);
+          if (g.evenement > 0) li.append(boutonCause(li, g.evenement, "premier sang"));
+          if (g.fin > 0) li.append(" ", boutonCause(li, g.fin, "fin"));
+          ul.append(li);
+        }
+        bloc.append(ul);
+      }
       if (this.tailles?.id === c.id && this.tailles.valeurs.length > 1) {
         bloc.append(el("h3", undefined, "Taille au fil des saisons"), courbe(this.tailles.valeurs));
       }

@@ -171,6 +171,37 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return await DiffuserHorloge();
     }
 
+    /// <summary>Sauvegardes que l'on peut restaurer, la plus récente d'abord.</summary>
+    public List<SauvegardeDto> Sauvegardes() => SauvegardeDto.Toutes(service);
+
+    /// <summary>Sauvegarde le monde tel qu'il est, sans l'arrêter ; rend la liste à jour.</summary>
+    public List<SauvegardeDto> Sauvegarder()
+    {
+        service.SauvegarderMaintenant();
+        return SauvegardeDto.Toutes(service);
+    }
+
+    /// <summary>
+    /// Remplace le monde par une sauvegarde (nom tiré de la liste), en pause ; le monde courant est sauvegardé avant.
+    /// Tous les navigateurs connectés rechargent le monde.
+    /// </summary>
+    public async Task<HorlogeDto> Restaurer(string nom)
+    {
+        MondeSimule monde;
+        try
+        {
+            monde = service.Restaurer(nom);
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidDataException)
+        {
+            throw new HubException(e.Message);
+        }
+        service.FacteurAtteint = 0;
+        await Clients.All.SendAsync("MondeReinitialise", (uint)monde.Graine);
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        return await DiffuserHorloge();
+    }
+
     /// <summary>Trajet à pied le moins pénible entre deux cases (null si l'une est dans l'eau ou si on ne peut pas y aller à pied).</summary>
     public TrajetDto? Trajet(int x1, int y1, int x2, int y2)
     {

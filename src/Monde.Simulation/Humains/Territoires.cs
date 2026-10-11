@@ -12,13 +12,16 @@ public enum EtatRelation : byte
     Rivales = 2,
     /// <summary>Leurs membres ne se supportent pas.</summary>
     Hostiles = 3,
+    /// <summary>Le sang a coulé entre elles : raids et vengeances jusqu'à la paix ou la défaite de l'une (voir <see cref="Guerre"/>).</summary>
+    EnGuerre = 4,
 }
 
 /// <summary>
 /// Relation entre deux communautés (<see cref="A"/> &lt; <see cref="B"/>), et l'événement qui l'a fait naître
 /// (cause d'une fusion décidée entre alliées, par exemple).
 /// </summary>
-public sealed record RelationCommunautes(int A, int B, EtatRelation Etat, long EvenementId = 0);
+/// <param name="PacteEvenementId">Pacte juré entre alliées contre un ennemi commun (0 : aucun).</param>
+public sealed record RelationCommunautes(int A, int B, EtatRelation Etat, long EvenementId = 0, long PacteEvenementId = 0);
 
 /// <summary>
 /// Territoires, disettes, migrations et relations entre communautés. Rien n'est décrété : la disette se constate
@@ -57,16 +60,19 @@ public sealed partial class VieSociale
     /// <summary>Relations qui ne sont pas indifférentes, dans un ordre stable.</summary>
     public List<RelationCommunautes> Relations =>
         _relations.Where(r => r.Value != EtatRelation.Indifferentes).OrderBy(r => r.Key.A).ThenBy(r => r.Key.B)
-            .Select(r => new RelationCommunautes(r.Key.A, r.Key.B, r.Value, _debutsRelations.GetValueOrDefault(r.Key))).ToList();
+            .Select(r => new RelationCommunautes(r.Key.A, r.Key.B, r.Value, _debutsRelations.GetValueOrDefault(r.Key),
+                _pactes.GetValueOrDefault(r.Key))).ToList();
 
     public void ChargerRelations(IEnumerable<RelationCommunautes> relations)
     {
         _relations.Clear();
         _debutsRelations.Clear();
+        _pactes.Clear();
         foreach (var r in relations)
         {
             _relations[Paire(r.A, r.B)] = r.Etat;
             if (r.EvenementId > 0) _debutsRelations[Paire(r.A, r.B)] = r.EvenementId;
+            if (r.PacteEvenementId > 0) _pactes[Paire(r.A, r.B)] = r.PacteEvenementId;
         }
     }
 
@@ -106,6 +112,7 @@ public sealed partial class VieSociale
             c.DestinationX = c.DestinationY = -1;
         }
         Relier(humains, actives, membres, maintenant);
+        Guerroyer(humains, actives, membres, maintenant);
         Identites(humains, communautes, membres, carte, maintenant);
     }
 
@@ -218,6 +225,8 @@ public sealed partial class VieSociale
                 var voisines = Math.Max(Math.Abs(a.CentreX - b.CentreX), Math.Abs(a.CentreY - b.CentreY)) <= a.Rayon + b.Rayon + 4;
                 var concurrence = voisines && (a.Disette || b.Disette);
 
+                // La guerre ne s'éteint pas d'elle-même : il faut la paix, une défaite ou la disparition d'un des groupes.
+                if (avant == EtatRelation.EnGuerre) continue;
                 var apres = avant switch
                 {
                     EtatRelation.Alliees when affection >= FinAlliance => EtatRelation.Alliees,

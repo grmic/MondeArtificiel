@@ -33,6 +33,8 @@ public enum TypeEvenement : byte
     Conflit = 18,
     /// <summary>Séisme, éruption, crue, incendie, tempête, épidémie, phénomène du ciel : ce que fait la nature d'extraordinaire.</summary>
     Catastrophe = 19,
+    /// <summary>Raid, guerre, pacte, soumission, paix : la violence entre communautés et ses suites.</summary>
+    Guerre = 20,
 }
 
 /// <summary>
@@ -105,6 +107,7 @@ public static class Libelles
         Humains.CauseDeMort.Eruption => "dans une éruption",
         Humains.CauseDeMort.Accident => "par accident",
         Humains.CauseDeMort.Chaleur => "de chaleur",
+        Humains.CauseDeMort.Guerre => "au combat",
         _ => "",
     };
 

@@ -15,6 +15,7 @@ const TYPES: [string, string][] = [
   ["humeur", "Deuils et humeur"],
   ["conflit", "Jalousie et conflits"],
   ["communaute", "Communautés"],
+  ["guerre", "Guerres et alliances"],
   ["nature", "Nature"],
   ["catastrophe", "Catastrophes"],
   ["partage", "Partages"],
@@ -34,6 +35,10 @@ export class PanneauJournal {
   /** Chronologie d'une communauté suivie (null : tout le monde). */
   private communaute: { id: number; nom: string } | null = null;
   private plusAncien = true;
+  /** Journal figé : la simulation continue, les nouveaux événements attendent la reprise. */
+  private enPause = false;
+  private enAttente: Evenement[] = [];
+  private readonly boutonPause = el("button", "fermer", "⏸");
 
   constructor(
     private readonly racine: HTMLElement,
@@ -57,7 +62,7 @@ export class PanneauJournal {
    */
   suivreCommunaute(id: number, nom: string): void {
     this.communaute = { id, nom };
-    this.types = new Set(["communaute", "naissance", "mort", "conflit", "union", "catastrophe"]);
+    this.types = new Set(["communaute", "guerre", "naissance", "mort", "conflit", "union", "catastrophe"]);
     this.racine.querySelectorAll<HTMLInputElement>(".filtres input").forEach((c) => (c.checked = this.types.has(c.dataset.cle ?? "")));
     this.racine.hidden = false;
     void this.recharger();
@@ -72,6 +77,8 @@ export class PanneauJournal {
   async recharger(): Promise<void> {
     if (this.racine.hidden) return;
     this.evenements = await this.lire();
+    this.enAttente = [];
+    this.majPause();
     this.plusAncien = true;
     this.dessinerListe();
   }
@@ -91,6 +98,16 @@ export class PanneauJournal {
     const gardes = nouveaux.filter((e) => this.types.has(e.type) && (this.humain === null || e.humain === this.humain || e.autre === this.humain)
       && (c === undefined || e.communaute === c || e.autreCommunaute === c));
     if (gardes.length === 0) return;
+    if (this.enPause) {
+      this.enAttente.push(...gardes);
+      if (this.enAttente.length > 1000) this.enAttente = this.enAttente.slice(-1000);
+      this.majPause();
+      return;
+    }
+    this.ajouter(gardes);
+  }
+
+  private ajouter(gardes: Evenement[]): void {
     const connus = new Set(this.evenements.map((e) => e.id));
     this.evenements = [...gardes.filter((e) => !connus.has(e.id)).reverse(), ...this.evenements].slice(0, 1000);
     this.dessinerListe();
@@ -107,8 +124,18 @@ export class PanneauJournal {
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.addEventListener("click", () => this.basculer());
+    this.boutonPause.type = "button";
+    this.boutonPause.addEventListener("click", () => {
+      this.enPause = !this.enPause;
+      if (!this.enPause && this.enAttente.length > 0) {
+        this.ajouter(this.enAttente);
+        this.enAttente = [];
+      }
+      this.majPause();
+    });
+    this.majPause();
     const boutons = el("span");
-    boutons.append(relire, fermer);
+    boutons.append(this.boutonPause, relire, fermer);
     tete.append(boutons);
 
     const filtres = el("div", "filtres");
@@ -159,6 +186,16 @@ export class PanneauJournal {
       this.dessinerListe();
     });
     r.append(tete, filtres, recherche, suivi, zone, plus);
+  }
+
+  /** Bouton de pause : ⏸ en direct ; en pause, ▶ et le nombre d'événements arrivés depuis. */
+  private majPause(): void {
+    const b = this.boutonPause;
+    b.textContent = this.enPause ? `▶${this.enAttente.length > 0 ? ` ${this.enAttente.length}` : ""}` : "⏸";
+    b.title = this.enPause
+      ? `Journal figé (la simulation continue) : ${this.enAttente.length} nouvel${this.enAttente.length > 1 ? "s" : ""} événement${this.enAttente.length > 1 ? "s" : ""} en attente. Cliquer pour reprendre.`
+      : "Figer le journal pour le lire tranquillement (la simulation continue)";
+    b.classList.toggle("actif", this.enPause);
   }
 
   private dessinerListe(): void {

@@ -374,6 +374,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         };
         var (valeur, besoin) = urgences.MaxBy(u => u.Valeur);
 
+        // En raid, seul un besoin très pressant arrête la marche.
+        if (valeur < 0.8 && MenerRaid(h)) return;
+
         if (valeur >= seuil)
         {
             switch (besoin)

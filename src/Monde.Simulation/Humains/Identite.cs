@@ -169,7 +169,7 @@ public sealed partial class VieSociale
         foreach (var c in actives.Where(c => c.FusionVersId != 0))
         {
             var cible = communautes[c.FusionVersId - 1];
-            if (cible.Active && RelationEntre(c.Id, cible.Id) != EtatRelation.Hostiles && maintenant - c.FusionDecideeLe <= PatienceFusion)
+            if (cible.Active && RelationEntre(c.Id, cible.Id) is not (EtatRelation.Hostiles or EtatRelation.EnGuerre) && maintenant - c.FusionDecideeLe <= PatienceFusion)
             {
                 (c.DestinationX, c.DestinationY) = (cible.CentreX, cible.CentreY);
                 continue;
@@ -196,7 +196,8 @@ public sealed partial class VieSociale
                 var petites = Math.Clamp((TailleBandeMax - (ma.Count + mb.Count)) / (double)TailleBandeMax, 0, 1);
                 var disette = a.Disette || b.Disette;
                 var ennemie = actives.FirstOrDefault(k => k.Id != a.Id && k.Id != b.Id
-                    && RelationEntre(a.Id, k.Id) == EtatRelation.Hostiles && RelationEntre(b.Id, k.Id) == EtatRelation.Hostiles);
+                    && RelationEntre(a.Id, k.Id) is EtatRelation.Hostiles or EtatRelation.EnGuerre
+                    && RelationEntre(b.Id, k.Id) is EtatRelation.Hostiles or EtatRelation.EnGuerre);
                 // Un groupe né de l'autre retrouve les siens : chez les chasseurs-cueilleurs, les bandes se séparent et se
                 // réunissent au fil des saisons et des affinités (sociétés de fission-fusion ; Marlowe, 2010).
                 var parentes = a.OrigineId == b.Id || b.OrigineId == a.Id;

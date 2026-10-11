@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using Monde.Simulation;
 using Monde.Simulation.Humains;
@@ -15,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 13;
+    public const int VersionSchema = 14;
 
     private readonly string _connexion;
 
@@ -396,6 +397,37 @@ public sealed partial class DepotMonde
                 ALTER TABLE etat ADD COLUMN continents INTEGER;
                 """);
         }
+        if (actuelle < 14)
+        {
+            // Version 14 : guerres et alliances (raids, pactes, soumission, paix) ; continent de départ des couples.
+            Executer(connexion, transaction, """
+                ALTER TABLE etat ADD COLUMN placement INTEGER NOT NULL DEFAULT 1;
+                ALTER TABLE communautes ADD COLUMN bellicisme REAL NOT NULL DEFAULT -1;
+                ALTER TABLE communautes ADD COLUMN raid TEXT;
+                ALTER TABLE communautes ADD COLUMN dernier_raid_le INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN soumise_a INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN soumise_le INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN soumission_evenement INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN paix_evenement INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE communautes ADD COLUMN heritiere INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE relations_communautes ADD COLUMN pacte INTEGER NOT NULL DEFAULT 0;
+                CREATE TABLE IF NOT EXISTS guerres (
+                    id INTEGER PRIMARY KEY,
+                    a INTEGER NOT NULL,
+                    b INTEGER NOT NULL,
+                    debut INTEGER NOT NULL,
+                    fin INTEGER,
+                    morts_a INTEGER NOT NULL,
+                    morts_b INTEGER NOT NULL,
+                    raids INTEGER NOT NULL,
+                    issue INTEGER NOT NULL,
+                    dernier_sang INTEGER NOT NULL,
+                    evenement INTEGER NOT NULL,
+                    fin_evenement INTEGER NOT NULL,
+                    vainqueur INTEGER NOT NULL
+                );
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -405,7 +437,7 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = "SELECT graine, secondes, pas, vitesse, alea0, alea1, alea2, alea3, couples, largeur, hauteur, continents FROM etat WHERE id = 1;";
+        commande.CommandText = "SELECT graine, secondes, pas, vitesse, alea0, alea1, alea2, alea3, couples, largeur, hauteur, continents, placement FROM etat WHERE id = 1;";
         EtatMonde etat;
         using (var lecteur = commande.ExecuteReader())
         {
@@ -420,7 +452,8 @@ public sealed partial class DepotMonde
             };
             if (!lecteur.IsDBNull(8))
             {
-                var configuration = new ConfigurationMonde(etat.Graine, lecteur.GetInt32(8), lecteur.GetInt32(9), lecteur.GetInt32(10), lecteur.GetInt32(11));
+                var configuration = new ConfigurationMonde(etat.Graine, lecteur.GetInt32(8), lecteur.GetInt32(9), lecteur.GetInt32(10), lecteur.GetInt32(11),
+                    lecteur.GetInt32(12));
                 if (configuration.Erreur() is { } erreur) throw new InvalidDataException($"Réglages du monde invalides dans {CheminFichier} : {erreur}");
                 etat = etat with { Configuration = configuration };
             }
@@ -534,7 +567,8 @@ public sealed partial class DepotMonde
             SELECT id, nom, fondee_le, dispersee_le, figure, centre_x, centre_y, rayon, abondance, disette, destination_x, destination_y,
                    tolerance, usage, derniere_affaire, disette_evenement, nom_propre, sens, sens_cle, eponyme, lexique, origine,
                    fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations, disettes_surmontees,
-                   installation_evenement, territoire
+                   installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
+                   soumission_evenement, paix_evenement, heritiere
             FROM communautes ORDER BY id;
             """;
         var communautes = new List<Communaute>();
@@ -556,6 +590,9 @@ public sealed partial class DepotMonde
                     FusionEvenementId = l.GetInt64(24), FusionneeDansId = l.GetInt32(25), AccueilLe = l.IsDBNull(26) ? null : l.GetInt64(26),
                     Migrations = l.GetInt32(27), DisettesSurmontees = l.GetInt32(28), InstallationEvenementId = l.GetInt64(29),
                     Territoire = l.IsDBNull(30) ? [] : LireTerritoire((byte[])l[30]),
+                    Bellicisme = l.GetDouble(31), Raid = l.IsDBNull(32) ? null : JsonSerializer.Deserialize<Raid>(l.GetString(32)),
+                    DernierRaidLe = l.GetInt64(33), SoumiseAId = l.GetInt32(34), SoumiseLe = l.GetInt64(35),
+                    SoumissionEvenementId = l.GetInt64(36), PaixEvenementId = l.GetInt64(37), HeritiereId = l.GetInt32(38),
                 });
             }
         }
@@ -565,13 +602,36 @@ public sealed partial class DepotMonde
             etat = etat with { Communautes = communautes };
         }
 
-        commande.CommandText = "SELECT a, b, etat, evenement FROM relations_communautes ORDER BY a, b;";
+        commande.CommandText = "SELECT a, b, etat, evenement, pacte FROM relations_communautes ORDER BY a, b;";
         var relations = new List<RelationCommunautes>();
         using (var l = commande.ExecuteReader())
         {
-            while (l.Read()) relations.Add(new RelationCommunautes(l.GetInt32(0), l.GetInt32(1), (EtatRelation)l.GetByte(2), l.GetInt64(3)));
+            while (l.Read())
+            {
+                relations.Add(new RelationCommunautes(l.GetInt32(0), l.GetInt32(1), (EtatRelation)l.GetByte(2), l.GetInt64(3), l.GetInt64(4)));
+            }
         }
         if (relations.Count > 0) etat = etat with { Relations = relations };
+
+        commande.CommandText = """
+            SELECT id, a, b, debut, fin, morts_a, morts_b, raids, issue, dernier_sang, evenement, fin_evenement, vainqueur
+            FROM guerres ORDER BY id;
+            """;
+        var guerres = new List<Guerre>();
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read())
+            {
+                guerres.Add(new Guerre
+                {
+                    Id = l.GetInt32(0), A = l.GetInt32(1), B = l.GetInt32(2), Debut = l.GetInt64(3),
+                    Fin = l.IsDBNull(4) ? null : l.GetInt64(4), MortsA = l.GetInt32(5), MortsB = l.GetInt32(6), Raids = l.GetInt32(7),
+                    Issue = (IssueGuerre)l.GetByte(8), DernierSangLe = l.GetInt64(9), EvenementId = l.GetInt64(10),
+                    FinEvenementId = l.GetInt64(11), VainqueurId = l.GetInt32(12),
+                });
+            }
+        }
+        if (guerres.Count > 0) etat = etat with { Guerres = guerres };
 
         commande.CommandText = "SELECT a, b, evenement FROM offenses_communautes ORDER BY a, b;";
         var offenses = new List<OffenseCommunautes>();
@@ -662,7 +722,7 @@ public sealed partial class DepotMonde
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
-                "DELETE FROM catastrophes; DELETE FROM pathogenes;");
+                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres;");
         }
 
         using (var commande = connexion.CreateCommand())
@@ -670,15 +730,15 @@ public sealed partial class DepotMonde
             commande.Transaction = transaction;
             commande.CommandText = """
                 INSERT INTO etat (id, graine, secondes, pas, vitesse, modifie_le, alea0, alea1, alea2, alea3,
-                                  couples, largeur, hauteur, continents)
+                                  couples, largeur, hauteur, continents, placement)
                 VALUES (1, $graine, $secondes, $pas, $vitesse, $modifie, $a0, $a1, $a2, $a3,
-                        $couples, $largeur, $hauteur, $continents)
+                        $couples, $largeur, $hauteur, $continents, $placement)
                 ON CONFLICT (id) DO UPDATE SET
                     graine = excluded.graine, secondes = excluded.secondes, pas = excluded.pas,
                     vitesse = excluded.vitesse, modifie_le = excluded.modifie_le,
                     alea0 = excluded.alea0, alea1 = excluded.alea1, alea2 = excluded.alea2, alea3 = excluded.alea3,
                     couples = excluded.couples, largeur = excluded.largeur, hauteur = excluded.hauteur,
-                    continents = excluded.continents;
+                    continents = excluded.continents, placement = excluded.placement;
                 """;
             commande.Parameters.AddWithValue("$graine", unchecked((long)etat.Graine));
             commande.Parameters.AddWithValue("$secondes", etat.Secondes);
@@ -694,6 +754,7 @@ public sealed partial class DepotMonde
             commande.Parameters.AddWithValue("$largeur", c is null ? DBNull.Value : (object)c.Largeur);
             commande.Parameters.AddWithValue("$hauteur", c is null ? DBNull.Value : (object)c.Hauteur);
             commande.Parameters.AddWithValue("$continents", c is null ? DBNull.Value : (object)c.Continents);
+            commande.Parameters.AddWithValue("$placement", c?.Placement ?? 1);
             commande.ExecuteNonQuery();
         }
 
@@ -799,6 +860,7 @@ public sealed partial class DepotMonde
         if (etat.Pathogenes is { Count: > 0 } pathogenes) EnregistrerPathogenes(connexion, transaction, pathogenes);
         if (etat.Communautes is { } communautes) EnregistrerCommunautes(connexion, transaction, communautes);
         if (etat.Relations is { } relations) EnregistrerRelations(connexion, transaction, relations);
+        if (etat.Guerres is { Count: > 0 } guerres) EnregistrerGuerres(connexion, transaction, guerres);
         if (etat.Offenses is { } offensesAEnregistrer) EnregistrerOffenses(connexion, transaction, offensesAEnregistrer);
         if (etat.JournalNonEnregistre is { Count: > 0 } journal) EnregistrerJournal(connexion, transaction, journal);
         if (etat.ArchivesNonEnregistrees is { Count: > 0 } archives) EnregistrerArchives(connexion, transaction, archives);
@@ -858,11 +920,13 @@ public sealed partial class DepotMonde
             INSERT OR REPLACE INTO communautes (id, nom, fondee_le, dispersee_le, figure, centre_x, centre_y, rayon, abondance, disette,
                 destination_x, destination_y, tolerance, usage, derniere_affaire, disette_evenement, nom_propre, sens, sens_cle, eponyme,
                 lexique, origine, fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations,
-                disettes_surmontees, installation_evenement, territoire)
+                disettes_surmontees, installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
+                soumission_evenement, paix_evenement, heritiere)
             VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy, $to, $u, $da, $de, $np, $s, $sc, $ep, $lx, $o, $fv, $fd, $fe,
-                $fi, $al, $mi, $ds, $ie, $te);
+                $fi, $al, $mi, $ds, $ie, $te, $be, $ra, $dr, $sa, $sl, $se, $pe, $he);
             """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy", "$to", "$u", "$da", "$de", "$np", "$s",
-            "$sc", "$ep", "$lx", "$o", "$fv", "$fd", "$fe", "$fi", "$al", "$mi", "$ds", "$ie", "$te");
+            "$sc", "$ep", "$lx", "$o", "$fv", "$fd", "$fe", "$fi", "$al", "$mi", "$ds", "$ie", "$te", "$be", "$ra", "$dr", "$sa", "$sl",
+            "$se", "$pe", "$he");
         foreach (var c in communautes)
         {
             Lancer(commande, c.Id, c.Nom, c.FondeeLe, c.DisperseeLe is { } d ? d : DBNull.Value, c.FigureId,
@@ -871,7 +935,9 @@ public sealed partial class DepotMonde
                 (object?)c.NomPropre ?? DBNull.Value, (object?)c.Sens ?? DBNull.Value, (object?)c.SensCle ?? DBNull.Value, c.EponymeId,
                 EcrireLexique(c.Lexique), c.OrigineId, c.FusionVersId, c.FusionDecideeLe, c.FusionEvenementId, c.FusionneeDansId,
                 c.AccueilLe is { } al ? al : DBNull.Value, c.Migrations, c.DisettesSurmontees, c.InstallationEvenementId,
-                c.Territoire.Count == 0 ? DBNull.Value : EcrireTerritoire(c.Territoire));
+                c.Territoire.Count == 0 ? DBNull.Value : EcrireTerritoire(c.Territoire),
+                c.Bellicisme, c.Raid is { } raid ? JsonSerializer.Serialize(raid) : DBNull.Value, c.DernierRaidLe, c.SoumiseAId,
+                c.SoumiseLe, c.SoumissionEvenementId, c.PaixEvenementId, c.HeritiereId);
         }
         EnregistrerNoms(connexion, transaction, communautes);
     }
@@ -880,8 +946,21 @@ public sealed partial class DepotMonde
     {
         Executer(connexion, transaction, "DELETE FROM relations_communautes;");
         using var commande = Preparer(connexion, transaction,
-            "INSERT INTO relations_communautes (a, b, etat, evenement) VALUES ($a, $b, $e, $v);", "$a", "$b", "$e", "$v");
-        foreach (var r in relations) Lancer(commande, r.A, r.B, (int)r.Etat, r.EvenementId);
+            "INSERT INTO relations_communautes (a, b, etat, evenement, pacte) VALUES ($a, $b, $e, $v, $p);", "$a", "$b", "$e", "$v", "$p");
+        foreach (var r in relations) Lancer(commande, r.A, r.B, (int)r.Etat, r.EvenementId, r.PacteEvenementId);
+    }
+
+    private static void EnregistrerGuerres(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Guerre> guerres)
+    {
+        using var commande = Preparer(connexion, transaction, """
+            INSERT OR REPLACE INTO guerres (id, a, b, debut, fin, morts_a, morts_b, raids, issue, dernier_sang, evenement, fin_evenement, vainqueur)
+            VALUES ($i, $a, $b, $d, $f, $ma, $mb, $r, $is, $ds, $e, $fe, $v);
+            """, "$i", "$a", "$b", "$d", "$f", "$ma", "$mb", "$r", "$is", "$ds", "$e", "$fe", "$v");
+        foreach (var g in guerres)
+        {
+            Lancer(commande, g.Id, g.A, g.B, g.Debut, g.Fin is { } f ? f : DBNull.Value, g.MortsA, g.MortsB, g.Raids, (int)g.Issue,
+                g.DernierSangLe, g.EvenementId, g.FinEvenementId, g.VainqueurId);
+        }
     }
 
     private static void EnregistrerOffenses(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<OffenseCommunautes> offenses)
@@ -1079,6 +1158,91 @@ public sealed partial class DepotMonde
         return true;
     }
 
+    /// <summary>
+    /// Résumé d'un fichier de monde (version du schéma, graine, date du monde, humains vivants), lu sans le modifier ;
+    /// null si ce n'est pas un monde lisible.
+    /// </summary>
+    public static ResumeMonde? Decrire(string chemin)
+    {
+        if (!File.Exists(chemin)) return null;
+        var texte = new SqliteConnectionStringBuilder { DataSource = chemin, Mode = SqliteOpenMode.ReadOnly, Pooling = false }.ToString();
+        try
+        {
+            using var connexion = new SqliteConnection(texte);
+            connexion.Open();
+            using var commande = connexion.CreateCommand();
+            commande.CommandText = "PRAGMA user_version;";
+            var version = Convert.ToInt32(commande.ExecuteScalar());
+            commande.CommandText = "SELECT graine, secondes FROM etat WHERE id = 1;";
+            using (var l = commande.ExecuteReader())
+            {
+                if (!l.Read()) return null;
+                var (graine, secondes) = (unchecked((ulong)l.GetInt64(0)), l.GetInt64(1));
+                l.Close();
+                commande.CommandText = "SELECT count(*) FROM humains WHERE mort_le IS NULL;";
+                return new ResumeMonde(version, graine, secondes, Convert.ToInt32(commande.ExecuteScalar()));
+            }
+        }
+        catch (SqliteException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Prépare la restauration d'une sauvegarde : elle est copiée à côté du monde (la sauvegarde elle-même n'est pas modifiée),
+    /// la copie est mise à jour au schéma actuel et lue. Rend le fichier préparé et l'état qu'il contient ;
+    /// à passer ensuite à <see cref="RemplacerPar"/>, ou à effacer.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Le fichier n'est pas un monde lisible.</exception>
+    public (string Fichier, EtatMonde Etat) PreparerRestauration(string sauvegarde)
+    {
+        var prepare = CheminFichier + ".restauration";
+        EffacerAvecJournal(prepare);
+        File.Copy(sauvegarde, prepare);
+        try
+        {
+            var etat = new DepotMonde(prepare).Charger() ?? throw new InvalidDataException("Cette sauvegarde ne contient pas de monde.");
+            return (prepare, etat);
+        }
+        catch (Exception e) when (e is SqliteException or InvalidDataException or InvalidOperationException)
+        {
+            EffacerAvecJournal(prepare);
+            // Message sans chemin de fichier : il est montré dans le navigateur.
+            throw new InvalidDataException(e is InvalidOperationException
+                ? "Cette sauvegarde vient d'une version plus récente de l'application."
+                : e.Message.StartsWith("Cette sauvegarde", StringComparison.Ordinal) ? e.Message : "Cette sauvegarde est illisible.", e);
+        }
+    }
+
+    /// <summary>
+    /// Remplace le monde par un fichier préparé (<see cref="PreparerRestauration"/>), en gardant les réglages de
+    /// l'application. L'appelant doit avoir copié l'ancien monde s'il veut le garder.
+    /// </summary>
+    public void RemplacerPar(string prepare)
+    {
+        var reglages = LireReglages();
+        using (var connexion = Ouvrir())
+        using (var commande = connexion.CreateCommand())
+        {
+            commande.CommandText = "PRAGMA wal_checkpoint(TRUNCATE);";
+            commande.ExecuteNonQuery();
+        }
+        foreach (var reste in new[] { CheminFichier + "-wal", CheminFichier + "-shm" })
+        {
+            try { File.Delete(reste); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+        File.Move(prepare, CheminFichier, overwrite: true);
+        EffacerAvecJournal(prepare);
+        Initialiser();
+        foreach (var (cle, valeur) in reglages) EcrireReglage(cle, valeur);
+    }
+
+    private static void EffacerAvecJournal(string chemin)
+    {
+        foreach (var f in new[] { chemin, chemin + "-wal", chemin + "-shm", chemin + "-journal" }) File.Delete(f);
+    }
+
     private List<(string Cle, string Valeur)> LireReglages()
     {
         using var connexion = Ouvrir();
@@ -1140,3 +1304,6 @@ public sealed partial class DepotMonde
         return valeurs;
     }
 }
+
+/// <summary>Ce qu'un fichier de monde contient, en bref : version du schéma, graine, date du monde, humains vivants.</summary>
+public sealed record ResumeMonde(int Version, ulong Graine, long Secondes, int Vivants);

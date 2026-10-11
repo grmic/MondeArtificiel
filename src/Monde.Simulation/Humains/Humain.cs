@@ -31,6 +31,10 @@ public enum Activite : byte
     Migrer = 18,
     /// <summary>Fuir un danger : feu, eau qui monte, volcan ; ou chercher un abri contre la tempête.</summary>
     Fuir = 19,
+    /// <summary>Marcher avec une troupe de guerriers vers un camp ennemi, ou l'y guetter.</summary>
+    Raid = 20,
+    /// <summary>Rentrer d'un raid.</summary>
+    RentrerDuRaid = 21,
 }
 
 public enum CauseDeMort : byte
@@ -59,6 +63,8 @@ public enum CauseDeMort : byte
     Accident = 14,
     /// <summary>Coup de chaleur pendant une canicule.</summary>
     Chaleur = 15,
+    /// <summary>Tué lors d'un raid entre communautés (voir <see cref="Humain.MeurtrierId"/>).</summary>
+    Guerre = 16,
 }
 
 /// <summary>
