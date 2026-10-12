@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 18;
+    public const int VersionSchema = 19;
 
     private readonly string _connexion;
 
@@ -510,6 +510,7 @@ public sealed partial class DepotMonde
                 ALTER TABLE humains ADD COLUMN purete REAL;
                 """);
         }
+        if (actuelle < 19) MigrerVersion19(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -655,7 +656,12 @@ public sealed partial class DepotMonde
         {
             LireMemoires(connexion, humains);
             LireSanteNature(commande, humains);
+            LireSavoirs(commande, humains);
         }
+        var (foyers, huttes, decouvertes) = LireInstallations(commande);
+        if (foyers.Count > 0) etat = etat with { Foyers = foyers };
+        if (huttes.Count > 0) etat = etat with { Huttes = huttes };
+        if (decouvertes.Count > 0) etat = etat with { Decouvertes = decouvertes };
         var catastrophes = LireCatastrophesEnCours(commande);
         if (catastrophes.Count > 0) etat = etat with { Catastrophes = catastrophes };
         var pathogenes = LirePathogenes(commande);
@@ -862,7 +868,7 @@ public sealed partial class DepotMonde
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
-                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions;");
+                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions; " + EffacerSavoirs);
         }
 
         using (var commande = connexion.CreateCommand())
@@ -1007,7 +1013,9 @@ public sealed partial class DepotMonde
         {
             EnregistrerMemoires(connexion, transaction, tous);
             EnregistrerSanteNature(connexion, transaction, tous);
+            EnregistrerSavoirs(connexion, transaction, tous);
         }
+        if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Catastrophes is { Count: > 0 } catastrophes) EnregistrerCatastrophes(connexion, transaction, catastrophes);
         if (etat.Pathogenes is { Count: > 0 } pathogenes) EnregistrerPathogenes(connexion, transaction, pathogenes);
         if (etat.Communautes is { } communautes) EnregistrerCommunautes(connexion, transaction, communautes);

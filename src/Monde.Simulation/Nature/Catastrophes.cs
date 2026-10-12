@@ -113,6 +113,80 @@ public sealed partial class Catastrophes
 
     public bool EstDangereuse(int indice) => _danger.ContainsKey(indice);
 
+    /// <summary>Des flammes brûlent sur cette case ou à côté (front d'un incendie).</summary>
+    public bool BruleAutour(int x, int y)
+    {
+        foreach (var c in _liste)
+        {
+            if (!c.Active || c.Type != TypeCatastrophe.Incendie || c.Front.Count == 0) continue;
+            for (var dy = -1; dy <= 1; dy++)
+                for (var dx = -1; dx <= 1; dx++)
+                {
+                    int nx = x + dx, ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= _carte.Largeur || ny >= _carte.Hauteur) continue;
+                    if (c.Front.ContainsKey(_carte.Indice(nx, ny))) return true;
+                }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Des braises couvent sur cette case : elle a brûlé pendant un incendie encore en cours, ou éteint depuis peu. Les troncs
+    /// et les souches couvent bien plus longtemps que l'herbe (combustion lente : Rein, 2009).
+    /// </summary>
+    public bool BraisesEn(int x, int y, long maintenant)
+    {
+        var i = _carte.Indice(x, y);
+        foreach (var c in _liste)
+        {
+            if (c.Type != TypeCatastrophe.Incendie || !c.Cases.Contains(i)) continue;
+            if (c.Active || maintenant - c.Fin < Couve(_carte.BiomeEn(x, y)) * Calendrier.SecondesParJour) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Jours pendant lesquels un sol brûlé garde des braises, selon ce qui y a brûlé.</summary>
+    private static double Couve(Biome b) => b switch
+    {
+        Biome.ForetTropicale => 10,
+        Biome.ForetDeConiferes => 7,
+        Biome.Marais or Biome.PlaineDeFougeres => 2,
+        _ => 1,
+    };
+
+    /// <summary>
+    /// Fumée d'un incendie visible d'ici (à moins de <paramref name="rayon"/> cases) : la case brûlée la plus proche où des
+    /// braises couvent encore, ou null.
+    /// </summary>
+    public (int X, int Y)? FumeeEnVue(int x, int y, int rayon, long maintenant)
+    {
+        (int X, int Y)? meilleure = null;
+        var d2 = long.MaxValue;
+        foreach (var c in _liste)
+        {
+            if (c.Type != TypeCatastrophe.Incendie || c.Cases.Count == 0) continue;
+            if ((long)(c.X - x) * (c.X - x) + (long)(c.Y - y) * (c.Y - y) > (long)(rayon + c.Rayon + 1) * (rayon + c.Rayon + 1)) continue;
+            foreach (var i in c.Cases)
+            {
+                int cx = i % _carte.Largeur, cy = i / _carte.Largeur;
+                long d = (long)(cx - x) * (cx - x) + (long)(cy - y) * (cy - y);
+                if (d >= d2 || d > (long)rayon * rayon || _danger.ContainsKey(i)) continue;
+                if (!c.Active && maintenant - c.Fin >= Couve(_carte.BiomeEn(cx, cy)) * Calendrier.SecondesParJour) continue;
+                (meilleure, d2) = ((cx, cy), d);
+            }
+        }
+        return meilleure;
+    }
+
+    /// <summary>Incendie qui a brûlé cette case (encore actif), ou null : on y trouve des bêtes surprises par le feu.</summary>
+    public Catastrophe? BruleeRecemment(int x, int y)
+    {
+        var i = _carte.Indice(x, y);
+        foreach (var c in _liste)
+            if (c.Active && c.Type == TypeCatastrophe.Incendie && c.Cases.Contains(i)) return c;
+        return null;
+    }
+
     private void CalculerDangers()
     {
         _danger.Clear();

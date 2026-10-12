@@ -83,6 +83,20 @@ interface Fiche {
   morale: Trait[];
   /** Le caractère en phrases : style d'attachement, psychopathie, morale dominante. */
   portrait: string[];
+  savoirs: Savoirs;
+}
+
+/** Ce qu'il sait faire (et à quel point il y croit), ce qu'il porte, son vêtement, son aisance dans l'eau (0 à 100). */
+interface Savoirs {
+  savoirs: { texte: string; confiance: number; origine: string; maitre: number; nomMaitre: string | null; appriLe: string; essais: number; evenement: number }[];
+  objets: string[];
+  vetement: string | null;
+  nage: number;
+}
+
+interface Choix {
+  cle: string;
+  libelle: string;
 }
 
 /** Beauté et attractivité (0 à 100, aux yeux de sa communauté), orientation, ce qu'il en sait, exclusions. */
@@ -123,6 +137,9 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, classe?: strin
 export class PanneauFiche {
   private id = 0;
   private minuteur?: number;
+  /** Formulaire de l'Entité : construit une fois, il survit aux rafraîchissements de la fiche. */
+  private souffle: HTMLDetailsElement | null = null;
+  private readonly resultatSouffle = el("p", "discret");
 
   constructor(
     private readonly racine: HTMLElement,
@@ -136,7 +153,10 @@ export class PanneauFiche {
   }
 
   async ouvrir(id: number): Promise<void> {
-    if (id !== this.id) replierCauses();
+    if (id !== this.id) {
+      replierCauses();
+      this.resultatSouffle.textContent = "";
+    }
     this.id = id;
     this.surChoix(id);
     await this.rafraichir();
@@ -298,6 +318,9 @@ export class PanneauFiche {
     const bio = el("p", "discret", Object.entries(f.biologie).map(([k, v]) => `${k} ${v}`).join(" · "));
     corps.append(el("h3", undefined, "Biologie"), bio);
 
+    this.savoirs(corps, f.savoirs, h.sexe === "femme" ? "e" : "");
+    if (h.vivant) corps.append(this.formulaireSouffle());
+
     corps.append(el("h3", undefined, "Liens"));
     const liens = el("ul", "liste");
     for (const l of f.liens.slice(0, 15)) {
@@ -353,6 +376,75 @@ export class PanneauFiche {
 
     r.append(corps);
     corps.scrollTop = defilement;
+  }
+
+  /** Savoirs (texte, confiance, comment il les a appris et de qui), objets portés, vêtement, nage. */
+  private savoirs(corps: HTMLElement, s: Savoirs, e: string): void {
+    corps.append(el("h3", undefined, "Savoirs et objets"));
+    const p = el("p", "discret");
+    p.append(s.vetement ? `Vêtu${e} de ${s.vetement}` : `Nu${e}`);
+    if (s.objets.length > 0) p.append(` · porte ${s.objets.join(", ")}`);
+    if (s.nage > 0) p.append(` · nage ${s.nage}/100`);
+    corps.append(p);
+    const ul = el("ul", "liste");
+    for (const x of s.savoirs) {
+      const li = el("li", x.confiance < 40 ? "discret" : undefined);
+      li.title = `${x.essais} essai${x.essais > 1 ? "s" : ""}, appris le ${x.appriLe}`;
+      li.append(`${x.texte} `, el("span", "discret", `(confiance ${x.confiance} %, ${x.origine}`));
+      if (x.maitre > 0 && x.nomMaitre) li.append(el("span", "discret", " de "), this.lien(x.maitre, x.nomMaitre));
+      li.append(el("span", "discret", ")"));
+      if (x.origine.includes("Entité")) li.append(el("span", "entite", " ✦"));
+      if (x.evenement > 0) li.append(" ", boutonCause(li, x.evenement, "comment ?"));
+      ul.append(li);
+    }
+    if (s.savoirs.length === 0) ul.append(el("li", "discret", "Ne sait encore rien faire de particulier."));
+    corps.append(ul);
+  }
+
+  /**
+   * L'Entité souffle une idée : un geste et une ou deux matières. L'humain l'essaie aussitôt avec ce qu'il a sous la main ;
+   * les lois du monde décident du résultat (rien n'est garanti).
+   */
+  private formulaireSouffle(): HTMLDetailsElement {
+    if (this.souffle) return this.souffle;
+    const bloc = el("details", "entite-bloc");
+    bloc.append(el("summary", "entite", "✦ L'Entité souffle une idée…"));
+    const geste = el("select");
+    const a = el("select");
+    const b = el("select");
+    const bouton = el("button", undefined, "Souffler");
+    bouton.type = "button";
+    const remplir = (select: HTMLSelectElement, choix: Choix[]) =>
+      select.replaceChildren(...choix.map((c) => {
+        const o = el("option", undefined, c.libelle);
+        o.value = c.cle;
+        return o;
+      }));
+    void connexion.invoke<{ gestes: Choix[]; matieres: Choix[] }>("ChoixIntuition").then((c) => {
+      remplir(geste, c.gestes);
+      remplir(a, c.matieres.filter((m) => m.cle !== "Aucune"));
+      remplir(b, c.matieres);
+    }).catch(() => (this.resultatSouffle.textContent = "Le serveur n'a pas répondu."));
+    bouton.addEventListener("click", async () => {
+      if (!this.id) return;
+      bouton.disabled = true;
+      try {
+        this.resultatSouffle.textContent = await connexion.invoke<string>("Souffler", { humain: this.id, geste: geste.value, a: a.value, b: b.value });
+      } catch {
+        this.resultatSouffle.textContent = "L'intuition n'a pas pu être soufflée.";
+      } finally {
+        bouton.disabled = false;
+      }
+    });
+    const ligne = (libelle: string, champ: HTMLElement) => {
+      const l = el("label", "ligne");
+      l.append(`${libelle} `, champ);
+      return l;
+    };
+    bloc.append(ligne("Geste", geste), ligne("Avec", a), ligne("Et", b), bouton, this.resultatSouffle,
+      el("p", "discret", "Il essaie avec ce qu'il a sous la main. Le journal marquera ce qu'il en tire comme venu de l'Entité."));
+    this.souffle = bloc;
+    return bloc;
   }
 
   private traits(titre: string, traits: Trait[], max: number): HTMLElement {

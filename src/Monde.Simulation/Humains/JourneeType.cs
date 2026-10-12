@@ -43,6 +43,10 @@ public sealed class JourneeType
             Ajouter(Activite.RejoindreProche, "est allé" + e + " retrouver un proche");
             Ajouter(Activite.SuivreParent, "a suivi ses parents");
             Ajouter(Activite.VeillerEnfant, "est allé" + e + " chercher son enfant");
+            Ajouter(Activite.Experimenter, "a essayé des choses de ses mains");
+            Ajouter(Activite.Fabriquer, "a fabriqué ou fait ce qu'il sait faire".Replace("qu'il", h.Sexe == Sexe.Femme ? "qu'elle" : "qu'il"));
+            Ajouter(Activite.Veiller, "a entretenu le feu");
+            Ajouter(Activite.Nager, "a nagé");
             Ajouter(Activite.Repos, "s'est reposé" + e);
             Ajouter(Activite.Dormir, "a dormi");
             if (parties.Count == 0) continue;

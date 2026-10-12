@@ -42,6 +42,8 @@ interface Communaute {
   exiles: { id: number; nom: string; raison: string; jusqua: string | null; evenement: number }[];
   /** Morale du groupe : moyenne des fondements moraux de ses adultes (null : aucun adulte). */
   morale: string | null;
+  /** Savoirs connus de ses membres, avec combien les ont. */
+  savoirs: string[];
 }
 
 /** Une guerre en préparation : qui la veut, contre qui, pourquoi, et les alliés sollicités. */
@@ -259,6 +261,7 @@ export class PanneauCommunautes {
     if (!c.disperseeLe) {
       bloc.append(el("p", "usage", `Usage : ${c.usage}.${c.moeurs ? ` Mœurs : ${c.moeurs}.` : ""}${c.temperament ? ` Tempérament : ${c.temperament}.` : ""}`));
       if (c.morale) bloc.append(el("p", "usage", `Morale : ${c.morale}.`));
+      if (c.savoirs.length > 0) bloc.append(el("p", "usage", `Savoirs : ${c.savoirs.join(", ")}.`));
       if (c.ideal) bloc.append(el("p", "discret", `Trouve beaux : ${c.ideal}.`));
     }
     for (const x of c.exiles) {

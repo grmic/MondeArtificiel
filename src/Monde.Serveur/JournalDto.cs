@@ -124,7 +124,8 @@ public sealed record FicheDto(
     AttraitsDto Attraits,
     IReadOnlyList<TraitDto> Coeur,
     IReadOnlyList<TraitDto> Morale,
-    IReadOnlyList<string> Portrait)
+    IReadOnlyList<string> Portrait,
+    SavoirsDto Savoirs)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -214,7 +215,8 @@ public sealed record FicheDto(
                 Trait("autorité", p.Moral.Fondements.Autorite, "respect de ceux qui mènent et des usages"),
                 Trait("pureté", p.Moral.Fondements.Purete, "dégoût de ce qui souille, sens du sacré"),
             ],
-            Decrire(h, maintenant));
+            Decrire(h, maintenant),
+            SavoirsDto.Depuis(h, humains, monde.Flore));
     }
 
     /// <summary>Le caractère en quelques phrases : style d'attachement, psychopathie (adulte), morale dominante.</summary>
@@ -374,7 +376,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage, string? NomPropre, string? Sens,
     IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire,
     string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet,
-    string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles, string? Morale)
+    string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles, string? Morale, IReadOnlyList<string> Savoirs)
 {
     /// <summary>
     /// Morale du groupe en mots : la moyenne des fondements de ses adultes, et ce qui y pèse le plus.
@@ -532,7 +534,8 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                         .SelectMany(m => m.Exclusions.Where(e => e.Type == TypeExclusion.Communaute && e.De == c.Id && e.Active(maintenant))
                             .Select(e => new ExileDto(m.Id, m.Nom, e.Raison, e.Jusqua == 0 ? null : Calendrier.Decomposer(e.Jusqua).ToString(), e.EvenementId)))
                         .ToList(),
-                    DireMorale(adultes));
+                    DireMorale(adultes),
+                    Decouvertes.DeCommunaute(membres));
             }).ToList();
     }
 }

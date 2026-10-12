@@ -83,6 +83,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     {
         if (!h.EstVivant) return;
         _maintenant = maintenant;
+        _tous = tous;
+        _nageur = false;
         if (h.EstBebe(maintenant))
         {
             VivreBebe(h, Vivant(tous, h.MereId), maintenant);
@@ -94,6 +96,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                               || AmiAuMemeEndroit(h, tous);
         Metaboliser(h, chaleurPartagee, maintenant);
         if (!h.EstVivant) return;
+        _nageur = PeutNager(h);
+        Ramasser(h);
+        ObserverLeFeu(h, tous);
         if (h.EstEnfant(maintenant))
         {
             // Un orphelin est nourri par celui qui l'a pris sous son aile.
@@ -110,6 +115,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var avant = h.Activite;
         (_motif, _autre) = (Motif.Aucun, null);
         Decider(h, partenaire, tous, maintenant);
+        _nageur = false;
+        if (!h.EstVivant) return;
         if (h.Activite != avant && Penseur.Penser(h, _motif, _autre, maintenant) is { } pensee)
         {
             var routine = EstRoutine(h.Activite, _motif);
@@ -127,7 +134,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private static bool EstRoutine(Activite a, Motif motif) => a switch
     {
         Activite.Boire or Activite.Cueillir or Activite.Chasser or Activite.Dormir or Activite.Repos or Activite.Explorer
-            or Activite.SAbriter => true,
+            or Activite.SAbriter or Activite.Experimenter or Activite.Fabriquer or Activite.Veiller or Activite.Nager => true,
         Activite.ChercherEau or Activite.ChercherNourriture or Activite.ChercherAbri => motif is Motif.Vu or Motif.Aucun,
         Activite.RejoindrePartenaire => motif != Motif.Desir,
         Activite.RejoindreProche or Activite.SuivreParent or Activite.VeillerEnfant => true,
@@ -223,7 +230,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         _temperature = temperature;
         // Au-delà de 28 °C, on transpire : la soif vient bien plus vite (jusqu'à un litre d'eau par heure d'effort).
         if (temperature > 28) h.Soif += SoifParPas * (temperature - 28) / 8 * (h.Activite is Activite.Repos or Activite.Dormir ? 0.5 : 1);
-        var abri = Climat.Abri(carte.BiomeEn(h.X, h.Y));
+        var abri = AbriEn(h.X, h.Y) + Couverture(h);
+        if (Installations.FoyerEn(h.X, h.Y) is not null) abri += ChaleurDuFeu;
         if (chaleurPartagee) abri += 0.3; // se tenir chaud avec son compagnon ou sa famille
         var perte = Math.Max(0, TemperatureConfort - temperature) * 0.05 * Math.Max(0, 1 - abri);
         h.Froid += perte - ChaleurCorporelle;
@@ -356,6 +364,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// </summary>
     private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null)
     {
+        RemedeEchoue(h);
         // Mort de froid pendant une vague de froid, de chaleur pendant une canicule, d'une maladie contagieuse, de faim dans une
         // terre dévastée qui n'a pas reverdi : la cause est notée, et dite.
         string? contexte = null;
@@ -368,6 +377,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 h.DepressionEvenementId),
             CauseDeMort.Meurtre when meurtrier is not null => Noter(maintenant, TypeEvenement.Mort, h, meurtrier,
                 $"{h.Nom} meurt sous les coups de {meurtrier.Nom}, à {AgeEnMots(h, maintenant)}.", causeId),
+            CauseDeMort.Empoisonnement => Noter(maintenant, TypeEvenement.Mort, h, null,
+                $"{h.Nom} meurt empoisonné{(h.Sexe == Sexe.Femme ? "e" : "")} par la plante qu'{(h.Sexe == Sexe.Femme ? "elle" : "il")} a mangée, à {AgeEnMots(h, maintenant)}.", causeId),
+            CauseDeMort.Noyade when causeId == 0 => Noter(maintenant, TypeEvenement.Mort, h, null,
+                $"{h.Nom} se noie en nageant, à {AgeEnMots(h, maintenant)}.", causeId),
             CauseDeMort.Maladie when h.Maladie != Maladie.Aucune && h.EstMalade(maintenant) => Noter(maintenant, TypeEvenement.Mort, h, null,
                 $"{h.Nom} meurt {De(Maladies.Fiche(h.Maladie).Nom)}{suite}, à {AgeEnMots(h, maintenant)}.", causeId),
             _ => Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}{suite}, à {AgeEnMots(h, maintenant)}.", causeId),
@@ -426,6 +439,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // Urgence de chaque besoin (0 à 1 environ). Les prudents réagissent plus tôt ; le désespoir fait négliger ses besoins.
         var abattu = h.EstDeprime || h.Chagrin > 50;
         var seuil = 0.45 - 0.2 * p.Prudence + (abattu ? 0.1 : 0);
+        // De l'eau à ses pieds : on boit en passant, quoi qu'on fasse (même transi ou épuisé, on ne meurt pas de soif au bord
+        // d'une rivière).
+        if (h.Soif >= 25 && EauDouceAPortee(h.X, h.Y))
+        {
+            h.Soif = 0;
+            h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, maintenant, Aptitude(h));
+        }
         var urgences = new (double Valeur, Activite Besoin)[]
         {
             (Urgence(h.Soif) * 1.2, Activite.Boire),
@@ -434,6 +454,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             (Urgence(h.Froid) * (0.8 + p.Prudence * 0.4), Activite.SAbriter),
         };
         var (valeur, besoin) = urgences.MaxBy(u => u.Valeur);
+
+        // Un malade éveillé cherche à se soulager.
+        if (valeur < 0.8 && SeSoigner(h, tous)) return;
 
         // Un petit enfant ne part pas seul chercher de l'eau, de quoi manger ou un abri : il reste près de celui qui
         // veille sur lui, qui le nourrit et l'abreuve, et ne prend que ce qui se trouve à ses pieds.
@@ -459,6 +482,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             }
         }
 
+        // Ce qu'il sait faire peut répondre au besoin : le feu, une peau, une hutte, un bâton à fouir.
+        if (!h.EstPetitEnfant(maintenant) && UtiliserSavoirs(h, besoin, valeur, seuil, tous)) return;
+
         if (valeur >= seuil)
         {
             // Un enfant qui ne sait pas où trouver ce qu'il lui faut retourne auprès des siens plutôt que de se perdre.
@@ -478,7 +504,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             var parent = partenaire;
             _autre = parent;
             if (parent is not null && Distance(h.X, h.Y, parent.X, parent.Y) > 1) Avancer(h, parent.X, parent.Y, Activite.SuivreParent);
-            else
+            else if (!Experimenter(h, tous))
             {
                 h.Activite = Activite.Repos;
                 h.CibleX = h.CibleY = -1;
@@ -538,6 +564,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             Avancer(h, proche.X, proche.Y, Activite.RejoindreProche);
             return;
         }
+        if (!abattu && AllerVoirLeFeu(h)) return;
+        if (Outiller(h, tous)) return;
+        if (Experimenter(h, tous)) return;
         if (alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
         {
             Explorer(h);
@@ -580,13 +609,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         };
         if (source.Type == TypeCatastrophe.Cyclone)
         {
-            if (Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4)
+            if (AbriEn(h.X, h.Y) >= 0.4)
             {
                 h.Activite = Activite.SAbriter;
                 h.CibleX = h.CibleY = -1;
                 return true;
             }
-            var abri = Chercher(h, j => Climat.Abri((Biome)carte.Biomes[j]) >= 0.4, _ => 0, rayonMax: 8);
+            var abri = Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 8);
             if (abri is not { } a) return false;
             Avancer(h, a.X, a.Y, Activite.Fuir);
             return h.CibleX >= 0;
@@ -656,8 +685,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.Activite = Activite.Boire;
             h.CibleX = h.CibleY = -1;
             h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, _maintenant, Aptitude(h));
+            if (EauDouceAPortee(h.X, h.Y)) Remplir(h, _tous);
             return;
         }
+        if (BoireALaCalebasse(h)) return;
         var cible = Chercher(h, i => EauDouceAPortee(i % carte.Largeur, i / carte.Largeur), _ => 0);
         if (cible is { } c)
         {
@@ -711,14 +742,16 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (ecosysteme.Gibier[i] >= 2000 && !h.EstEnfant(_maintenant))
         {
             // Chasse à mains nues : réussite rare, meilleure pour les adroits et là où le gibier abonde.
-            var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * ecosysteme.Gibier[i] / 10_000.0;
+            var (arme, gain) = ArmeDeChasse(h);
+            var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * (1 + gain) * ecosysteme.Gibier[i] / 10_000.0;
             h.Activite = Activite.Chasser;
             h.CibleX = h.CibleY = -1;
             if (alea.Reel() < chance)
             {
                 // Une prise nourrit bien plus qu'une cueillette ; on n'en prélève que ce qu'on peut manger.
                 var pris = Ecosysteme.Prelever(ecosysteme.Gibier, i, Math.Clamp((int)Math.Ceiling(h.Faim / ValeurGibier), 1, 5));
-                h.Faim = Math.Max(0, h.Faim - pris * ValeurGibier);
+                var facteur = pris > 0 ? ApresLaChasse(h, arme, _tous) : 1;
+                h.Faim = Math.Max(0, h.Faim - pris * ValeurGibier * facteur);
                 h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h));
                 if (pris > 0) Catastrophes?.Prise(h, _maintenant);
             }
@@ -801,7 +834,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             case Activite.Boire when EauDouceAPortee(h.X, h.Y): h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, _maintenant, apprend); break;
             case Activite.Cueillir when ecosysteme.Plantes[carte.Indice(h.X, h.Y)] >= 1000:
                 h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, apprend); break;
-            case Activite.Dormir or Activite.SAbriter when Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4:
+            case Activite.Dormir or Activite.SAbriter when AbriEn(h.X, h.Y) >= 0.4:
                 h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, apprend); break;
         }
         switch (besoin)
@@ -817,7 +850,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private void AllerDormir(Humain h, Humain? partenaire)
     {
         // Les prudents cherchent d'abord un abri, ou rejoignent l'autre pour dormir ensemble.
-        if (Climat.Abri(carte.BiomeEn(h.X, h.Y)) < 0.3 && h.Fatigue < 85 && h.Personnalite.Prudence > 0.4)
+        if (AbriEn(h.X, h.Y) < 0.3 && Installations.FoyerEn(h.X, h.Y) is null && h.Fatigue < 85 && h.Personnalite.Prudence > 0.4)
         {
             if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 4)
             {
@@ -825,7 +858,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 Avancer(h, partenaire.X, partenaire.Y, h.EstEnfant(_maintenant) ? Activite.SuivreParent : Activite.RejoindrePartenaire);
                 return;
             }
-            var abri = Chercher(h, j => Climat.Abri((Biome)carte.Biomes[j]) >= 0.4, _ => 0, rayonMax: 4);
+            var abri = Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 4);
             if (abri is { } a)
             {
                 Avancer(h, a.X, a.Y, Activite.ChercherAbri);
@@ -834,7 +867,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         h.Activite = Activite.Dormir;
         h.CibleX = h.CibleY = -1;
-        if (Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4) h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));
+        if (AbriEn(h.X, h.Y) >= 0.4) h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));
     }
 
     private void AllerSAbriter(Humain h, Humain? partenaire, long maintenant)
@@ -847,7 +880,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         // Chercher l'endroit le plus chaud à portée : plus bas, mieux abrité.
         int Confort(int i) => (int)((Temperature(i % carte.Largeur, i / carte.Largeur, maintenant)
-                                     + Climat.Abri((Biome)carte.Biomes[i]) * 12) * 1000);
+                                     + AbriEn(i) * 12) * 1000);
         var ici = Confort(carte.Indice(h.X, h.Y));
         var mieux = Chercher(h, j => Confort(j) > ici + 1500, Confort);
         if (mieux is { } m) Avancer(h, m.X, m.Y, Activite.ChercherAbri);
@@ -856,7 +889,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // Un abri connu pas trop loin (une demi-journée de marche) vaut le déplacement.
             var abri = h.Memoire.PlusProche(TypeLieu.Abri, h.X, h.Y, maintenant);
             if (abri is not null && Distance(h.X, h.Y, abri.X, abri.Y) is > 1 and <= 12
-                && Climat.Abri(carte.BiomeEn(h.X, h.Y)) < 0.4)
+                && AbriEn(h.X, h.Y) < 0.4)
             {
                 _motif = Motif.Souvenir;
                 Avancer(h, abri.X, abri.Y, Activite.ChercherAbri);
@@ -929,6 +962,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             budget -= effort;
             h.X = bx;
             h.Y = by;
+            if (!Climat.EstPraticable(carte.BiomeEn(bx, by)))
+            {
+                // Il traverse à la nage.
+                Baignade(h, true);
+                h.Fatigue = Math.Min(100, h.Fatigue + 3);
+                if (!h.EstVivant) return;
+            }
             if (carte.BiomeEn(bx, by) is Biome.Montagne or Biome.SommetEnneige) h.Fatigue = Math.Min(100, h.Fatigue + 0.8);
         }
     }
@@ -947,7 +987,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             int nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
-            if (!Climat.EstPraticable(carte.BiomeEn(nx, ny))) continue;
+            if (!Praticable(carte.BiomeEn(nx, ny))) continue;
             var d = Distance2(nx, ny, cibleX, cibleY);
             if (d < meilleure) (meilleure, bx, by, egalites) = (d, nx, ny, 1);
             else if (d == meilleure && bx >= 0 && alea.Entier(++egalites) == 0) (bx, by) = (nx, ny);
@@ -970,7 +1010,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             var (i, d) = file.Dequeue();
             int x = i % carte.Largeur, y = i / carte.Largeur;
-            if (i != depart && Distance(x, y, cx, cy) <= (Climat.EstPraticable((Biome)carte.Biomes[cible]) ? 0 : 1))
+            if (i != depart && Distance(x, y, cx, cy) <= (Praticable((Biome)carte.Biomes[cible]) ? 0 : 1))
             {
                 while (parent[i] != depart) i = parent[i];
                 return i;
@@ -981,7 +1021,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
-                if (parent.ContainsKey(j) || !Climat.EstPraticable((Biome)carte.Biomes[j])) continue;
+                if (parent.ContainsKey(j) || !Praticable((Biome)carte.Biomes[j])) continue;
                 parent[j] = i;
                 file.Enqueue((j, d + 1));
             }
@@ -1029,7 +1069,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 var j = carte.Indice(nx, ny);
                 if (!vus.Add(j)) continue;
                 // L'eau non praticable peut être une cible (on boit depuis la rive) mais on ne la traverse pas.
-                if (Climat.EstPraticable((Biome)carte.Biomes[j])) file.Enqueue((j, d + 1));
+                if (Praticable((Biome)carte.Biomes[j])) file.Enqueue((j, d + 1));
             }
         }
         return meilleur;
@@ -1048,6 +1088,25 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         return false;
     }
+
+    /// <summary>Humains du pas en cours (pour l'imitation pendant les gestes).</summary>
+    private IReadOnlyList<Humain> _tous = [];
+
+    /// <summary>L'humain en cours sait nager et en a la force : l'eau des lacs et des côtes ne l'arrête plus.</summary>
+    private bool _nageur;
+
+    private bool Praticable(Biome b) => Climat.EstPraticable(b) || _nageur && b is Biome.Lac or Biome.EauPeuProfonde;
+
+    /// <summary>Un feu réchauffe autant qu'un bon abri : on dort à côté sans geler.</summary>
+    internal const double ChaleurDuFeu = 0.6;
+
+    /// <summary>Protection d'une case contre le froid : le terrain, ou une hutte.</summary>
+    private double AbriEn(int x, int y) => Math.Max(Climat.Abri(carte.BiomeEn(x, y)), Installations.AbriEn(x, y));
+
+    private double AbriEn(int i) => AbriEn(i % carte.Largeur, i / carte.Largeur);
+
+    /// <summary>Ce que le vêtement retient de chaleur : une peau bien préparée beaucoup, des feuilles peu.</summary>
+    private static double Couverture(Humain h) => h.Vetement is { } v ? v.Qualite * (0.5 + 0.5 * v.Usure) * (v.Matiere == Matiere.Peau ? 0.75 : 0.5) : 0;
 
     private static int Distance(int x1, int y1, int x2, int y2) => Math.Max(Math.Abs(x1 - x2), Math.Abs(y1 - y2));
 

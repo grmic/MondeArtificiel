@@ -236,6 +236,30 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return id;
     }
 
+    /// <summary>Chronologie des découvertes : la première fois que chaque savoir est apparu dans le monde.</summary>
+    public List<DecouverteDto> Decouvertes() => Serveur.Decouvertes.Chronologie(service);
+
+    /// <summary>Gestes et matières que l'Entité peut souffler.</summary>
+    public ChoixIntuitionDto ChoixIntuition() => Serveur.Decouvertes.Choix();
+
+    /// <summary>
+    /// L'Entité souffle à un humain l'idée d'un geste. Il l'essaie aussitôt avec ce qu'il a sous la main ; les lois du monde
+    /// décident du résultat. Renvoie ce qu'il a obtenu, en mots.
+    /// </summary>
+    public async Task<string> Souffler(DemandeIntuition demande)
+    {
+        if (!Enum.TryParse<Simulation.Humains.Geste>(demande.Geste, out var geste) || !Enum.IsDefined(geste)
+            || !Enum.TryParse<Simulation.Humains.Matiere>(demande.A, out var a) || !Enum.IsDefined(a)
+            || !Enum.TryParse<Simulation.Humains.Matiere>(demande.B ?? nameof(Simulation.Humains.Matiere.Aucune), out var b) || !Enum.IsDefined(b))
+        {
+            throw new HubException("Geste ou matière inconnus.");
+        }
+        var effet = service.Monde.Souffler(demande.Humain, geste, a, b);
+        service.Sauvegarder();
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde));
+        return effet == Simulation.Humains.Effet.Rien ? "Rien n'en est sorti (le journal dit ce qu'il en a fait)." : "Obtenu : " + Simulation.Humains.Physique.NomEffet(effet) + ".";
+    }
+
     /// <summary>Au redémarrage du serveur : reprendre la dernière vitesse (vrai) ou repartir en pause (faux).</summary>
     public async Task<HorlogeDto> ChoisirRedemarrage(bool reprendreVitesse)
     {

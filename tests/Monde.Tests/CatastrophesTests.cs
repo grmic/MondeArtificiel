@@ -159,13 +159,13 @@ public sealed class CatastrophesTests
         }
 
         // Un feu ne prend pas toujours (vent, humidité, nuit, printemps) : en plein été, par une année ordinaire, on allume
-        // plusieurs foyers ; au moins un se propage, et toutes les terres brûlées sont abîmées.
+        // quarante foyers ; au moins un se propage, et toutes les terres brûlées sont abîmées.
         var ete = Monde(anneeNormale: true);
         ete.AvancerDe(Calendrier.JoursParSaison * Jour + 12 * Heure);
         var feux = new List<long>();
-        for (var essai = 0; essai < 8; essai++)
+        for (var essai = 0; essai < 40; essai++)
         {
-            var f = ete.Declencher(TypeCatastrophe.Incendie, foyer.X + 6 * essai, foyer.Y, 0);
+            var f = ete.Declencher(TypeCatastrophe.Incendie, foyer.X + 6 * (essai % 16), foyer.Y + 6 * (essai / 16), 0);
             if (f > 0) feux.Add(f);
         }
         Assert.NotEmpty(feux);

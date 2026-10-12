@@ -82,6 +82,13 @@ public static class Maladies
                 _ => 0,
             };
         }
+        // Manger cuit tue une partie des germes et des parasites de la viande.
+        if (h.CuitJusqua > maintenant)
+        {
+            for (var i = 0; i < Liste.Count; i++)
+                if (Liste[i].Maladie is Maladie.Diarrhee or Maladie.Dysenterie) poids[i] *= 0.7;
+                else if (Liste[i].Maladie == Maladie.VersIntestinaux) poids[i] *= 0.5;
+        }
         var tirage = alea.Reel() * poids.Sum();
         for (var i = 0; i < poids.Length; i++)
         {

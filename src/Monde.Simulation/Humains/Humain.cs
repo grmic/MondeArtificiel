@@ -37,6 +37,16 @@ public enum Activite : byte
     RentrerDuRaid = 21,
     /// <summary>Quitter les terres de la communauté qui l'a chassé.</summary>
     PartirEnExil = 22,
+    /// <summary>Essayer quelque chose avec ce qu'on a sous la main, par jeu ou par curiosité.</summary>
+    Experimenter = 23,
+    /// <summary>Faire un geste qu'on sait faire : tailler, allumer, couvrir, bâtir, fouir.</summary>
+    Fabriquer = 24,
+    /// <summary>Se tenir près du feu et l'alimenter.</summary>
+    Veiller = 25,
+    /// <summary>Prendre ou donner une plante pour soigner un mal.</summary>
+    Soigner = 26,
+    /// <summary>Nager.</summary>
+    Nager = 27,
 }
 
 public enum CauseDeMort : byte
@@ -67,6 +77,8 @@ public enum CauseDeMort : byte
     Chaleur = 15,
     /// <summary>Tué lors d'un raid entre communautés (voir <see cref="Humain.MeurtrierId"/>).</summary>
     Guerre = 16,
+    /// <summary>Empoisonné par une plante.</summary>
+    Empoisonnement = 17,
 }
 
 /// <summary>
@@ -293,6 +305,40 @@ public sealed class Humain
     /// <summary>Maladies contre lesquelles il est immunisé, jusqu'à quand.</summary>
     public List<Nature.Immunite> Immunites { get; set; } = [];
 
+    /// <summary>Ce qu'il sait faire et ce qu'il croit (voir <see cref="Savoir"/>).</summary>
+    public List<Savoir> Savoirs { get; set; } = [];
+
+    /// <summary>Objets qu'il porte sur lui (quatre au plus).</summary>
+    public List<Objet> Objets { get; set; } = [];
+
+    /// <summary>Ce dont il est couvert (peau, feuilles), ou null s'il est nu.</summary>
+    public Objet? Vetement { get; set; }
+
+    /// <summary>Aisance dans l'eau, de 0 (ne sait pas nager) à 1, acquise en nageant.</summary>
+    public double Nage { get; set; }
+
+    /// <summary>Jusqu'à quand ses repas cuits le protègent un peu des maladies du ventre.</summary>
+    public long CuitJusqua { get; set; }
+
+    /// <summary>Dernière plante prise pour se soigner pendant la maladie en cours (0 : aucune), le geste, le mal visé et quand.</summary>
+    public int RemedeEspece { get; set; }
+    public Geste RemedeGeste { get; set; }
+    public Symptome RemedeSymptome { get; set; }
+    public long RemedeLe { get; set; }
+
+    /// <summary>Savoir de quelqu'un : celui qui a cet effet (et ce mal, pour un remède), ou null.</summary>
+    public Savoir? SavoirPour(Effet effet, Symptome symptome = Symptome.Aucun)
+    {
+        Savoir? meilleur = null;
+        foreach (var s in Savoirs)
+            if (s.Effet == effet && s.Symptome == symptome && (meilleur is null || s.Confiance > meilleur.Confiance)) meilleur = s;
+        return meilleur;
+    }
+
+    public bool Sait(Effet effet) => Savoirs.Exists(s => s.Effet == effet && s.Confiance >= 0.4);
+
+    public bool Porte(Matiere m) => Objets.Exists(o => o.Matiere == m);
+
     public bool EstDeprime => DeprimeDepuis is not null;
 
     /// <summary>Lien avec un autre humain, ou null.</summary>
@@ -356,6 +402,8 @@ public sealed class Humain
         copie.Raisons = [.. Raisons];
         copie.Immunites = [.. Immunites];
         copie.Exclusions = [.. Exclusions];
+        copie.Savoirs = [.. Savoirs];
+        copie.Objets = [.. Objets];
         return copie;
     }
 }

@@ -39,13 +39,16 @@ public sealed partial class Comportement
     private const long PasParJour = Calendrier.SecondesParJour / MondeSimule.SecondesParPas;
 
     /// <summary>
-    /// Mortalité annuelle « de fond » selon l'âge (accidents, maladies, usure), en plus des besoins.
-    /// Bornes d'âge en années et taux annuel, du plus jeune au plus âgé.
+    /// Mortalité annuelle « de fond » selon l'âge : ce que la simulation ne fait pas mourir autrement. Chez les petits,
+    /// les causes néonatales et ce qui n'est pas modélisé ; chez l'adulte jeune, presque rien, car ses morts (infections,
+    /// accouchements, accidents, violences, faim, soif, froid) sont déjà simulées une à une et s'y ajouteraient ; passé
+    /// 50 ans, l'usure du corps. Bornes d'âge en années et taux annuel, du plus jeune au plus âgé. Mesuré sur 60 ans, la
+    /// mortalité totale approche celle des chasseurs-cueilleurs (Gurven et Kaplan, 2007).
     /// </summary>
     private static readonly (double AgeMax, double TauxAnnuel)[] MortaliteParAge =
     [
-        (1, 0.10), (5, 0.03), (15, 0.01), (30, 0.005), (40, 0.01),
-        (50, 0.03), (60, 0.07), (70, 0.15), (80, 0.30), (double.MaxValue, 0.50),
+        (1, 0.10), (5, 0.03), (15, 0.01), (30, 0.001), (40, 0.002),
+        (50, 0.008), (60, 0.04), (70, 0.12), (80, 0.30), (double.MaxValue, 0.50),
     ];
 
     /// <summary>Naissances survenues pendant le pas : le monde crée les nouveau-nés après le pas.</summary>
@@ -390,7 +393,10 @@ public sealed partial class Comportement
         b.Fatigue = 0;
         b.Desir = 0;
         // La mère a pu faire deux cases dans le pas (fuite, descente) avant que son bébé ne soit compté.
-        var proche = mere is not null && Distance(b.X, b.Y, mere.X, mere.Y) <= Comportement.CasesParPasMax;
+        // Une mère qui portait son bébé au pas précédent l'emporte où qu'elle aille (fuite, longue marche) : il ne reste en
+        // arrière que si elle le délaisse.
+        var portaitIlYAUnInstant = mere is not null && mere.BebePorteLe >= maintenant - 2 * MondeSimule.SecondesParPas;
+        var proche = mere is not null && (Distance(b.X, b.Y, mere.X, mere.Y) <= Comportement.CasesParPasMax || portaitIlYAUnInstant);
         var porte = proche && !Delaisse(mere!);
         if (proche && !porte && b.Activite is Activite.PorteParSaMere or Activite.Dormir)
         {
@@ -403,9 +409,13 @@ public sealed partial class Comportement
             mere.BebePorteLe = maintenant;
         }
 
-        // L'allaitement nourrit le bébé et coûte à la mère (environ 25 % d'énergie en plus) ; le lait se tarit quand
-        // elle manque elle-même de tout, et baisse quand ses réserves sont épuisées.
-        var lait = porte ? Math.Clamp((100 - Math.Max(mere!.Faim, mere.Soif)) / 30, 0, 1) * Math.Min(1, 0.4 + mere.Reserves / 40) : 0;
+        // L'allaitement nourrit et abreuve le bébé, et coûte à la mère (environ 25 % d'énergie en plus) ; le lait se tarit
+        // quand elle a trop faim, et baisse quand ses réserves sont épuisées. Le corps de la mère préserve le lait quand elle
+        // boit peu (boire plus n'en donne pas davantage : Dusdieker et al., 1985) : c'est elle qui a soif, et le lait ne
+        // baisse que lorsqu'elle se déshydrate gravement.
+        var lait = porte
+            ? Math.Clamp(Math.Min((100 - mere!.Faim) / 30, (100 - mere.Soif) / 15), 0, 1) * Math.Min(1, 0.4 + mere.Reserves / 40)
+            : 0;
         Depenser(b, (0.4 - 1.4 * lait) * b.Biologie.Metabolisme);
         b.Soif = Math.Clamp(b.Soif + 0.6 - 1.6 * lait, 0, 100);
         if (lait > 0)
@@ -422,7 +432,7 @@ public sealed partial class Comportement
         else
         {
             var temperature = Temperature(b.X, b.Y, maintenant);
-            var perte = Math.Max(0, TemperatureConfort - temperature) * 0.065 * Math.Max(0, 1 - Climat.Abri(carte.BiomeEn(b.X, b.Y)));
+            var perte = Math.Max(0, TemperatureConfort - temperature) * 0.065 * Math.Max(0, 1 - AbriEn(b.X, b.Y) - (Installations.FoyerEn(b.X, b.Y) is null ? 0 : ChaleurDuFeu));
             b.Froid = Math.Clamp(b.Froid + perte - 0.4, 0, 100);
         }
 

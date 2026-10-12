@@ -1,0 +1,969 @@
+using Monde.Simulation.Monde;
+using Monde.Simulation.Temps;
+
+namespace Monde.Simulation.Humains;
+
+/// <summary>
+/// Comment les humains découvrent, sans que rien ne leur soit donné : ils manipulent ce qui les entoure par jeu ou par
+/// besoin, constatent ce qui arrive (selon <see cref="Physique"/>), s'en souviennent si cela sert, le refont, le
+/// rapprochent de ce qu'ils savent déjà, et l'apprennent aux autres sans le vouloir, en se laissant regarder.
+/// <para>
+/// Ce que dit la recherche : chez les enfants et les adultes, la plupart des innovations naissent du jeu et de
+/// l'exploration, puis se répandent par imitation (Carr, Kendal et Flynn, 2016) ; les savoirs techniques se transmettent
+/// surtout en regardant faire, et se perdent quand une population petite ou isolée n'a plus assez de praticiens
+/// habiles (Henrich, 2004 : la Tasmanie). Les remèdes naissent d'essais et d'erreurs : un malade qui guérit après avoir
+/// mangé une plante croit qu'elle l'a guéri, à tort ou à raison.
+/// </para>
+/// </summary>
+public sealed partial class Comportement
+{
+    /// <summary>La flore du monde (fournie par le monde).</summary>
+    public Flore Flore { get; set; } = new(0);
+
+    /// <summary>Feux, huttes et découvertes du monde (fournis par le monde).</summary>
+    public Installations Installations { get; set; } = new();
+
+    /// <summary>Humains morts pendant un remède : ceux qui le leur avaient donné ou conseillé en doutent.</summary>
+    private readonly List<(int Espece, Symptome Mal, int SoigneurId)> _remedesEchoues = [];
+
+    private const int ObjetsMax = 4;
+
+    /// <summary>Ingéniosité (0 à 1) : l'intelligence générale, qui permet de rapprocher deux choses.</summary>
+    private static double Ingeniosite(Humain h) => Math.Clamp((h.Personnalite.Intelligence.Generale - 55) / 90, 0, 1);
+
+    /// <summary>Adresse pour ce geste : l'aptitude manuelle, plus l'habitude (dix réussites rendent nettement plus sûr).</summary>
+    private static double AdressePour(Humain h, Savoir? s) =>
+        Math.Clamp(0.8 * h.Personnalite.Adresse + Math.Min(0.25, 0.025 * (s?.Succes ?? 0)), 0, 1);
+
+    private bool FeuIci(Humain h) =>
+        Installations.FoyerEn(h.X, h.Y) is not null || h.Porte(Matiere.Brandon) || Catastrophes?.BruleAutour(h.X, h.Y) == true;
+
+    /// <summary>Sécheresse de l'herbe et du bois, de 0 à 1 : la saison, les pluies de l'année, le terrain.</summary>
+    private double Sec(Humain h)
+    {
+        var saison = Calendrier.Decomposer(_maintenant).Saison switch
+        {
+            Saison.Ete => 1.0,
+            Saison.Automne => 0.8,
+            Saison.Printemps => 0.5,
+            _ => 0.35,
+        };
+        var i = carte.Indice(h.X, h.Y);
+        var pluie = Math.Clamp(1.4 - ecosysteme.PluieEn(i), 0.2, 1.2);
+        var terrain = carte.BiomeEn(h.X, h.Y) switch
+        {
+            Biome.Marais or Biome.ForetTropicale or Biome.Riviere => 0.5,
+            Biome.Desert => 1.2,
+            _ => 1.0,
+        };
+        return Math.Clamp(saison * pluie * terrain, 0, 1);
+    }
+
+    private ContexteGeste Contexte(Humain h, Savoir? s = null) =>
+        new(FeuIci(h), EauDouceAPortee(h.X, h.Y), Sec(h), carte.BiomeEn(h.X, h.Y), AdressePour(h, s), Ingeniosite(h),
+            s is null ? 0 : h.Savoirs.Where(x => x.Effet == Effet.Flamme && x.Geste == s.Geste && x.A == s.A && x.B == s.B).Sum(x => x.Succes));
+
+    private bool VolcanProche(int x, int y) =>
+        Catastrophes?.Geologie.Volcans.Any(v => Distance(v.X, v.Y, x, y) <= 25) == true;
+
+    /// <summary>Matières à portée de main : ce que la case offre, ce qu'on porte, le feu et l'eau s'il y en a.</summary>
+    private List<Matiere> Materiaux(Humain h)
+    {
+        var l = Physique.Disponibles(carte, h.X, h.Y, Sec(h) > 0.55, VolcanProche(h.X, h.Y)).ToList();
+        foreach (var o in h.Objets) if (!l.Contains(o.Matiere)) l.Add(o.Matiere);
+        if (FeuIci(h)) l.Add(Matiere.Feu);
+        if (EauDouceAPortee(h.X, h.Y)) l.Add(Matiere.Eau);
+        return l;
+    }
+
+    private bool APortee(Humain h, Matiere m) => m switch
+    {
+        Matiere.Aucune => true,
+        Matiere.Feu => FeuIci(h),
+        Matiere.Eau => EauDouceAPortee(h.X, h.Y),
+        _ => h.Porte(m) || Physique.Disponibles(carte, h.X, h.Y, Sec(h) > 0.55, VolcanProche(h.X, h.Y)).Contains(m),
+    };
+
+    // ------------------------------------------------------------------ Jouer, essayer
+
+    /// <summary>
+    /// Au repos, l'humain manipule ce qu'il a sous la main : il frappe deux pierres, frotte deux bâtons, tord une liane,
+    /// goûte une plante… Les enfants jouent bien plus que les adultes ; les esprits ouverts essaient plus.
+    /// La plupart des essais ne donnent rien.
+    /// </summary>
+    private bool Experimenter(Humain h, IReadOnlyList<Humain> tous)
+    {
+        var p = h.Personnalite;
+        var enfant = h.EstEnfant(_maintenant);
+        var envie = 0.004 * (0.3 + p.Ouverture) * (enfant ? 2.5 : 1) * (h.Humeur < 30 ? 0.4 : 1);
+        if (alea.Reel() >= envie) return false;
+
+        var materiaux = Materiaux(h);
+        var geste = (Geste)alea.Entier(12);
+        var a = materiaux.Count == 0 ? Matiere.Aucune : materiaux[alea.Entier(materiaux.Count)];
+        var b = materiaux.Count == 0 ? Matiere.Aucune : materiaux[alea.Entier(materiaux.Count)];
+        if (geste is Geste.Manger or Geste.Appliquer)
+        {
+            // Goûter une plante inconnue : seulement les plus audacieux, et pas les petits (l'aversion pour la nouveauté
+            // alimentaire protège des poisons).
+            if (h.EstPetitEnfant(_maintenant) || alea.Reel() >= 0.15 * p.Ouverture) return false;
+            var especes = Flore.Sur(carte.BiomeEn(h.X, h.Y));
+            if (especes.Count == 0) return false;
+            var espece = especes[alea.Entier(especes.Count)];
+            if (h.Savoirs.Exists(s => s.Espece == espece.Numero && s.Effet == Effet.Poison && s.Confiance >= 0.5)) return false;
+            h.Activite = Activite.Experimenter;
+            h.CibleX = h.CibleY = -1;
+            Gouter(h, espece, geste, tous, OrigineSavoir.Essai);
+            return true;
+        }
+        // Qui sait nager y retourne volontiers quand il fait chaud.
+        if (h.Nage > 0 || h.Sait(Effet.Nage))
+        {
+            if (_temperature >= 24 && EauProfondeAPortee(h.X, h.Y) && alea.Reel() < 0.5) geste = Geste.Nager;
+        }
+        if (geste == Geste.Nager)
+        {
+            // On entre dans l'eau surtout quand il fait chaud.
+            if (!EauProfondeAPortee(h.X, h.Y) || _temperature < 24 || h.EstPetitEnfant(_maintenant)) return false;
+            a = b = Matiere.Eau;
+        }
+        if (geste == Geste.Approcher && FeuIci(h) && alea.Reel() < 0.3) a = Matiere.Aucune;
+
+        h.Activite = Activite.Experimenter;
+        h.CibleX = h.CibleY = -1;
+        Faire(h, geste, a, b, OrigineSavoir.Essai, tous);
+        return true;
+    }
+
+    /// <summary>Fait un geste et constate ce qui arrive. Renvoie l'effet obtenu.</summary>
+    private Effet Faire(Humain h, Geste geste, Matiere a, Matiere b, OrigineSavoir origine, IReadOnlyList<Humain> tous, Humain? maitre = null)
+    {
+        var connu = h.Savoirs.Find(s => s.Geste == geste && s.A == a && s.B == b && s.Espece == 0);
+        var r = Physique.Tenter(geste, a, b, Contexte(h, connu), alea);
+        if (geste == Geste.Nager) Baignade(h, r.Effet == Effet.Nage);
+        Constater(h, geste, a, b, r, origine, tous, maitre);
+        return r.Effet;
+    }
+
+    /// <summary>
+    /// Ce qui arrive après un geste : le produit est pris, le feu allumé, l'abri dressé ; l'humain retient le geste s'il a
+    /// donné quelque chose, et ceux qui le regardaient peuvent l'imiter.
+    /// </summary>
+    private void Constater(Humain h, Geste g, Matiere a, Matiere b, Resultat r, OrigineSavoir origine, IReadOnlyList<Humain> tous,
+        Humain? maitre = null)
+    {
+        if (r.Effet == Effet.Rien)
+        {
+            // Un geste qu'il croyait savoir faire a échoué : il y croit un peu moins.
+            var i = h.Savoirs.FindIndex(s => s.Geste == g && s.A == a && s.B == b && s.Espece == 0);
+            if (i >= 0) h.Savoirs[i] = h.Savoirs[i] with { Essais = h.Savoirs[i].Essais + 1 };
+            return;
+        }
+
+        // Encore faut-il s'en apercevoir et y voir un intérêt : ce qui répond à un besoin du moment frappe l'esprit ;
+        // le reste n'est remarqué que par les curieux. Un geste qu'on sait déjà faire, lui, est reconnu.
+        if (origine == OrigineSavoir.Essai && !h.Savoirs.Exists(s => s.Geste == g && s.A == a && s.B == b && s.Effet == r.Effet))
+        {
+            var remarque = Pertinent(h, r.Effet) ? 0.5 + 0.5 * Ingeniosite(h) : 0.15 + 0.45 * h.Personnalite.Ouverture;
+            if (alea.Reel() >= remarque) return;
+        }
+        var evenement = Retenir(h, g, a, b, r.Effet, 0, Symptome.Aucun, origine, maitre?.Id ?? 0, tous);
+        Produire(h, g, a, b, r, evenement);
+        if (origine != OrigineSavoir.Imitation) Montrer(h, g, a, b, r.Effet, 0, Symptome.Aucun, tous, evenement);
+    }
+
+    /// <summary>L'effet répond-il à ce que l'humain ressent en ce moment (froid, faim, soif) ?</summary>
+    private bool Pertinent(Humain h, Effet e) => e switch
+    {
+        Effet.Couvert or Effet.Abri or Effet.Chaleur or Effet.Flamme or Effet.Foyer => h.Froid > 15 || _temperature < 14,
+        Effet.Tubercules or Effet.Decoupe or Effet.Chasse or Effet.Cuisson => h.Faim > 30,
+        Effet.EauPortee => h.Soif > 30,
+        _ => false,
+    };
+
+    /// <summary>Ce que produit le geste réussi.</summary>
+    private void Produire(Humain h, Geste g, Matiere a, Matiere b, Resultat r, long evenement)
+    {
+        switch (r.Effet)
+        {
+            case Effet.Eclat or Effet.Pointe or Effet.Durci or Effet.Corde or Effet.Brandon:
+                if (r.Effet == Effet.Durci) h.Objets.RemoveAll(o => o.Matiere == Matiere.BatonPointu);
+                if (r.Effet == Effet.Pointe) User(h, b, 0.1);
+                if (r.Effet == Effet.Brandon) h.Objets.RemoveAll(o => o.Matiere == Matiere.Branche || o.Matiere == Matiere.BoisSec);
+                Prendre(h, new Objet(r.Produit, r.Qualite, 1));
+                break;
+            case Effet.Decoupe:
+                User(h, b, 0.15);
+                Prendre(h, new Objet(Matiere.Peau, r.Qualite, 1));
+                break;
+            case Effet.Flamme:
+                Installations.Allumer(h.X, h.Y, 1, _maintenant, h.Id, evenement);
+                break;
+            case Effet.Foyer:
+                // Le brandon posé sous le bois devient un foyer ; le bois ajouté nourrit le feu quelques heures.
+                h.Objets.RemoveAll(o => o.Matiere == Matiere.Brandon);
+                if (Installations.FoyerEn(h.X, h.Y) is { } f) Installations.Alimenter(f, 4 + 4 * alea.Reel());
+                else Installations.Allumer(h.X, h.Y, 4 + 4 * alea.Reel(), _maintenant, h.Id, evenement);
+                break;
+            case Effet.Couvert:
+                if (a == Matiere.Peau)
+                {
+                    var peau = h.Objets.Find(o => o.Matiere == Matiere.Peau);
+                    if (peau is not null) h.Objets.Remove(peau);
+                    h.Vetement = new Objet(Matiere.Peau, (peau?.Qualite ?? 0.5) * r.Qualite / 0.6, 1);
+                }
+                else h.Vetement = new Objet(a, r.Qualite, 1);
+                break;
+            case Effet.Abri:
+                Installations.Batir(h.X, h.Y, r.Qualite, _maintenant, h.Id, evenement);
+                h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));
+                break;
+            case Effet.EauPortee:
+                var calebasse = h.Objets.Find(o => o.Matiere == Matiere.Calebasse);
+                if (calebasse is null) Prendre(h, new Objet(Matiere.Calebasse, 1, 1, Plein: true));
+                else h.Objets[h.Objets.IndexOf(calebasse)] = calebasse with { Plein = true };
+                break;
+            case Effet.Tubercules:
+                var i = carte.Indice(h.X, h.Y);
+                var pris = Ecosysteme.Prelever(ecosysteme.Plantes, i, 4);
+                h.Faim = Math.Max(0, h.Faim - 8 - 3 * pris);
+                User(h, a, 0.03);
+                break;
+        }
+    }
+
+    /// <summary>Use un objet porté ; hors d'usage, il est jeté.</summary>
+    private static void User(Humain h, Matiere m, double usure)
+    {
+        var o = h.Objets.Find(x => x.Matiere == m);
+        if (o is null) return;
+        var i = h.Objets.IndexOf(o);
+        if (o.Usure - usure <= 0) h.Objets.RemoveAt(i);
+        else h.Objets[i] = o with { Usure = o.Usure - usure };
+    }
+
+    /// <summary>Garde un objet sur soi : s'il n'y a plus de place, le moins utile est laissé.</summary>
+    private static void Prendre(Humain h, Objet objet)
+    {
+        var meme = h.Objets.Find(o => o.Matiere == objet.Matiere);
+        if (meme is not null)
+        {
+            if (meme.Qualite * meme.Usure < objet.Qualite * objet.Usure) h.Objets[h.Objets.IndexOf(meme)] = objet;
+            return;
+        }
+        if (h.Objets.Count >= ObjetsMax)
+        {
+            // On laisse ce dont on ne connaît pas d'usage, sinon le plus usé.
+            var laisse = h.Objets.OrderBy(o => h.Savoirs.Exists(s => (s.A == o.Matiere || s.B == o.Matiere) && s.Confiance >= 0.5) ? 1 : 0)
+                .ThenBy(o => o.Qualite * o.Usure).First();
+            h.Objets.Remove(laisse);
+        }
+        h.Objets.Add(objet);
+    }
+
+    /// <summary>
+    /// Retient (ou renforce) un savoir. Un savoir nouveau est noté au journal ; la toute première fois qu'un effet est obtenu
+    /// dans le monde, c'est un tournant (★). Renvoie le numéro de l'événement qui le rapporte (0 s'il était déjà connu).
+    /// </summary>
+    private long Retenir(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, OrigineSavoir origine, int maitreId,
+        IReadOnlyList<Humain> tous, bool succes = true)
+    {
+        var i = h.Savoirs.FindIndex(s => s.Meme(g, a, b, e, espece, mal));
+        if (i >= 0)
+        {
+            var s = h.Savoirs[i];
+            h.Savoirs[i] = s with { Essais = s.Essais + 1, Succes = s.Succes + (succes ? 1 : 0), UtiliseLe = _maintenant };
+            return 0;
+        }
+        var premier = !Installations.Decouvertes.Exists(d => d.Effet == e);
+        // Un savoir que tout le monde avait perdu, retrouvé : c'est aussi un tournant.
+        var retrouve = !premier && espece == 0 && !tous.Any(o => o.EstVivant && o.Savoirs.Exists(s => s.Effet == e && s.Espece == 0));
+        var nom = espece > 0 ? Majuscule(Flore.Get(espece).Nom) : null;
+        var nouveau = new Savoir(g, a, b, e, espece, mal, 1, succes ? 1 : 0, _maintenant, _maintenant, origine, maitreId, 0);
+        var maitre = maitreId > 0 && maitreId <= tous.Count ? tous[maitreId - 1] : null;
+        var description = Physique.Decrire(nouveau, nom);
+        var comment = origine switch
+        {
+            OrigineSavoir.Essai => Recit(h, nouveau, espece > 0 ? Flore.Get(espece).Nom : null),
+            OrigineSavoir.Observation => Observation(h, nouveau),
+            OrigineSavoir.Reflexion => $"{h.Nom} rapproche ce qu'{Il(h)} sait déjà et tente sa chance.",
+            OrigineSavoir.Imitation => $"{h.Nom} a regardé faire {maitre?.Nom ?? "un autre"}.",
+            _ => $"Une intuition soufflée par l'Entité a guidé la main de {h.Nom}.",
+        };
+        // Un savoir banal (le feu chauffe, le bois frotté tiédit) n'est pas noté chez chacun : seulement la première fois au monde.
+        var banal = e is Effet.Chaleur or Effet.Tiedeur || origine == OrigineSavoir.Imitation && e is Effet.Etincelle;
+        long id = 0;
+        if (premier || retrouve || !banal)
+        {
+            var texte = premier ? $"Première fois au monde : {comment} {h.Nom} comprend : « {description} »"
+                : retrouve ? $"Savoir retrouvé (plus personne ne le savait) : {comment} {h.Nom} comprend : « {description} »"
+                : $"{comment} {h.Nom} comprend : « {description} »";
+            id = Noter(_maintenant, TypeEvenement.Decouverte, h, maitre, texte, significatif: premier || retrouve);
+        }
+        h.Savoirs.Add(nouveau with { EvenementId = id });
+        if (premier) Installations.Decouvertes.Add(new Decouverte(e, h.Id, _maintenant, id, origine));
+        if (premier || !banal)
+        {
+            Jardin.Confier(h, TypeIntime.Question, 0, Question(nouveau), 30 + 30 * h.Personnalite.Ouverture, id, _maintenant, $"savoir:{(int)e}:{espece}");
+        }
+        return id;
+    }
+
+    /// <summary>Ce qu'il s'est passé, dit simplement.</summary>
+    private static string Recit(Humain h, Savoir s, string? plante)
+    {
+        return s.Effet switch
+        {
+            Effet.Eclat => $"{h.Nom} frappe {Physique.Nom(s.A)} contre {Physique.Nom(s.B)} : un éclat tranchant se détache.",
+            Effet.Etincelle => $"{h.Nom} frappe {Physique.Nom(s.A)} contre {Physique.Nom(s.B)} : des étincelles jaillissent.",
+            Effet.Flamme when s.Geste == Geste.Frotter => $"{h.Nom} frotte longtemps deux bois secs : une fumée monte, puis une flamme.",
+            Effet.Flamme => $"{h.Nom} frappe {Physique.Nom(s.A)} contre {Physique.Nom(s.B)} : une étincelle tombe dans l'herbe sèche, qui s'enflamme.",
+            Effet.Tiedeur => $"{h.Nom} frotte deux bouts de bois : ils deviennent chauds.",
+            Effet.Pointe => $"{h.Nom} racle une branche avec {Physique.Nom(s.B)} : son bout devient pointu.",
+            Effet.Corde => $"{h.Nom} tord des fibres entre ses doigts : elles tiennent ensemble.",
+            Effet.Couvert => $"{h.Nom} s'enveloppe {(s.A == Matiere.Peau ? "d'une peau" : "de grandes feuilles")} : le vent le mord moins.",
+            Effet.Abri => $"{h.Nom} pose de grandes feuilles sur des branches : dessous, il fait sec.",
+            Effet.Tubercules => $"{h.Nom} gratte la terre avec {Physique.Nom(s.A)} : des racines charnues apparaissent.",
+            Effet.Nage => $"{h.Nom} s'avance dans l'eau profonde, se débat, et flotte.",
+            Effet.Durci => $"{h.Nom} approche son bâton pointu du feu : la pointe noircit et durcit.",
+            Effet.Brandon => $"{h.Nom} approche une branche du feu : elle s'embrase et {Il(h)} l'emporte.",
+            Effet.Cuisson => $"{h.Nom} approche la bête du feu : la chair grillée est tendre et sent bon.",
+            Effet.Decoupe => $"{h.Nom} entaille la bête avec un éclat : la peau se détache.",
+            Effet.Foyer => $"{h.Nom} pose du bois sur les flammes : le feu grandit et dure.",
+            Effet.EauPortee => $"{h.Nom} plonge une calebasse dans l'eau : elle reste pleine quand {Il(h)} s'en va.",
+            Effet.Chasse => $"{h.Nom} chasse avec {Physique.Nom(s.A)} : la bête tombe plus vite.",
+            Effet.Chaleur => $"{h.Nom} s'approche du feu : sa chaleur est douce.",
+            Effet.Poison => $"{h.Nom} goûte {plante} : son ventre se tord.",
+            Effet.Visions => $"{h.Nom} mâche {plante} : le monde se met à onduler.",
+            Effet.Soulagement => $"{h.Nom} guérit après avoir pris {plante}.",
+            _ => $"{h.Nom} essaie quelque chose de nouveau.",
+        };
+    }
+
+    private static string Observation(Humain h, Savoir s) => s.Effet switch
+    {
+        Effet.Chaleur => $"{h.Nom}, transi, s'approche des flammes de l'incendie et sent leur chaleur.",
+        Effet.Brandon => $"{h.Nom} ramasse une branche qui brûle au bord de l'incendie.",
+        Effet.Cuisson => $"{h.Nom} trouve une bête surprise par l'incendie : sa chair grillée est tendre.",
+        _ => $"{h.Nom} observe ce qui se passe.",
+    };
+
+    /// <summary>La question que le savoir fait naître, au jardin secret.</summary>
+    private static string Question(Savoir s) => s.Effet switch
+    {
+        Effet.Etincelle => "D'où viennent ces petites lumières qui sortent de la pierre ?",
+        Effet.Flamme => "J'ai fait naître le feu de mes mains. Qu'est-ce que le feu ?",
+        Effet.Chaleur => "Pourquoi le feu chauffe-t-il comme le soleil ?",
+        Effet.Visions => "Ce que j'ai vu sous l'effet de la plante, est-ce un autre monde ?",
+        Effet.Poison => "Pourquoi cette plante veut-elle me tuer ?",
+        Effet.Soulagement => "Cette plante a chassé mon mal. Comment le savait-elle ?",
+        Effet.Nage => "Pourquoi l'eau me porte-t-elle ?",
+        _ => "Que pourrais-je faire d'autre avec cela ?",
+    };
+
+    /// <summary>
+    /// Ceux qui regardent peuvent imiter : d'autant plus qu'ils sont curieux, qu'ils aiment celui qui fait le geste ou
+    /// l'admirent, et que celui-ci montre bien (empathie cognitive). Les enfants imitent bien plus (Csibra et Gergely, 2009).
+    /// </summary>
+    private void Montrer(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, IReadOnlyList<Humain> tous, long cause)
+    {
+        if (e is Effet.Tiedeur or Effet.Visions) return;
+        foreach (var o in tous)
+        {
+            if (o.Id == h.Id || !o.EstVivant || o.X != h.X || o.Y != h.Y || o.EstBebe(_maintenant) || o.Activite == Activite.Dormir) continue;
+            if (o.Savoirs.Exists(s => s.Meme(g, a, b, e, espece, mal))) continue;
+            var lien = o.LienAvec(h.Id);
+            var affection = lien?.Affection ?? 0;
+            if (affection < -30) continue;
+            var attention = (0.2 + 0.6 * o.Personnalite.Ouverture) * (o.EstEnfant(_maintenant) ? 1.8 : 1)
+                            * (0.5 + affection / 100) * (0.6 + 0.8 * h.Personnalite.Moral.EmpathieCognitive) * (0.5 + h.Personnalite.Charisme);
+            // Comprendre un geste compliqué demande de l'intelligence et de l'adresse.
+            var difficile = e is Effet.Flamme or Effet.Durci or Effet.Decoupe ? 0.5 + 0.5 * Ingeniosite(o) : 1;
+            if (alea.Reel() >= 0.35 * attention * difficile) continue;
+            Retenir(o, g, a, b, e, espece, mal, OrigineSavoir.Imitation, h.Id, tous);
+            VieSociale.Gratitude(o, h, 0.5);
+        }
+    }
+
+    private static string Majuscule(string s) => char.ToUpperInvariant(s[0]) + s[1..];
+
+    // ------------------------------------------------------------------ Se servir de ce qu'on sait
+
+    /// <summary>
+    /// Un besoin presse : l'humain se sert de ce qu'il sait (le feu, une peau, une hutte, un bâton à fouir), ou, s'il est
+    /// ingénieux, rapproche deux choses qu'il sait déjà. Renvoie vrai s'il a agi.
+    /// </summary>
+    private bool UtiliserSavoirs(Humain h, Activite besoin, double valeur, double seuil, IReadOnlyList<Humain> tous)
+    {
+        if (h.Savoirs.Count == 0 && !h.Porte(Matiere.Brandon)) return false;
+        var nuit = !Calendrier.Decomposer(_maintenant).EstJour;
+        var froid = besoin == Activite.SAbriter && valeur >= seuil || (besoin == Activite.Dormir || nuit) && _temperature < 14;
+        if (froid && Rechauffer(h, besoin, tous)) return true;
+        if (besoin == Activite.Cueillir && valeur >= seuil && Fouir(h, tous)) return true;
+        return false;
+    }
+
+    private bool Rechauffer(Humain h, Activite besoin, IReadOnlyList<Humain> tous)
+    {
+        var foyer = Installations.FoyerEn(h.X, h.Y);
+        // Près d'un feu : on l'alimente s'il faiblit, puis on dort ou on se chauffe à côté.
+        if (foyer is not null)
+        {
+            if (foyer.Heures < 6 && h.Sait(Effet.Foyer) && APortee(h, Matiere.BoisSec)
+                && Faire(h, Geste.Entasser, Matiere.BoisSec, Matiere.Feu, OrigineSavoir.Essai, tous) == Effet.Foyer)
+            {
+                h.Activite = Activite.Veiller;
+                h.CibleX = h.CibleY = -1;
+                return true;
+            }
+            if (besoin == Activite.Dormir) return false;
+            if (!h.Sait(Effet.Chaleur))
+            {
+                Constater(h, Geste.Approcher, Matiere.Aucune, Matiere.Feu, new Resultat(Effet.Chaleur, Matiere.Aucune, 1), OrigineSavoir.Essai, tous);
+            }
+            h.Activite = Activite.Veiller;
+            h.CibleX = h.CibleY = -1;
+            return true;
+        }
+        // Un brandon à la main : on en fait un foyer.
+        if (h.Porte(Matiere.Brandon) && (h.Sait(Effet.Foyer) || h.Sait(Effet.Brandon)) && APortee(h, Matiere.BoisSec))
+        {
+            Faire(h, Geste.Entasser, Matiere.BoisSec, Matiere.Brandon, OrigineSavoir.Essai, tous);
+            h.Activite = Activite.Fabriquer;
+            h.CibleX = h.CibleY = -1;
+            return true;
+        }
+        // Un feu connu, à portée de vue.
+        if (h.Sait(Effet.Chaleur) && Installations.Foyers.Count > 0)
+        {
+            var rayon = RayonPerception(h);
+            Foyer? proche = null;
+            foreach (var f in Installations.Foyers)
+                if (Distance(f.X, f.Y, h.X, h.Y) <= rayon && (proche is null || Distance(f.X, f.Y, h.X, h.Y) < Distance(proche.X, proche.Y, h.X, h.Y))) proche = f;
+            if (proche is not null)
+            {
+                Avancer(h, proche.X, proche.Y, Activite.ChercherAbri);
+                if (h.CibleX >= 0) return true;
+            }
+        }
+        // Allumer un feu, si l'on sait le faire et qu'on a ce qu'il faut.
+        if (h.Sait(Effet.Chaleur) || h.Sait(Effet.Flamme))
+        {
+            foreach (var s in h.Savoirs)
+            {
+                if (s.Effet != Effet.Flamme || s.Confiance < 0.2 || !APortee(h, s.A) || !APortee(h, s.B)) continue;
+                if (s.Geste == Geste.Frapper && !APortee(h, Matiere.HerbeSeche)) continue;
+                h.Activite = Activite.Fabriquer;
+                h.CibleX = h.CibleY = -1;
+                Faire(h, s.Geste, s.A, s.B, OrigineSavoir.Essai, tous);
+                return true;
+            }
+            // Réfléchir : une étincelle ressemble à une petite flamme ; le bois frotté chauffe. Et si…
+            if (h.Sait(Effet.Chaleur))
+            {
+                foreach (var s in h.Savoirs)
+                {
+                    if (!Physique.Ressemble(s.Effet, Effet.Flamme) || !APortee(h, s.A) || !APortee(h, s.B)) continue;
+                    if (s.Geste == Geste.Frapper && !APortee(h, Matiere.HerbeSeche)) continue;
+                    if (s.Geste == Geste.Frotter && (s.A != Matiere.BoisSec || s.B != Matiere.BoisSec)) continue;
+                    if (alea.Reel() >= 0.15 * Ingeniosite(h) * (0.5 + h.Personnalite.Conscience)) continue;
+                    h.Activite = Activite.Fabriquer;
+                    h.CibleX = h.CibleY = -1;
+                    var r = Physique.Tenter(s.Geste, s.A, s.B, Contexte(h, s), alea);
+                    if (r.Effet == Effet.Flamme) Constater(h, s.Geste, s.A, s.B, r, OrigineSavoir.Reflexion, tous);
+                    return true;
+                }
+            }
+        }
+        // Se couvrir.
+        if (h.Vetement is not { Usure: > 0.2 })
+        {
+            var peau = h.Porte(Matiere.Peau) && h.Savoirs.Exists(s => s.Effet == Effet.Couvert && s.A == Matiere.Peau);
+            var feuilles = APortee(h, Matiere.GrandesFeuilles) && h.Savoirs.Exists(s => s.Effet == Effet.Couvert && s.A == Matiere.GrandesFeuilles);
+            // Qui sait qu'une couverture de feuilles protège peut penser à la peau qu'il porte.
+            if (!peau && h.Porte(Matiere.Peau) && h.Sait(Effet.Couvert) && alea.Reel() < 0.1 * Ingeniosite(h)) peau = true;
+            if (peau || feuilles)
+            {
+                h.Activite = Activite.Fabriquer;
+                h.CibleX = h.CibleY = -1;
+                Faire(h, Geste.SeCouvrir, peau ? Matiere.Peau : Matiere.GrandesFeuilles, Matiere.Aucune, OrigineSavoir.Essai, tous);
+                return true;
+            }
+        }
+        // Bâtir une hutte pour la nuit.
+        if (besoin == Activite.Dormir && _temperature < 12 && h.Sait(Effet.Abri) && !HutteProche(h.X, h.Y)
+            && APortee(h, Matiere.GrandesFeuilles) && APortee(h, Matiere.Branche) && alea.Reel() < 0.3 + 0.4 * h.Personnalite.Conscience)
+        {
+            h.Activite = Activite.Fabriquer;
+            h.CibleX = h.CibleY = -1;
+            Faire(h, Geste.Entasser, Matiere.GrandesFeuilles, Matiere.Branche, OrigineSavoir.Essai, tous);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Au calme, un adulte refait l'outil qui lui manque, s'il sait le faire et en a la matière : un éclat pour découper,
+    /// une pointe pour chasser, durcie au feu s'il en connaît le secret. C'est en refaisant les gestes qu'on les garde,
+    /// et que les autres les apprennent en regardant (Stout, 2011).
+    /// </summary>
+    private bool Outiller(Humain h, IReadOnlyList<Humain> tous)
+    {
+        if (h.Savoirs.Count == 0 || alea.Reel() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
+        Savoir? Moyen(Effet e) => h.Savoirs.Where(s => s.Effet == e && s.Espece == 0 && s.Confiance >= 0.4 && APortee(h, s.A) && APortee(h, s.B))
+            .MaxBy(s => s.Confiance);
+        var lame = h.Porte(Matiere.Eclat) || h.Porte(Matiere.Obsidienne);
+        var arme = h.Porte(Matiere.Epieu) || h.Porte(Matiere.BatonPointu);
+        // Durcir au feu la pointe qu'on porte.
+        if (h.Porte(Matiere.BatonPointu) && FeuIci(h) && h.Sait(Effet.Durci))
+            return Fabriquer(h, Geste.Approcher, Matiere.BatonPointu, Matiere.Feu, tous);
+        // Tailler une pointe.
+        if (!arme && (h.Sait(Effet.Chasse) || h.Sait(Effet.Pointe)) && Moyen(Effet.Pointe) is { } pointe)
+            return Fabriquer(h, pointe.Geste, pointe.A, pointe.B, tous);
+        // Tailler un éclat, pour découper ou pour tailler une pointe.
+        if (!lame && (h.Sait(Effet.Decoupe) || h.Sait(Effet.Pointe) || h.Sait(Effet.Eclat)) && Moyen(Effet.Eclat) is { } eclat)
+            return Fabriquer(h, eclat.Geste, eclat.A, eclat.B, tous);
+        return false;
+    }
+
+    private bool Fabriquer(Humain h, Geste g, Matiere a, Matiere b, IReadOnlyList<Humain> tous)
+    {
+        h.Activite = Activite.Fabriquer;
+        h.CibleX = h.CibleY = -1;
+        Faire(h, g, a, b, OrigineSavoir.Essai, tous);
+        return true;
+    }
+
+    private bool HutteProche(int x, int y)
+    {
+        foreach (var hu in Installations.Huttes) if (Distance(hu.X, hu.Y, x, y) <= 2) return true;
+        return false;
+    }
+
+    /// <summary>Plus rien à cueillir ici : celui qui sait fouir déterre des racines.</summary>
+    private bool Fouir(Humain h, IReadOnlyList<Humain> tous)
+    {
+        if (ecosysteme.Plantes[carte.Indice(h.X, h.Y)] >= 1000) return false;
+        var s = h.Savoirs.Where(x => x.Effet == Effet.Tubercules && x.Confiance >= 0.3 && APortee(h, x.A)).MaxBy(x => x.Confiance);
+        if (s is null) return false;
+        h.Activite = Activite.Fabriquer;
+        h.CibleX = h.CibleY = -1;
+        Faire(h, Geste.Fouir, s.A, Matiere.Aucune, OrigineSavoir.Essai, tous);
+        return true;
+    }
+
+    /// <summary>
+    /// Ramasser ce qui sert : celui qui sait tirer des étincelles d'un silex et d'une pyrite les garde sur lui ; celui qui
+    /// sait garder l'eau dans une calebasse en prend une ; un brandon se consume.
+    /// </summary>
+    private void Ramasser(Humain h)
+    {
+        for (var i = h.Objets.Count - 1; i >= 0; i--)
+        {
+            var o = h.Objets[i];
+            if (o.Matiere != Matiere.Brandon) continue;
+            if (o.Usure <= 0.12) h.Objets.RemoveAt(i);
+            else h.Objets[i] = o with { Usure = o.Usure - 0.11 };
+        }
+        if (h.Savoirs.Count == 0 || h.Objets.Count >= ObjetsMax) return;
+        foreach (var s in h.Savoirs)
+        {
+            if (s.Confiance < 0.5 || s.Effet is Effet.Rien or Effet.Tiedeur or Effet.Chaleur) continue;
+            foreach (var m in new[] { s.A, s.B })
+            {
+                if (m is not (Matiere.Silex or Matiere.Pyrite or Matiere.Obsidienne or Matiere.Calebasse or Matiere.Branche) || h.Porte(m)) continue;
+                if (m == Matiere.Branche && s.Effet != Effet.Tubercules) continue;
+                if (!Physique.Disponibles(carte, h.X, h.Y, false, VolcanProche(h.X, h.Y)).Contains(m)) continue;
+                Prendre(h, new Objet(m, 0.5 + 0.5 * alea.Reel(), 1));
+                if (h.Objets.Count >= ObjetsMax) return;
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ Le feu des incendies, la chasse, l'eau
+
+    /// <summary>
+    /// Près d'un incendie, on découvre la chaleur du feu ; un curieux peut en ramasser une branche qui brûle ;
+    /// sur une terre qui vient de brûler, on trouve des bêtes grillées par les flammes, tendres et faciles à manger
+    /// (les chimpanzés de la savane cherchent la nourriture après les feux de brousse ; Pruetz et Herzog, 2017).
+    /// </summary>
+    private void ObserverLeFeu(Humain h, IReadOnlyList<Humain> tous)
+    {
+        if (Catastrophes is null || h.EstBebe(_maintenant) || h.Activite == Activite.Dormir) return;
+        var flammes = Catastrophes.BruleAutour(h.X, h.Y);
+        if (flammes || Catastrophes.BraisesEn(h.X, h.Y, _maintenant))
+        {
+            if (h.Faim > 40 && !flammes && alea.Reel() < 0.01)
+            {
+                // Des bêtes surprises par le feu, cuites sur place : faciles à mâcher (Pruetz et Herzog, 2017).
+                h.Faim = Math.Max(0, h.Faim - 25);
+                Constater(h, Geste.Approcher, Matiere.Carcasse, Matiere.Feu, new Resultat(Effet.Cuisson, Matiere.Aucune, 1), OrigineSavoir.Observation, tous);
+            }
+            if (!h.Sait(Effet.Chaleur) && alea.Reel() < (h.Froid > 15 ? 0.3 : 0.05))
+                Constater(h, Geste.Approcher, Matiere.Aucune, Matiere.Feu, new Resultat(Effet.Chaleur, Matiere.Aucune, 1), OrigineSavoir.Observation, tous);
+            if (!h.EstPetitEnfant(_maintenant) && APortee(h, Matiere.Branche) && !h.Porte(Matiere.Brandon)
+                && alea.Reel() < (h.Sait(Effet.Brandon) ? 0.5 : 0.01 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))))
+            {
+                Constater(h, Geste.Approcher, Matiere.Branche, Matiere.Feu, new Resultat(Effet.Brandon, Matiere.Brandon, 1),
+                    h.Sait(Effet.Brandon) ? OrigineSavoir.Essai : OrigineSavoir.Observation, tous);
+            }
+        }
+    }
+
+    /// <summary>
+    /// De la fumée à l'horizon : les plus curieux vont voir, une fois le front passé. Les chimpanzés de Fongoli suivent
+    /// calmement les feux de savane et fouillent les terres brûlées (Pruetz et LaDuke, 2010 ; Pruetz et Herzog, 2017) :
+    /// c'est ainsi, pense-t-on, que nos ancêtres ont apprivoisé le feu avant de savoir l'allumer.
+    /// </summary>
+    private bool AllerVoirLeFeu(Humain h)
+    {
+        if (Catastrophes is null || h.EstEnfant(_maintenant)) return false;
+        if (Catastrophes.FumeeEnVue(h.X, h.Y, 3 * RayonPerception(h), _maintenant) is not { } cible) return false;
+        if (cible == (h.X, h.Y)) return false;
+        var enRoute = h.Activite == Activite.Explorer && Distance(h.CibleX, h.CibleY, cible.X, cible.Y) <= 2;
+        if (!enRoute)
+        {
+            var p = h.Personnalite;
+            var connu = h.Sait(Effet.Chaleur) || h.Sait(Effet.Brandon) ? 3 : 1;
+            if (alea.Reel() >= 0.02 * (0.2 + p.Ouverture) * (1 - 0.5 * p.Nevrosisme) * connu) return false;
+        }
+        Avancer(h, cible.X, cible.Y, Activite.Explorer);
+        return h.CibleX >= 0;
+    }
+
+    /// <summary>Arme portée pour chasser, et le gain de réussite qu'elle donne (un épieu double presque les prises).</summary>
+    private static (Matiere Arme, double Gain) ArmeDeChasse(Humain h)
+    {
+        var epieu = h.Objets.Find(o => o.Matiere == Matiere.Epieu);
+        if (epieu is not null) return (Matiere.Epieu, 0.6 + 0.5 * epieu.Qualite);
+        var baton = h.Objets.Find(o => o.Matiere == Matiere.BatonPointu);
+        if (baton is not null) return (Matiere.BatonPointu, 0.2 + 0.3 * baton.Qualite);
+        return (Matiere.Aucune, 0);
+    }
+
+    /// <summary>Après une prise : découper la bête, la faire cuire, retenir que l'arme a servi. Renvoie le facteur de nourriture obtenue.</summary>
+    private double ApresLaChasse(Humain h, Matiere arme, IReadOnlyList<Humain> tous)
+    {
+        var facteur = 1.0;
+        if (arme != Matiere.Aucune)
+        {
+            User(h, arme, 0.05);
+            Constater(h, Geste.Frapper, arme, Matiere.Carcasse, new Resultat(Effet.Chasse, Matiere.Aucune, 1), OrigineSavoir.Essai, tous);
+        }
+        var lame = h.Porte(Matiere.Eclat) ? Matiere.Eclat : h.Porte(Matiere.Obsidienne) ? Matiere.Obsidienne : Matiere.Aucune;
+        if (lame != Matiere.Aucune && (h.Sait(Effet.Decoupe) || alea.Reel() < 0.15 * (0.3 + h.Personnalite.Ouverture)))
+        {
+            if (Faire(h, Geste.Gratter, Matiere.Carcasse, lame, OrigineSavoir.Essai, tous) == Effet.Decoupe) facteur *= 1.25;
+        }
+        if (FeuIci(h) && (h.Sait(Effet.Cuisson) || alea.Reel() < 0.1 + 0.2 * h.Personnalite.Ouverture))
+        {
+            // La viande cuite est plus facile à digérer et donne plus d'énergie (Carmody et al., 2011) ; la cuisson tue
+            // une partie des germes et des parasites.
+            Constater(h, Geste.Approcher, Matiere.Carcasse, Matiere.Feu, new Resultat(Effet.Cuisson, Matiere.Aucune, 1), OrigineSavoir.Essai, tous);
+            facteur *= 1.25;
+            h.CuitJusqua = _maintenant + 3 * Calendrier.SecondesParJour;
+        }
+        return facteur;
+    }
+
+    /// <summary>Boire à sa calebasse quand l'eau est loin.</summary>
+    private bool BoireALaCalebasse(Humain h)
+    {
+        var c = h.Objets.Find(o => o.Matiere == Matiere.Calebasse && o.Plein);
+        if (c is null) return false;
+        h.Objets[h.Objets.IndexOf(c)] = c with { Plein = false, Usure = c.Usure - 0.01 };
+        h.Soif = Math.Max(0, h.Soif - 45);
+        h.Activite = Activite.Boire;
+        h.CibleX = h.CibleY = -1;
+        return true;
+    }
+
+    /// <summary>Après avoir bu : remplir sa calebasse, ou en prendre une, si l'on sait qu'elle garde l'eau.</summary>
+    private void Remplir(Humain h, IReadOnlyList<Humain> tous)
+    {
+        var c = h.Objets.Find(o => o.Matiere == Matiere.Calebasse);
+        if (c is { Plein: true }) return;
+        if (h.Sait(Effet.EauPortee) ? (c is not null || APortee(h, Matiere.Calebasse))
+            : c is not null && alea.Reel() < 0.02 * (0.3 + h.Personnalite.Ouverture))
+        {
+            Faire(h, Geste.Remplir, Matiere.Calebasse, Matiere.Eau, OrigineSavoir.Essai, tous);
+        }
+    }
+
+    private bool EauProfondeAPortee(int x, int y)
+    {
+        foreach (var (dx, dy) in Voisins8)
+        {
+            int nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
+            if (carte.BiomeEn(nx, ny) is Biome.Lac or Biome.EauPeuProfonde) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Un bain en eau profonde : on apprend à nager peu à peu ; celui qui ne sait pas encore, fatigué ou transi, peut se noyer.
+    /// La noyade reste une cause de mort notable dans les sociétés de chasseurs-cueilleurs.
+    /// </summary>
+    private void Baignade(Humain h, bool reussi)
+    {
+        h.Activite = Activite.Nager;
+        if (reussi) h.Nage = Math.Min(1, h.Nage + 0.04 + 0.06 * h.Personnalite.Adresse);
+        var risque = 0.002 * (1 - h.Nage) * (1 + h.Fatigue / 50 + h.Froid / 50) * (h.EstEnfant(_maintenant) ? 2 : 1);
+        if (alea.Reel() < risque) Mourir(h, _maintenant, CauseDeMort.Noyade);
+    }
+
+    /// <summary>Peut-il traverser cette eau à la nage ?</summary>
+    private bool PeutNager(Humain h) => h.Nage >= 0.4 && h.Fatigue < 70 && h.Froid < 50;
+
+    // ------------------------------------------------------------------ Se soigner
+
+    /// <summary>
+    /// Un malade cherche à se soulager : une plante qu'il croit bonne pour son mal ; sinon un proche qui connaît un remède
+    /// le lui donne ; sinon, s'il est audacieux ou désespéré, il en essaie une au hasard. Le corps décide du reste :
+    /// la plante agit selon ses vertus réelles, et l'humain en tire une croyance, juste ou fausse.
+    /// </summary>
+    private bool SeSoigner(Humain h, IReadOnlyList<Humain> tous)
+    {
+        var malade = h.EstMalade(_maintenant);
+        var fievre = h.InfectionId != 0 && h.SymptomesLe <= _maintenant && h.GuerisonLe > _maintenant;
+        if (!malade && !fievre || h.EstBebe(_maintenant)) return false;
+        if (_maintenant - h.RemedeLe < 12 * Calendrier.SecondesParHeure) return false;
+        var mal = malade ? Physique.SymptomeDe(h.Maladie) : Symptome.Fievre;
+        var especes = Flore.Sur(carte.BiomeEn(h.X, h.Y));
+        if (especes.Count == 0) return false;
+        bool Ici(int numero) => especes.Any(e => e.Numero == numero);
+
+        // Ce qu'il croit bon pour son mal.
+        var remede = h.Savoirs.Where(s => s.Effet == Effet.Soulagement && s.Symptome == mal && s.Confiance >= 0.45 && Ici(s.Espece))
+            .MaxBy(s => s.Confiance);
+        if (remede is not null)
+        {
+            PrendreRemede(h, remede.Espece, remede.Geste, mal, 0, tous, OrigineSavoir.Essai);
+            return true;
+        }
+        // Un proche le soigne : il lui donne la plante qu'il croit bonne.
+        foreach (var o in tous)
+        {
+            if (o.Id == h.Id || !o.EstVivant || o.X != h.X || o.Y != h.Y || o.EstEnfant(_maintenant) || o.Activite == Activite.Dormir) continue;
+            var s = o.Savoirs.Where(x => x.Effet == Effet.Soulagement && x.Symptome == mal && x.Confiance >= 0.55 && Ici(x.Espece)).MaxBy(x => x.Confiance);
+            if (s is null || o.AffectionPour(h.Id) < -10) continue;
+            var envie = (0.3 + 0.7 * o.Personnalite.Moral.Compassion) * (1 - Psyche.Froideur(o.Personnalite));
+            if (alea.Reel() >= envie) continue;
+            o.Activite = Activite.Soigner;
+            var plante = Flore.Get(s.Espece);
+            Noter(_maintenant, TypeEvenement.Entraide, o, h,
+                $"{o.Nom} donne à {h.Nom} {plante.Nom}, qu'{Il(o)} croit bonne contre {Physique.Mal(mal)}.");
+            PrendreRemede(h, s.Espece, s.Geste, mal, o.Id, tous, OrigineSavoir.Imitation);
+            return true;
+        }
+        // Essayer une plante au hasard : l'audace, la souffrance et le désespoir y poussent.
+        var detresse = Math.Clamp((100 - h.Sante) / 60 + (malade ? Maladies.Fiche(h.Maladie).Gravite / 3 : 0.3), 0, 1.5);
+        if (alea.Reel() >= 0.04 * (0.3 + h.Personnalite.Ouverture) * detresse) return false;
+        var essai = especes[alea.Entier(especes.Count)];
+        if (h.Savoirs.Exists(s => s.Espece == essai.Numero && (s.Effet == Effet.Poison || s.Symptome == mal && s.Confiance < 0.3))) return false;
+        var geste = mal is Symptome.Plaie or Symptome.Peau && alea.Reel() < 0.6 ? Geste.Appliquer : Geste.Manger;
+        PrendreRemede(h, essai.Numero, geste, mal, 0, tous, OrigineSavoir.Essai);
+        return true;
+    }
+
+    /// <summary>Prend une plante contre un mal : ses vertus réelles agissent, la croyance viendra à la guérison.</summary>
+    private void PrendreRemede(Humain h, int numero, Geste geste, Symptome mal, int soigneurId, IReadOnlyList<Humain> tous, OrigineSavoir origine)
+    {
+        h.Activite = Activite.Soigner;
+        h.CibleX = h.CibleY = -1;
+        var espece = Flore.Get(numero);
+        var effet = Gouter(h, espece, geste, tous, origine);
+        if (!h.EstVivant || effet == Effet.Poison) return;
+        h.RemedeEspece = numero;
+        h.RemedeGeste = geste;
+        h.RemedeSymptome = mal;
+        h.RemedeLe = _maintenant;
+        RemedeSoigneur[h.Id] = soigneurId;
+    }
+
+    /// <summary>Qui a donné son dernier remède à un malade (pour le crédit ou le doute qui suivra).</summary>
+    public Dictionary<int, int> RemedeSoigneur { get; } = [];
+
+    /// <summary>
+    /// Effets réels d'une plante mangée ou appliquée : poison, visions, fièvre qui tombe, maladie abrégée. Renvoie l'effet
+    /// que l'humain remarque tout de suite (poison, visions), sinon Rien.
+    /// </summary>
+    private Effet Gouter(Humain h, Espece espece, Geste geste, IReadOnlyList<Humain> tous, OrigineSavoir origine)
+    {
+        h.Activite = h.Activite == Activite.Soigner ? Activite.Soigner : Activite.Experimenter;
+        if (geste == Geste.Manger && espece.Toxicite > 0)
+        {
+            // La plupart des plantes toxiques sont amères : on recrache souvent la première bouchée (le rejet de l'amer
+            // protège des poisons : Glendinning, 1994). La dose fait le poison : avalée, elle rend malade, rarement elle tue.
+            var recrachee = alea.Reel() < 0.4 + 0.4 * espece.Toxicite;
+            var degats = 45 * espece.Toxicite * (0.4 + alea.Reel()) * (h.EstEnfant(_maintenant) ? 1.6 : 1) * (recrachee ? 0.1 : 1);
+            h.Sante -= degats;
+            h.Soif = Math.Min(100, h.Soif + (recrachee ? 2 : 15));
+            h.Humeur = Math.Max(0, h.Humeur - (recrachee ? 2 : 10));
+            var id = Noter(_maintenant, TypeEvenement.Maladie, h, null, recrachee
+                ? $"{h.Nom} goûte {espece.Nom} : c'est amer, {Il(h)} recrache, la bouche en feu et le cœur au bord des lèvres."
+                : $"{h.Nom} mange {espece.Nom} : {Il(h)} vomit, pris{(h.Sexe == Sexe.Femme ? "e" : "")} de violentes douleurs.");
+            if (h.Sante <= 0)
+            {
+                Mourir(h, _maintenant, CauseDeMort.Empoisonnement, id);
+                // Ceux qui l'ont vu mourir retiennent que la plante tue.
+                foreach (var o in tous)
+                {
+                    if (o.Id == h.Id || !o.EstVivant || Distance(o.X, o.Y, h.X, h.Y) > 1 || o.EstBebe(_maintenant)) continue;
+                    Retenir(o, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Poison, espece.Numero, Symptome.Aucun, OrigineSavoir.Observation, h.Id, tous);
+                }
+                return Effet.Poison;
+            }
+            Retenir(h, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Poison, espece.Numero, Symptome.Aucun, OrigineSavoir.Essai, 0, tous);
+            Montrer(h, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Poison, espece.Numero, Symptome.Aucun, tous, id);
+            return Effet.Poison;
+        }
+        if (geste == Geste.Manger && espece.Psychotrope > 0 && alea.Reel() < espece.Psychotrope)
+        {
+            var id = Noter(_maintenant, TypeEvenement.Decouverte, h, null,
+                $"{h.Nom} mange {espece.Nom} : le monde se met à onduler, {Il(h)} voit des formes et entend des voix.");
+            Jardin.Confier(h, TypeIntime.Croyance, 0, "J'ai vu ce que les autres ne voient pas. Il y a autre chose derrière le monde.",
+                40 + 40 * h.Personnalite.Transcendance, id, _maintenant, $"visions:{espece.Numero}");
+            Retenir(h, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Visions, espece.Numero, Symptome.Aucun, origine, 0, tous);
+        }
+        // Les vertus agissent sur la maladie réelle, que l'humain le sache ou non.
+        if (h.EstMalade(_maintenant))
+        {
+            var e = espece.Efficacite(h.Maladie, geste);
+            if (e > 0)
+            {
+                var reste = h.MaladeJusqua - _maintenant;
+                h.MaladeJusqua = _maintenant + (long)(reste * (1 - 0.6 * e));
+            }
+        }
+        if (espece.Febrifuge > 0 && geste == Geste.Manger && (h.EstMalade(_maintenant) || h.InfectionId != 0))
+        {
+            // La fièvre tombe, la douleur s'apaise : on se sent mieux, sans être guéri.
+            h.Humeur = Math.Min(100, h.Humeur + 8 * espece.Febrifuge);
+            h.Sante = Math.Min(100, h.Sante + 2 * espece.Febrifuge);
+        }
+        return Effet.Rien;
+    }
+
+    /// <summary>
+    /// Chaque jour : celui qui a guéri après une plante croit qu'elle l'a guéri (et celui qui la lui a donnée y croit plus) ;
+    /// les morts pendant un remède font douter ceux qui le leur avaient donné.
+    /// </summary>
+    public void BilanDesRemedes(IReadOnlyList<Humain> tous, long maintenant)
+    {
+        _maintenant = maintenant;
+        foreach (var h in tous)
+        {
+            if (!h.EstVivant || h.RemedeEspece == 0) continue;
+            var encore = h.EstMalade(maintenant) || h.InfectionId != 0 && h.GuerisonLe > maintenant;
+            if (encore && maintenant - h.RemedeLe < 30 * Calendrier.SecondesParJour) continue;
+            var soigneur = RemedeSoigneur.GetValueOrDefault(h.Id);
+            if (!encore)
+            {
+                var origine = soigneur > 0 ? OrigineSavoir.Imitation : OrigineSavoir.Essai;
+                Retenir(h, h.RemedeGeste, Matiere.Plante, Matiere.Aucune, Effet.Soulagement, h.RemedeEspece, h.RemedeSymptome, origine, soigneur, tous);
+                if (soigneur > 0 && soigneur <= tous.Count && tous[soigneur - 1].EstVivant)
+                {
+                    var s = tous[soigneur - 1];
+                    var i = s.Savoirs.FindIndex(x => x.Effet == Effet.Soulagement && x.Espece == h.RemedeEspece && x.Symptome == h.RemedeSymptome);
+                    if (i >= 0) s.Savoirs[i] = s.Savoirs[i] with { Essais = s.Savoirs[i].Essais + 1, Succes = s.Savoirs[i].Succes + 1, UtiliseLe = maintenant };
+                    VieSociale.Gratitude(h, s, 3);
+                }
+            }
+            h.RemedeEspece = 0;
+            RemedeSoigneur.Remove(h.Id);
+        }
+        foreach (var (espece, mal, soigneurId) in _remedesEchoues)
+        {
+            if (soigneurId <= 0 || soigneurId > tous.Count) continue;
+            var s = tous[soigneurId - 1];
+            var i = s.Savoirs.FindIndex(x => x.Effet == Effet.Soulagement && x.Espece == espece && x.Symptome == mal);
+            if (i >= 0) s.Savoirs[i] = s.Savoirs[i] with { Essais = s.Savoirs[i].Essais + 1 };
+        }
+        _remedesEchoues.Clear();
+    }
+
+    /// <summary>Mort pendant un remède : noté pour le doute du soigneur.</summary>
+    private void RemedeEchoue(Humain h)
+    {
+        if (h.RemedeEspece == 0) return;
+        _remedesEchoues.Add((h.RemedeEspece, h.RemedeSymptome, RemedeSoigneur.GetValueOrDefault(h.Id, h.Id)));
+        RemedeSoigneur.Remove(h.Id);
+    }
+
+    // ------------------------------------------------------------------ Usure, oubli
+
+    /// <summary>
+    /// Chaque jour : les vêtements s'usent (les feuilles en quelques jours, une peau en un an environ), et les savoirs
+    /// qu'on n'emploie plus s'oublient, d'autant moins vite qu'on les a souvent employés (courbe d'Ebbinghaus).
+    /// Renvoie les savoirs oubliés, pour le journal.
+    /// </summary>
+    public List<(Humain Humain, Savoir Savoir)> UserEtOublier(IReadOnlyList<Humain> tous, long maintenant)
+    {
+        var oublies = new List<(Humain, Savoir)>();
+        foreach (var h in tous)
+        {
+            if (!h.EstVivant) continue;
+            if (h.Vetement is { } v)
+            {
+                var usure = v.Matiere == Matiere.Peau ? 1 / 365.0 : 1 / 8.0;
+                h.Vetement = v.Usure - usure <= 0 ? null : v with { Usure = v.Usure - usure };
+            }
+            if (h.Savoirs.Count == 0) continue;
+            var facteur = Memoire.Facteur(h.Personnalite.Intelligence.Memoire);
+            for (var i = h.Savoirs.Count - 1; i >= 0; i--)
+            {
+                var s = h.Savoirs[i];
+                var stabilite = 120.0 * facteur * Math.Pow(1 + s.Succes, 1.3) * Calendrier.SecondesParJour;
+                // Un poison, une plante qui a fait voir d'autres mondes, la morsure chaude du feu ne s'oublient guère.
+                if (s.Effet is Effet.Poison or Effet.Visions or Effet.Chaleur) stabilite *= 10;
+                if (maintenant - s.UtiliseLe < 1.4 * stabilite) continue;
+                h.Savoirs.RemoveAt(i);
+                oublies.Add((h, s));
+            }
+        }
+        return oublies;
+    }
+
+    /// <summary>L'Entité souffle une intuition : l'humain fait aussitôt le geste suggéré (rien ne garantit qu'il réussisse).</summary>
+    public Effet Souffler(Humain h, Geste geste, Matiere a, Matiere b, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        var debut = Journal.Count;
+        try
+        {
+            return Souffle(h, geste, a, b, tous, maintenant);
+        }
+        finally
+        {
+            // Ce que l'humain a vécu de cette intuition est marqué au journal comme venu de l'Entité (ce que d'autres
+            // en ont appris en le regardant reste de leur fait).
+            for (var i = debut; i < Journal.Count; i++)
+            {
+                if (Journal[i].HumainId == h.Id) Journal[i] = Journal[i] with { Origine = Origine.Entite };
+            }
+        }
+    }
+
+    private Effet Souffle(Humain h, Geste geste, Matiere a, Matiere b, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        _maintenant = maintenant;
+        _temperature = Temperature(h.X, h.Y, maintenant);
+        if (!APortee(h, a) || !APortee(h, b))
+        {
+            var manque = APortee(h, a) ? b : a;
+            Noter(maintenant, TypeEvenement.Decouverte, h, null,
+                $"{h.Nom} sent une idée lui venir : {Physique.NomGeste(geste)} {Physique.Nom(a)}{(b == Matiere.Aucune ? "" : " et " + Physique.Nom(b))}… mais {Il(h)} n'a pas {Physique.Nom(manque)} sous la main, et l'idée s'efface.");
+            return Effet.Rien;
+        }
+        var r = Physique.Tenter(geste, a, b, Contexte(h), alea);
+        if (r.Effet == Effet.Rien)
+        {
+            Noter(maintenant, TypeEvenement.Decouverte, h, null,
+                $"{h.Nom} sent une idée lui venir : {Physique.NomGeste(geste)} {Physique.Nom(a)}{(b == Matiere.Aucune ? "" : " et " + Physique.Nom(b))}… {Majuscule(Il(h))} essaie, mais rien ne se passe.");
+            return Effet.Rien;
+        }
+        Constater(h, geste, a, b, r, OrigineSavoir.Entite, tous);
+        return r.Effet;
+    }
+}

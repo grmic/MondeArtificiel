@@ -122,6 +122,7 @@ public static class Libelles
         Humains.CauseDeMort.Accident => "par accident",
         Humains.CauseDeMort.Chaleur => "de chaleur",
         Humains.CauseDeMort.Guerre => "au combat",
+        Humains.CauseDeMort.Empoisonnement => "empoisonné par une plante",
         _ => "",
     };
 

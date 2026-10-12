@@ -52,6 +52,15 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Guerres entre communautés, en cours ou finies.</summary>
     public IReadOnlyList<Guerre>? Guerres { get; init; }
+
+    /// <summary>Feux entretenus par les humains.</summary>
+    public IReadOnlyList<Foyer>? Foyers { get; init; }
+
+    /// <summary>Huttes bâties par les humains.</summary>
+    public IReadOnlyList<Hutte>? Huttes { get; init; }
+
+    /// <summary>Première fois que chaque effet a été obtenu dans le monde.</summary>
+    public IReadOnlyList<Decouverte>? Decouvertes { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -85,6 +94,10 @@ public sealed class MondeSimule
     private string? _extinction;
     private bool _pauseExtinction;
     private readonly VieSociale _social;
+    private readonly Installations _installations;
+    // Effets que des vivants savent obtenir : quand le dernier qui savait meurt ou oublie, le savoir est perdu.
+    /// <summary>Effets que quelqu'un sait encore obtenir, avec un savoir qui le dit (pour le raconter s'il se perd).</summary>
+    private Dictionary<Effet, Savoir> _effetsConnus;
     private readonly List<Communaute> _communautes;
     private readonly HashSet<string> _noms;
     private long _secondes;
@@ -133,7 +146,12 @@ public sealed class MondeSimule
         _social.ChargerGuerres(etat.Guerres ?? []);
         _social.ChargerRelations(etat.Relations ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
-        _comportement = new Comportement(carte, _ecosysteme, _alea) { Social = _social, Numeros = _numeros };
+        Flore = new Flore(etat.Graine);
+        _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes);
+        _comportement = new Comportement(carte, _ecosysteme, _alea)
+        {
+            Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations,
+        };
         _catastrophes = new Catastrophes(carte, _ecosysteme, _alea, etat.Catastrophes, etat.Pathogenes)
         {
             Numeros = _numeros, Comportement = _comportement, Communautes = _communautes,
@@ -141,6 +159,7 @@ public sealed class MondeSimule
         _comportement.Catastrophes = _catastrophes;
         _noms = _humains.Select(x => x.Nom).ToHashSet();
         _eteint = !_humains.Any(x => x.EstVivant);
+        _effetsConnus = EffetsConnus();
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
         _archivesNonEnregistrees.AddRange(etat.ArchivesNonEnregistrees ?? []);
 
@@ -158,6 +177,9 @@ public sealed class MondeSimule
         new(configuration.Graine, 6 * Calendrier.SecondesParHeure, 0, 0) { Configuration = configuration };
 
     public Carte Carte { get; }
+
+    /// <summary>Les plantes du monde, leurs vertus et leurs dangers (tirées de la graine).</summary>
+    public Flore Flore { get; }
 
     /// <summary>Réglages choisis à la création du monde.</summary>
     public ConfigurationMonde Configuration { get; }
@@ -205,6 +227,9 @@ public sealed class MondeSimule
                     DegatsNature = _ecosysteme.Degats.ToArray(),
                     Configuration = Configuration,
                     Guerres = _social.Guerres.Select(g => g.Copier()).ToList(),
+                    Foyers = _installations.Foyers.ToList(),
+                    Huttes = _installations.Huttes.ToList(),
+                    Decouvertes = _installations.Decouvertes.ToList(),
                 };
             }
         }
@@ -551,6 +576,8 @@ public sealed class MondeSimule
             _social.Archives.Clear();
         }
 
+        _installations.Bruler(SecondesParPas / (double)Calendrier.SecondesParHeure);
+
         // La liste peut grandir pendant le pas : on ne fait vivre que ceux qui existaient au début.
         var nombre = _humains.Count;
         for (var i = 0; i < nombre; i++)
@@ -594,6 +621,7 @@ public sealed class MondeSimule
             _social.Debattre(_humains, _communautes, _secondes);
             Oublier();
             Murir();
+            Savoirs();
             _social.Humeurs(_humains, _secondes);
             if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
             {
@@ -731,4 +759,74 @@ public sealed class MondeSimule
     }
 
     private static string Pronom(Humain h) => h.Sexe == Sexe.Femme ? "elle" : "il";
+
+    private Dictionary<Effet, Savoir> EffetsConnus()
+    {
+        var connus = new Dictionary<Effet, Savoir>();
+        foreach (var h in _humains)
+        {
+            if (!h.EstVivant) continue;
+            foreach (var s in h.Savoirs)
+            {
+                if (s.Espece == 0 && (!connus.TryGetValue(s.Effet, out var x) || s.Confiance > x.Confiance)) connus[s.Effet] = s;
+            }
+        }
+        return connus;
+    }
+
+    /// <summary>
+    /// Une fois par jour : les huttes s'affaissent, la pluie éteint les feux, les remèdes font leurs preuves (ou non),
+    /// les vêtements s'usent, les savoirs inemployés s'oublient. Quand plus personne ne sait obtenir un effet, le savoir
+    /// est perdu pour tous : c'est un tournant (★).
+    /// </summary>
+    private void Savoirs()
+    {
+        _installations.Affaisser(1, id => 1 / (90 + id * 7919 % 91.0));
+        // La pluie éteint un feu qu'aucune hutte ne protège.
+        foreach (var f in _installations.Foyers.ToList())
+        {
+            if (_installations.HutteEn(f.X, f.Y) is not null) continue;
+            if (_alea.Reel() < 0.12 * _ecosysteme.PluieEn(Carte.Indice(f.X, f.Y))) _installations.Eteindre(f.X, f.Y);
+        }
+        _comportement.BilanDesRemedes(_humains, _secondes);
+        foreach (var (h, s) in _comportement.UserEtOublier(_humains, _secondes))
+        {
+            if (s.Effet is Effet.Chaleur or Effet.Tiedeur || s.Confiance < 0.5) continue;
+            var plante = s.Espece > 0 ? Flore.Get(s.Espece).Nom : null;
+            _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Souvenir, h.Id, 0,
+                $"{h.Nom} ne se souvient plus de ce qu'{Pronom(h)} savait : « {Physique.Decrire(s, plante)} »") { Id = _numeros.Suivant(), CauseId = s.EvenementId });
+        }
+        var connus = EffetsConnus();
+        foreach (var (perdu, dernier) in _effetsConnus.Where(p => !connus.ContainsKey(p.Key)).OrderBy(p => p.Key))
+        {
+            var premier = _installations.Decouvertes.Find(d => d.Effet == perdu);
+            _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Decouverte, 0, 0,
+                $"Plus personne ne sait : « {Physique.Decrire(dernier)} » Ce savoir est perdu.")
+            {
+                Id = _numeros.Suivant(), CauseId = premier?.EvenementId ?? 0, Significatif = true,
+            });
+        }
+        _effetsConnus = connus;
+    }
+
+    /// <summary>
+    /// L'Entité souffle une intuition à un humain : il fait aussitôt le geste suggéré, avec ce qu'il a sous la main.
+    /// Renvoie l'effet obtenu (Rien si le geste n'a rien donné, ou si l'humain n'existe pas ou n'a pas les matières).
+    /// </summary>
+    public Effet Souffler(int humainId, Geste geste, Matiere a, Matiere b)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count || !_humains[humainId - 1].EstVivant) return Effet.Rien;
+            var effet = _comportement.Souffler(_humains[humainId - 1], geste, a, b, _humains, _secondes);
+            VerserJournal();
+            return effet;
+        }
+    }
+
+    /// <summary>Feux, huttes et chronologie des découvertes (copies).</summary>
+    public (List<Foyer> Foyers, List<Hutte> Huttes, List<Decouverte> Decouvertes) Installations()
+    {
+        lock (_verrou) return (_installations.Foyers.ToList(), _installations.Huttes.ToList(), _installations.Decouvertes.ToList());
+    }
 }
