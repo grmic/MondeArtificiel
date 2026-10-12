@@ -81,7 +81,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .liste { list-style: none; margin: 0; padding: 0; }
 .liste li { padding: 2px 0; }
 .liste .date { color: var(--discret); font-variant-numeric: tabular-nums; min-width: 0; font-size: 0.8rem; }
-.lien { background: none; border: none; padding: 0; color: #8cc4ff; cursor: pointer; font: inherit; text-decoration: underline dotted; }
+.nom-humain { background: none; border: none; padding: 0; color: inherit; cursor: pointer; font: inherit; text-decoration: underline dotted; }
+.nom-humain:hover { color: #8cc4ff; }
+button.lien { background: none; border: none; padding: 0; color: #8cc4ff; cursor: pointer; font: inherit; text-decoration: underline dotted; }
 .entite { color: #d9a8ff; }
 .journal-panneau .filtres { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 0 14px 6px; }
 .journal-panneau .puce { white-space: nowrap; }

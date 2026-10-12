@@ -690,9 +690,24 @@ public sealed partial class VieSociale
             g.Fin = maintenant;
             g.FinEvenementId = Noter(maintenant, TypeEvenement.Guerre, fa, fb,
                 $"{fa.Nom} et {fb.Nom} se rencontrent et font la paix : la guerre entre la {Minuscule(a.Nom)} et la {Minuscule(b.Nom)} "
-                + $"s'achève ({Pertes(g)}).", g.EvenementId, communaute: a.Id, autreCommunaute: b.Id, significatif: true);
+                + $"s'achève ({Pertes(g)}). Pourquoi : {RaisonsPaix(g, fa, fb, lassitude, vengeance, maintenant)}.",
+                g.EvenementId, communaute: a.Id, autreCommunaute: b.Id, significatif: true);
             FaireLaPaix(a, b, humains, g.FinEvenementId);
         }
+    }
+
+    /// <summary>Ce qui a rendu la paix possible : le temps sans combat, la lassitude des deuils, des figures conciliantes, des rancunes apaisées.</summary>
+    private static string RaisonsPaix(Guerre g, Humain fa, Humain fb, double lassitude, double vengeance, long maintenant)
+    {
+        var raisons = new List<string>();
+        var mois = (int)((maintenant - g.DernierSangLe) / (30 * Calendrier.SecondesParJour));
+        raisons.Add(g.MortsA + g.MortsB == 0 ? $"aucun combat sanglant en {mois} mois de guerre" : $"aucun sang n'a coulé depuis {mois} mois");
+        if (lassitude >= 0.5) raisons.Add($"les deux camps sont las de pleurer leurs morts ({Pertes(g)})");
+        var conciliant = fa.Personnalite.Agreabilite >= fb.Personnalite.Agreabilite ? fa : fb;
+        if (conciliant.Personnalite.Agreabilite >= 0.6)
+            raisons.Add($"{conciliant.Nom} est d'un naturel conciliant{(Math.Min(fa.Personnalite.Agreabilite, fb.Personnalite.Agreabilite) >= 0.6 ? $", comme {(conciliant == fa ? fb : fa).Nom}" : "")}");
+        raisons.Add(vengeance < 0.2 ? "la soif de vengeance s'est apaisée" : "malgré la rancune de certains, qui n'oublient pas leurs morts");
+        return string.Join(", ", raisons.Take(raisons.Count - 1)) + (raisons.Count > 1 ? " et " : "") + raisons[^1];
     }
 
     private static string Pertes(Guerre g) => (g.MortsA + g.MortsB) switch

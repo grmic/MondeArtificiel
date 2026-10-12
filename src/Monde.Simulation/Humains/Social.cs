@@ -303,6 +303,11 @@ public sealed partial class VieSociale(Alea alea)
             };
         }
 
+        // Les adultes supportent les enfants, et les enfants entre eux se fâchent et se réconcilient vite :
+        // une vraie hostilité ne se forme guère avant l'adolescence.
+        var plusJeune = Math.Min(a.AgeEnAnnees(maintenant), b.AgeEnAnnees(maintenant));
+        if (plusJeune < 14 && delta < 0) delta *= plusJeune / 14;
+
         var avant = la ?? new Lien(b.Id, 0, 0, maintenant);
         var apres = avant with
         {
@@ -582,7 +587,7 @@ public sealed partial class VieSociale(Alea alea)
 
         foreach (var h in membres)
         {
-            // Bébés et enfants vont avec leurs parents.
+            // Bébés et enfants vont avec leurs parents ; un orphelin, avec celui qui l'a recueilli.
             if (h.EstEnfant(maintenant))
             {
                 // Parents séparés par un exil ou un reniement : l'enfant reste avec sa mère.
@@ -591,6 +596,8 @@ public sealed partial class VieSociale(Alea alea)
                 {
                     if (pid > 0 && humains[pid - 1].EstVivant) Unir(h.Id, pid);
                 }
+                if (Comportement.Gardien(h, humains, maintenant) is { } gardien && gardien.Id != h.MereId && gardien.Id != h.PereId)
+                    Unir(h.Id, gardien.Id);
                 continue;
             }
             foreach (var l in h.Liens)
@@ -717,29 +724,57 @@ public sealed partial class VieSociale(Alea alea)
             c.Territoire.Clear();
         }
 
+        // Un enfant part ou arrive avec celui qui veille sur lui : il est nommé dans sa ligne, pas dans une ligne à part.
+        var suivent = new Dictionary<int, List<Humain>>();
+        foreach (var h in membres.Where(h => h.EstEnfant(maintenant) && anciens[h.Id] != nouvelles.GetValueOrDefault(h.Id)))
+        {
+            if (Comportement.Gardien(h, humains, maintenant) is { } g && anciens.TryGetValue(g.Id, out var gAvant)
+                && gAvant == anciens[h.Id] && nouvelles.GetValueOrDefault(g.Id) == nouvelles.GetValueOrDefault(h.Id))
+            {
+                (suivent.TryGetValue(g.Id, out var l) ? l : suivent[g.Id] = []).Add(h);
+            }
+        }
+        var accompagnes = suivent.Values.SelectMany(l => l).Select(h => h.Id).ToHashSet();
+        string Avec(Humain h) => suivent.TryGetValue(h.Id, out var l) ? AvecEnfants(h, l, maintenant) : "";
+
         foreach (var h in membres)
         {
             var avant = anciens[h.Id];
             var apres = nouvelles.GetValueOrDefault(h.Id);
             h.CommunauteId = apres;
-            if (avant == apres || h.EstBebe(maintenant)) continue;
+            if (avant == apres || accompagnes.Contains(h.Id) || h.EstBebe(maintenant)) continue;
             // Les arrivées dans une communauté qui vient de naître sont déjà dans l'annonce de sa formation,
             // celles d'une fusion dans l'annonce de la fusion.
             if (apres != 0 && communautes[apres - 1].FondeeLe != maintenant
                 && fondues.GetValueOrDefault(avant) != apres)
             {
-                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}.",
+                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}{Avec(h)}{AgeSiEnfant(h, maintenant)}.",
                     communaute: apres, autreCommunaute: avant);
             }
             else if (apres == 0 && communautes[avant - 1].Active)
             {
-                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} quitte la {Minuscule(communautes[avant - 1].Nom)}.",
+                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} quitte la {Minuscule(communautes[avant - 1].Nom)}{Avec(h)}{AgeSiEnfant(h, maintenant)}.",
                     communaute: avant);
             }
         }
         Usages(humains, communautes, maintenant);
         Moeurs(humains, communautes, maintenant);
     }
+
+    /// <summary>« , avec sa fille X (3 ans) » ou « , avec ses enfants X (5 ans) et Y (8 mois) ».</summary>
+    private static string AvecEnfants(Humain h, List<Humain> enfants, long maintenant)
+    {
+        var noms = enfants.OrderBy(e => e.Naissance).Select(e => $"{e.Nom} ({Comportement.AgeEnMots(e, maintenant)})").ToList();
+        var liste = noms.Count == 1 ? noms[0] : $"{string.Join(", ", noms[..^1])} et {noms[^1]}";
+        if (enfants.Count > 1) return $", avec {(enfants.All(e => e.MereId == h.Id || e.PereId == h.Id) ? "ses enfants" : "les enfants")} {liste}";
+        var e = enfants[0];
+        var lien = e.MereId == h.Id || e.PereId == h.Id ? (e.Sexe == Sexe.Femme ? "sa fille" : "son fils") : e.Sexe == Sexe.Femme ? "la petite" : "le petit";
+        return $", avec {lien} {liste}";
+    }
+
+    /// <summary>Un enfant qui part ou arrive seul : son âge, pour qu'on le comprenne.</summary>
+    private static string AgeSiEnfant(Humain h, long maintenant) =>
+        h.EstEnfant(maintenant) ? $" ({Comportement.AgeEnMots(h, maintenant)}, sans les siens)" : "";
 
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 

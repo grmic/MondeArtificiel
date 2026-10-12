@@ -89,6 +89,7 @@ interface Attraits {
   conscience: string | null;
   ideal: string;
   exclusions: { type: string; par: number; nomPar: string; le: string; jusqua: string | null; raison: string; enCours: boolean; evenement: number }[];
+  impubere: boolean;
 }
 
 /** Maladie en cours, immunités, et peur laissée par une catastrophe. */
@@ -158,12 +159,17 @@ export class PanneauFiche {
     const a = f.attraits;
     corps.append(el("h3", undefined, "Attraits et orientation"));
     const p = el("p", "attraits");
-    p.title = "Beauté relative : selon ce que sa communauté trouve beau. Attractivité : beauté, jeunesse, allure et vigueur.";
-    p.append(`Beauté relative ${a.beaute}/100 · attractivité ${a.attractivite}/100`, el("br"),
-      `Idéal de beauté de son groupe : ${a.ideal}`, el("br"),
-      `Orientation : ${a.orientation} (attirance vers les hommes ${a.versHommes}/100, vers les femmes ${a.versFemmes}/100)`);
-    if (a.conscience) p.append(` ; ${a.conscience}`);
-    corps.append(p);
+    if (a.impubere) {
+      p.append("Trop jeune : l'attirance et l'orientation s'éveilleront à la puberté.");
+      corps.append(p);
+    } else {
+      p.title = "Beauté relative : selon ce que sa communauté trouve beau. Attractivité : beauté, jeunesse, allure et vigueur.";
+      p.append(`Beauté relative ${a.beaute}/100 · attractivité ${a.attractivite}/100`, el("br"),
+        `Idéal de beauté de son groupe : ${a.ideal}`, el("br"),
+        `Orientation : ${a.orientation} (attirance vers les hommes ${a.versHommes}/100, vers les femmes ${a.versFemmes}/100)`);
+      if (a.conscience) p.append(` ; ${a.conscience}`);
+      corps.append(p);
+    }
     if (a.exclusions.length === 0) return;
     const ul = el("ul", "liste exclusions");
     for (const x of a.exclusions) {
@@ -374,12 +380,43 @@ export class PanneauFiche {
   }
 }
 
-/** Ligne d'événement : date, texte, et la marque d'une intervention de l'Entité. */
+/** Retrouve un humain d'après son nom, et ouvre sa fiche : fournis par la page au démarrage. */
+let idDuNom: (nom: string) => number | undefined = () => undefined;
+let ouvrirHumain: (id: number) => void = () => {};
+
+export function definirLiensNoms(resoudre: (nom: string) => number | undefined, ouvrir: (id: number) => void): void {
+  idDuNom = resoudre;
+  ouvrirHumain = ouvrir;
+}
+
+/** Le texte d'un événement, où chaque nom d'humain devient un lien vers sa fiche. */
+function texteAvecLiens(e: Evenement): (string | HTMLElement)[] {
+  const morceaux: (string | HTMLElement)[] = [];
+  let debut = 0;
+  for (const m of e.texte.matchAll(/\p{Lu}[\p{L}-]*/gu)) {
+    const id = idDuNom(m[0]);
+    if (id === undefined) continue;
+    morceaux.push(e.texte.slice(debut, m.index));
+    const b = el("button", "nom-humain", m[0]);
+    b.type = "button";
+    b.title = `Ouvrir la fiche de ${m[0]}`;
+    b.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      ouvrirHumain(id);
+    });
+    morceaux.push(b);
+    debut = m.index + m[0].length;
+  }
+  morceaux.push(e.texte.slice(debut));
+  return morceaux;
+}
+
+/** Ligne d'événement : date, texte (noms cliquables), et la marque d'une intervention de l'Entité. */
 export function ligneEvenement(e: Evenement): HTMLElement {
   const li = el("li", `evenement ${e.type}${e.significatif ? " significatif" : ""}`);
   li.append(el("span", "date", e.date));
   if (e.significatif) li.append(el("span", "etoile", " ★"));
-  li.append(` ${e.texte}`);
+  li.append(" ", ...texteAvecLiens(e));
   if (e.origine === "entite") li.append(el("span", "entite", " ✦ soufflé par l'Entité"));
   if (e.cause > 0) li.append(" ", boutonCause(li, e.cause, "pourquoi ?"));
   return li;

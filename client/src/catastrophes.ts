@@ -93,6 +93,11 @@ export class PanneauCatastrophes {
   private viser = false;
   private cible: { x: number; y: number } | null = null;
   private readonly corps = el("div", "corps");
+  /** Ce qui est redessiné toutes les 4 secondes ; le formulaire de l'Entité, lui, est construit une fois. */
+  private readonly contenu = el("div");
+  private readonly entite: HTMLDetailsElement;
+  private readonly boutonLieu: HTMLButtonElement;
+  private readonly boutonProvoquer: HTMLButtonElement;
 
   constructor(
     private readonly racine: HTMLElement,
@@ -107,6 +112,8 @@ export class PanneauCatastrophes {
     fermer.addEventListener("click", () => this.fermer());
     tete.append(fermer);
     racine.append(tete, this.corps);
+    [this.entite, this.boutonLieu, this.boutonProvoquer] = this.formulaireEntite();
+    this.corps.append(this.contenu, this.entite);
   }
 
   get ouvert(): boolean {
@@ -170,7 +177,7 @@ export class PanneauCatastrophes {
   private dessiner(maladies: Maladie[] | null): void {
     if (maladies) this.maladies = maladies;
     const defilement = this.corps.scrollTop;
-    const c = this.corps;
+    const c = this.contenu;
     c.replaceChildren();
 
     if (this.communaute) {
@@ -222,9 +229,13 @@ export class PanneauCatastrophes {
           c.append(ul2);
         }
       }
-      c.append(this.formulaireEntite());
     }
-    c.scrollTop = defilement;
+    // Le formulaire n'est jamais reconstruit : un menu ouvert ou une valeur en cours de saisie restent en place.
+    this.entite.hidden = this.communaute !== null;
+    if (this.viser || this.cible) this.entite.open = true;
+    this.boutonLieu.textContent = this.viser ? "Clique sur la carte…" : this.cible ? `Lieu : ${this.cible.x}, ${this.cible.y}` : "Choisir le lieu sur la carte";
+    this.boutonProvoquer.disabled = !this.cible;
+    this.corps.scrollTop = defilement;
   }
 
   private lignes(liste: CatastropheVue[], vide: string): HTMLElement {
@@ -261,15 +272,11 @@ export class PanneauCatastrophes {
   }
 
   /** Formulaire de l'Entité : choisir une catastrophe, son intensité, puis un lieu sur la carte. */
-  private formulaireEntite(): HTMLElement {
+  private formulaireEntite(): [HTMLDetailsElement, HTMLButtonElement, HTMLButtonElement] {
     const bloc = el("details", "entite-bloc");
-    // Le panneau est redessiné toutes les 4 secondes : le bloc garde son état ouvert ou fermé.
-    bloc.open = this.entiteOuverte || this.viser || this.cible !== null;
-    bloc.addEventListener("toggle", () => (this.entiteOuverte = bloc.open));
     bloc.append(el("summary", "entite", "✦ L'Entité provoque…"));
     const type = el("select");
     for (const [cle, libelle] of PROVOQUABLES) type.append(Object.assign(el("option", undefined, libelle), { value: cle }));
-    type.value = this.typeChoisi;
     const intensite = el("input");
     intensite.type = "number";
     intensite.step = "0.1";
@@ -277,15 +284,12 @@ export class PanneauCatastrophes {
     const majIntensite = () => {
       const p = PROVOQUABLES.find((x) => x[0] === type.value)!;
       intensite.hidden = p[3] === "";
-      if (this.typeChoisi !== type.value) intensite.value = String(p[2]);
+      intensite.value = String(p[2]);
       unite.textContent = p[3];
-      this.typeChoisi = type.value;
     };
-    intensite.value = this.intensiteChoisie ?? String(PROVOQUABLES[0][2]);
     majIntensite();
     type.addEventListener("change", majIntensite);
-    intensite.addEventListener("change", () => (this.intensiteChoisie = intensite.value));
-    const lieu = el("button", undefined, this.viser ? "Clique sur la carte…" : this.cible ? `Lieu : ${this.cible.x}, ${this.cible.y}` : "Choisir le lieu sur la carte");
+    const lieu = el("button", undefined, "Choisir le lieu sur la carte");
     lieu.type = "button";
     lieu.addEventListener("click", () => {
       this.viser = true;
@@ -293,7 +297,7 @@ export class PanneauCatastrophes {
     });
     const go = el("button", "danger", "Provoquer");
     go.type = "button";
-    go.disabled = !this.cible;
+    go.disabled = true;
     go.addEventListener("click", async () => {
       if (!this.cible) return;
       const valeur = Number(intensite.value);
@@ -316,11 +320,8 @@ export class PanneauCatastrophes {
     const l3 = el("div", "ligne");
     l3.append(lieu, go);
     bloc.append(l1, l2, l3, el("p", "discret", "Le journal gardera la trace de l'intervention de l'Entité."));
-    return bloc;
+    return [bloc, lieu, go];
   }
-  private typeChoisi = PROVOQUABLES[0][0];
-  private entiteOuverte = false;
-  private intensiteChoisie?: string;
 }
 
 function minuscule(nom: string): string {

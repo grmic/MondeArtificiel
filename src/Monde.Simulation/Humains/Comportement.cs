@@ -88,15 +88,18 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             VivreBebe(h, Vivant(tous, h.MereId), maintenant);
             return;
         }
-        // Pour un enfant, le « compagnon » à rejoindre (pour dormir, se tenir chaud) est un parent.
-        var partenaire = h.EstEnfant(maintenant)
-            ? Vivant(tous, h.MereId) ?? Vivant(tous, h.PereId)
-            : Vivant(tous, h.PartenaireId);
+        // Pour un enfant, le « compagnon » à rejoindre (pour dormir, se tenir chaud) est celui qui veille sur lui.
+        var partenaire = h.EstEnfant(maintenant) ? Gardien(h, tous, maintenant) : Vivant(tous, h.PartenaireId);
         var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId))
                               || AmiAuMemeEndroit(h, tous);
         Metaboliser(h, chaleurPartagee, maintenant);
         if (!h.EstVivant) return;
-        if (h.EstEnfant(maintenant)) NourrirEnfant(h, Vivant(tous, h.MereId), Vivant(tous, h.PereId));
+        if (h.EstEnfant(maintenant))
+        {
+            // Un orphelin est nourri par celui qui l'a pris sous son aile.
+            var pere = Vivant(tous, h.PereId);
+            NourrirEnfant(h, Vivant(tous, h.MereId) ?? (partenaire != pere ? partenaire : null), pere);
+        }
         PartagerAvecProches(h, tous);
         Grossesse(h, tous, maintenant);
         if (!h.EstVivant) return;
@@ -153,7 +156,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         foreach (var l in h.Liens)
         {
             var d = tous[l.Id - 1];
-            if (!d.EstVivant || d.Faim >= 40 || d.EstBebe(_maintenant) || d.EstDeprime) continue;
+            if (!d.EstVivant || d.Faim >= 40 || d.EstPetitEnfant(_maintenant) || d.EstDeprime) continue;
             if (Distance(h.X, h.Y, d.X, d.Y) > 1) continue;
             var lien = d.LienAvec(h.Id);
             if (lien is null) continue;
@@ -167,6 +170,25 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             Social?.PartagesDuJour.Add((d.Id, h.Id));
             return;
         }
+    }
+
+    /// <summary>
+    /// Celui qui veille sur un enfant : sa mère, sinon son père, sinon l'adulte qui l'aime le plus (un aîné, un oncle,
+    /// une amie de la famille). Chez les chasseurs-cueilleurs, les orphelins sont recueillis par des proches
+    /// (Hrdy, 2009), même si leur survie reste plus fragile.
+    /// </summary>
+    public static Humain? Gardien(Humain h, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        if ((Vivant(tous, h.MereId) ?? Vivant(tous, h.PereId)) is { } parent) return parent;
+        Humain? choisi = null;
+        var meilleur = 20.0;
+        foreach (var l in h.Liens)
+        {
+            var a = tous[l.Id - 1];
+            if (!a.EstVivant || a.EstEnfant(maintenant) || l.Affection < meilleur) continue;
+            (choisi, meilleur) = (a, l.Affection);
+        }
+        return choisi;
     }
 
     private static bool AuMemeEndroit(Humain h, Humain? autre) => autre is not null && autre.X == h.X && autre.Y == h.Y;
@@ -398,24 +420,47 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         };
         var (valeur, besoin) = urgences.MaxBy(u => u.Valeur);
 
+        // Un petit enfant ne part pas seul chercher de l'eau, de quoi manger ou un abri : il reste près de celui qui
+        // veille sur lui, qui le nourrit et l'abreuve, et ne prend que ce qui se trouve à ses pieds.
+        if (h.EstEnfant(maintenant) && h.EstPetitEnfant(maintenant) && partenaire is not null)
+        {
+            ResterPres(h, partenaire, valeur >= seuil ? besoin : null);
+            return;
+        }
+
         // En raid, seul un besoin très pressant arrête la marche.
         if (valeur < 0.8 && MenerRaid(h)) return;
 
-        if (valeur >= seuil)
+        // Celui qui veille sur un petit enfant assoiffé, affamé ou transi l'emmène vers l'eau, la nourriture ou un abri,
+        // d'autant plus tôt qu'il y est attaché ; l'enfant le suit.
+        if (!h.EstEnfant(maintenant) && valeur < 0.8 && PetitDansLeBesoin(h, tous, maintenant) is var (petit, pourLui))
         {
-            switch (besoin)
+            _autre = petit;
+            switch (pourLui)
             {
                 case Activite.Boire: AllerBoire(h); return;
                 case Activite.Cueillir: AllerManger(h); return;
+                case Activite.SAbriter: AllerSAbriter(h, null, maintenant); return;
+            }
+        }
+
+        if (valeur >= seuil)
+        {
+            // Un enfant qui ne sait pas où trouver ce qu'il lui faut retourne auprès des siens plutôt que de se perdre.
+            var recours = h.EstEnfant(maintenant) ? partenaire : null;
+            switch (besoin)
+            {
+                case Activite.Boire: AllerBoire(h, recours); return;
+                case Activite.Cueillir: AllerManger(h, recours); return;
                 case Activite.Dormir: AllerDormir(h, partenaire); return;
                 case Activite.SAbriter: AllerSAbriter(h, partenaire, maintenant); return;
             }
         }
 
-        // Aucun besoin pressant. Un enfant suit ses parents.
+        // Aucun besoin pressant. Un enfant suit ses parents, ou celui qui l'a recueilli.
         if (h.EstEnfant(maintenant))
         {
-            var parent = Vivant(tous, h.MereId) ?? Vivant(tous, h.PereId);
+            var parent = partenaire;
             _autre = parent;
             if (parent is not null && Distance(h.X, h.Y, parent.X, parent.Y) > 1) Avancer(h, parent.X, parent.Y, Activite.SuivreParent);
             else
@@ -546,13 +591,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     }
 
     /// <summary>Un humain hostile à moins de 3 cases, ou null.</summary>
-    private static Humain? RivalProche(Humain h, IReadOnlyList<Humain> tous)
+    private Humain? RivalProche(Humain h, IReadOnlyList<Humain> tous)
     {
         foreach (var l in h.Liens)
         {
             if (!l.Rivaux) continue;
             var a = tous[l.Id - 1];
-            if (a.EstVivant && Distance(h.X, h.Y, a.X, a.Y) <= 3) return a;
+            // On ne quitte pas les siens à cause d'un enfant.
+            if (a.EstVivant && !a.EstEnfant(_maintenant) && Distance(h.X, h.Y, a.X, a.Y) <= 3) return a;
         }
         return null;
     }
@@ -587,7 +633,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private int RayonPerception(Humain h) =>
         h.EstEnfant(_maintenant) ? 5 : 6 + (int)(h.Personnalite.Curiosite * 8);
 
-    private void AllerBoire(Humain h)
+    private void AllerBoire(Humain h, Humain? recours = null)
     {
         if (EauDouceAPortee(h.X, h.Y) || Catastrophes?.DangerEn(h.X, h.Y) is { Source.Type: TypeCatastrophe.Crue })
         {
@@ -603,7 +649,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             _motif = Motif.Vu;
             Avancer(h, c.X, c.Y, Activite.ChercherEau);
         }
-        else if (!AllerAuSouvenir(h, TypeLieu.Eau, Activite.ChercherEau))
+        else if (!AllerAuSouvenir(h, TypeLieu.Eau, Activite.ChercherEau) && !Retourner(h, recours))
         {
             _motif = Motif.Inconnu;
             Explorer(h, Activite.ChercherEau);
@@ -633,7 +679,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     private static double Aptitude(Humain h) => h.Personnalite.Intelligence.Memoire;
 
-    private void AllerManger(Humain h)
+    private void AllerManger(Humain h, Humain? recours = null)
     {
         var i = carte.Indice(h.X, h.Y);
         if (ecosysteme.Plantes[i] >= 1000)
@@ -675,11 +721,79 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             _motif = Motif.Vu;
             Avancer(h, c.X, c.Y, Activite.ChercherNourriture);
         }
-        else if (!AllerAuSouvenir(h, TypeLieu.Nourriture, Activite.ChercherNourriture))
+        else if (!AllerAuSouvenir(h, TypeLieu.Nourriture, Activite.ChercherNourriture) && !Retourner(h, recours))
         {
             _motif = Motif.Inconnu;
             Explorer(h, Activite.ChercherNourriture);
         }
+    }
+
+    /// <summary>Un enfant perdu revient vers celui qui veille sur lui (vrai s'il se met en route).</summary>
+    private bool Retourner(Humain h, Humain? gardien)
+    {
+        if (gardien is null || Distance(h.X, h.Y, gardien.X, gardien.Y) <= 1) return false;
+        _autre = gardien;
+        Avancer(h, gardien.X, gardien.Y, Activite.SuivreParent);
+        return h.CibleX >= 0;
+    }
+
+    /// <summary>Un petit enfant, près de celui qui veille sur lui, qui a besoin de boire, de manger ou de se réchauffer.</summary>
+    private (Humain Petit, Activite Besoin)? PetitDansLeBesoin(Humain h, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        var seuil = 0.3 + 0.4 * (1 - h.Personnalite.Attachement);
+        var debut = maintenant - 7 * Calendrier.SecondesParAn;
+        for (var i = tous.Count - 1; i >= 0; i--)
+        {
+            var e = tous[i];
+            if (e.Naissance < debut) break;
+            if (!e.EstVivant || e.EstBebe(maintenant) || !e.EstPetitEnfant(maintenant) || Distance(h.X, h.Y, e.X, e.Y) > 2) continue;
+            if (e.MereId != h.Id && e.PereId != h.Id && Gardien(e, tous, maintenant)?.Id != h.Id) continue;
+            var (valeur, besoin) = new (double, Activite)[]
+            {
+                (Urgence(e.Soif) * 1.2, Activite.Boire),
+                (Urgence(e.Faim), Activite.Cueillir),
+                (Urgence(e.Froid), Activite.SAbriter),
+            }.MaxBy(u => u.Item1);
+            if (valeur >= seuil) return (e, besoin);
+        }
+        return null;
+    }
+
+    private void ResterPres(Humain h, Humain gardien, Activite? besoin)
+    {
+        _autre = gardien;
+        // Assoiffé ou affamé, il se serre contre l'adulte, là où celui-ci boit ou cueille ; transi ou fatigué, il se blottit
+        // contre lui pour se tenir chaud et dormir.
+        var manque = besoin switch
+        {
+            Activite.Boire => !EauDouceAPortee(h.X, h.Y),
+            Activite.Cueillir => ecosysteme.Plantes[carte.Indice(h.X, h.Y)] < 1000,
+            Activite.SAbriter or Activite.Dormir => true,
+            _ => false,
+        };
+        if (Distance(h.X, h.Y, gardien.X, gardien.Y) > (manque ? 0 : 1))
+        {
+            Avancer(h, gardien.X, gardien.Y, Activite.SuivreParent);
+            if (h.CibleX >= 0) return;
+        }
+        h.CibleX = h.CibleY = -1;
+        // En regardant l'adulte boire, cueillir ou s'abriter, l'enfant apprend où sont l'eau, la nourriture et les abris.
+        switch (gardien.Activite)
+        {
+            case Activite.Boire when EauDouceAPortee(h.X, h.Y): h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, _maintenant, Aptitude(h)); break;
+            case Activite.Cueillir when ecosysteme.Plantes[carte.Indice(h.X, h.Y)] >= 1000:
+                h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h)); break;
+            case Activite.Dormir or Activite.SAbriter when Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4:
+                h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h)); break;
+        }
+        switch (besoin)
+        {
+            case Activite.Boire when EauDouceAPortee(h.X, h.Y): AllerBoire(h); return;
+            case Activite.Cueillir when ecosysteme.Plantes[carte.Indice(h.X, h.Y)] >= 1000: AllerManger(h); return;
+            case Activite.Dormir: h.Activite = Activite.Dormir; return;
+            case Activite.SAbriter: h.Activite = Activite.SAbriter; return;
+        }
+        h.Activite = Activite.Repos;
     }
 
     private void AllerDormir(Humain h, Humain? partenaire)
@@ -690,7 +804,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 4)
             {
                 _autre = partenaire;
-                Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
+                Avancer(h, partenaire.X, partenaire.Y, h.EstEnfant(_maintenant) ? Activite.SuivreParent : Activite.RejoindrePartenaire);
                 return;
             }
             var abri = Chercher(h, j => Climat.Abri((Biome)carte.Biomes[j]) >= 0.4, _ => 0, rayonMax: 4);
@@ -710,7 +824,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 6)
         {
             _autre = partenaire;
-            Avancer(h, partenaire.X, partenaire.Y, Activite.RejoindrePartenaire);
+            Avancer(h, partenaire.X, partenaire.Y, h.EstEnfant(maintenant) ? Activite.SuivreParent : Activite.RejoindrePartenaire);
             return;
         }
         // Chercher l'endroit le plus chaud à portée : plus bas, mieux abrité.

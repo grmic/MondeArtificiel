@@ -98,10 +98,11 @@ public sealed record ExclusionDto(string Type, int Par, string NomPar, string Le
 
 /// <summary>
 /// Attraits et orientation. Beauté et attractivité de 0 à 100, aux yeux de sa communauté ; orientation de 0 à 100 vers
-/// chaque sexe ; ce qu'il en sait (null s'il n'y a rien à savoir) ; idéal de beauté de son groupe.
+/// chaque sexe ; ce qu'il en sait (null s'il n'y a rien à savoir) ; idéal de beauté de son groupe. Avant la puberté,
+/// l'attirance et l'orientation ne se sont pas encore éveillées : Impubere vaut vrai et elles ne sont pas affichées.
 /// </summary>
 public sealed record AttraitsDto(int Beaute, int Attractivite, string Orientation, int VersHommes, int VersFemmes, string? Conscience,
-    string Ideal, IReadOnlyList<ExclusionDto> Exclusions);
+    string Ideal, IReadOnlyList<ExclusionDto> Exclusions, bool Impubere);
 
 /// <summary>Fiche complète d'un humain : état, caractère, intelligence, humeur, liens, mémoire, pensées et histoire.</summary>
 public sealed record FicheDto(
@@ -210,7 +211,8 @@ public sealed record FicheDto(
             groupe is null ? "sans communauté : l'idéal commun" : Attirance.DireIdeal(ideal),
             h.Exclusions.AsEnumerable().Reverse().Select(e => new ExclusionDto(
                 e.Type switch { TypeExclusion.Famille => "renié", TypeExclusion.Depart => "parti avec un exilé", _ => "exilé" },
-                e.De, Ref(e), Date(e.Le), e.Jusqua == 0 ? null : Date(e.Jusqua), e.Raison, e.Active(maintenant), e.EvenementId)).ToList());
+                e.De, Ref(e), Date(e.Le), e.Jusqua == 0 ? null : Date(e.Jusqua), e.Raison, e.Active(maintenant), e.EvenementId)).ToList(),
+            h.AgeEnAnnees(instant) < h.Biologie.AgePuberte);
     }
 
     private static EpreuvesDto LireEpreuves(Humain h, List<Simulation.Nature.Pathogene> maladies, long maintenant)

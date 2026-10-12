@@ -314,6 +314,16 @@ public sealed class Humain
     /// <summary>Enfant ou bébé (moins de 14 ans) : suit ses parents, ne se reproduit pas.</summary>
     public bool EstEnfant(long maintenant) => AgeEnAnnees(maintenant) < 14;
 
+    /// <summary>
+    /// Âge, propre à chacun, où l'enfant commence à s'éloigner seul pour boire, cueillir ou s'abriter : vers 3 à 6 ans,
+    /// plus tôt chez les curieux, plus tard chez les prudents. Avant, il ne quitte guère un adulte des yeux (Konner, 2005) ;
+    /// les enfants hadza cueillent seuls près du camp dès 3 à 5 ans (Crittenden et al., 2013).
+    /// </summary>
+    public double AgeAutonomie => 3 + 1.5 * Personnalite.Prudence + 1.5 * (1 - Personnalite.Curiosite);
+
+    /// <summary>Petit enfant (sevré, mais pas encore autonome) : il reste près de celui qui veille sur lui.</summary>
+    public bool EstPetitEnfant(long maintenant) => AgeEnAnnees(maintenant) < AgeAutonomie;
+
     /// <summary>Fécondité de 0 à environ 1,6 selon l'âge et la biologie propre (0 : enfant, ménopause ou stérilité).</summary>
     public double Fecondite(long maintenant)
     {

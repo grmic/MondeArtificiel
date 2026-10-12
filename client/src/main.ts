@@ -3,7 +3,7 @@ import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
 import { PanneauConfiguration, type Reglages } from "./configuration";
-import { PanneauFiche } from "./fiche";
+import { definirLiensNoms, PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
 import { OutilMesure, PanneauMonde } from "./monde";
@@ -91,7 +91,11 @@ async function demarrer(): Promise<void> {
     (message) => (infos.textContent = message),
   );
   const montrerHumains = (humains: HumainVue[]) => {
-    nomsParId = new Map(humains.map((h) => [h.id, h.nom]));
+    // Les noms restent connus après que les morts anciens ont quitté la liste : le journal les cite encore.
+    // Un monde réinitialisé (le premier humain n'a plus le même nom) repart de zéro.
+    const premier = humains.find((h) => h.id === 1);
+    if (premier && nomsParId.get(1) !== premier.nom) nomsParId = new Map();
+    for (const h of humains) nomsParId.set(h.id, h.nom);
     vue.afficherHumains(humains);
     const vivants = humains.filter((h) => h.vivant);
     const enfants = vivants.filter((h) => h.etape !== "adulte").length;
@@ -171,6 +175,7 @@ async function demarrer(): Promise<void> {
     for (const [id, n] of nomsParId) if (n.toLocaleLowerCase("fr") === cherche) return id;
     return undefined;
   };
+  definirLiensNoms(idDuNom, (id) => void fiche.ouvrir(id));
   const journal = new PanneauJournal(element("#journal"), idDuNom, () => [...new Set(nomsParId.values())].sort(), (id) => void fiche.ouvrir(id));
   // Journal et communautés occupent la même place : ouvrir l'un ferme l'autre.
   element("#boutonJournal").addEventListener("click", () => {
