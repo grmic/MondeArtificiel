@@ -62,4 +62,19 @@ public static class Echelle
 
     /// <summary>Surface d'un nombre de cases, en mots.</summary>
     public static string Surface(int cases) => Surface(KilometresCarres(cases));
+
+    /// <summary>Une durée du monde en mots : « 3 semaines », « 8 mois », « un an », « 12 ans ».</summary>
+    public static string Duree(long secondes)
+    {
+        var jours = secondes / (double)Temps.Calendrier.SecondesParJour;
+        var mois = jours / 30;
+        return jours switch
+        {
+            < 10 => "quelques jours",
+            < 45 => $"{Math.Max(2, Math.Round(jours / 7))} semaines",
+            _ when mois < 11.5 => $"{Math.Round(mois)} mois",
+            _ when mois < 18 => "un an",
+            _ => $"{Math.Round(mois / 12)} ans",
+        };
+    }
 }

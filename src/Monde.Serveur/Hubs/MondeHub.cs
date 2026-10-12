@@ -116,7 +116,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     public DetailCatastropheDto? Catastrophe(long id)
     {
         if (id < 1 || CatastropheDto.Trouver(service, id) is not { } c) return null;
-        return new DetailCatastropheDto(CatastropheDto.Depuis(c, service.Monde.Communautes()), [.. c.Cases.Order()], [.. c.Front.Keys.Order()]);
+        return new DetailCatastropheDto(CatastropheDto.Depuis(c, service.Monde.Communautes(), service.Monde.Secondes), [.. c.Cases.Order()], [.. c.Front.Keys.Order()]);
     }
 
     /// <summary>Failles, volcans et sismicité du continent.</summary>
@@ -220,7 +220,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     public async Task<long> Declencher(DemandeCatastrophe demande)
     {
         var monde = service.Monde;
-        if (CatastropheDto.TypeDepuis(demande.Type) is not { } type || type == Simulation.Nature.TypeCatastrophe.HiverVolcanique)
+        if (CatastropheDto.TypeDepuis(demande.Type) is not { } type || type is Simulation.Nature.TypeCatastrophe.HiverVolcanique or Simulation.Nature.TypeCatastrophe.HiverDImpact)
         {
             throw new HubException("Type de catastrophe inconnu.");
         }
@@ -256,6 +256,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
 
     /// <summary>Taille d'une communauté au début de chaque saison (vide si elle n'existe pas).</summary>
     public List<TailleDto> TaillesCommunaute(int id) => id < 1 ? [] : Serveur.Territoires.Tailles(service, id);
+
+    /// <summary>Courbes démographiques : le monde, les communautés les plus peuplées (au plus 30) et les événements marquants.</summary>
+    public DemographieDto Demographie(int limite = 10) => DemographieDto.Calculer(service, limite);
 
     /// <summary>Nature : abondance des terres, pluies des régions et indicateurs du monde.</summary>
     public NatureDto Nature() => NatureDto.Depuis(service.Monde);

@@ -8,9 +8,12 @@ namespace Monde.Serveur;
 /// <param name="Type">Clé du type (« seisme », « incendie »…).</param>
 /// <param name="Intensite">En mots : « magnitude 6,4 », « indice d'explosivité 3 », « catégorie 2 »…</param>
 /// <param name="Surface">Terres touchées, en mots (null si la catastrophe ne touche pas de cases précises).</param>
+/// <param name="MortsSuites">Morts de faim, de soif, de froid, d'épuisement ou de maladie dans les terres dévastées, après la catastrophe.</param>
+/// <param name="SuitesJusqua">Date où les terres dévastées auront (ou ont) reverdi ; null si la catastrophe n'a pas laissé de dégâts durables.</param>
+/// <param name="EnSuites">Finie, mais ses terres ne sont pas encore remises.</param>
 public sealed record CatastropheDto(long Id, string Type, string Libelle, string Nom, string Origine, long Secondes, string Debut,
     string? Fin, bool Active, int X, int Y, int Rayon, string Intensite, int Morts, int Blesses, string? Surface,
-    IReadOnlyList<CommunauteRefDto> Communautes, int Temoins, bool Phenomene)
+    IReadOnlyList<CommunauteRefDto> Communautes, int Temoins, bool Phenomene, int MortsSuites, string? SuitesJusqua, bool EnSuites)
 {
     public static readonly IReadOnlyDictionary<TypeCatastrophe, (string Cle, string Libelle)> Types =
         new Dictionary<TypeCatastrophe, (string, string)>
@@ -30,10 +33,13 @@ public sealed record CatastropheDto(long Id, string Type, string Libelle, string
             [TypeCatastrophe.Impact] = ("impact", "Astéroïde"),
             [TypeCatastrophe.Aurore] = ("aurore", "Aurore"),
             [TypeCatastrophe.HiverVolcanique] = ("hiver-volcanique", "Hiver volcanique"),
+            [TypeCatastrophe.HiverDImpact] = ("hiver-impact", "Longue nuit"),
         };
 
     public static TypeCatastrophe? TypeDepuis(string? cle) =>
         Types.FirstOrDefault(t => t.Value.Cle == cle) is { Value.Cle: not null } t ? t.Key : null;
+
+    private static readonly System.Globalization.CultureInfo Fr = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
 
     private static string Decimal(double v) => v.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',');
 
@@ -44,16 +50,18 @@ public sealed record CatastropheDto(long Id, string Type, string Libelle, string
         TypeCatastrophe.Eruption => $"indice d'explosivité {c.Intensite:0}",
         TypeCatastrophe.Crue => $"ampleur {c.Intensite:0} sur 3",
         TypeCatastrophe.Cyclone => $"catégorie {c.Intensite:0}",
-        TypeCatastrophe.VagueDeFroid or TypeCatastrophe.Canicule or TypeCatastrophe.HiverVolcanique =>
+        TypeCatastrophe.VagueDeFroid or TypeCatastrophe.Canicule or TypeCatastrophe.HiverVolcanique or TypeCatastrophe.HiverDImpact =>
             $"{(c.Intensite > 0 ? "+" : "")}{Decimal(c.Intensite)} °C",
         TypeCatastrophe.Epidemie => $"{c.Intensite:0} malades au début",
-        TypeCatastrophe.Impact => $"{c.Intensite:0.#} mégatonnes",
+        TypeCatastrophe.Impact => c.Intensite < 10
+            ? $"{c.Intensite.ToString("0.#", Fr)} mégatonnes"
+            : $"{c.Intensite.ToString("N0", Fr)} mégatonnes",
         TypeCatastrophe.Eclipse => c.Intensite >= 0.999 ? "totale" : $"{c.Intensite:P0} du soleil caché",
         TypeCatastrophe.Bolide => c.Intensite > 0 ? "une pierre est tombée" : "",
         _ => "",
     };
 
-    public static CatastropheDto Depuis(Catastrophe c, IReadOnlyList<Simulation.Humains.Communaute> communautes)
+    public static CatastropheDto Depuis(Catastrophe c, IReadOnlyList<Simulation.Humains.Communaute> communautes, long maintenant)
     {
         var (cle, libelle) = Types.TryGetValue(c.Type, out var t) ? t : ("autre", "Catastrophe");
         var cases = c.Cases.Count + c.Front.Count;
@@ -61,7 +69,8 @@ public sealed record CatastropheDto(long Id, string Type, string Libelle, string
             Calendrier.Decomposer(c.Debut).ToString(), c.Fin is { } f ? Calendrier.Decomposer(f).ToString() : null, c.Active,
             c.X, c.Y, c.Rayon, DecrireIntensite(c), c.Morts, c.Blesses, cases == 0 ? null : Catastrophes.Surface(cases),
             c.Communautes.Where(id => id >= 1 && id <= communautes.Count).Select(id => new CommunauteRefDto(id, communautes[id - 1].Nom)).ToList(),
-            c.Temoins.Count, TypesCatastrophe.EstPhenomene(c.Type));
+            c.Temoins.Count, TypesCatastrophe.EstPhenomene(c.Type), c.MortsSuites,
+            c.SuitesJusqua > 0 ? Calendrier.Decomposer(c.SuitesJusqua).ToString() : null, c.EnSuites(maintenant));
     }
 
     /// <summary>Catastrophes en mémoire et enregistrées, fusionnées, de la plus récente à la plus ancienne.</summary>
@@ -72,7 +81,7 @@ public sealed record CatastropheDto(long Id, string Type, string Libelle, string
         var enMemoire = monde.CatastrophesEnMemoire().Where(c => communaute is not { } co || c.Communautes.Contains(co));
         var enregistrees = service.Depot.LireCatastrophes(limite, communaute);
         return enMemoire.Concat(enregistrees).DistinctBy(c => c.Id).OrderByDescending(c => c.Id).Take(limite)
-            .Select(c => Depuis(c, communautes)).ToList();
+            .Select(c => Depuis(c, communautes, monde.Secondes)).ToList();
     }
 
     public static Catastrophe? Trouver(ServiceMonde service, long id) =>

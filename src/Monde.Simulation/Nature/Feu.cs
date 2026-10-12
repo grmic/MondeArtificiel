@@ -78,7 +78,7 @@ public sealed partial class Catastrophes
         var c = Commencer(TypeCatastrophe.Incendie, x, y, 1, 0, $"Incendie {ou}", texte, humains, maintenant, origine,
             direction: _alea.Reel() * 2 * Math.PI, cause: cause);
         c.Front[i] = maintenant + (2 + _alea.Entier(4)) * Calendrier.SecondesParHeure;
-        Ravager(i, 0, 0.3, 0.9);
+        Ravager(c, i, 0, 0.3, 0.9);
         return c;
     }
 
@@ -116,7 +116,7 @@ public sealed partial class Catastrophes
         foreach (var j in nouvelles)
         {
             c.Front[j] = maintenant + (2 + _alea.Entier(4)) * Calendrier.SecondesParHeure;
-            Ravager(j, 0, 0.3, 0.9);
+            Ravager(c, j, 0, 0.3, 0.9);
         }
         c.Rayon = Math.Max(c.Rayon, nouvelles.Select(j => (int)Math.Ceiling(Distance(j % _carte.Largeur, j / _carte.Largeur, c.X, c.Y))).DefaultIfEmpty(0).Max());
 

@@ -290,7 +290,8 @@ public sealed class CatastrophesTests
 
             Assert.Equal(etat.DegatsNature, relu.DegatsNature);
             Assert.Equal(etat.Pathogenes, relu.Pathogenes);
-            Assert.Equal(etat.Catastrophes!.Count(c => c.Active), relu.Catastrophes!.Count);
+            // Les catastrophes finies dont les suites durent encore (terres dévastées) sont rechargées aussi.
+            Assert.Equal(etat.Catastrophes!.Count(c => c.Active || c.EnSuites(etat.Secondes)), relu.Catastrophes!.Count);
             for (var i = 0; i < etat.Humains!.Count; i++)
             {
                 var (a, b) = (etat.Humains[i], relu.Humains![i]);

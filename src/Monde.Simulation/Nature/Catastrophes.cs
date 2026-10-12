@@ -64,8 +64,13 @@ public sealed partial class Catastrophes
 
     public IReadOnlyList<Pathogene> Pathogenes => _pathogenes;
 
-    /// <summary>Retire de la mémoire les catastrophes terminées qui viennent d'être enregistrées.</summary>
-    public void Oublier(IReadOnlySet<long> terminees) => _liste.RemoveAll(c => !c.Active && terminees.Contains(c.Id));
+    /// <summary>
+    /// Retire de la mémoire les catastrophes terminées qui viennent d'être enregistrées, sauf celles dont les suites
+    /// durent encore (elles comptent leurs morts jusqu'au bout et seront réenregistrées). Elles restent un jour de plus,
+    /// le temps que <see cref="FinDesSuites"/> en dresse le bilan.
+    /// </summary>
+    public void Oublier(IReadOnlySet<long> terminees, long maintenant) =>
+        _liste.RemoveAll(c => !c.Active && !c.EnSuites(maintenant - Calendrier.SecondesParJour) && terminees.Contains(c.Id));
 
     // ───────────── Climat ─────────────
 
@@ -87,6 +92,12 @@ public sealed partial class Catastrophes
                     anomalie += c.Intensite;
                     // Des étés plus frais et moins ensoleillés : les récoltes de 1816 ont chuté de 10 à 30 % en Europe.
                     vegetation *= Math.Clamp(1 + 0.08 * c.Intensite, 0.6, 1);
+                    break;
+                case TypeCatastrophe.HiverDImpact:
+                    anomalie += c.Intensite;
+                    // Poussières et suies coupent la lumière : la photosynthèse s'effondre pendant des mois (Toon et al. 1997 ;
+                    // Brugger et al. 2017, pour l'impact de la fin du Crétacé).
+                    vegetation *= Math.Clamp(1 + 0.04 * c.Intensite, 0.05, 1);
                     break;
             }
         }
@@ -200,6 +211,8 @@ public sealed partial class Catastrophes
         Cyclones(humains, maintenant, date.Saison);
         Temperatures(humains, maintenant, date.Saison);
         PluieSurLesFeux(maintenant);
+        FinDesSuites(maintenant);
+        Lointains(humains, maintenant);
         Apaiser(humains);
         CalculerClimat();
         CalculerDangers();
@@ -261,6 +274,7 @@ public sealed partial class Catastrophes
             TypeCatastrophe.Canicule => "La canicule prend fin.",
             TypeCatastrophe.Eruption => $"{Majuscule(VolcanDe(c).Nom)} se rendort.",
             TypeCatastrophe.HiverVolcanique => "Le ciel s'éclaircit : le voile de l'éruption s'est dissipé et la chaleur revient.",
+            TypeCatastrophe.HiverDImpact => "Les poussières de l'impact sont enfin retombées : le soleil revient, la chaleur aussi, et les plantes repoussent.",
             TypeCatastrophe.Comete => "La comète disparaît du ciel.",
             TypeCatastrophe.Aurore => "Les lueurs du ciel s'éteignent.",
             TypeCatastrophe.Epidemie => $"Plus personne n'est malade de {NomPathogene(c.Parametre)} : l'épidémie est finie.",
@@ -268,6 +282,58 @@ public sealed partial class Catastrophes
         };
         if (texte is not null) Noter(maintenant, null, texte + Bilan(c), c.Id);
         Pertes(c, maintenant);
+        c.SuitesJusqua = DureeDesSuites(c, maintenant);
+    }
+
+    // ───────────── Suites ─────────────
+
+    /// <summary>Dégâts (sur 10 000) en dessous desquels une terre a assez reverdi pour nourrir de nouveau ceux qui y vivent.</summary>
+    private const int DegatsSensibles = 2_500;
+
+    /// <summary>
+    /// Fin des suites d'une catastrophe qui a ravagé la nature : le jour où la tuile qu'elle a le plus abîmée aura assez reverdi,
+    /// au rythme propre à son terrain (0 si elle n'a rien ravagé : un séisme, un grand froid, une épidémie). Seuls comptent
+    /// les dégâts qu'elle a causés elle-même, pas les cicatrices plus anciennes des terres qu'elle a traversées. Les tuiles
+    /// qu'elle a gravement touchées deviennent ses cases : c'est là que l'on meurt de ses suites.
+    /// </summary>
+    private long DureeDesSuites(Catastrophe c, long maintenant)
+    {
+        if (TypesCatastrophe.EstPhenomene(c.Type) || c.Type is TypeCatastrophe.Epidemie or TypeCatastrophe.VagueDeFroid
+                or TypeCatastrophe.Canicule or TypeCatastrophe.HiverVolcanique or TypeCatastrophe.HiverDImpact) return 0;
+        double jours = 0;
+        var graves = new List<int>();
+        foreach (var (i, d) in c.Ravages)
+        {
+            // Ce qui a déjà guéri depuis le passage de la catastrophe ne compte plus.
+            var reste = Math.Min(d, _ecosysteme.Degats[i]) - DegatsSensibles;
+            if (reste <= 0) continue;
+            graves.Add(i);
+            jours = Math.Max(jours, reste / Math.Max(1, _ecosysteme.GuerisonParJour(i)));
+        }
+        if (c.Cases.Count == 0) c.Cases.UnionWith(graves);
+        return jours <= 0 ? 0 : maintenant + (long)(jours * Calendrier.SecondesParJour);
+    }
+
+    /// <summary>
+    /// Les suites d'une catastrophe prennent fin : la terre a reverdi. Le journal donne le bilan complet, morts sur le coup
+    /// et morts des suites, et chaque communauté note ceux qu'elle a perdus depuis.
+    /// </summary>
+    private void FinDesSuites(long maintenant)
+    {
+        foreach (var c in _liste)
+        {
+            if (c.Active || c.SuitesJusqua <= 0 || c.SuitesJusqua > maintenant || c.SuitesJusqua <= maintenant - Calendrier.SecondesParJour) continue;
+            var duree = Echelle.Duree(c.SuitesJusqua - (c.Fin ?? c.Debut));
+            var bilan = new List<string>();
+            if (c.Morts > 0) bilan.Add(c.Morts == 1 ? "1 mort sur le coup" : $"{c.Morts} morts sur le coup");
+            if (c.Blesses > 0) bilan.Add(c.Blesses == 1 ? "1 blessé" : $"{c.Blesses} blessés");
+            if (c.MortsSuites > 0) bilan.Add(c.MortsSuites == 1 ? "1 mort de faim, de froid ou de maladie dans les terres dévastées"
+                : $"{c.MortsSuites} morts de faim, de froid ou de maladie dans les terres dévastées");
+            Noter(maintenant, null, $"Les terres ravagées par {TypesCatastrophe.Nom(c.Type)} {Lieu(c)} ont reverdi, {duree} après. "
+                + (bilan.Count == 0 ? "Personne n'en est mort." : $"Bilan : {string.Join(", ", bilan)}."), c.Id,
+                significatif: c.Morts + c.MortsSuites > 0);
+            Pertes(c, maintenant, suites: true);
+        }
     }
 
     /// <summary>« (3 morts, 2 blessés) », ou rien.</summary>
@@ -280,13 +346,14 @@ public sealed partial class Catastrophes
     }
 
     /// <summary>Chaque communauté qui a perdu des siens le note dans son histoire.</summary>
-    private void Pertes(Catastrophe c, long maintenant)
+    private void Pertes(Catastrophe c, long maintenant, bool suites = false)
     {
         foreach (var (communaute, morts) in c.PertesParCommunaute.OrderBy(p => p.Key))
         {
             if (morts == 0 || communaute <= 0 || communaute > Communautes.Count) continue;
             var nom = Communautes[communaute - 1].Nom;
-            Noter(maintenant, null, $"La {Minuscule(nom)} a perdu {(morts == 1 ? "l'un des siens" : $"{morts} des siens")} dans {TypesCatastrophe.Nom(c.Type)}.",
+            var quand = suites ? $"dans les suites {TypesCatastrophe.De(c.Type)}" : $"dans {TypesCatastrophe.Nom(c.Type)}";
+            Noter(maintenant, null, $"La {Minuscule(nom)} a perdu {(morts == 1 ? "l'un des siens" : $"{morts} des siens")} {quand}.",
                 c.Id, communaute);
         }
         c.PertesParCommunaute.Clear();
@@ -478,24 +545,69 @@ public sealed partial class Catastrophes
     /// ou un hiver volcanique, la chaleur pendant une canicule, la maladie quand on porte un mal contagieux) :
     /// renvoie l'événement à citer comme cause (0 : aucun), et compte la victime dans le bilan de la catastrophe.
     /// </summary>
-    internal long Attribuer(Humain h, CauseDeMort cause)
+    internal (long Id, string? Contexte) Attribuer(Humain h, CauseDeMort cause, long maintenant)
     {
         var type = cause switch
         {
             CauseDeMort.Maladie when h.InfectionId != 0 =>
                 _liste.FirstOrDefault(c => c.Active && c.Type == TypeCatastrophe.Epidemie && c.Parametre == h.InfectionId),
-            CauseDeMort.Froid => _liste.FirstOrDefault(c => c.Active && c.Type is TypeCatastrophe.VagueDeFroid or TypeCatastrophe.HiverVolcanique),
+            CauseDeMort.Froid => _liste.FirstOrDefault(c => c.Active && c.Type is TypeCatastrophe.VagueDeFroid or TypeCatastrophe.HiverVolcanique
+                or TypeCatastrophe.HiverDImpact),
             CauseDeMort.Chaleur => _liste.FirstOrDefault(c => c.Active && c.Type == TypeCatastrophe.Canicule),
+            // Les plantes ne poussent plus sous le ciel voilé : la faim vient de l'hiver qui dure.
+            CauseDeMort.Faim => _liste.FirstOrDefault(c => c.Active && c.Type is TypeCatastrophe.HiverVolcanique or TypeCatastrophe.HiverDImpact),
             _ => null,
         };
         if (cause == CauseDeMort.Maladie && h.InfectionId != 0)
         {
             if (type is not null) Compter(type, h);
-            return h.InfectionEvenementId;
+            return (h.InfectionEvenementId, null);
         }
-        if (type is null) return 0;
-        Compter(type, h);
-        return type.Id;
+        if (type is not null)
+        {
+            Compter(type, h);
+            return (type.Id, $"pendant {TypesCatastrophe.Nom(type.Type)}");
+        }
+        // Dans une terre que la catastrophe a dévastée et qui n'a pas encore reverdi, la faim, la soif, le froid et les maladies
+        // tuent plus qu'ailleurs : ces morts sont celles de ses suites.
+        if (cause is not (CauseDeMort.Faim or CauseDeMort.Soif or CauseDeMort.Froid or CauseDeMort.Epuisement or CauseDeMort.Maladie)) return (0, null);
+        if (DegatsAutour(h.X, h.Y) < DegatsSensibles) return (0, null);
+        var suites = _liste.Where(c => c.EnSuites(maintenant) && DansLaZone(c, h.X, h.Y)).MaxBy(c => c.Id);
+        if (suites is null) return (0, null);
+        suites.MortsSuites++;
+        suites.Temoins.Add(h.Id);
+        Toucher(suites, h);
+        if (h.CommunauteId > 0) suites.PertesParCommunaute[h.CommunauteId] = suites.PertesParCommunaute.GetValueOrDefault(h.CommunauteId) + 1;
+        return (suites.Id, $"dans les terres dévastées par {TypesCatastrophe.Nom(suites.Type)}");
+    }
+
+    /// <summary>Dégâts les plus forts sur la case et ses voisines (là où l'on cherche sa nourriture).</summary>
+    private int DegatsAutour(int x, int y)
+    {
+        var max = 0;
+        for (var dy = -1; dy <= 1; dy++)
+        {
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                int nx = x + dx, ny = y + dy;
+                if (nx >= 0 && ny >= 0 && nx < _carte.Largeur && ny < _carte.Hauteur) max = Math.Max(max, _ecosysteme.Degats[_carte.Indice(nx, ny)]);
+            }
+        }
+        return max;
+    }
+
+    private bool DansLaZone(Catastrophe c, int x, int y)
+    {
+        if (c.Cases.Count == 0) return Distance(x, y, c.X, c.Y) <= c.Rayon + 1;
+        for (var dy = -1; dy <= 1; dy++)
+        {
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                int nx = x + dx, ny = y + dy;
+                if (nx >= 0 && ny >= 0 && nx < _carte.Largeur && ny < _carte.Hauteur && c.Cases.Contains(_carte.Indice(nx, ny))) return true;
+            }
+        }
+        return false;
     }
 
     private static void Compter(Catastrophe type, Humain h)

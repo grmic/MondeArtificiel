@@ -65,6 +65,18 @@ public sealed partial class DepotMonde
         return resultat;
     }
 
+    /// <summary>Taille de toutes les communautés au début de chaque saison (sans leurs terres), pour les courbes démographiques.</summary>
+    public List<(int Communaute, long Secondes, int Membres)> LireToutesTailles()
+    {
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = "SELECT communaute, secondes, membres FROM archives_communautes ORDER BY secondes;";
+        var resultat = new List<(int, long, int)>();
+        using var l = commande.ExecuteReader();
+        while (l.Read()) resultat.Add((l.GetInt32(0), l.GetInt64(1), l.GetInt32(2)));
+        return resultat;
+    }
+
     /// <summary>Dates des instantanés enregistrés (début de chaque saison), de la plus ancienne à la plus récente.</summary>
     public List<long> LireDatesArchives()
     {

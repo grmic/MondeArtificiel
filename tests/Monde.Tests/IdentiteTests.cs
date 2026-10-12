@@ -336,5 +336,17 @@ public sealed class IdentiteTests
         var communaute = (await connexion.InvokeAsync<List<CommunauteDto>>("Communautes")).First(c => c.Id == id);
         Assert.True(communaute.Terres > 0);
         Assert.NotEmpty(communaute.Noms);
+
+        // Courbes démographiques : le monde de mois en mois, cohérent avec les naissances et les morts ; les communautés les plus peuplées.
+        var demo = await connexion.InvokeAsync<DemographieDto>("Demographie", 3);
+        Assert.Equal(demo.Secondes.Length, demo.Monde.Length);
+        Assert.Equal(demo.Maintenant, demo.Secondes[^1]);
+        Assert.Equal(66, demo.Monde[0]);
+        for (var k = 1; k < demo.Monde.Length; k++) Assert.Equal(demo.Monde[k - 1] + demo.Naissances[k] - demo.Morts[k], demo.Monde[k]);
+        Assert.InRange(demo.Communautes.Count, 1, 3);
+        Assert.True(demo.Communautes.Zip(demo.Communautes.Skip(1)).All(p => p.First.Pic >= p.Second.Pic));
+        Assert.All(demo.Communautes, c => Assert.Equal(c.Secondes.Length, c.Membres.Length));
+        Assert.Contains(demo.Communautes, c => c.Active && c.Secondes[^1] == demo.Maintenant);
+        Assert.InRange((await connexion.InvokeAsync<DemographieDto>("Demographie", 500)).Communautes.Count, 1, 30);
     }
 }

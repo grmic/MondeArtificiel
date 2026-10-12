@@ -215,7 +215,7 @@ public sealed class MondeSimule
         {
             _journalNonEnregistre.RemoveRange(0, Math.Min(nombre, _journalNonEnregistre.Count));
             _archivesNonEnregistrees.RemoveRange(0, Math.Min(archives, _archivesNonEnregistrees.Count));
-            if (terminees is { Count: > 0 }) _catastrophes.Oublier(terminees);
+            if (terminees is { Count: > 0 }) _catastrophes.Oublier(terminees, _secondes);
         }
     }
 
@@ -319,6 +319,12 @@ public sealed class MondeSimule
     public List<RelationCommunautes> Relations()
     {
         lock (_verrou) return _social.Relations;
+    }
+
+    /// <summary>Naissance, mort et communauté de chaque humain ayant vécu (pour les courbes démographiques, sans copier les humains).</summary>
+    public (long Secondes, List<(long Naissance, long? Mort, int Communaute)> Vies) Vies()
+    {
+        lock (_verrou) return (_secondes, _humains.Select(h => (h.Naissance, h.MortLe, h.CommunauteId)).ToList());
     }
 
     /// <summary>Copie des guerres entre communautés, en cours ou finies.</summary>

@@ -2,6 +2,7 @@ import { chargerCarte, distanceEnMots, VueCarte, type HumainVue, type InfoTuile,
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
+import { PanneauDemographie } from "./demographie";
 import { PanneauConfiguration, type Reglages } from "./configuration";
 import { definirLiensNoms, PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
@@ -145,6 +146,7 @@ async function demarrer(): Promise<void> {
     communautes?.fermer();
     panneauMonde?.fermer();
     configuration.fermer();
+    demographie.fermer();
     catastrophes.basculer();
   });
 
@@ -155,7 +157,24 @@ async function demarrer(): Promise<void> {
     communautes?.fermer();
     catastrophes.fermer();
     configuration.fermer();
+    demographie.fermer();
     panneauMonde.basculer();
+  });
+
+  const demographie = new PanneauDemographie(element("#demographie"), (id) => {
+    demographie.fermer();
+    void catastrophes.ouvrir(id);
+  }, (id) => {
+    demographie.fermer();
+    void communautes?.ouvrir(id);
+  });
+  element("#boutonDemographie").addEventListener("click", () => {
+    journal.fermer();
+    communautes?.fermer();
+    catastrophes.fermer();
+    panneauMonde.fermer();
+    configuration.fermer();
+    demographie.basculer();
   });
 
   vue.quandClic((info) => {
@@ -183,6 +202,7 @@ async function demarrer(): Promise<void> {
     catastrophes.fermer();
     panneauMonde.fermer();
     configuration.fermer();
+    demographie.fermer();
     journal.basculer();
   });
   element("#boutonCommunautes").addEventListener("click", () => {
@@ -190,6 +210,7 @@ async function demarrer(): Promise<void> {
     catastrophes.fermer();
     panneauMonde.fermer();
     configuration.fermer();
+    demographie.fermer();
     communautes?.basculer();
   });
 
@@ -223,6 +244,7 @@ async function demarrer(): Promise<void> {
     communautes?.fermer();
     catastrophes.fermer();
     panneauMonde.fermer();
+    demographie.fermer();
     configuration.basculer();
   });
 

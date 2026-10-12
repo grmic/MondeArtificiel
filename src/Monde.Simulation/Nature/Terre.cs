@@ -227,7 +227,7 @@ public sealed partial class Catastrophes
             if (h.EstVivant && c.Cases.Contains(_carte.Indice(h.X, h.Y))) Frapper(h, c, 0.5, 0.3, CauseDeMort.Noyade, humains, maintenant);
         }
         // L'eau salée tue la végétation des terres noyées pour des mois ; le gibier se noie ou fuit.
-        foreach (var i in c.Cases) Ravager(i, plantes: 0.2, gibier: 0.4, degats: 0.8);
+        foreach (var i in c.Cases) Ravager(c, i, plantes: 0.2, gibier: 0.4, degats: 0.8);
         foreach (var h in humains)
         {
             if (h.EstVivant && !c.Temoins.Contains(h.Id) && Distance(h.X, h.Y, c.X, c.Y) <= c.Rayon
@@ -236,11 +236,13 @@ public sealed partial class Catastrophes
     }
 
     /// <summary>Dégâts sur la nature d'une case : part des plantes et du gibier qui survivent, dégâts durables sur la végétation.</summary>
-    private void Ravager(int i, double plantes, double gibier, double degats)
+    private void Ravager(Catastrophe c, int i, double plantes, double gibier, double degats)
     {
         _ecosysteme.Plantes[i] = (ushort)(_ecosysteme.Plantes[i] * plantes);
         _ecosysteme.Gibier[i] = (ushort)(_ecosysteme.Gibier[i] * gibier);
-        _ecosysteme.Degats[i] = (ushort)Math.Max(_ecosysteme.Degats[i], Math.Clamp(degats, 0, 1) * 10_000);
+        var d = (ushort)(Math.Clamp(degats, 0, 1) * 10_000);
+        _ecosysteme.Degats[i] = Math.Max(_ecosysteme.Degats[i], d);
+        if (d > c.Ravages.GetValueOrDefault(i)) c.Ravages[i] = d;
     }
 
     // ───────────── Volcans ─────────────
@@ -328,7 +330,7 @@ public sealed partial class Catastrophes
         // Lave : la végétation brûle sur son passage.
         if (vei <= 2)
         {
-            foreach (var i in DansLeRayon(c.X, c.Y, RayonLave(c))) Ravager(i, 0, 0.2, 1);
+            foreach (var i in DansLeRayon(c.X, c.Y, RayonLave(c))) Ravager(c, i, 0, 0.2, 1);
         }
 
         // Cendres : elles étouffent la végétation, d'autant plus qu'on est près ; on les respire.
@@ -337,7 +339,7 @@ public sealed partial class Catastrophes
         {
             var f = 1 - Distance(i % _carte.Largeur, i / _carte.Largeur, c.X, c.Y) / rayon;
             if (f <= 0.05) continue;
-            Ravager(i, 1 - 0.9 * f, 1 - 0.6 * f, Math.Pow(f, 0.7));
+            Ravager(c, i, 1 - 0.9 * f, 1 - 0.6 * f, Math.Pow(f, 0.7));
         }
         foreach (var h in humains)
         {
@@ -366,6 +368,33 @@ public sealed partial class Catastrophes
                 Tsunami(mx, my, 5 + 10 * _alea.Reel(), c.Id, humains, maintenant, c.Origine);
             }
         }
+    }
+
+    // ───────────── Au-delà des mers ─────────────
+
+    /// <summary>
+    /// Le monde ne s'arrête pas aux rivages de la carte. Ailleurs sur la planète, un grand volcan explose environ une fois
+    /// par siècle à l'indice 6 (Krakatoa 1883, Pinatubo 1991) et une fois par millénaire à l'indice 7 (Tambora 1815)
+    /// (Newhall et Self 1982 ; Siebert et al. 2010). Son voile de soufre refroidit aussi ce continent : environ −0,5 °C
+    /// pendant un à deux ans après le Pinatubo (Self et al. 1996), l'« année sans été » après le Tambora (−0,4 à −0,7 °C
+    /// en moyenne sur le globe, bien plus en certaines régions ; Oppenheimer 2003). Ici, personne ne sait d'où vient le froid.
+    /// </summary>
+    private void Lointains(List<Humain> humains, long maintenant)
+    {
+        var tirage = _alea.Reel() * Calendrier.JoursParAn;
+        if (tirage < 1 / 1000.0) HiverLointain(-0.7 - 0.8 * _alea.Reel(), 2 + _alea.Reel(), grave: true, humains, maintenant);
+        else if (tirage < 1 / 1000.0 + 1 / 100.0) HiverLointain(-0.3 - 0.3 * _alea.Reel(), 1 + _alea.Reel(), grave: false, humains, maintenant);
+        ImpactLointain(humains, maintenant);
+    }
+
+    private void HiverLointain(double ecart, double annees, bool grave, List<Humain> humains, long maintenant)
+    {
+        var hiver = Commencer(TypeCatastrophe.HiverVolcanique, _carte.Largeur / 2, _carte.Hauteur / 2, 900, ecart,
+            $"Hiver volcanique venu d'une éruption lointaine ({Decimal(ecart)} °C)",
+            $"Le soleil pâlit derrière un voile laiteux, les couchers de soleil virent au rouge sang et un froid inhabituel s'installe ({Decimal(ecart)} °C). "
+            + "Loin au-delà des mers, un volcan géant a explosé : personne ici ne peut le savoir.",
+            humains, maintenant, alerter: grave, duree: (long)(annees * Calendrier.SecondesParAn));
+        hiver.Signalee = true;
     }
 
     private (int X, int Y) MerLaPlusProche(int x, int y)

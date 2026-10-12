@@ -77,7 +77,7 @@ public sealed partial class Catastrophes
         c.Cases = cases;
         // Le flot d'une crue subite passe en une à trois heures ; une crue lente monte pendant six à dix-huit heures.
         c.Prochaine = maintenant + (subite ? 1 + _alea.Entier(3) : 6 + _alea.Entier(13)) * Calendrier.SecondesParHeure;
-        foreach (var i in cases) Ravager(i, 0.5, 0.7, 0.4);
+        foreach (var i in cases) Ravager(c, i, 0.5, 0.7, 0.4);
         if (humains.Any(h => h.EstVivant && cases.Contains(_carte.Indice(h.X, h.Y)))) Signaler(c, texte);
         return c;
     }
@@ -120,7 +120,7 @@ public sealed partial class Catastrophes
         foreach (var i in DansLeRayon(x, y, rayon))
         {
             var f = 1 - Distance(i % _carte.Largeur, i / _carte.Largeur, x, y) / rayon;
-            Ravager(i, 1 - 0.08 * categorie * f, 1 - 0.05 * categorie * f, 0.06 * categorie * f);
+            Ravager(c, i, 1 - 0.08 * categorie * f, 1 - 0.05 * categorie * f, 0.06 * categorie * f);
         }
         // Onde de tempête : à partir de la catégorie 3, la mer envahit les rivages bas.
         if (categorie >= 3)

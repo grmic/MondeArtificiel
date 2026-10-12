@@ -83,10 +83,31 @@ public sealed class Ecosysteme
     public double FacteurClimat { get; set; } = 1;
 
     /// <summary>
-    /// Guérison de la terre : environ 0,3 % des dégâts disparaissent chaque jour (une forêt brûlée reverdit en
-    /// un à deux ans, une coulée de cendres en quelques années ; ordres de grandeur des successions écologiques).
+    /// Années qu'il faut à une terre ravagée (brûlée, noyée, ensevelie sous la cendre) pour retrouver ses plantes et son gibier,
+    /// selon le terrain : un ou deux ans pour les fougères et les marais, quelques années pour la forêt tropicale qui repousse
+    /// vite, bien plus pour la forêt de conifères, la montagne et le désert, où tout pousse lentement (ordres de grandeur des
+    /// successions après les feux de Yellowstone en 1988, Turner et al. 2003, et après l'éruption du mont Saint Helens en 1980,
+    /// del Moral et Wood 1993).
     /// </summary>
-    private const int GuerisonParJour = 30;
+    public static double AnneesDeRetour(Biome b) => b switch
+    {
+        Biome.PlaineDeFougeres or Biome.Marais or Biome.Plage => 1.5,
+        Biome.ForetTropicale => 3,
+        Biome.ForetDeConiferes => 8,
+        Biome.Desert or Biome.Montagne or Biome.SommetEnneige => 10,
+        _ => 2,
+    };
+
+    /// <summary>
+    /// Dégâts effacés en un jour sur une case (sur 10 000). Une terre stérilisée (lave, nuées brûlantes, cratère) se
+    /// recolonise bien plus lentement qu'une terre simplement brûlée : il y faut des décennies.
+    /// </summary>
+    public double GuerisonParJour(int i)
+    {
+        var vitesse = 10_000 / (AnneesDeRetour(_carte.BiomeEn(i % _carte.Largeur, i / _carte.Largeur)) * Calendrier.JoursParAn);
+        var sterile = Math.Clamp((Degats[i] / 10_000.0 - 0.8) / 0.2, 0, 1);
+        return vitesse * (1 - 0.85 * sterile);
+    }
 
     /// <summary>Pluies de l'année par région (1 : année normale ; 0,6 : sécheresse ; 1,4 : année très arrosée).</summary>
     public double[] Pluies { get; }
@@ -126,7 +147,7 @@ public sealed class Ecosysteme
         var croissanceDuJour = CroissanceGibierParAn / Calendrier.JoursParAn;
         for (var i = 0; i < Plantes.Length; i++)
         {
-            if (Degats[i] > 0) Degats[i] = (ushort)Math.Max(0, Degats[i] - GuerisonParJour);
+            if (Degats[i] > 0) Degats[i] = (ushort)Math.Max(0, Degats[i] - Math.Max(1, (int)Math.Round(GuerisonParJour(i))));
             if (_carte.Plantes[i] == 0 && _carte.Gibier[i] == 0) continue;
 
             // Plantes : la repousse suit la saison ; une tuile dépouillée (moins de 20 % de son niveau) repart plus lentement.

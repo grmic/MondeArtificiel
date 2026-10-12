@@ -47,8 +47,8 @@ public sealed partial class Catastrophes
     /// une éclipse totale de soleil tous les deux siècles environ (une même ville en voit une tous les 375 ans en moyenne),
     /// une grande éclipse partielle tous les dix à quinze ans, une grande comète tous les quinze ans, une boule de feu
     /// remarquable chaque année, une aurore visible si loin des pôles une ou deux fois par siècle (orages magnétiques
-    /// comme celui de 1859). Un impact destructeur (comme Toungouska, 1908) n'arrive ici qu'une fois en quelques
-    /// millions d'années.
+    /// comme celui de 1859). Un impact destructeur (comme Toungouska, 1908) n'arrive ici qu'une fois en une dizaine de
+    /// millions d'années (voir <see cref="ImpactsParAn"/>).
     /// </summary>
     private void Ciel(List<Humain> humains, long maintenant, DateMonde date)
     {
@@ -69,11 +69,73 @@ public sealed partial class Catastrophes
             else if (tirage < 1 + 1 / 15.0 && !Actif(TypeCatastrophe.Comete)) Comete(humains, maintenant, Origine.Naturelle);
             else if (tirage < 1 + 1 / 15.0 + 1 / 70.0 && !Actif(TypeCatastrophe.Aurore)) Aurore(humains, maintenant, Origine.Naturelle);
         }
-        if (_alea.Reel() * heuresParAn < 3e-7)
+        if (_alea.Reel() * heuresParAn < ImpactsParAn(ImpactMin))
         {
             var i = TerreAuHasard(0, 0, _carte.Largeur - 1, _carte.Hauteur - 1, _ => true);
-            if (i >= 0) Impact(i % _carte.Largeur, i / _carte.Largeur, 10, humains, maintenant, Origine.Naturelle);
+            if (i >= 0) Impact(i % _carte.Largeur, i / _carte.Largeur, EnergieImpact(), humains, maintenant, Origine.Naturelle);
         }
+    }
+
+    /// <summary>Énergie (mégatonnes) en dessous de laquelle un objet venu du ciel explose trop haut pour ravager le sol.</summary>
+    private const double ImpactMin = 10;
+
+    /// <summary>
+    /// Impacts d'au moins <paramref name="megatonnes"/> par an sur cette carte : sur toute la Terre, N(&gt;E) = 3,7 E^−0,9 par an
+    /// (E en kilotonnes ; Brown et al. 2002, d'après les explosions de bolides observées par satellite), soit un Toungouska
+    /// (10 Mt) tous les mille ans environ, réparti sur les 510 millions de km² du globe.
+    /// </summary>
+    private double ImpactsParAn(double megatonnes) =>
+        3.7 * Math.Pow(megatonnes * 1000, -0.9) * Echelle.KilometresCarres(_carte.Largeur * _carte.Hauteur) / 510e6;
+
+    /// <summary>Énergie d'un impact naturel, tirée selon la même loi : les gros sont d'autant plus rares.</summary>
+    private double EnergieImpact() => Math.Min(EnergieMax, ImpactMin * Math.Pow(1 - _alea.Reel(), -1 / 0.9));
+
+    /// <summary>Le plus gros impact connu, celui de la fin du Crétacé (Chicxulub) : de l'ordre de 100 millions de mégatonnes.</summary>
+    public const double EnergieMax = 1e8;
+
+    /// <summary>
+    /// Hiver d'impact : écart de température (°C) et durée (années) selon l'énergie. Jusqu'à 10 000 Mt, les effets restent
+    /// régionaux ; vers 100 000 Mt à un million (astéroïde d'un à deux kilomètres), poussières et suies assombrissent
+    /// le ciel du monde entier pendant des mois (Toon et al. 1997) ; après Chicxulub, le froid a duré des années
+    /// (−26 °C en moyenne sur les terres, trois ans sous le gel ; Brugger et al. 2017). Interpolé entre ces repères.
+    /// </summary>
+    private static readonly (double Megatonnes, double Ecart, double Annees)[] HiversDImpact =
+        [(1e4, -0.5, 0.5), (1e5, -3, 1), (1e6, -8, 2), (1e7, -15, 3), (1e8, -26, 5)];
+
+    private static (double Ecart, double Annees)? HiverDImpact(double megatonnes)
+    {
+        if (megatonnes < HiversDImpact[0].Megatonnes) return null;
+        var l = Math.Log10(megatonnes);
+        for (var k = 1; k < HiversDImpact.Length; k++)
+        {
+            var (m1, e1, a1) = HiversDImpact[k - 1];
+            var (m2, e2, a2) = HiversDImpact[k];
+            if (l > Math.Log10(m2)) continue;
+            var t = (l - Math.Log10(m1)) / (Math.Log10(m2) - Math.Log10(m1));
+            return (e1 + t * (e2 - e1), a1 + t * (a2 - a1));
+        }
+        return (HiversDImpact[^1].Ecart, HiversDImpact[^1].Annees);
+    }
+
+    /// <summary>
+    /// Un astéroïde assez gros pour assombrir le ciel du monde entier (10 000 Mt et plus) peut tomber n'importe où sur la Terre,
+    /// le plus souvent loin d'ici : environ une fois en 500 000 ans (même loi que <see cref="ImpactsParAn"/>, pour tout le globe
+    /// hors de cette carte). Seul son hiver atteint ce continent. Tiré une fois par jour.
+    /// </summary>
+    private void ImpactLointain(List<Humain> humains, long maintenant)
+    {
+        const double seuil = 1e4;
+        var ici = ImpactsParAn(seuil);
+        var ailleurs = 3.7 * Math.Pow(seuil * 1000, -0.9) - ici;
+        if (_alea.Reel() * Calendrier.JoursParAn >= ailleurs) return;
+        var megatonnes = Math.Min(EnergieMax, seuil * Math.Pow(1 - _alea.Reel(), -1 / 0.9));
+        if (HiverDImpact(megatonnes) is not var (ecart, annees)) return;
+        var hiver = Commencer(TypeCatastrophe.HiverDImpact, _carte.Largeur / 2, _carte.Hauteur / 2, 900, ecart,
+            $"Hiver d'impact venu d'un astéroïde tombé au loin ({Decimal(ecart)} °C)",
+            $"Un grondement roule dans le ciel, puis une brume sombre voile le soleil des semaines durant ; le froid s'installe ({Decimal(ecart)} °C). "
+            + "Loin d'ici, un astéroïde a frappé la Terre.",
+            humains, maintenant, duree: (long)(annees * Calendrier.SecondesParAn));
+        hiver.Signalee = true;
     }
 
     private bool Actif(TypeCatastrophe type) => _liste.Any(c => c.Active && c.Type == type);
@@ -162,7 +224,7 @@ public sealed partial class Catastrophes
     {
         // Le rayon de destruction croît comme la racine cubique de l'énergie : environ 25 km pour 10 Mt.
         var rayon = Echelle.Cases(25 * Math.Cbrt(megatonnes / 10));
-        var c = Commencer(TypeCatastrophe.Impact, x, y, rayon, megatonnes, $"Chute d'un astéroïde {Ou(x, y)} ({megatonnes:0} Mt)",
+        var c = Commencer(TypeCatastrophe.Impact, x, y, rayon, megatonnes, $"Chute d'un astéroïde {Ou(x, y)} ({megatonnes.ToString(megatonnes < 10 ? "0.#" : "N0", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"))} Mt)",
             $"Un second soleil traverse le ciel et explose {Ou(x, y)} : le souffle couche les arbres à perte de vue et le ciel s'embrase.",
             humains, maintenant, origine, duree: Calendrier.SecondesParHeure);
         foreach (var h in humains)
@@ -177,10 +239,20 @@ public sealed partial class Catastrophes
         foreach (var i in DansLeRayon(x, y, rayon))
         {
             var f = 1 - Distance(i % _carte.Largeur, i / _carte.Largeur, x, y) / Math.Max(1, rayon);
-            Ravager(i, 1 - f, 1 - 0.8 * f, f);
+            Ravager(c, i, 1 - f, 1 - 0.8 * f, f);
         }
         var depart = _carte.Indice(x, y);
         if (Inflammabilite(_carte.BiomeEn(x, y)) > 0 && !EstDangereuse(depart)) Allumer(x, y, humains, maintenant, origine, c.Id);
+        foreach (var i in DansLeRayon(x, y, rayon)) c.Cases.Add(i);
+        if (HiverDImpact(megatonnes) is var (ecart, annees))
+        {
+            var hiver = Commencer(TypeCatastrophe.HiverDImpact, x, y, 900, ecart, $"Hiver d'impact après la chute de l'astéroïde ({Decimal(ecart)} °C)",
+                ecart > -5
+                    ? $"La poussière soulevée par l'impact voile le soleil : le ciel reste terne et la fraîcheur gagne tout le continent ({Decimal(ecart)} °C)."
+                    : $"Poussières et fumées noircissent le ciel : en plein jour il fait presque nuit, le froid s'installe ({Decimal(ecart)} °C) et rien ne pousse plus.",
+                humains, maintenant, origine, cause: c.Id, duree: (long)(annees * Calendrier.SecondesParAn));
+            hiver.Signalee = true;
+        }
         return c;
     }
 }

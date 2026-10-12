@@ -22,6 +22,11 @@ export interface CatastropheVue {
   communautes: { id: number; nom: string }[];
   temoins: number;
   phenomene: boolean;
+  /** Morts de faim, soif, froid, épuisement ou maladie dans les terres dévastées, après la catastrophe. */
+  mortsSuites: number;
+  /** Date où les terres dévastées reverdiront (ou ont reverdi). */
+  suitesJusqua: string | null;
+  enSuites: boolean;
 }
 
 export interface DetailCatastrophe {
@@ -77,7 +82,7 @@ const PROVOQUABLES: [string, string, number, string][] = [
   ["comete", "Comète", 0, ""],
   ["aurore", "Aurore", 0, ""],
   ["bolide", "Boule de feu", 0, ""],
-  ["impact", "Astéroïde", 10, "mégatonnes"],
+  ["impact", "Astéroïde", 10, "mégatonnes (0,1 à 100 000 000 ; Chicxulub ≈ 100 000 000)"],
 ];
 
 /**
@@ -193,9 +198,14 @@ export class PanneauCatastrophes {
     }
 
     const actives = this.liste.filter((x) => x.active);
-    const passees = this.liste.filter((x) => !x.active);
+    const suites = this.liste.filter((x) => !x.active && x.enSuites);
+    const passees = this.liste.filter((x) => !x.active && !x.enSuites);
     c.append(el("h3", undefined, `En cours (${actives.length})`));
     c.append(this.lignes(actives, "Rien en ce moment."));
+    if (suites.length > 0) {
+      c.append(el("h3", undefined, `Terres encore dévastées (${suites.length})`));
+      c.append(this.lignes(suites, ""));
+    }
     c.append(el("h3", undefined, "Histoire"));
     c.append(this.lignes(passees, "Rien encore."));
 
@@ -253,7 +263,9 @@ export class PanneauCatastrophes {
       if (x.origine === "entite") li.append(el("span", "entite", " ✦ Entité"));
       const details = [x.intensite, x.surface ? `${x.surface} touchés` : "",
         x.morts ? `${x.morts} mort${x.morts > 1 ? "s" : ""}` : "", x.blesses ? `${x.blesses} blessé${x.blesses > 1 ? "s" : ""}` : "",
-        x.temoins ? `${x.temoins} témoin${x.temoins > 1 ? "s" : ""}` : "", x.fin ? `jusqu'au ${x.fin}` : ""].filter(Boolean);
+        x.mortsSuites ? `${x.mortsSuites} mort${x.mortsSuites > 1 ? "s" : ""} dans les suites` : "",
+        x.temoins ? `${x.temoins} témoin${x.temoins > 1 ? "s" : ""}` : "", x.fin ? `jusqu'au ${x.fin}` : "",
+        x.suitesJusqua ? (x.enSuites ? `terres dévastées jusqu'au ${x.suitesJusqua} environ` : `terres remises le ${x.suitesJusqua}`) : ""].filter(Boolean);
       if (details.length > 0) li.append(el("span", "discret", ` · ${details.join(" · ")}`));
       if (x.communautes.length > 0) {
         li.append(el("br"), "Touchées : ");

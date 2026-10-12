@@ -23,6 +23,8 @@ public enum TypeCatastrophe : byte
     Aurore = 13,
     /// <summary>Après une très grande éruption, le voile de cendres et de soufre refroidit le climat pendant des années.</summary>
     HiverVolcanique = 14,
+    /// <summary>Après un très gros impact, poussières et suies voilent le soleil : le froid et la nuit durent des mois ou des années.</summary>
+    HiverDImpact = 15,
 }
 
 public static class TypesCatastrophe
@@ -49,6 +51,7 @@ public static class TypesCatastrophe
         TypeCatastrophe.Impact => "le feu tombé du ciel",
         TypeCatastrophe.Aurore => "les lueurs du ciel",
         TypeCatastrophe.HiverVolcanique => "l'hiver sans fin",
+        TypeCatastrophe.HiverDImpact => "la longue nuit",
         _ => "la catastrophe",
     };
 
@@ -90,8 +93,27 @@ public sealed class Catastrophe
     public int Morts { get; set; }
     public int Blesses { get; set; }
 
+    /// <summary>
+    /// Fin des suites : tant que la nature touchée n'a pas reverdi, ceux qui y meurent de faim, de soif, de froid,
+    /// d'épuisement ou de maladie meurent des suites de la catastrophe (0 : pas de suites, ou pas encore connues).
+    /// </summary>
+    public long SuitesJusqua { get; set; }
+
+    /// <summary>Morts dans les suites, après la fin de la catastrophe elle-même.</summary>
+    public int MortsSuites { get; set; }
+
+    /// <summary>Encore en mémoire : en cours, ou dans ses suites.</summary>
+    public bool EnSuites(long maintenant) => !Active && SuitesJusqua > 0 && SuitesJusqua > maintenant;
+
     /// <summary>Cases touchées (brûlées, inondées, ensevelies sous la cendre…), quand la zone n'est pas un simple disque.</summary>
     public HashSet<int> Cases { get; set; } = [];
+
+    /// <summary>
+    /// Dégâts (sur 10 000) que cette catastrophe a elle-même causés à chaque tuile, pour mesurer ses suites sans lui imputer
+    /// les cicatrices d'une autre. Gardés en mémoire seulement : à sa fin, les tuiles qu'elle a gravement touchées
+    /// rejoignent <see cref="Cases"/>, qui est enregistré.
+    /// </summary>
+    public Dictionary<int, ushort> Ravages { get; set; } = [];
 
     /// <summary>Front d'un incendie : cases en train de brûler, avec l'heure où chacune s'éteindra.</summary>
     public Dictionary<int, long> Front { get; set; } = [];
@@ -130,6 +152,7 @@ public sealed class Catastrophe
         var copie = (Catastrophe)MemberwiseClone();
         copie.Cases = [.. Cases];
         copie.Front = new Dictionary<int, long>(Front);
+        copie.Ravages = new Dictionary<int, ushort>(Ravages);
         copie.Communautes = [.. Communautes];
         copie.Temoins = [.. Temoins];
         copie.PertesParCommunaute = new SortedDictionary<int, int>(PertesParCommunaute);

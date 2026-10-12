@@ -344,8 +344,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// </summary>
     private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null)
     {
-        // Mort de froid pendant une vague de froid, de chaleur pendant une canicule, d'une maladie contagieuse : la cause est notée.
-        if (causeId == 0 && Catastrophes is not null) causeId = Catastrophes.Attribuer(h, cause);
+        // Mort de froid pendant une vague de froid, de chaleur pendant une canicule, d'une maladie contagieuse, de faim dans une
+        // terre dévastée qui n'a pas reverdi : la cause est notée, et dite.
+        string? contexte = null;
+        if (causeId == 0 && Catastrophes is not null) (causeId, contexte) = Catastrophes.Attribuer(h, cause, maintenant);
+        var suite = contexte is null ? "" : $", {contexte}";
         h.MortEvenementId = cause switch
         {
             CauseDeMort.Desespoir => Noter(maintenant, TypeEvenement.Mort, h, null,
@@ -354,8 +357,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             CauseDeMort.Meurtre when meurtrier is not null => Noter(maintenant, TypeEvenement.Mort, h, meurtrier,
                 $"{h.Nom} meurt sous les coups de {meurtrier.Nom}, à {AgeEnMots(h, maintenant)}.", causeId),
             CauseDeMort.Maladie when h.Maladie != Maladie.Aucune && h.EstMalade(maintenant) => Noter(maintenant, TypeEvenement.Mort, h, null,
-                $"{h.Nom} meurt {De(Maladies.Fiche(h.Maladie).Nom)}, à {AgeEnMots(h, maintenant)}.", causeId),
-            _ => Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}, à {AgeEnMots(h, maintenant)}.", causeId),
+                $"{h.Nom} meurt {De(Maladies.Fiche(h.Maladie).Nom)}{suite}, à {AgeEnMots(h, maintenant)}.", causeId),
+            _ => Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}{suite}, à {AgeEnMots(h, maintenant)}.", causeId),
         };
         h.MeurtrierId = meurtrier?.Id ?? 0;
         Deces.Add(h);

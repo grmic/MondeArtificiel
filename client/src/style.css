@@ -195,3 +195,38 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .puce.significatifs { font-weight: 600; }
 .liste.jardin li { margin-bottom: 2px; }
 h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
+
+/* Démographie */
+.demographie-panneau { right: 12px; top: 290px; bottom: 12px; width: min(760px, calc(100vw - 24px)); }
+.demographie-panneau .outils { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 6px; }
+.demographie-panneau .outils button { font-size: 0.8rem; padding: 2px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; }
+.demographie-panneau .outils button.actif { border-color: #8fd3a0; color: #b8f0c4; }
+.demographie-panneau .graphique { position: relative; }
+.demographie-panneau svg { display: block; overflow: visible; }
+.demographie-panneau .grille { stroke: #2a3648; stroke-width: 1; }
+.demographie-panneau .axe-trait { stroke: #56647a; stroke-width: 1; }
+.demographie-panneau .axe { fill: var(--discret); font-size: 10px; font-variant-numeric: tabular-nums; }
+.demographie-panneau .guide { stroke: #e8edf3; stroke-opacity: 0.5; stroke-width: 1; pointer-events: none; }
+.demographie-panneau .repere { stroke-width: 1; stroke-dasharray: 2 3; }
+.demographie-panneau .repere.catastrophe, .demographie-panneau .repere-tete.catastrophe { stroke: #ef6f6c; fill: #ef6f6c; }
+.demographie-panneau .repere.entite, .demographie-panneau .repere-tete.entite { stroke: #c792ff; fill: #c792ff; }
+.demographie-panneau .repere.guerre, .demographie-panneau .repere-tete.guerre { stroke: #f5a04a; fill: #f5a04a; }
+.demographie-panneau .repere-tete { cursor: pointer; stroke-width: 0; }
+.demographie-panneau .bulle {
+  position: absolute; pointer-events: none; padding: 4px 8px; border-radius: 6px; max-width: 200px;
+  background: rgba(10, 16, 26, 0.94); border: 1px solid #3a4658; font-size: 0.78rem; line-height: 1.35;
+}
+.demographie-panneau .bulle[hidden] { display: none; }
+.demographie-panneau rect.naissances, .demographie-panneau .carre.naissances { fill: #74c26a; background: #74c26a; }
+.demographie-panneau rect.morts, .demographie-panneau .carre.morts { fill: #ef6f6c; background: #ef6f6c; }
+.demographie-panneau .carre { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; }
+.demographie-panneau .legende { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 2px 0 6px; }
+.demographie-panneau .legende .item { display: inline-flex; align-items: center; gap: 4px; }
+.demographie-panneau .legende .item.cachee { opacity: 0.45; }
+.demographie-panneau .pastille { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #0f1a2b; padding: 0; cursor: pointer; }
+.demographie-panneau .item.cachee .pastille { background: transparent !important; border-color: #9aa7b8; }
+.demographie-panneau .reperes li.catastrophe .date { color: #ef6f6c; }
+.demographie-panneau .reperes li.entite .date { color: #c792ff; }
+.demographie-panneau .reperes li.guerre .date { color: #f5a04a; }
+.demographie-panneau .reperes summary { cursor: pointer; margin-top: 8px; }
+.demographie-panneau .note { font-size: 0.78rem; margin-top: 10px; }

@@ -7,6 +7,9 @@ using Monde.Simulation.Nature;
 
 namespace Monde.Stockage;
 
+/// <summary>Une catastrophe réduite à ce qu'en montrent les courbes démographiques.</summary>
+public sealed record RepereCatastrophe(long Id, TypeCatastrophe Type, Origine Origine, long Debut, string Nom, int Morts, int MortsSuites);
+
 /// <summary>Catastrophes naturelles, maladies, peur et infections des humains, dégâts sur la nature.</summary>
 public sealed partial class DepotMonde
 {
@@ -15,7 +18,7 @@ public sealed partial class DepotMonde
 
     private const string ColonnesCatastrophe =
         "id, type, origine, debut, fin, x, y, rayon, intensite, nom, morts, blesses, cases, front, direction, parametre, " +
-        "prochaine, phase, duree, signalee, pertes, communautes, temoins";
+        "prochaine, phase, duree, signalee, pertes, communautes, temoins, suites_jusqua, morts_suites";
 
     /// <summary>Migration vers la version 11 : catastrophes naturelles et maladies.</summary>
     private static void MigrerVersion11(SqliteConnection connexion, SqliteTransaction transaction)
@@ -135,10 +138,11 @@ public sealed partial class DepotMonde
         return resultat;
     }
 
-    /// <summary>Catastrophes en cours (non terminées), pour reprendre la simulation.</summary>
+    /// <summary>Catastrophes en cours, ou dans leurs suites, pour reprendre la simulation.</summary>
     private static List<Catastrophe> LireCatastrophesEnCours(SqliteCommand commande)
     {
-        commande.CommandText = $"SELECT {ColonnesCatastrophe} FROM catastrophes WHERE fin IS NULL ORDER BY id;";
+        commande.CommandText = $"SELECT {ColonnesCatastrophe} FROM catastrophes " +
+            $"WHERE fin IS NULL OR suites_jusqua > 0 AND suites_jusqua > (SELECT secondes FROM etat WHERE id = 1) - {Monde.Simulation.Temps.Calendrier.SecondesParJour} ORDER BY id;";
         return LireCatastrophes(commande);
     }
 
@@ -164,15 +168,15 @@ public sealed partial class DepotMonde
         // Une catastrophe en cours est réécrite à chaque sauvegarde ; une fois terminée, elle reste dans l'histoire du monde.
         using var commande = Preparer(connexion, transaction,
             $"INSERT OR REPLACE INTO catastrophes ({ColonnesCatastrophe}) VALUES " +
-            "($i, $t, $o, $d, $f, $x, $y, $r, $in, $n, $m, $b, $c, $fr, $di, $p, $pr, $ph, $du, $s, $pe, $co, $te);",
+            "($i, $t, $o, $d, $f, $x, $y, $r, $in, $n, $m, $b, $c, $fr, $di, $p, $pr, $ph, $du, $s, $pe, $co, $te, $sj, $ms);",
             "$i", "$t", "$o", "$d", "$f", "$x", "$y", "$r", "$in", "$n", "$m", "$b", "$c", "$fr", "$di", "$p", "$pr", "$ph", "$du",
-            "$s", "$pe", "$co", "$te");
+            "$s", "$pe", "$co", "$te", "$sj", "$ms");
         foreach (var c in catastrophes)
         {
             Lancer(commande, c.Id, (int)c.Type, (int)c.Origine, c.Debut, c.Fin is { } f ? f : DBNull.Value, c.X, c.Y, c.Rayon, c.Intensite,
                 c.Nom, c.Morts, c.Blesses, EncoderCases([.. c.Cases.Order()]), EcrireTerritoire(c.Front), c.Direction, c.Parametre,
                 c.Prochaine, c.Phase, c.Duree, c.Signalee, EcrirePertes(c.PertesParCommunaute), string.Join(',', c.Communautes),
-                EcrireEntiers(c.Temoins.Order()));
+                EcrireEntiers(c.Temoins.Order()), c.SuitesJusqua, c.MortsSuites);
         }
     }
 
@@ -186,6 +190,29 @@ public sealed partial class DepotMonde
         {
             Lancer(commande, p.Id, p.Nom, p.Transmission, p.IncubationJours, p.DureeJours, p.Letalite, p.ImmuniteAns, p.ApparuLe, p.EvenementId);
         }
+    }
+
+    /// <summary>
+    /// Catastrophes qui ont tué (directement ou dans leurs suites) ou que l'Entité a provoquées, sans leurs cases :
+    /// repères des courbes démographiques.
+    /// </summary>
+    public List<RepereCatastrophe> LireReperesCatastrophes()
+    {
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        commande.CommandText = """
+            SELECT id, type, origine, debut, nom, morts, morts_suites FROM catastrophes
+            WHERE morts > 0 OR morts_suites > 0 OR origine = $entite ORDER BY debut;
+            """;
+        commande.Parameters.AddWithValue("$entite", (int)Origine.Entite);
+        var resultat = new List<RepereCatastrophe>();
+        using var l = commande.ExecuteReader();
+        while (l.Read())
+        {
+            resultat.Add(new RepereCatastrophe(l.GetInt64(0), (TypeCatastrophe)l.GetInt32(1), (Origine)l.GetInt32(2), l.GetInt64(3),
+                l.GetString(4), l.GetInt32(5), l.GetInt32(6)));
+        }
+        return resultat;
     }
 
     /// <summary>
@@ -248,6 +275,7 @@ public sealed partial class DepotMonde
                 Parametre = l.GetInt32(15), Prochaine = l.GetInt64(16), Phase = l.GetInt32(17), Duree = l.GetInt64(18),
                 Signalee = l.GetBoolean(19), PertesParCommunaute = LirePertes(l.GetString(20)),
                 Communautes = [.. LireListe(l.GetString(21))], Temoins = [.. LireEntiers((byte[])l[22])],
+                SuitesJusqua = l.GetInt64(23), MortsSuites = l.GetInt32(24),
             });
         }
         return resultat;

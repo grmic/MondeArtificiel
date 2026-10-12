@@ -35,7 +35,7 @@ public sealed partial class Catastrophes
             TypeCatastrophe.Comete => Comete(humains, maintenant, origine).Id,
             TypeCatastrophe.Aurore => Aurore(humains, maintenant, origine).Id,
             TypeCatastrophe.Bolide => Bolide(humains, maintenant, origine).Id,
-            TypeCatastrophe.Impact => Impact(x, y, Math.Clamp(intensite, 0.1, 1000), humains, maintenant, origine).Id,
+            TypeCatastrophe.Impact => Impact(x, y, Math.Clamp(intensite, 0.1, EnergieMax), humains, maintenant, origine).Id,
             TypeCatastrophe.Epidemie => Contaminer(x, y, humains, maintenant, origine),
             _ => 0,
         };

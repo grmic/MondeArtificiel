@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 16;
+    public const int VersionSchema = 17;
 
     private readonly string _connexion;
 
@@ -481,6 +481,14 @@ public sealed partial class DepotMonde
                     levee INTEGER NOT NULL,
                     PRIMARY KEY (humain, rang)
                 );
+                """);
+        }
+        if (actuelle < 17)
+        {
+            // Version 17 : suites des catastrophes (jusqu'à quand la terre dévastée tue encore, et combien).
+            Executer(connexion, transaction, """
+                ALTER TABLE catastrophes ADD COLUMN suites_jusqua INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE catastrophes ADD COLUMN morts_suites INTEGER NOT NULL DEFAULT 0;
                 """);
         }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
