@@ -40,6 +40,8 @@ interface Communaute {
   ideal: string | null;
   /** Ceux qu'elle a chassés et dont l'exil dure encore. */
   exiles: { id: number; nom: string; raison: string; jusqua: string | null; evenement: number }[];
+  /** Morale du groupe : moyenne des fondements moraux de ses adultes (null : aucun adulte). */
+  morale: string | null;
 }
 
 /** Une guerre en préparation : qui la veut, contre qui, pourquoi, et les alliés sollicités. */
@@ -256,6 +258,7 @@ export class PanneauCommunautes {
     }
     if (!c.disperseeLe) {
       bloc.append(el("p", "usage", `Usage : ${c.usage}.${c.moeurs ? ` Mœurs : ${c.moeurs}.` : ""}${c.temperament ? ` Tempérament : ${c.temperament}.` : ""}`));
+      if (c.morale) bloc.append(el("p", "usage", `Morale : ${c.morale}.`));
       if (c.ideal) bloc.append(el("p", "discret", `Trouve beaux : ${c.ideal}.`));
     }
     for (const x of c.exiles) {

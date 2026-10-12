@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 17;
+    public const int VersionSchema = 18;
 
     private readonly string _connexion;
 
@@ -491,6 +491,25 @@ public sealed partial class DepotMonde
                 ALTER TABLE catastrophes ADD COLUMN morts_suites INTEGER NOT NULL DEFAULT 0;
                 """);
         }
+        if (actuelle < 18)
+        {
+            // Version 18 : honnêteté, empathies, compassion, psychopathie, attachement adulte et fondements moraux.
+            // Vides pour les humains déjà nés : ils sont tirés à la lecture, d'après leurs autres traits (voir LirePersonnalite).
+            Executer(connexion, transaction, """
+                ALTER TABLE humains ADD COLUMN honnetete REAL;
+                ALTER TABLE humains ADD COLUMN empathie_emo REAL;
+                ALTER TABLE humains ADD COLUMN empathie_cog REAL;
+                ALTER TABLE humains ADD COLUMN compassion REAL;
+                ALTER TABLE humains ADD COLUMN psychopathie REAL;
+                ALTER TABLE humains ADD COLUMN anxiete_aff REAL;
+                ALTER TABLE humains ADD COLUMN evitement_aff REAL;
+                ALTER TABLE humains ADD COLUMN soin REAL;
+                ALTER TABLE humains ADD COLUMN equite REAL;
+                ALTER TABLE humains ADD COLUMN loyaute REAL;
+                ALTER TABLE humains ADD COLUMN autorite REAL;
+                ALTER TABLE humains ADD COLUMN purete REAL;
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -549,7 +568,8 @@ public sealed partial class DepotMonde
                    reserves, metabolisme,
                    faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
                    marche, progression, bebe_porte_le,
-                   symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie
+                   symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
+                   honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -573,7 +593,7 @@ public sealed partial class DepotMonde
                     PartenaireId = lecteur.GetInt32(3),
                     Emplacement = lecteur.GetInt32(4),
                     Naissance = lecteur.GetInt64(5),
-                    Personnalite = LirePersonnalite(lecteur),
+                    Personnalite = LirePersonnalite(lecteur, sexe, etat.Graine, id),
                     X = lecteur.GetInt32(11),
                     Y = lecteur.GetInt32(12),
                     Faim = lecteur.GetDouble(13),
@@ -736,7 +756,23 @@ public sealed partial class DepotMonde
     /// Caractère d'un humain. Un monde enregistré avant la version 7 n'avait que cinq traits : la curiosité devient
     /// l'ouverture, la sociabilité l'extraversion, la prudence la conscience ; les nouveaux traits sont moyens.
     /// </summary>
-    private static Personnalite LirePersonnalite(SqliteDataReader l)
+    private static Personnalite LirePersonnalite(SqliteDataReader l, Sexe sexe, ulong graine, int id)
+    {
+        var p = LireCaractere(l);
+        if (l.IsDBNull(75))
+        {
+            // Monde enregistré avant la version 18 : les nouveaux traits sont tirés d'après ceux qu'il a déjà,
+            // d'un flux propre à chaque humain (le reste du monde n'en dépend pas, et une relecture donne les mêmes).
+            return Psyche.Completer(p, sexe, new Alea(graine ^ (0x4D4F52414CUL + (ulong)id * 0x9E3779B97F4A7C15UL)));
+        }
+        double V(int i) => l.GetDouble(i);
+        return p with
+        {
+            Moral = new TraitsMoraux(V(75), V(76), V(77), V(78), V(79), V(80), V(81), new FondementsMoraux(V(82), V(83), V(84), V(85), V(86))),
+        };
+    }
+
+    private static Personnalite LireCaractere(SqliteDataReader l)
     {
         var attachement = l.IsDBNull(31) ? 0.8 : l.GetDouble(31);
         if (l.IsDBNull(36))
@@ -901,7 +937,8 @@ public sealed partial class DepotMonde
                     reserves, metabolisme,
                     faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
                     marche, progression, bebe_porte_le,
-                    symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie)
+                    symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
+                    honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -913,7 +950,8 @@ public sealed partial class DepotMonde
                     $reserves, $metabolisme,
                     $faim_soif_jour, $froid_jour, $jours_seul, $colere, $deuil_evenement, $depression_evenement, $mort_evenement, $meurtrier,
                     $marche, $progression, $bebe_porte_le,
-                    $symetrie, $harmonie, $taille, $teint, $allure, $vers_hommes, $vers_femmes, $lucidite, $maladie);
+                    $symetrie, $harmonie, $taille, $teint, $allure, $vers_hommes, $vers_femmes, $lucidite, $maladie,
+                    $honnetete, $empathie_emo, $empathie_cog, $compassion, $psychopathie, $anxiete_aff, $evitement_aff, $soin, $equite, $loyaute, $autorite, $purete);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -926,7 +964,8 @@ public sealed partial class DepotMonde
                 "$reserves", "$metabolisme",
                 "$faim_soif_jour", "$froid_jour", "$jours_seul", "$colere", "$deuil_evenement", "$depression_evenement", "$mort_evenement", "$meurtrier",
                 "$marche", "$progression", "$bebe_porte_le",
-                "$symetrie", "$harmonie", "$taille", "$teint", "$allure", "$vers_hommes", "$vers_femmes", "$lucidite", "$maladie"];
+                "$symetrie", "$harmonie", "$taille", "$teint", "$allure", "$vers_hommes", "$vers_femmes", "$lucidite", "$maladie",
+                "$honnetete", "$empathie_emo", "$empathie_cog", "$compassion", "$psychopathie", "$anxiete_aff", "$evitement_aff", "$soin", "$equite", "$loyaute", "$autorite", "$purete"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -954,6 +993,10 @@ public sealed partial class DepotMonde
                     h.Biologie.Marche, h.Progression, h.BebePorteLe,
                     h.Apparence.Symetrie, h.Apparence.Harmonie, h.Apparence.Taille, h.Apparence.Teint, h.Apparence.Allure,
                     h.Orientation.VersHommes, h.Orientation.VersFemmes, h.Lucidite, (int)h.Maladie,
+                    h.Personnalite.Moral.Honnetete, h.Personnalite.Moral.EmpathieEmotionnelle, h.Personnalite.Moral.EmpathieCognitive,
+                    h.Personnalite.Moral.Compassion, h.Personnalite.Moral.Psychopathie, h.Personnalite.Moral.AnxieteAffective,
+                    h.Personnalite.Moral.EvitementAffectif, h.Personnalite.Moral.Fondements.Soin, h.Personnalite.Moral.Fondements.Equite,
+                    h.Personnalite.Moral.Fondements.Loyaute, h.Personnalite.Moral.Fondements.Autorite, h.Personnalite.Moral.Fondements.Purete,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();

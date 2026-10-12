@@ -71,6 +71,15 @@ public sealed class MoteurSimulation(
                     await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
                 }
 
+                // Le dernier humain est mort : le monde s'est mis en pause, quel que soit le réglage.
+                if (monde.PrendreExtinction() is { } extinction)
+                {
+                    service.FacteurAtteint = 0;
+                    service.Sauvegarder();
+                    await hub.Clients.All.SendAsync("Extinction", extinction, arret);
+                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
+                }
+
                 if (maintenant - derniereDiffusion >= IntervalleDiffusion)
                 {
                     derniereDiffusion = maintenant;

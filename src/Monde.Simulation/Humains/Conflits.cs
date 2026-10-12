@@ -18,6 +18,8 @@ public sealed partial class Comportement
     /// <summary>
     /// Après un accouplement hors du couple, le compagnon trompé peut l'apprendre : s'il est tout près (les amants se cachent :
     /// il ne les surprend qu'une fois sur deux), ou par un de ses amis qui les a vus et le lui dit (une fois sur quatre).
+    /// Qui lit bien les autres (empathie cognitive) devine davantage ; un menteur habile (peu honnête, froid, qui comprend
+    /// ce que l'autre croit) se trahit moins.
     /// </summary>
     private void Ebruiter(Humain a, Humain b, long accouplement, IReadOnlyList<Humain> tous, long maintenant)
     {
@@ -25,7 +27,9 @@ public sealed partial class Comportement
         {
             if (Vivant(tous, infidele.PartenaireId) is not { } trompe || trompe.Id == complice.Id) continue;
             Humain? temoin = null;
-            var voit = trompe.Activite != Activite.Dormir && Distance(trompe.X, trompe.Y, infidele.X, infidele.Y) <= 2 && alea.Reel() < 0.5;
+            var cache = Dissimulation(infidele);
+            var voit = trompe.Activite != Activite.Dormir && Distance(trompe.X, trompe.Y, infidele.X, infidele.Y) <= 2
+                       && alea.Reel() < 0.5 * Perspicacite(trompe) * cache;
             if (!voit)
             {
                 foreach (var t in tous)
@@ -33,7 +37,7 @@ public sealed partial class Comportement
                     if (!t.EstVivant || t.Id == a.Id || t.Id == b.Id || t.Id == trompe.Id || t.EstEnfant(maintenant)
                         || t.Activite == Activite.Dormir || Distance(t.X, t.Y, infidele.X, infidele.Y) > 2
                         || t.LienAvec(trompe.Id) is not { Amis: true }) continue;
-                    if (alea.Reel() < 0.25) temoin = t;
+                    if (alea.Reel() < 0.25 * Perspicacite(t) * cache) temoin = t;
                     break;
                 }
             }
@@ -65,10 +69,13 @@ public sealed partial class Comportement
             MotifGrief.Infidelite => $", qui l'a trahi{E(h)}",
             MotifGrief.Rival => $", qui s'est uni{E(cible)} à {(h.Sexe == Sexe.Femme ? "son compagnon" : "sa compagne")}",
             MotifGrief.Coups => $", qui l'a frappé{E(h)}",
+            MotifGrief.Vol => $", qui l'a volé{E(h)}",
+            MotifGrief.Trahison => ", qui a trahi les siens",
+            MotifGrief.Moeurs => "",
             _ => grief.VictimeId > 0 ? $", qui a tué {VieSociale.Parente(h, tous[grief.VictimeId - 1])}" : "",
         };
         var violence = (1 - p.Agreabilite) * h.Colere / 100 * (h.Sexe == Sexe.Homme ? 1.3 : 0.7)
-                       * (grief.Motif == MotifGrief.Meurtre ? 1.5 : 1);
+                       * (grief.Motif == MotifGrief.Meurtre ? 1.5 : 1) * (1 + Psyche.Froideur(p)) * (1.2 - 0.4 * p.Moral.Compassion);
         if (alea.Reel() >= 0.5 * violence)
         {
             Noter(maintenant, TypeEvenement.Conflit, h, cible, $"{h.Nom} s'emporte contre {cible.Nom}{motif} : cris, reproches et menaces.",
@@ -106,6 +113,19 @@ public sealed partial class Comportement
             Social.Offenser(vainqueur, vaincu, 15, vaincu.MortEvenementId, tous, maintenant);
             if (grief.Motif is MotifGrief.Infidelite or MotifGrief.Rival) Social.Durcir(h, 0.1, vaincu.MortEvenementId);
         }
+    }
+
+    /// <summary>Facteur (0,6 à 1,4) de qui perce à jour une ruse ou un mensonge : l'empathie cognitive.</summary>
+    internal static double Perspicacite(Humain h) => 0.6 + 0.8 * h.Personnalite.Moral.EmpathieCognitive;
+
+    /// <summary>
+    /// Facteur (0,4 à 1,2) de qui se laisse prendre : le menteur peu honnête, sans gêne ni remords, qui sait ce que l'autre
+    /// pense, se trahit moins (le psychopathe ment avec aisance ; Hare, 1993).
+    /// </summary>
+    internal static double Dissimulation(Humain h)
+    {
+        var m = h.Personnalite.Moral;
+        return Math.Clamp(1.2 - 0.5 * (1 - m.Honnetete) * m.EmpathieCognitive * 2 - 0.3 * Psyche.Froideur(h.Personnalite), 0.4, 1.2);
     }
 
     /// <summary>Force au combat : sexe, endurance, adresse, santé du moment et âge.</summary>

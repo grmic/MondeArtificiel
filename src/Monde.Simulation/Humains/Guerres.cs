@@ -174,13 +174,17 @@ public sealed partial class VieSociale
 
     /// <summary>
     /// Ardeur d'un guerrier contre une communauté : colère, soif de vengeance contre ses membres, tempérament querelleur et
-    /// peu prudent.
+    /// peu prudent. La loyauté envers les siens pousse à se battre pour eux (les fondements liants vont avec l'hostilité
+    /// envers les groupes rivaux ; Graham et al., 2009) ; la compassion retient le bras ; le psychopathe se bat sans haine,
+    /// pour ce qu'il y gagne.
     /// </summary>
     private static double Ardeur(Humain h, int ennemie, IReadOnlyList<Humain> humains)
     {
         var p = h.Personnalite;
+        var m = p.Moral;
         var vengeance = h.Griefs.Where(g => humains[g.ContreId - 1].CommunauteId == ennemie).Sum(g => g.Intensite) / 100;
-        return h.Colere / 100 + Math.Min(1.5, vengeance) + (1 - p.Agreabilite) + 0.5 * (1 - p.Prudence);
+        return h.Colere / 100 + Math.Min(1.5, vengeance) + (1 - p.Agreabilite) + 0.5 * (1 - p.Prudence)
+               + 0.6 * (m.Fondements.Loyaute - 0.5) - 0.8 * (m.Compassion - 0.5) + 0.4 * Psyche.Froideur(p);
     }
 
     /// <summary>
@@ -404,14 +408,17 @@ public sealed partial class VieSociale
         // L'avis de chacun.
         // Des terres qui ne nourrissent plus le groupe poussent chacun à les disputer ; une faim extrême ôte l'envie de marcher au combat.
         var terres = a.Disette ? 0.3 : 0;
-        double Avis(Humain h) => Ardeur(h, b.Id, humains) + terres + 0.5 * h.AffectionPour(instigateur.Id) / 100
+        // L'instigateur persuade d'autant mieux qu'il a du charisme et sait ce que chacun veut entendre (empathie cognitive).
+        var persuasion = 0.3 * (instigateur.Personnalite.Charisme - 0.5) + 0.2 * (instigateur.Personnalite.Moral.EmpathieCognitive - 0.5);
+        double Avis(Humain h) => Ardeur(h, b.Id, humains) + terres + 0.5 * h.AffectionPour(instigateur.Id) / 100 + persuasion
             - h.Personnalite.Prudence * danger - 0.5 * Math.Max(0, h.Faim - 60) / 40;
         const double Suivre = 0.6;
         // La figure du groupe donne son avis, et beaucoup s'y rangent.
         var figureContre = figure.Id != instigateur.Id && Avis(figure) < Suivre - 0.25;
         var figurePour = figure.Id == instigateur.Id || (!figureContre && Avis(figure) >= Suivre);
-        // La figure n'a d'autorité que sur ceux qui l'estiment.
-        double Influence(Humain h) => figureContre ? -0.3 : figurePour && h.AffectionPour(figure.Id) > 0 ? 0.2 : 0;
+        // La figure n'a d'autorité que sur ceux qui l'estiment, et davantage sur ceux qui respectent l'autorité.
+        double Influence(Humain h) => (figureContre ? -0.3 : figurePour && h.AffectionPour(figure.Id) > 0 ? 0.2 : 0)
+            * (0.5 + h.Personnalite.Moral.Fondements.Autorite);
         var avis = guerriers[a.Id].Select(h => (h, Score: h.Id == instigateur.Id ? 10 : Avis(h) + Influence(h)))
             .OrderByDescending(x => x.Score).ThenBy(x => x.h.Id).ToList();
         var volontaires = avis.Where(x => x.Score >= Suivre).Select(x => x.h).ToList();
@@ -429,7 +436,9 @@ public sealed partial class VieSociale
             if (allie is null || allie.Id == a.Id || allie.Id == b.Id || allie.Raid is not null || !guerriers.TryGetValue(allie.Id, out var siens) || siens.Count == 0) continue;
             var fa = humains[allie.FigureId - 1];
             var vengeance = Vengeance(siens, b.Id, humains);
-            var p = (Pacte(a.Id, allie.Id) ? 0.55 : 0.25) + 0.5 * vengeance + 0.3 * allie.Bellicisme - 0.3 * fa.Personnalite.Agreabilite
+            // Un pacte engage d'autant plus que la figure de l'allié est loyale.
+            var p = (Pacte(a.Id, allie.Id) ? 0.55 + 0.4 * (fa.Personnalite.Moral.Fondements.Loyaute - 0.5) : 0.25) + 0.5 * vengeance
+                    + 0.3 * allie.Bellicisme - 0.3 * fa.Personnalite.Agreabilite
                     - (RelationEntre(allie.Id, b.Id) == EtatRelation.Indifferentes ? 0.15 : 0) - (allie.Disette ? 0.2 : 0);
             var nallie = Minuscule(allie.Nom);
             if (alea.Reel() < p)
@@ -1099,12 +1108,23 @@ public sealed partial class Comportement
             Tuer(b, maintenant, CauseDeMort.Guerre, $"{b.Nom} meurt de ses blessures, à {AgeEnMots(b, maintenant)}, après le raid de la {nc} contre la {ncible}.", id);
         }
         // Ce que chacun en garde au fond de lui : le tueur, sa fierté ou son remords ; les attaqués, la peur qu'ils reviennent.
+        // Le psychopathe ne garde ni remords ni fierté pour les siens : seulement ce qu'il y a gagné.
         foreach (var (victime, tueur, _) in tues.Where(t => t.Tueur.EstVivant))
         {
-            if (tueur.Personnalite.Agreabilite >= 0.6)
-                Jardin.Confier(tueur, TypeIntime.Peine, victime.Id, $"J'ai tué {victime.Nom}. Son visage me hante.", 40 + 40 * tueur.Personnalite.Agreabilite, id, maintenant, $"tue:{victime.Id}");
+            var tp = tueur.Personnalite;
+            if (Psyche.EstPsychopathe(tueur, maintenant))
+                Jardin.Confier(tueur, TypeIntime.ImageDeSoi, victime.Id, $"J'ai tué {victime.Nom}. Je n'ai rien senti.", 40, id, maintenant, $"tue:{victime.Id}");
+            else if (tp.Agreabilite >= 0.6 || tp.Moral.EmpathieEmotionnelle >= 0.65)
+                Jardin.Confier(tueur, TypeIntime.Peine, victime.Id, $"J'ai tué {victime.Nom}. Son visage me hante.",
+                    40 + 20 * tp.Agreabilite + 20 * tp.Moral.EmpathieEmotionnelle, id, maintenant, $"tue:{victime.Id}");
             else
-                Jardin.Confier(tueur, TypeIntime.Joie, victime.Id, $"J'ai abattu {victime.Nom} : les miens sont plus forts.", 30 + 40 * (1 - tueur.Personnalite.Agreabilite), id, maintenant, $"tue:{victime.Id}");
+                Jardin.Confier(tueur, TypeIntime.Joie, victime.Id, $"J'ai abattu {victime.Nom} : les miens sont plus forts.", 30 + 40 * (1 - tp.Agreabilite), id, maintenant, $"tue:{victime.Id}");
+        }
+        // Un combat où des siens sont tombés laisse une trace durable à ceux qui l'ont vécu (peur, sursauts : Jeronimus et al., 2014).
+        foreach (var h in assaillants.Concat(defenseurs).Where(h => h.EstVivant))
+        {
+            var siens = tues.Count(t => t.Victime.CommunauteId == h.CommunauteId) + touches.Count(t => !t.EstVivant && t.CommunauteId == h.CommunauteId);
+            if (siens > 0) Jardin.Marquer(h, Epreuve.Guerre, Math.Min(1, 0.3 + 0.2 * siens), id, maintenant, alea);
         }
         foreach (var d in defenseurs.Where(d => d.EstVivant))
         {

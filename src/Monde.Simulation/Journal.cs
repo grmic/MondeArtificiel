@@ -39,6 +39,10 @@ public enum TypeEvenement : byte
     Attirance = 21,
     /// <summary>Exil hors de la communauté, rejet par un parent, retour d'exil.</summary>
     Exclusion = 22,
+    /// <summary>Soins à un malade ou un blessé, consolation, enfant recueilli : la compassion en actes.</summary>
+    Entraide = 23,
+    /// <summary>Vol de nourriture, mensonge démasqué.</summary>
+    Vol = 24,
 }
 
 /// <summary>

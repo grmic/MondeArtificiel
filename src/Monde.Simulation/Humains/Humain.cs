@@ -99,9 +99,15 @@ public sealed record Personnalite(double Ouverture, double Conscience, double Ex
     /// <summary>
     /// Charisme : extraverti, émotionnellement stable, chaleureux, à l'aise pour communiquer.
     /// Le meneur d'un groupe n'est pas désigné : il émerge de son charisme et de ses liens.
+    /// Comprendre les autres (empathie cognitive) aide à les convaincre ; le psychopathe y ajoute un charme superficiel,
+    /// une aisance sans gêne (Cleckley, 1941 ; facette « audace » de Patrick et al., 2009).
     /// </summary>
-    public double Charisme => Math.Clamp(0.4 * Extraversion + 0.25 * (1 - Nevrosisme) + 0.15 * Agreabilite
-        + 0.2 * Math.Clamp((Intelligence.Verbale - 55) / 90, 0, 1), 0, 1);
+    public double Charisme => Math.Clamp(0.35 * Extraversion + 0.2 * (1 - Nevrosisme) + 0.15 * Agreabilite
+        + 0.2 * Math.Clamp((Intelligence.Verbale - 55) / 90, 0, 1) + 0.1 * Moral.EmpathieCognitive
+        + 0.1 * Math.Clamp((Moral.Psychopathie - 0.6) / 0.3, 0, 1), 0, 1);
+
+    /// <summary>Compassion, empathies, honnêteté, psychopathie, attachement adulte et fondements moraux.</summary>
+    public TraitsMoraux Moral { get; init; } = TraitsMoraux.Moyens;
 }
 
 /// <summary>
@@ -130,7 +136,7 @@ public sealed class Humain
     /// <summary>Date de naissance en secondes du monde (négative si avant l'an 1).</summary>
     public required long Naissance { get; init; }
 
-    public required Personnalite Personnalite { get; init; }
+    public required Personnalite Personnalite { get; set; }
 
     public required Biologie Biologie { get; init; }
 

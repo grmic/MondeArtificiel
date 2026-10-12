@@ -18,10 +18,12 @@ public sealed partial class VieSociale
 {
     /// <summary>
     /// Tolérance d'un humain envers ces amours, d'après son caractère : surtout l'ouverture d'esprit, puis la bienveillance,
-    /// et un peu le goût de l'ordre (Shackelford et Besser, 2007 ; revue de Herek et McLemore, 2013).
+    /// et un peu le goût de l'ordre (Shackelford et Besser, 2007 ; revue de Herek et McLemore, 2013) ; le sens de la pureté
+    /// (sensibilité au dégoût) les fait réprouver (Inbar et al., 2009).
     /// </summary>
     public static double TemperamentMoeurs(Personnalite p) =>
-        Math.Clamp(0.5 + 1.0 * (p.Ouverture - 0.5) + 0.6 * (p.Agreabilite - 0.5) - 0.4 * (p.Conscience - 0.5), 0, 1);
+        Math.Clamp(0.5 + 1.0 * (p.Ouverture - 0.5) + 0.6 * (p.Agreabilite - 0.5) - 0.4 * (p.Conscience - 0.5)
+                   - 0.5 * (p.Moral.Fondements.Purete - 0.5), 0, 1);
 
     /// <summary>Tolérance de l'entourage d'un humain : l'usage de sa communauté, sinon son propre tempérament.</summary>
     public double ToleranceMoeursDe(Humain h) =>

@@ -18,6 +18,8 @@ export interface Horloge {
   reprendreVitesse: boolean;
   /** Le monde se met en pause quand une catastrophe menace des humains. */
   pauseCatastrophe: boolean;
+  /** Plus aucun humain ne vit : seule la nature continue. */
+  eteint: boolean;
 }
 
 interface Vitesse {

@@ -133,8 +133,11 @@ public sealed partial class Comportement
         var compagnon = Vivant(tous, h.PartenaireId);
         if (compagnon is null || compagnon.Id == autre.Id) return 1;
         var occasion = Distance(h.X, h.Y, compagnon.X, compagnon.Y) > 8 ? 0.04 : 0.01;
+        // Plus fréquentes aussi chez les évitants (DeWall et al., 2011), les peu honnêtes et les psychopathes (Lee et Ashton, 2012).
+        var m = h.Personnalite.Moral;
         return (occasion + 0.02 * desir) * (0.4 + 0.6 * (Social?.ToleranceDe(h) ?? 0.5)) * (1.4 - 0.8 * h.Personnalite.Conscience)
-               * Math.Clamp(1.2 - h.AffectionPour(compagnon.Id) / 100, 0.2, 1.2);
+               * Math.Clamp(1.2 - h.AffectionPour(compagnon.Id) / 100, 0.2, 1.2)
+               * (0.6 + 0.8 * (1 - m.Honnetete)) * (0.8 + 0.4 * m.EvitementAffectif) * (1 + Psyche.Froideur(h.Personnalite));
     }
 
     private static bool EstDispose(Humain a, long maintenant) =>
@@ -163,7 +166,12 @@ public sealed partial class Comportement
         var infidele = Vivant(tous, a.PartenaireId) is { } pa && pa.Id != b.Id || Vivant(tous, b.PartenaireId) is { } pb && pb.Id != a.Id;
         var hors = infidele ? " (hors de leur couple)" : "";
         var accouplement = Noter(maintenant, TypeEvenement.Accouplement, femme, homme, $"{femme.Nom} et {homme.Nom} s'accouplent{hors}.");
-        if (infidele) Ebruiter(a, b, accouplement, tous, maintenant);
+        if (infidele)
+        {
+            Remords(a, b, accouplement, tous, maintenant);
+            Remords(b, a, accouplement, tous, maintenant);
+            Ebruiter(a, b, accouplement, tous, maintenant);
+        }
         if (alea.Reel() < ChanceConception(femme, homme, tous, maintenant))
         {
             var jours = Math.Clamp(JoursDeGrossesseMoyens + Biologie.Normale(alea) * EcartJoursDeGrossesse, 230, 300);
@@ -183,6 +191,28 @@ public sealed partial class Comportement
             VieSociale.Rejouir(a, 10);
             VieSociale.Rejouir(b, 10);
         }
+    }
+
+    /// <summary>
+    /// Celui qui a trompé son compagnon le garde pour lui : la honte chez qui ressent la peine qu'il causerait,
+    /// rien qu'un secret bien gardé chez le psychopathe, sans culpabilité (Hare, 1993).
+    /// </summary>
+    private void Remords(Humain h, Humain complice, long accouplement, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        if (Vivant(tous, h.PartenaireId) is not { } compagnon || compagnon.Id == complice.Id) return;
+        var cle = $"infidelite:{compagnon.Id}";
+        if (Recent(h, cle, 60, maintenant)) return;
+        if (Psyche.EstPsychopathe(h, maintenant))
+        {
+            Confier(h, TypeIntime.Intention, compagnon.Id, $"{compagnon.Nom} n'en saura rien. Et quand bien même.", 35, accouplement, maintenant, cle);
+            return;
+        }
+        var m = h.Personnalite.Moral;
+        var honte = 100 * Math.Clamp(0.25 * m.EmpathieEmotionnelle + 0.25 * m.Honnetete + 0.3 * Math.Max(0, h.AffectionPour(compagnon.Id)) / 100
+                                     + 0.2 * m.Fondements.Loyaute, 0, 1) * (1 - Psyche.Froideur(h.Personnalite));
+        if (honte < 25) return;
+        Confier(h, TypeIntime.Peine, compagnon.Id, $"J'ai trahi {compagnon.Nom} avec {complice.Nom}. J'en ai honte.", honte, accouplement, maintenant, cle);
+        h.Humeur = Math.Max(0, h.Humeur - honte / 10);
     }
 
     /// <summary>

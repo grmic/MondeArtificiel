@@ -21,7 +21,23 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 10 (avant les catastrophes et les maladies).</summary>
     /// <summary>Ramène un fichier au schéma 11 (avant les distances réelles et l'allure de marche).</summary>
     /// <summary>Ramène un fichier au schéma 16 (avant les suites des catastrophes).</summary>
-    internal const string RetourVersion16 = """
+    internal const string RetourVersion17 = """
+        ALTER TABLE humains DROP COLUMN honnetete;
+        ALTER TABLE humains DROP COLUMN empathie_emo;
+        ALTER TABLE humains DROP COLUMN empathie_cog;
+        ALTER TABLE humains DROP COLUMN compassion;
+        ALTER TABLE humains DROP COLUMN psychopathie;
+        ALTER TABLE humains DROP COLUMN anxiete_aff;
+        ALTER TABLE humains DROP COLUMN evitement_aff;
+        ALTER TABLE humains DROP COLUMN soin;
+        ALTER TABLE humains DROP COLUMN equite;
+        ALTER TABLE humains DROP COLUMN loyaute;
+        ALTER TABLE humains DROP COLUMN autorite;
+        ALTER TABLE humains DROP COLUMN purete;
+        PRAGMA user_version = 17;
+        """;
+
+    internal const string RetourVersion16 = RetourVersion17 + """
         ALTER TABLE catastrophes DROP COLUMN suites_jusqua;
         ALTER TABLE catastrophes DROP COLUMN morts_suites;
         PRAGMA user_version = 16;

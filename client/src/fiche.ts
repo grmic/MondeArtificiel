@@ -77,6 +77,12 @@ interface Fiche {
   histoire: Evenement[];
   epreuves: Epreuves;
   attraits: Attraits;
+  /** Compassion, empathies, honnêteté-humilité, psychopathie, attachement adulte. */
+  coeur: Trait[];
+  /** Fondements moraux (soin, équité, loyauté, autorité, pureté). */
+  morale: Trait[];
+  /** Le caractère en phrases : style d'attachement, psychopathie, morale dominante. */
+  portrait: string[];
 }
 
 /** Beauté et attractivité (0 à 100, aux yeux de sa communauté), orientation, ce qu'il en sait, exclusions. */
@@ -285,6 +291,9 @@ export class PanneauFiche {
       corps.append(this.jauges("Besoins", { faim: h.faim, soif: h.soif, fatigue: h.fatigue, froid: h.froid, santé: h.sante, réserves: h.reserves }, 100));
     }
     corps.append(this.traits("Caractère", f.caractere, 1));
+    if (f.portrait.length > 0) corps.append(el("p", "portrait", f.portrait.join(" ")));
+    corps.append(this.traits("Cœur et conscience", f.coeur, 1));
+    corps.append(this.traits("Morale (fondements)", f.morale, 1));
     corps.append(this.traits("Intelligence (QI, moyenne 100)", f.intelligence, 160));
     const bio = el("p", "discret", Object.entries(f.biologie).map(([k, v]) => `${k} ${v}`).join(" · "));
     corps.append(el("h3", undefined, "Biologie"), bio);

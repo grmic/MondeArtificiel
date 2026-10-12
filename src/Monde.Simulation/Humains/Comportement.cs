@@ -101,6 +101,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             NourrirEnfant(h, Vivant(tous, h.MereId) ?? (partenaire != pere ? partenaire : null), pere);
         }
         PartagerAvecProches(h, tous);
+        Voler(h, tous, maintenant);
+        if (!h.EstVivant) return;
         Grossesse(h, tous, maintenant);
         if (!h.EstVivant) return;
         if (h.Activite != Activite.Dormir) Affronter(h, tous, maintenant);
@@ -160,8 +162,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (Distance(h.X, h.Y, d.X, d.Y) > 1) continue;
             var lien = d.LienAvec(h.Id);
             if (lien is null) continue;
-            var communaute = d.CommunauteId != 0 && d.CommunauteId == h.CommunauteId ? 0.3 : 0;
-            var envie = Math.Clamp(lien.Affection / 100 + communaute, 0, 1) * d.Personnalite.Agreabilite;
+            // La loyauté envers le groupe pousse à nourrir les siens ; la compassion, à nourrir quiconque a faim, même sans l'aimer.
+            var dm = d.Personnalite.Moral;
+            var communaute = d.CommunauteId != 0 && d.CommunauteId == h.CommunauteId ? 0.3 * (0.5 + dm.Fondements.Loyaute) : 0;
+            var detresse = Math.Max(0, dm.Compassion - 0.5) * (h.Faim - 60) / 40;
+            // Partager équitablement est le propre des honnêtes ; l'avide garde tout, le psychopathe ne donne que par calcul.
+            var generosite = (0.5 * d.Personnalite.Agreabilite + 0.25 * dm.Compassion + 0.25 * dm.Honnetete) * (1 - 0.8 * Psyche.Froideur(d.Personnalite));
+            var envie = Math.Clamp(lien.Affection / 100 + communaute + detresse, 0, 1) * generosite;
             if (envie <= 0.05) continue;
             var donne = Math.Min(h.Faim - 40, 0.6 * envie);
             h.Faim -= donne;
@@ -175,7 +182,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>
     /// Celui qui veille sur un enfant : sa mère, sinon son père, sinon l'adulte qui l'aime le plus (un aîné, un oncle,
     /// une amie de la famille). Chez les chasseurs-cueilleurs, les orphelins sont recueillis par des proches
-    /// (Hrdy, 2009), même si leur survie reste plus fragile.
+    /// (Hrdy, 2009), même si leur survie reste plus fragile. Un adulte compatissant de sa communauté le recueille
+    /// plus volontiers, même s'il le connaît moins ; un cœur froid ne recueille personne.
     /// </summary>
     public static Humain? Gardien(Humain h, IReadOnlyList<Humain> tous, long maintenant)
     {
@@ -185,8 +193,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         foreach (var l in h.Liens)
         {
             var a = tous[l.Id - 1];
-            if (!a.EstVivant || a.EstEnfant(maintenant) || l.Affection < meilleur) continue;
-            (choisi, meilleur) = (a, l.Affection);
+            if (!a.EstVivant || a.EstEnfant(maintenant)) continue;
+            var m = a.Personnalite.Moral;
+            var score = (l.Affection + (a.CommunauteId != 0 && a.CommunauteId == h.CommunauteId ? 40 * (m.Compassion - 0.5) : 0))
+                        * (1 - Psyche.Froideur(a.Personnalite));
+            if (score < meilleur) continue;
+            (choisi, meilleur) = (a, score);
         }
         return choisi;
     }
@@ -781,13 +793,16 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         h.CibleX = h.CibleY = -1;
         // En regardant l'adulte boire, cueillir ou s'abriter, l'enfant apprend où sont l'eau, la nourriture et les abris.
+        // L'adulte qui comprend ce que l'enfant sait et ignore lui montre mieux (pédagogie naturelle ; Csibra et Gergely, 2009) :
+        // l'enfant retient mieux.
+        var apprend = Aptitude(h) + 20 * (gardien.Personnalite.Moral.EmpathieCognitive - 0.5);
         switch (gardien.Activite)
         {
-            case Activite.Boire when EauDouceAPortee(h.X, h.Y): h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, _maintenant, Aptitude(h)); break;
+            case Activite.Boire when EauDouceAPortee(h.X, h.Y): h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, _maintenant, apprend); break;
             case Activite.Cueillir when ecosysteme.Plantes[carte.Indice(h.X, h.Y)] >= 1000:
-                h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h)); break;
+                h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, apprend); break;
             case Activite.Dormir or Activite.SAbriter when Climat.Abri(carte.BiomeEn(h.X, h.Y)) >= 0.4:
-                h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h)); break;
+                h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, apprend); break;
         }
         switch (besoin)
         {

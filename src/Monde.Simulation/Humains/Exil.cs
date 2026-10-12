@@ -60,6 +60,10 @@ public sealed partial class VieSociale
         MotifGrief.Meurtre => 1,
         MotifGrief.Moeurs => 0.6,
         MotifGrief.Coups => 0.5,
+        // Le voleur pris sur le fait : chez les chasseurs-cueilleurs, le profiteur qui ne partage pas et prend est moqué,
+        // puis tenu à l'écart (Boehm, 1999).
+        MotifGrief.Vol => 0.45,
+        MotifGrief.Trahison => 0.5,
         _ => 0.3,
     };
 
@@ -84,6 +88,8 @@ public sealed partial class VieSociale
         MotifGrief.Meurtre => "pour un meurtre",
         MotifGrief.Moeurs => "pour ses amours avec quelqu'un de son sexe",
         MotifGrief.Coups => "pour sa violence",
+        MotifGrief.Vol => "pour ses vols",
+        MotifGrief.Trahison => "pour avoir trahi les siens",
         MotifGrief.Infidelite or MotifGrief.Rival => "pour avoir semé la discorde en s'unissant hors de son couple",
         _ => $"parce que plus personne ne {(x.Sexe == Sexe.Femme ? "la" : "le")} supporte",
     };
@@ -96,6 +102,7 @@ public sealed partial class VieSociale
             MotifGrief.Meurtre => (3.0, 0.4),
             MotifGrief.Moeurs => (1.5, 0.25),
             MotifGrief.Coups => (0.6, 0.1),
+            MotifGrief.Vol => (0.5, 0.1),
             MotifGrief.Infidelite or MotifGrief.Rival => (0.4, 0.05),
             _ => (0.8, 0.1),
         };
@@ -155,8 +162,11 @@ public sealed partial class VieSociale
                 if (exile is null || contre.Count > hostiles.Count) (exile, motif, hostiles) = (x, principal, contre);
             }
             if (exile is null) continue;
-            var bienveillance = hostiles.Average(m => m.Personnalite.Agreabilite);
-            if (alea.Reel() >= 0.3 * (1.2 - bienveillance)) continue;
+            // Les cœurs bienveillants hésitent à chasser ; un groupe attaché à la loyauté, à l'autorité et à la pureté
+            // punit plus volontiers celui qui trouble l'ordre (Graham et al., 2009).
+            var bienveillance = hostiles.Average(m => (m.Personnalite.Agreabilite + m.Personnalite.Moral.Compassion) / 2);
+            var severite = hostiles.Average(m => m.Personnalite.Moral.Fondements.Liants);
+            if (alea.Reel() >= 0.3 * (1.2 - bienveillance) * (0.7 + 0.6 * severite)) continue;
             Chasser(exile, c, motif, hostiles, humains, maintenant);
         }
 
@@ -192,6 +202,7 @@ public sealed partial class VieSociale
         x.Colere = Math.Min(100, x.Colere + 20);
         Jardin.Confier(x, TypeIntime.Peine, 0, $"Les miens m'ont chassé{E(x)}.", 70, id, maintenant, $"exil:{c.Id}");
         Jardin.Confier(x, TypeIntime.ImageDeSoi, 0, "Je ne vaux plus rien aux yeux des miens.", 30 + 40 * x.Personnalite.Nevrosisme, id, maintenant, "image:exil");
+        Jardin.Marquer(x, Epreuve.Exil, duree == 0 ? 1 : Math.Min(1, 0.4 + duree / (double)Calendrier.SecondesParAn / 3), id, maintenant, alea);
         foreach (var m in hostiles) Jardin.Confier(m, TypeIntime.Opinion, x.Id, $"Il fallait chasser {x.Nom}.", 40, id, maintenant, $"opinion:{x.Id}");
 
         // Le compagnon peut le suivre, s'il l'aime assez et ne lui en veut pas.

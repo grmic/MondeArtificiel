@@ -77,6 +77,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     {
         var monde = service.Monde;
         var maintenant = monde.Secondes;
+        if (monde.Eteint && demande.Type is "naissance" or "mort")
+            throw new HubException("Plus aucun humain : il n'y aura plus de naissance ni de mort.");
         try
         {
             var objectif = demande.Type switch
@@ -343,7 +345,8 @@ public sealed record HorlogeDto(
     double FacteurAtteint,
     string? Objectif,
     bool ReprendreVitesse,
-    bool PauseCatastrophe)
+    bool PauseCatastrophe,
+    bool Eteint)
 {
     public static HorlogeDto Depuis(ServiceMonde service)
     {
@@ -353,6 +356,6 @@ public sealed record HorlogeDto(
         return new HorlogeDto(secondes, pas, date.ToString(), date.Annee, date.NomSaison,
             date.JourDeSaison, date.Heure, date.Minute, date.EstJour, date.Lumiere,
             objectif is null ? Vitesse.NiveauDe(facteur) : -1, facteur,
-            facteur == 0 ? 0 : service.FacteurAtteint, objectif?.Description, service.ReprendreVitesse, service.PauseSurCatastrophe);
+            facteur == 0 ? 0 : service.FacteurAtteint, objectif?.Description, service.ReprendreVitesse, service.PauseSurCatastrophe, service.Monde.Eteint);
     }
 }

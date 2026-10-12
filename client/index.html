@@ -81,6 +81,12 @@
     <aside id="demographie" class="demographie-panneau panneau-lateral" aria-label="Démographie" hidden></aside>
     <aside id="caracteristiques" class="monde-panneau panneau-lateral" aria-label="Caractéristiques du Monde" hidden></aside>
     <div id="alerte" class="alerte-catastrophe" role="alert" hidden></div>
+    <div id="extinction" class="alerte-catastrophe grave extinction" role="alert" hidden>
+      <span id="texteExtinction"></span>
+      <button type="button" id="extinctionRestaurer">Restaurer une sauvegarde</button>
+      <button type="button" id="extinctionNouveau">Créer un nouveau monde</button>
+      <button type="button" class="fermer" id="extinctionFermer" title="Fermer : la nature continue seule si vous relancez le temps">×</button>
+    </div>
     <aside id="communautes" class="communautes-panneau panneau-lateral" aria-label="Communautés" hidden></aside>
     <section id="panneauTerritoires" class="territoires" aria-label="Terres des communautés" hidden></section>
     <aside id="infos" class="infos">Survole la carte pour voir une tuile. Molette : zoom · glisser : déplacer.</aside>

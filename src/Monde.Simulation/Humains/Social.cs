@@ -524,10 +524,17 @@ public sealed partial class VieSociale(Alea alea)
             if (h.MereId != 0 && h.MereId == mort.MereId) k = Math.Max(k, 40);
             var affection = h.AffectionPour(mort.Id);
             if (affection > 0) k = Math.Max(k, 0.7 * affection);
-            if (k < 8 && h.CommunauteId != 0 && h.CommunauteId == mort.CommunauteId) k = 8;
+            // Toute la communauté est touchée, les cœurs compatissants davantage.
+            var p = h.Personnalite;
+            var voisin = 8 * (0.5 + p.Moral.Compassion);
+            if (k < voisin && h.CommunauteId != 0 && h.CommunauteId == mort.CommunauteId) k = voisin;
             if (k <= 0) continue;
 
-            k *= 0.6 + 0.8 * h.Personnalite.Nevrosisme; // les plus sensibles souffrent davantage
+            k *= 0.6 + 0.8 * p.Nevrosisme; // les plus sensibles souffrent davantage
+            // L'empathie émotionnelle fait ressentir la perte ; l'attachement anxieux la rend plus douloureuse, l'évitant la tient
+            // à distance (Fraley et Shaver, 1999) ; le psychopathe n'éprouve presque rien (Cleckley, 1941 ; Hare, 1993).
+            k *= (0.75 + 0.5 * p.Moral.EmpathieEmotionnelle) * (1 + 0.6 * (p.Moral.AnxieteAffective - 0.5) - 0.6 * (p.Moral.EvitementAffectif - 0.5))
+                 * (1 - 0.7 * Psyche.Froideur(p));
             if (k > h.Chagrin)
             {
                 h.DeuilDeId = mort.Id;
@@ -540,6 +547,8 @@ public sealed partial class VieSociale(Alea alea)
                 Noter(maintenant, TypeEvenement.Humeur, h, mort, $"{h.Nom} pleure {Parente(h, mort)}.", mort.MortEvenementId);
                 Jardin.Pleurer(h, mort, Parente(h, mort), k, maintenant);
             }
+            // La perte d'un très proche peut changer durablement (Jeronimus et al., 2014).
+            if (k >= 50) Jardin.Marquer(h, Epreuve.Deuil, (k - 40) / 60, mort.MortEvenementId, maintenant, alea);
 
             // Un proche tué : la peine se double d'une soif de vengeance contre le meurtrier (Daly et Wilson, 1988).
             if (mort.CauseDeMort is CauseDeMort.Meurtre or CauseDeMort.Guerre && mort.MeurtrierId > 0 && mort.MeurtrierId != h.Id && k >= 20
@@ -613,7 +622,12 @@ public sealed partial class VieSociale(Alea alea)
                     && RelationEntre(h.CommunauteId, autre.CommunauteId) == EtatRelation.EnGuerre) continue;
                 // Pour entrer, il faut une amitié ; pour rester, un lien d'affection suffit (ou, en guerre, de ne pas se détester).
                 var dejaEnsemble = h.CommunauteId != 0 && h.CommunauteId == autre.CommunauteId;
-                var attache = enGuerre.Contains(h.CommunauteId) ? 0 : 15;
+                // Le loyal reste avec les siens même quand les liens s'usent, et plus encore dans la disette ; le peu loyal
+                // s'en va quand le groupe ne le nourrit plus.
+                var loyaute = (h.Personnalite.Moral.Fondements.Loyaute + autre.Personnalite.Moral.Fondements.Loyaute) / 2;
+                var disette = dejaEnsemble && communautes[h.CommunauteId - 1].Disette;
+                var attache = enGuerre.Contains(h.CommunauteId) ? 0
+                    : Math.Max(0, 15 * (1.5 - loyaute) + (disette ? 20 * (0.5 - loyaute) : 0));
                 if (dejaEnsemble ? l.Affection >= attache && l.Familiarite >= 20 : l.Amis) Unir(h.Id, l.Id);
             }
         }
@@ -748,8 +762,11 @@ public sealed partial class VieSociale(Alea alea)
             if (apres != 0 && communautes[apres - 1].FondeeLe != maintenant
                 && fondues.GetValueOrDefault(avant) != apres)
             {
-                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}{Avec(h)}{AgeSiEnfant(h, maintenant)}.",
+                var arrivee = Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}{Avec(h)}{AgeSiEnfant(h, maintenant)}.",
                     communaute: apres, autreCommunaute: avant);
+                if (avant != 0 && communautes[avant - 1].Active && !h.EstEnfant(maintenant)
+                    && RelationEntre(avant, apres) is EtatRelation.Rivales or EtatRelation.Hostiles)
+                    Trahir(h, communautes[avant - 1], communautes[apres - 1], membres, arrivee, maintenant);
             }
             else if (apres == 0 && communautes[avant - 1].Active)
             {
@@ -759,6 +776,29 @@ public sealed partial class VieSociale(Alea alea)
         }
         Usages(humains, communautes, maintenant);
         Moeurs(humains, communautes, maintenant);
+    }
+
+    /// <summary>
+    /// Passer chez un groupe rival, c'est trahir aux yeux de ceux qui tiennent à la loyauté : ils en gardent rancune,
+    /// d'autant plus qu'ils connaissaient le transfuge (le traître est puni plus durement qu'un étranger ; Graham et al., 2011).
+    /// </summary>
+    private void Trahir(Humain h, Communaute quittee, Communaute rejointe, List<Humain> membres, long arrivee, long maintenant)
+    {
+        var anciens = membres.Where(m => m.CommunauteId == quittee.Id && !m.EstEnfant(maintenant) && m.LienAvec(h.Id) is not null).ToList();
+        long id = 0;
+        foreach (var m in anciens)
+        {
+            var colere = 100 * (m.Personnalite.Moral.Fondements.Loyaute - 0.45) * (0.6 + Math.Max(0, m.AffectionPour(h.Id)) / 100);
+            if (colere < 10) continue;
+            if (id == 0)
+            {
+                id = Noter(maintenant, TypeEvenement.Conflit, h, null,
+                    $"Pour les siens de la {Minuscule(quittee.Nom)}, {h.Nom} est {(h.Sexe == Sexe.Femme ? "une traîtresse" : "un traître")} : {(h.Sexe == Sexe.Femme ? "elle" : "il")} est passé{E(h)} chez la {Minuscule(rejointe.Nom)}, leur rivale.",
+                    arrivee, communaute: quittee.Id, autreCommunaute: rejointe.Id);
+            }
+            AjouterGrief(m, new Grief(h.Id, MotifGrief.Trahison, Math.Min(100, colere), Math.Min(100, colere), id));
+            ChangerAffection(m, h, -colere / 4, maintenant);
+        }
     }
 
     /// <summary>« , avec sa fille X (3 ans) » ou « , avec ses enfants X (5 ans) et Y (8 mois) ».</summary>

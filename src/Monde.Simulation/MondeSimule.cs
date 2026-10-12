@@ -80,6 +80,10 @@ public sealed class MondeSimule
     private readonly Catastrophes _catastrophes;
     private readonly List<AlerteCatastrophe> _alertes = [];
     private bool _pauseDemandee;
+    // Plus aucun humain vivant : l'extinction n'est annoncée qu'une fois (un monde rechargé éteint ne l'annonce pas de nouveau).
+    private bool _eteint;
+    private string? _extinction;
+    private bool _pauseExtinction;
     private readonly VieSociale _social;
     private readonly List<Communaute> _communautes;
     private readonly HashSet<string> _noms;
@@ -136,6 +140,7 @@ public sealed class MondeSimule
         };
         _comportement.Catastrophes = _catastrophes;
         _noms = _humains.Select(x => x.Nom).ToHashSet();
+        _eteint = !_humains.Any(x => x.EstVivant);
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
         _archivesNonEnregistrees.AddRange(etat.ArchivesNonEnregistrees ?? []);
 
@@ -472,6 +477,16 @@ public sealed class MondeSimule
                 }
             }
 
+            // Le dernier humain vient de mourir : le monde s'arrête, quel que soit le réglage des pauses.
+            if (_pauseExtinction)
+            {
+                _pauseExtinction = false;
+                _objectif = null;
+                _facteur = 0;
+                _reliquat = 0;
+                return (pas, false);
+            }
+
             // Chaque pas s'exécute à l'instant exact où il tombe.
             var prochain = (_secondes / SecondesParPas + 1) * SecondesParPas;
             if (prochain > fin)
@@ -575,8 +590,10 @@ public sealed class MondeSimule
             _comportement.Population = _humains.Count(h => h.EstVivant);
             _comportement.Journal.AddRange(_comportement.Routine.Resumer(_humains, _secondes).Select(e => e with { Id = _numeros.Suivant() }));
             _social.Journee(_humains, _secondes);
+            _social.Coeur(_humains, _secondes);
             _social.Debattre(_humains, _communautes, _secondes);
             Oublier();
+            Murir();
             _social.Humeurs(_humains, _secondes);
             if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
             {
@@ -589,10 +606,48 @@ public sealed class MondeSimule
     }
 
     /// <summary>
+    /// Le dernier humain est mort : le journal le note comme un tournant du monde, en citant cette dernière mort pour cause,
+    /// et le monde se met en pause. La nature continue si l'observateur relance le temps.
+    /// </summary>
+    private void Eteindre()
+    {
+        _eteint = true;
+        var dernier = _humains.OrderBy(h => h.MortLe).ThenBy(h => h.Id).Last();
+        var nes = _humains.Count;
+        var texte = $"{dernier.Nom} était {(dernier.Sexe == Sexe.Femme ? "la dernière" : "le dernier")} des humains : "
+            + $"avec sa mort, l'humanité s'est éteinte, {Echelle.Duree(_secondes)} après la naissance du monde. "
+            + $"{nes} humains auront vécu ici.";
+        _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Mort, dernier.Id, 0, texte)
+        {
+            Id = _numeros.Suivant(), CauseId = dernier.MortEvenementId, Significatif = true,
+        });
+        _extinction = texte;
+        _pauseExtinction = true;
+    }
+
+    /// <summary>Plus aucun humain ne vit dans ce monde.</summary>
+    public bool Eteint
+    {
+        get { lock (_verrou) return _eteint; }
+    }
+
+    /// <summary>Annonce de l'extinction, rendue une seule fois.</summary>
+    public string? PrendreExtinction()
+    {
+        lock (_verrou)
+        {
+            var texte = _extinction;
+            _extinction = null;
+            return texte;
+        }
+    }
+
+    /// <summary>
     /// Tous les événements sont numérotés dès leur création : versés dans l'ordre des numéros, le journal suit l'ordre des faits.
     /// </summary>
     private void VerserJournal()
     {
+        if (!_eteint && _humains.Count > 0 && !_humains.Any(h => h.EstVivant)) Eteindre();
         foreach (var mort in _comportement.Deces) _social.Endeuiller(mort, _humains, _secondes);
         _comportement.Deces.Clear();
         foreach (var e in _comportement.Journal.Concat(_social.Journal).Concat(_catastrophes.Journal).OrderBy(e => e.Id)) Ajouter(e);
@@ -629,6 +684,29 @@ public sealed class MondeSimule
             };
             // Deux régions dans la même direction donneraient deux fois la même ligne.
             if (texte is not null && dejaDits.Add(texte)) Ajouter(new EvenementJournal(_secondes, TypeEvenement.Nature, 0, 0, texte));
+        }
+    }
+
+    /// <summary>
+    /// À chaque anniversaire, le caractère mûrit d'une année (voir <see cref="Psyche.Murir"/>) : le changement est lent et
+    /// n'est pas noté au journal jour après jour ; la fiche montre les traits d'aujourd'hui.
+    /// </summary>
+    private void Murir()
+    {
+        foreach (var h in _humains)
+        {
+            if (!h.EstVivant) continue;
+            // Ce que cache un psychopathe, lui le sait : il le garde pour lui.
+            if (Psyche.EstPsychopathe(h, _secondes) && !h.Memoire.Jardin.Exists(x => x.Cle == "masque"))
+            {
+                Jardin.Confier(h, TypeIntime.ImageDeSoi, 0,
+                    "Les autres sont des outils. Je leur montre le visage qu'ils veulent voir ; leurs peines ne me touchent pas.",
+                    60, 0, _secondes, "masque");
+            }
+            var age = h.AgeEnAnnees(_secondes);
+            var hier = h.AgeEnAnnees(_secondes - Calendrier.SecondesParJour);
+            if (Math.Floor(age) == Math.Floor(hier) || age < 1) continue;
+            h.Personnalite = Psyche.Murir(h.Personnalite, Math.Floor(hier), _alea);
         }
     }
 

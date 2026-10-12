@@ -71,6 +71,18 @@ public static class Jardin
     public static void Retirer(Humain h, string cle) => h.Memoire.Jardin.RemoveAll(x => x.Cle == cle);
 
     /// <summary>
+    /// Une épreuve laisse sa trace sur le caractère (voir <see cref="Psyche.Eprouver"/>) ; quand elle est profonde,
+    /// l'humain le sait et le garde pour lui, avec l'événement qui l'a changé.
+    /// </summary>
+    public static void Marquer(Humain h, Epreuve epreuve, double intensite, long cause, long maintenant, Monde.Alea alea)
+    {
+        if (!h.EstVivant || h.EstBebe(maintenant)) return;
+        var (apres, trace) = Psyche.Eprouver(h.Personnalite, epreuve, intensite, alea);
+        h.Personnalite = apres;
+        if (trace is not null) Confier(h, TypeIntime.ImageDeSoi, 0, trace, 40 + 40 * intensite, cause, maintenant, $"epreuve:{epreuve}");
+    }
+
+    /// <summary>
     /// Une semaine passe : chaque chose s'estompe, d'autant moins vite que la mémoire est bonne et la chose forte
     /// (demi-vie de quelques semaines à plusieurs mois ; les croyances tiennent bien plus longtemps).
     /// </summary>

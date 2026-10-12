@@ -84,11 +84,32 @@ async function demarrer(): Promise<void> {
       vue.afficherNature(null);
     }
   });
+  // Extinction : le dernier humain est mort. Le monde s'est mis en pause ; la nature continue seule si on relance le temps.
+  let eteint = false;
+  let extinctionVue = false;
+  const montrerExtinction = (texte: string) => {
+    extinctionVue = true;
+    element("#texteExtinction").textContent = texte;
+    element("#extinction").hidden = false;
+  };
+  connexion.on("Extinction", (texte: string) => {
+    montrerExtinction(`${texte} Le temps est en pause.`);
+  });
+  element("#extinctionFermer").addEventListener("click", () => (element("#extinction").hidden = true));
   const horloge = new PanneauHorloge(
     element("#panneauTemps"),
     element("#date"),
     element("#vitesses"),
-    (h) => vue.eclairer(h.lumiere),
+    (h) => {
+      vue.eclairer(h.lumiere);
+      eteint = h.eteint;
+      // Monde déjà éteint à l'ouverture de la page : le bandeau le rappelle une fois.
+      if (h.eteint && !extinctionVue) montrerExtinction("Plus aucun humain ne vit dans ce monde.");
+      if (!h.eteint) {
+        extinctionVue = false;
+        element("#extinction").hidden = true;
+      }
+    },
     (message) => (infos.textContent = message),
   );
   const montrerHumains = (humains: HumainVue[]) => {
@@ -102,6 +123,10 @@ async function demarrer(): Promise<void> {
     const enfants = vivants.filter((h) => h.etape !== "adulte").length;
     const enceintes = vivants.filter((h) => h.enceinte).length;
     const naissances = Math.max(0, Math.max(...humains.map((h) => h.id)) - humainsDeDepart);
+    if (vivants.length === 0 && (eteint || humains.length > 0)) {
+      population.textContent = `Aucun humain · naissances : ${naissances}`;
+      return;
+    }
     population.textContent = `Vivants : ${vivants.length} (dont ${enfants} enfants) · enceintes : ${enceintes} · naissances : ${naissances}`;
   };
   connexion.on("Humains", (humains: HumainVue[]) => {
@@ -239,6 +264,17 @@ async function demarrer(): Promise<void> {
 
   const configuration = new PanneauConfiguration(element("#configuration"), dialogueReinit,
     (reglages) => charger(reglages ?? undefined), (texte) => (infos.textContent = texte));
+  const ouvrirConfiguration = (section: "sauvegardes" | "nouveau") => {
+    journal.fermer();
+    communautes?.fermer();
+    catastrophes.fermer();
+    panneauMonde.fermer();
+    demographie.fermer();
+    element("#extinction").hidden = true;
+    void configuration.ouvrir(section);
+  };
+  element("#extinctionRestaurer").addEventListener("click", () => ouvrirConfiguration("sauvegardes"));
+  element("#extinctionNouveau").addEventListener("click", () => ouvrirConfiguration("nouveau"));
   element("#boutonConfiguration").addEventListener("click", () => {
     journal.fermer();
     communautes?.fermer();

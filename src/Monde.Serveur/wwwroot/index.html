@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-D4ekFiz_.js"></script>
+    <script type="module" crossorigin src="/assets/index-XjyvQ7mu.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/CanvasPool-CT7OQSgs.js">
     <link rel="modulepreload" crossorigin href="/assets/canvasUtils-vHj9HkKG.js">
     <link rel="modulepreload" crossorigin href="/assets/RenderTargetSystem-FtcCc_-0.js">
     <link rel="modulepreload" crossorigin href="/assets/getTextureBatchBindGroup-DWZkPDHl.js">
     <link rel="modulepreload" crossorigin href="/assets/getTexelRangeRects-Dz82KJmA.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-DHnjSv3Y.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-CQJ67Vfs.css">
   </head>
   <body>
     <div id="scene"></div>
@@ -88,6 +88,12 @@
     <aside id="demographie" class="demographie-panneau panneau-lateral" aria-label="Démographie" hidden></aside>
     <aside id="caracteristiques" class="monde-panneau panneau-lateral" aria-label="Caractéristiques du Monde" hidden></aside>
     <div id="alerte" class="alerte-catastrophe" role="alert" hidden></div>
+    <div id="extinction" class="alerte-catastrophe grave extinction" role="alert" hidden>
+      <span id="texteExtinction"></span>
+      <button type="button" id="extinctionRestaurer">Restaurer une sauvegarde</button>
+      <button type="button" id="extinctionNouveau">Créer un nouveau monde</button>
+      <button type="button" class="fermer" id="extinctionFermer" title="Fermer : la nature continue seule si vous relancez le temps">×</button>
+    </div>
     <aside id="communautes" class="communautes-panneau panneau-lateral" aria-label="Communautés" hidden></aside>
     <section id="panneauTerritoires" class="territoires" aria-label="Terres des communautés" hidden></section>
     <aside id="infos" class="infos">Survole la carte pour voir une tuile. Molette : zoom · glisser : déplacer.</aside>

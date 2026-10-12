@@ -15,6 +15,10 @@ public enum MotifGrief : byte
     Meurtre = 3,
     /// <summary>Ses amours avec une personne de son sexe, que l'on réprouve.</summary>
     Moeurs = 4,
+    /// <summary>Il lui a pris sa nourriture.</summary>
+    Vol = 5,
+    /// <summary>Il a quitté les siens pour un groupe ennemi.</summary>
+    Trahison = 6,
 }
 
 /// <summary>
@@ -78,13 +82,33 @@ public sealed partial class VieSociale
 
     /// <summary>
     /// Penchant à la jalousie, de 0 à 1 : plus fort chez les anxieux (névrosisme) et les moins bienveillants
-    /// (Dijkstra et Barelds, 2008). La jalousie sexuelle existe dans toutes les sociétés étudiées (Buss, 2000).
+    /// (Dijkstra et Barelds, 2008), et surtout chez ceux qui ont peur d'être abandonnés (attachement anxieux ; Guerrero, 1998).
+    /// La jalousie sexuelle existe dans toutes les sociétés étudiées (Buss, 2000).
     /// </summary>
     public static double Jalousie(Personnalite p) =>
-        Math.Clamp(0.5 + 0.8 * (p.Nevrosisme - 0.5) - 0.5 * (p.Agreabilite - 0.5), 0, 1);
+        Math.Clamp(0.5 + 0.55 * (p.Nevrosisme - 0.5) - 0.4 * (p.Agreabilite - 0.5) + 0.6 * (p.Moral.AnxieteAffective - 0.5), 0, 1);
+
+    /// <summary>
+    /// Ce qu'un humain tolère de l'infidélité des autres : peu s'il est jaloux, et moins encore s'il tient à la loyauté, à
+    /// l'ordre et à la pureté (les fondements liants vont avec une morale sexuelle plus stricte ; Graham et al., 2009).
+    /// </summary>
+    public static double TemperamentFidelite(Personnalite p) =>
+        Math.Clamp(1 - Jalousie(p) - 0.4 * (p.Moral.Fondements.Liants - 0.5), 0, 1);
 
     /// <summary>Tolérance de l'entourage d'un humain envers l'infidélité : l'usage de sa communauté, sinon son propre tempérament.</summary>
-    public double ToleranceDe(Humain h) => CommunauteDe(h)?.Tolerance ?? 1 - Jalousie(h.Personnalite);
+    public double ToleranceDe(Humain h) => CommunauteDe(h)?.Tolerance ?? TemperamentFidelite(h.Personnalite);
+
+    /// <summary>
+    /// Morale d'une communauté : la moyenne des fondements moraux de ses adultes (ce que le groupe juge bien ou mal),
+    /// qui change avec ses membres.
+    /// </summary>
+    public static FondementsMoraux MoraleDe(IReadOnlyList<Humain> adultes)
+    {
+        if (adultes.Count == 0) return FondementsMoraux.Moyens;
+        return new FondementsMoraux(adultes.Average(h => h.Personnalite.Moral.Fondements.Soin), adultes.Average(h => h.Personnalite.Moral.Fondements.Equite),
+            adultes.Average(h => h.Personnalite.Moral.Fondements.Loyaute), adultes.Average(h => h.Personnalite.Moral.Fondements.Autorite),
+            adultes.Average(h => h.Personnalite.Moral.Fondements.Purete));
+    }
 
     // ───────────── Raisons de l'humeur ─────────────
 
@@ -217,14 +241,18 @@ public sealed partial class VieSociale
                     MotifGrief.Rival => $"{h.Nom} ne garde plus rancune à {autre.Nom}.",
                     MotifGrief.Coups => $"{h.Nom} pardonne à {autre.Nom} les coups reçus.",
                     MotifGrief.Moeurs => $"{h.Nom} cesse de reprocher ses amours à {autre.Nom}.",
+                    MotifGrief.Vol => $"{h.Nom} pardonne à {autre.Nom} de l'avoir volé{E(h)}.",
+                    MotifGrief.Trahison => $"{h.Nom} ne tient plus {autre.Nom} pour un traître.",
                     _ => $"{h.Nom} renonce à se venger de {autre.Nom}.",
                 }, g.EvenementId);
                 continue;
             }
             h.Griefs[i] = g with { Intensite = intensite };
 
+            // L'évitant rompt plus facilement ; l'anxieux s'accroche (Hazan et Shaver, 1987 ; Kirkpatrick et Davis, 1994).
             if (g.Motif == MotifGrief.Infidelite && h.PartenaireId == autre.Id && intensite > 35
-                && alea.Reel() < 0.02 * intensite / 100 * (1.5 - Math.Max(0, h.AffectionPour(autre.Id)) / 100))
+                && alea.Reel() < 0.02 * intensite / 100 * (1.5 - Math.Max(0, h.AffectionPour(autre.Id)) / 100)
+                   * (1 + 0.8 * (p.Moral.EvitementAffectif - 0.5) - 0.6 * (p.Moral.AnxieteAffective - 0.5)))
             {
                 h.PartenaireId = 0;
                 if (autre.PartenaireId == h.Id) autre.PartenaireId = 0;
@@ -282,6 +310,7 @@ public sealed partial class VieSociale
             trompe.Humeur = Math.Max(0, trompe.Humeur - intensite / 4);
             AjouterGrief(trompe, new Grief(infidele.Id, MotifGrief.Infidelite, intensite, intensite, id));
             AjouterGrief(trompe, new Grief(complice.Id, MotifGrief.Rival, 0.8 * intensite, 0.8 * intensite, id));
+            if (intensite >= 40 && !recidive) Jardin.Marquer(trompe, Epreuve.Trahison, (intensite - 30) / 70, id, maintenant, alea);
             ChangerAffection(trompe, infidele, -intensite / 3, maintenant);
             ChangerAffection(trompe, complice, -intensite / 2, maintenant);
         }
@@ -360,7 +389,7 @@ public sealed partial class VieSociale
             .Select(c => (Id: c.Key, Nombre: c.Count())).OrderByDescending(c => c.Nombre).ThenBy(c => c.Id).FirstOrDefault();
         if (origine.Id != 0 && origine.Nombre * 2 > groupe.Count) return communautes[origine.Id - 1].Tolerance;
         var adultes = groupe.Where(h => !h.EstEnfant(maintenant)).ToList();
-        return adultes.Count == 0 ? 0.5 : adultes.Average(h => 1 - Jalousie(h.Personnalite));
+        return adultes.Count == 0 ? 0.5 : adultes.Average(h => TemperamentFidelite(h.Personnalite));
     }
 
     /// <summary>Usage selon la tolérance, avec un écart entre l'entrée et la sortie pour éviter les allers-retours.</summary>
@@ -380,7 +409,7 @@ public sealed partial class VieSociale
     private void Usages(List<Humain> humains, List<Communaute> communautes, long maintenant)
     {
         var adultes = humains.Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant))
-            .GroupBy(h => h.CommunauteId).ToDictionary(g => g.Key, g => g.Average(h => 1 - Jalousie(h.Personnalite)));
+            .GroupBy(h => h.CommunauteId).ToDictionary(g => g.Key, g => g.Average(h => TemperamentFidelite(h.Personnalite)));
         foreach (var c in communautes)
         {
             if (!c.Active || !adultes.TryGetValue(c.Id, out var temperament)) continue;

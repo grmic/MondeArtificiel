@@ -36,6 +36,8 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Guerre] = "guerre",
         [TypeEvenement.Attirance] = "attirance",
         [TypeEvenement.Exclusion] = "exclusion",
+        [TypeEvenement.Entraide] = "entraide",
+        [TypeEvenement.Vol] = "vol",
     };
 
 
@@ -119,7 +121,10 @@ public sealed record FicheDto(
     IReadOnlyList<LienDto> Liens,
     IReadOnlyList<EvenementDto> Histoire,
     EpreuvesDto Epreuves,
-    AttraitsDto Attraits)
+    AttraitsDto Attraits,
+    IReadOnlyList<TraitDto> Coeur,
+    IReadOnlyList<TraitDto> Morale,
+    IReadOnlyList<string> Portrait)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -192,7 +197,51 @@ public sealed record FicheDto(
                     Statut(l), humains[l.Id - 1].EstVivant)).ToList(),
             Journal(service, new FiltreJournal(Humain: id, Limite: 200), types).Select(EvenementDto.Depuis).ToList(),
             LireEpreuves(h, monde.Pathogenes(), maintenant),
-            LireAttraits(h, humains, monde.Communautes(), maintenant));
+            LireAttraits(h, humains, monde.Communautes(), maintenant),
+            [
+                Trait("compassion", p.Moral.Compassion, "vouloir soulager la peine d'autrui"),
+                Trait("empathie émotionnelle", p.Moral.EmpathieEmotionnelle, "ressentir ce que l'autre ressent"),
+                Trait("empathie cognitive", p.Moral.EmpathieCognitive, "comprendre ce que l'autre pense, deviner ses intentions"),
+                Trait("honnêteté-humilité", p.Moral.Honnetete, "sincère, équitable, modeste ; bas : manipulateur, avide, vaniteux"),
+                Trait("psychopathie", p.Moral.Psychopathie, "audace, froideur, impulsivité (modèle triarchique)"),
+                Trait("anxiété affective", p.Moral.AnxieteAffective, "peur d'être abandonné, jalousie"),
+                Trait("évitement affectif", p.Moral.EvitementAffectif, "malaise dans la proximité, indépendance farouche"),
+            ],
+            [
+                Trait("soin", p.Moral.Fondements.Soin, "protéger les faibles, épargner la souffrance"),
+                Trait("équité", p.Moral.Fondements.Equite, "chacun sa part, le tricheur puni"),
+                Trait("loyauté", p.Moral.Fondements.Loyaute, "fidélité au groupe, punir le traître"),
+                Trait("autorité", p.Moral.Fondements.Autorite, "respect de ceux qui mènent et des usages"),
+                Trait("pureté", p.Moral.Fondements.Purete, "dégoût de ce qui souille, sens du sacré"),
+            ],
+            Decrire(h, maintenant));
+    }
+
+    /// <summary>Le caractère en quelques phrases : style d'attachement, psychopathie (adulte), morale dominante.</summary>
+    private static List<string> Decrire(Humain h, long maintenant)
+    {
+        var m = h.Personnalite.Moral;
+        var e = h.Sexe == Sexe.Femme ? "e" : "";
+        var phrases = new List<string>();
+        if (h.AgeEnAnnees(maintenant) >= 12)
+        {
+            phrases.Add(m.Style switch
+            {
+                StyleAttachement.Secure => $"Attachement sûr : à l'aise dans la proximité, confiant{e} envers ses proches.",
+                StyleAttachement.Evitant => "Attachement évitant : garde ses distances, souffre peu des séparations en apparence.",
+                _ => $"Attachement anxieux : craint d'être abandonné{e}, s'accroche, vite jaloux{(h.Sexe == Sexe.Femme ? "e" : "")}.",
+            });
+        }
+        if (Psyche.EstPsychopathe(h, maintenant))
+            phrases.Add("Psychopathe : charme de surface, sans remords ni peur ; ment et manipule (moins de 2 % des adultes).");
+        else if (Psyche.Froideur(h.Personnalite) >= 0.5)
+            phrases.Add("Penchant froid : peu touché par la peine des autres, peu scrupuleux.");
+        var f = m.Fondements;
+        var ecart = f.Individualisants - f.Liants;
+        if (Math.Abs(ecart) >= 0.08)
+            phrases.Add(ecart > 0 ? "Sa morale : d'abord ne pas faire souffrir et être juste."
+                                  : "Sa morale : d'abord la loyauté envers les siens, le respect et la pureté.");
+        return phrases;
     }
 
     private static AttraitsDto LireAttraits(Humain h, List<Humain> humains, List<Communaute> communautes, long maintenant)
@@ -252,6 +301,8 @@ public sealed record FicheDto(
         MotifGrief.Rival => "rivalité amoureuse",
         MotifGrief.Coups => "coups",
         MotifGrief.Moeurs => "amours réprouvées",
+        MotifGrief.Vol => "vol de nourriture",
+        MotifGrief.Trahison => "passé à l'ennemi",
         _ => g.VictimeId > 0 ? $"a tué {nom(g.VictimeId)}" : "meurtre d'un proche",
     };
 
@@ -323,8 +374,22 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage, string? NomPropre, string? Sens,
     IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire,
     string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet,
-    string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles)
+    string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles, string? Morale)
 {
+    /// <summary>
+    /// Morale du groupe en mots : la moyenne des fondements de ses adultes, et ce qui y pèse le plus.
+    /// Les écarts entre groupes sont faibles au début (tirés d'une même population) : ils grandissent avec les naissances et les départs.
+    /// </summary>
+    private static string? DireMorale(List<Humain> adultes)
+    {
+        if (adultes.Count == 0) return null;
+        var f = VieSociale.MoraleDe(adultes);
+        string N(double v) => v.ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
+        var (nom, valeur) = new[] { ("le soin des faibles", f.Soin), ("l'équité", f.Equite), ("la loyauté envers le groupe", f.Loyaute),
+            ("le respect de l'autorité", f.Autorite), ("la pureté", f.Purete) }.MaxBy(x => x.Item2);
+        return $"soin {N(f.Soin)}, équité {N(f.Equite)}, loyauté {N(f.Loyaute)}, autorité {N(f.Autorite)}, pureté {N(f.Purete)} ; on y tient d'abord à {nom}";
+    }
+
     /// <summary>Les idées des mots, en français, pour l'observateur.</summary>
     private static readonly Dictionary<string, string> Idees = new()
     {
@@ -466,7 +531,8 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     humains.Where(m => m.EstVivant)
                         .SelectMany(m => m.Exclusions.Where(e => e.Type == TypeExclusion.Communaute && e.De == c.Id && e.Active(maintenant))
                             .Select(e => new ExileDto(m.Id, m.Nom, e.Raison, e.Jusqua == 0 ? null : Calendrier.Decomposer(e.Jusqua).ToString(), e.EvenementId)))
-                        .ToList());
+                        .ToList(),
+                    DireMorale(adultes));
             }).ToList();
     }
 }

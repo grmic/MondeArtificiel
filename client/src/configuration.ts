@@ -88,6 +88,8 @@ export class PanneauConfiguration {
   private readonly messageSauvegardes = el("p", "message-config");
   private readonly dialogueRestaurer = el("dialog", "dialogue");
   private aRestaurer: string | null = null;
+  private readonly titreSauvegardes = el("h3", undefined, "Sauvegardes");
+  private readonly titreNouveau = el("h3", undefined, "Nouveau monde");
 
   constructor(
     private readonly racine: HTMLElement,
@@ -140,12 +142,12 @@ export class PanneauConfiguration {
       this.apropos,
       el("h3", undefined, "Monde actuel"),
       this.actuel,
-      el("h3", undefined, "Sauvegardes"),
+      this.titreSauvegardes,
       el("p", "discret", "Une sauvegarde garde tout le monde à cet instant. La restaurer remplace le monde actuel, qui est d'abord sauvegardé lui aussi."),
       boutonsSauvegarde,
       this.messageSauvegardes,
       this.listeSauvegardes,
-      el("h3", undefined, "Nouveau monde"),
+      this.titreNouveau,
       el("p", "discret", "Ces réglages sont enregistrés dans la base du monde créé. Une case de la carte mesure 800 m : cette finesse reste fixe, la carte grandit en nombre de cases. Au-delà de 400 km de côté, la simulation ralentit."),
       formulaire,
     );
@@ -165,7 +167,8 @@ export class PanneauConfiguration {
     else void this.ouvrir();
   }
 
-  async ouvrir(): Promise<void> {
+  /** Ouvre la fenêtre, et la fait défiler jusqu'aux sauvegardes ou au nouveau monde si demandé. */
+  async ouvrir(section?: "sauvegardes" | "nouveau"): Promise<void> {
     this.racine.hidden = false;
     this.actuel.textContent = "Lecture des réglages…";
     const c = await connexion.invoke<Configuration>("Configuration").catch(() => null);
@@ -197,6 +200,7 @@ export class PanneauConfiguration {
     this.remplirPlacement(c.placement);
     this.message.textContent = "";
     await this.lireSauvegardes();
+    if (section) (section === "sauvegardes" ? this.titreSauvegardes : this.titreNouveau).scrollIntoView({ block: "start" });
   }
 
   private construireDialogue(): void {

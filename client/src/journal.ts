@@ -16,6 +16,8 @@ const TYPES: [string, string][] = [
   ["conflit", "Jalousie et conflits"],
   ["attirance", "Attirances et refus"],
   ["exclusion", "Exils et reniements"],
+  ["vol", "Vols"],
+  ["entraide", "Soins et consolation"],
   ["communaute", "Communautés"],
   ["guerre", "Guerres et alliances"],
   ["nature", "Nature"],
@@ -66,7 +68,7 @@ export class PanneauJournal {
    */
   suivreCommunaute(id: number, nom: string): void {
     this.communaute = { id, nom };
-    this.types = new Set(["communaute", "guerre", "naissance", "mort", "conflit", "union", "catastrophe", "exclusion"]);
+    this.types = new Set(["communaute", "guerre", "naissance", "mort", "conflit", "union", "catastrophe", "exclusion", "vol", "entraide"]);
     this.racine.querySelectorAll<HTMLInputElement>(".filtres input").forEach((c) => (c.checked = this.types.has(c.dataset.cle ?? "")));
     this.racine.hidden = false;
     void this.recharger();

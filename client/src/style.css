@@ -119,6 +119,8 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .chaine-cause { margin: 2px 0 2px 14px; font-size: 0.85rem; color: var(--discret); }
 .chaine-cause .chaine-cause { margin-left: 10px; }
 .evenement.conflit { color: #f0a070; }
+.evenement.vol { color: #e8b04a; }
+.evenement.entraide { color: #9fd8b0; }
 .communaute-carte .usage { color: var(--discret); font-size: 0.85rem; }
 .territoires {
   position: fixed; left: 12px; bottom: 110px; width: min(380px, calc(100vw - 24px)); max-height: 40vh; overflow-y: auto;
@@ -169,6 +171,8 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .alerte-catastrophe[hidden] { display: none; }
 .alerte-catastrophe.grave { background: rgba(90, 20, 20, 0.94); border-color: #ff6b6b; }
 .alerte-catastrophe .lien { color: var(--texte); text-align: left; }
+.extinction { flex-wrap: wrap; top: 100px; z-index: 6; }
+.extinction button:not(.fermer) { font-size: 0.85rem; padding: 3px 10px; border-radius: 6px; border: 1px solid #ff9b9b; background: #3a1616; color: var(--texte); cursor: pointer; }
 .alerte-catastrophe .fermer { background: none; border: none; color: var(--discret); font-size: 1.2rem; cursor: pointer; }
 .monde-panneau { right: 12px; top: 290px; bottom: 12px; width: min(440px, calc(100vw - 24px)); }
 .monde-panneau table.mesures { width: 100%; border-collapse: collapse; }
@@ -230,3 +234,5 @@ h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
 .demographie-panneau .reperes li.guerre .date { color: #f5a04a; }
 .demographie-panneau .reperes summary { cursor: pointer; margin-top: 8px; }
 .demographie-panneau .note { font-size: 0.78rem; margin-top: 10px; }
+
+.fiche .portrait { color: #d8c8ff; font-size: 0.82rem; margin: 4px 0 6px; }
