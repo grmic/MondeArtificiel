@@ -934,12 +934,12 @@ public sealed partial class Comportement
     }
 
     /// <summary>L'Entité souffle une intuition : l'humain fait aussitôt le geste suggéré (rien ne garantit qu'il réussisse).</summary>
-    public Effet Souffler(Humain h, Geste geste, Matiere a, Matiere b, IReadOnlyList<Humain> tous, long maintenant)
+    public Effet Souffler(Humain h, Geste geste, Matiere a, Matiere b, IReadOnlyList<Humain> tous, long maintenant, int espece = 0)
     {
         var debut = Journal.Count;
         try
         {
-            return Souffle(h, geste, a, b, tous, maintenant);
+            return geste is Geste.Manger or Geste.Appliquer ? SoufflePlante(h, geste, espece, tous, maintenant) : Souffle(h, geste, a, b, tous, maintenant);
         }
         finally
         {
@@ -950,6 +950,36 @@ public sealed partial class Comportement
                 if (Journal[i].HumainId == h.Id) Journal[i] = Journal[i] with { Origine = Origine.Entite };
             }
         }
+    }
+
+    /// <summary>
+    /// L'Entité souffle l'idée d'une plante : l'humain la goûte, ou s'en soigne s'il souffre. Ses vertus réelles agissent ;
+    /// la croyance viendra, ou non, de ce qu'il ressentira.
+    /// </summary>
+    private Effet SoufflePlante(Humain h, Geste geste, int numero, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        _maintenant = maintenant;
+        _temperature = Temperature(h.X, h.Y, maintenant);
+        var espece = Flore.Sur(carte.BiomeEn(h.X, h.Y)).FirstOrDefault(e => e.Numero == numero);
+        if (espece is null)
+        {
+            Noter(maintenant, TypeEvenement.Decouverte, h, null,
+                $"{h.Nom} sent une idée lui venir : une plante qui ne pousse pas ici. {Majuscule(Il(h))} la cherche des yeux, en vain, et l'idée s'efface.");
+            return Effet.Rien;
+        }
+        var malade = h.EstMalade(maintenant) || h.InfectionId != 0 && h.SymptomesLe <= maintenant && h.GuerisonLe > maintenant;
+        Noter(maintenant, TypeEvenement.Decouverte, h, null, geste == Geste.Manger
+            ? $"{h.Nom} sent une idée lui venir : manger {espece.Nom}{(malade ? ", contre son mal" : "")}. {Majuscule(Il(h))} la cueille et y goûte."
+            : $"{h.Nom} sent une idée lui venir : écraser {espece.Nom} et l'appliquer{(malade ? " sur son mal" : " sur sa peau")}.");
+        if (malade)
+        {
+            var mal = h.EstMalade(maintenant) ? Physique.SymptomeDe(h.Maladie) : Symptome.Fievre;
+            PrendreRemede(h, espece.Numero, geste, mal, 0, tous, OrigineSavoir.Entite);
+            return h.Savoirs.Exists(s => s.Espece == espece.Numero && s.Effet == Effet.Poison) ? Effet.Poison : Effet.Rien;
+        }
+        h.Activite = Activite.Experimenter;
+        h.CibleX = h.CibleY = -1;
+        return Gouter(h, espece, geste, tous, OrigineSavoir.Entite);
     }
 
     private Effet Souffle(Humain h, Geste geste, Matiere a, Matiere b, IReadOnlyList<Humain> tous, long maintenant)

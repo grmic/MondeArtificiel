@@ -20,6 +20,23 @@ public enum TypeIntime : byte
     Croyance = 7,
     /// <summary>Ce qu'il se demande (le pourquoi des choses).</summary>
     Question = 8,
+    /// <summary>Le désir pour quelqu'un (la pulsion, d'un ton pudique).</summary>
+    Desir = 9,
+    /// <summary>L'amour : pour son compagnon (intimité, passion, engagement) ou naissant pour un autre.</summary>
+    Amour = 10,
+    Jalousie = 11,
+    /// <summary>Le manque d'un mort ou d'un absent, la nostalgie du temps passé.</summary>
+    Manque = 12,
+    Reve = 13,
+    Souvenir = 14,
+    Fierte = 15,
+    /// <summary>La honte : on se juge soi-même mauvais.</summary>
+    Honte = 16,
+    /// <summary>La culpabilité : on regrette un acte et l'on voudrait réparer.</summary>
+    Culpabilite = 17,
+    Envie = 18,
+    Emerveillement = 19,
+    Ennui = 20,
 }
 
 /// <summary>
@@ -34,7 +51,7 @@ public sealed record Intime(long Secondes, TypeIntime Type, int SujetId, string 
 /// lui-même, ses croyances et ses questions. Personne d'autre ne le lit (sauf l'observateur). Les choses s'y effacent
 /// avec le temps, plus ou moins vite selon la mémoire de chacun ; ce qui est fort dure plus longtemps.
 /// </summary>
-public static class Jardin
+public static partial class Jardin
 {
     /// <summary>Nombre de choses gardées : au-delà, la plus faible s'efface.</summary>
     public const int Taille = 40;
@@ -106,7 +123,11 @@ public static class Jardin
             var semaines = x.Type switch
             {
                 TypeIntime.Croyance => 80,
-                TypeIntime.Opinion or TypeIntime.ImageDeSoi => 20,
+                TypeIntime.Souvenir => 40,
+                TypeIntime.Opinion or TypeIntime.ImageDeSoi or TypeIntime.Amour or TypeIntime.Manque => 20,
+                TypeIntime.Fierte or TypeIntime.Honte or TypeIntime.Culpabilite or TypeIntime.Envie => 12,
+                TypeIntime.Reve => 2,
+                TypeIntime.Emerveillement or TypeIntime.Ennui or TypeIntime.Desir => 4,
                 _ => 6,
             } * memoire * (0.5 + x.Intensite / 100);
             var reste = x.Intensite * Math.Pow(0.5, 1 / semaines);
@@ -116,60 +137,16 @@ public static class Jardin
     }
 
     /// <summary>
-    /// Une fois par semaine, chacun fait le point en silence : ce qu'il pense de ceux qui comptent pour lui, ce qu'il
-    /// pense de lui-même, ce qu'il craint et ce qu'il espère, d'après ce qu'il vit.
+    /// Une fois par semaine, chacun fait le point en silence, à sa manière (voir <see cref="Composer"/>) : ce qu'il pense
+    /// de ceux qui comptent et de lui-même, ce qu'il aime, désire, craint, espère, regrette ou envie, ses rêves, ses
+    /// souvenirs, ses émerveillements et ses questions.
     /// </summary>
-    public static void Mediter(Humain h, IReadOnlyList<Humain> humains, IReadOnlyList<Communaute> communautes, long maintenant)
+    public static void Mediter(Humain h, IReadOnlyList<Humain> humains, IReadOnlyList<Communaute> communautes, long maintenant, Monde.Carte? carte = null)
     {
         Estomper(h);
         if (!h.EstVivant || h.EstEnfant(maintenant)) return;
-        var p = h.Personnalite;
-
-        // Ce qu'il pense des autres : ceux qui comptent le plus, en bien ou en mal.
-        foreach (var l in h.Liens.Where(l => Math.Abs(l.Affection) >= 40).OrderByDescending(l => Math.Abs(l.Affection)).Take(4))
-        {
-            var autre = humains[l.Id - 1];
-            var grief = h.Griefs.Where(g => g.ContreId == l.Id).MaxBy(g => g.Intensite);
-            var texte = (l.Affection, grief) switch
-            {
-                (_, { Motif: MotifGrief.Meurtre, VictimeId: > 0 } g) => $"Je hais {autre.Nom} : {Il(autre)} a tué {humains[g.VictimeId - 1].Nom}.",
-                (_, { Motif: MotifGrief.Infidelite }) => $"{autre.Nom} m'a trahi{E(h)} ; je ne l'oublie pas.",
-                (_, { Motif: MotifGrief.Coups }) => $"{autre.Nom} m'a frappé{E(h)} : je me méfie {De(autre)}.",
-                ( >= 75, _) when h.PartenaireId == l.Id => $"{autre.Nom} est tout pour moi.",
-                ( >= 75, _) => $"{autre.Nom} est un être cher ; je ferais tout pour {Pronom(autre)}.",
-                ( >= 40, _) => $"Je peux compter sur {autre.Nom}.",
-                ( <= -60, _) => $"Je ne supporte plus {autre.Nom}.",
-                _ => $"Je me méfie de {autre.Nom}.",
-            };
-            Confier(h, TypeIntime.Opinion, l.Id, texte, Math.Abs(l.Affection), grief?.EvenementId ?? 0, maintenant, $"opinion:{l.Id}");
-        }
-
-        // Ce qu'il pense de lui-même.
         var communaute = h.CommunauteId > 0 && h.CommunauteId <= communautes.Count ? communautes[h.CommunauteId - 1] : null;
-        var (soi, force) = h switch
-        {
-            { DeprimeDepuis: not null } => ("Je ne vaux rien ; à quoi bon ?", 80.0),
-            { JoursSeul: >= 14 } => ("Personne ne veut de moi.", 60.0),
-            _ when communaute?.FigureId == h.Id => ("Les miens se tournent vers moi : je dois les guider.", 70.0),
-            { Sante: < 40 } => ("Mon corps me trahit ; je ne suis plus bon à grand-chose.", 55.0),
-            _ when h.Humeur >= 70 && p.Extraversion >= 0.6 => ("Je suis fort et les autres m'apprécient.", 45.0),
-            _ when h.Humeur < 30 => ("Rien ne me réussit.", 45.0),
-            _ when p.Nevrosisme >= 0.7 => ("Je crains de ne pas être à la hauteur.", 35.0),
-            _ => ("Je fais ce qu'il faut pour vivre.", 15.0),
-        };
-        Confier(h, TypeIntime.ImageDeSoi, h.Id, soi, force, h.DepressionEvenementId, maintenant, "soi");
-
-        // Ce qu'il craint et ce qu'il espère, selon ce qu'il vit.
-        if (h.Faim >= 70 || h.Reserves < 15) Confier(h, TypeIntime.Peur, 0, "J'ai peur de mourir de faim.", 40 + h.Faim / 2, communaute?.DisetteEvenementId ?? 0, maintenant, "peur:faim");
-        else Retirer(h, "peur:faim");
-        if (communaute is { Disette: true, DestinationX: >= 0 })
-        {
-            Confier(h, TypeIntime.Espoir, 0, $"J'espère que les terres {Lieux.Vers(communaute.CentreX, communaute.CentreY, communaute.DestinationX, communaute.DestinationY)} nous nourriront.",
-                50, communaute.DisetteEvenementId, maintenant, "espoir:migration");
-        }
-        if (h.EnceinteDepuis is not null) Confier(h, TypeIntime.Espoir, 0, "J'espère que l'enfant que je porte naîtra en bonne santé.", 55, 0, maintenant, "espoir:enfant");
-        else Retirer(h, "espoir:enfant");
-        if (h.Peur >= 30) Confier(h, TypeIntime.Peur, 0, $"J'ai peur que {TypesCatastrophe.Nom(h.PeurType)} revienne.", h.Peur, h.PeurEvenementId, maintenant, "peur:catastrophe");
+        Composer(h, humains, communaute, carte, maintenant);
     }
 
     /// <summary>Une perte : la peine du deuil.</summary>

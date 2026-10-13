@@ -627,7 +627,7 @@ public sealed class MondeSimule
             {
                 _social.Regrouper(_humains, _communautes, _secondes, _noms);
                 _social.Territoires(_humains, _communautes, _ecosysteme, Carte, _secondes);
-                foreach (var h in _humains) if (h.EstVivant || h.Memoire.Jardin.Count > Jardin.TailleApresLaMort) Jardin.Mediter(h, _humains, _communautes, _secondes);
+                foreach (var h in _humains) if (h.EstVivant || h.Memoire.Jardin.Count > Jardin.TailleApresLaMort) Jardin.Mediter(h, _humains, _communautes, _secondes, Carte);
             }
         }
         VerserJournal();
@@ -813,12 +813,12 @@ public sealed class MondeSimule
     /// L'Entité souffle une intuition à un humain : il fait aussitôt le geste suggéré, avec ce qu'il a sous la main.
     /// Renvoie l'effet obtenu (Rien si le geste n'a rien donné, ou si l'humain n'existe pas ou n'a pas les matières).
     /// </summary>
-    public Effet Souffler(int humainId, Geste geste, Matiere a, Matiere b)
+    public Effet Souffler(int humainId, Geste geste, Matiere a, Matiere b, int espece = 0)
     {
         lock (_verrou)
         {
             if (humainId < 1 || humainId > _humains.Count || !_humains[humainId - 1].EstVivant) return Effet.Rien;
-            var effet = _comportement.Souffler(_humains[humainId - 1], geste, a, b, _humains, _secondes);
+            var effet = _comportement.Souffler(_humains[humainId - 1], geste, a, b, _humains, _secondes, espece);
             VerserJournal();
             return effet;
         }

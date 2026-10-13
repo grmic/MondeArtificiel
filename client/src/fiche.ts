@@ -33,12 +33,24 @@ interface Intime {
 /** Rubriques du jardin secret, dans l'ordre d'affichage. */
 const RUBRIQUES: [string, string][] = [
   ["intention", "Intentions"],
+  ["amour", "Amour"],
+  ["desir", "Désir"],
+  ["jalousie", "Jalousie"],
   ["peur", "Peurs"],
   ["espoir", "Espoirs"],
   ["joie", "Joies"],
   ["peine", "Peines"],
+  ["manque", "Manque et nostalgie"],
   ["opinion", "Ce qu'il pense des autres"],
   ["image-de-soi", "Ce qu'il pense de lui-même"],
+  ["fierte", "Fierté"],
+  ["culpabilite", "Culpabilité"],
+  ["honte", "Honte"],
+  ["envie", "Envie"],
+  ["souvenir", "Souvenirs"],
+  ["reve", "Rêves"],
+  ["emerveillement", "Émerveillement"],
+  ["ennui", "Ennui"],
   ["croyance", "Croyances"],
   ["question", "Questions"],
 ];
@@ -99,6 +111,15 @@ interface Choix {
   libelle: string;
 }
 
+/** Un geste que l'Entité peut souffler, avec les matières qui vont avec lui (A, puis B reliée par la liaison). */
+interface FormeGeste {
+  cle: string;
+  verbe: string;
+  liaison: string | null;
+  a: Choix[];
+  b: Choix[];
+}
+
 /** Beauté et attractivité (0 à 100, aux yeux de sa communauté), orientation, ce qu'il en sait, exclusions. */
 interface Attraits {
   beaute: number;
@@ -139,6 +160,7 @@ export class PanneauFiche {
   private minuteur?: number;
   /** Formulaire de l'Entité : construit une fois, il survit aux rafraîchissements de la fiche. */
   private souffle: HTMLDetailsElement | null = null;
+  private rechargerSouffle: (() => void) | null = null;
   private readonly resultatSouffle = el("p", "discret");
 
   constructor(
@@ -157,8 +179,11 @@ export class PanneauFiche {
       replierCauses();
       this.resultatSouffle.textContent = "";
     }
+    const autre = id !== this.id;
     this.id = id;
     this.surChoix(id);
+    // Un autre humain n'est pas au même endroit : ses plantes ne sont pas les mêmes.
+    if (autre && this.souffle?.open) this.rechargerSouffle?.();
     await this.rafraichir();
     window.clearInterval(this.minuteur);
     // Tant qu'elle est ouverte, la fiche suit l'humain (deux fois par seconde au plus, sans file d'attente).
@@ -177,6 +202,8 @@ export class PanneauFiche {
     const id = this.id;
     const fiche = await connexion.invoke<Fiche | null>("Fiche", id).catch(() => null);
     if (!fiche || id !== this.id) return;
+    // Redessiner pendant que l'on choisit dans le formulaire de l'Entité fermerait les menus déroulants.
+    if (this.saisieEnCours()) return;
     this.dessiner(fiche);
   }
 
@@ -412,39 +439,89 @@ export class PanneauFiche {
     const geste = el("select");
     const a = el("select");
     const b = el("select");
+    const libelleA = el("span");
+    const libelleB = el("span");
     const bouton = el("button", undefined, "Souffler");
     bouton.type = "button";
-    const remplir = (select: HTMLSelectElement, choix: Choix[]) =>
+    let formes: FormeGeste[] = [];
+    let plantes: Choix[] = [];
+    const remplir = (select: HTMLSelectElement, choix: Choix[]) => {
+      const avant = select.value;
       select.replaceChildren(...choix.map((c) => {
         const o = el("option", undefined, c.libelle);
         o.value = c.cle;
         return o;
       }));
-    void connexion.invoke<{ gestes: Choix[]; matieres: Choix[] }>("ChoixIntuition").then((c) => {
-      remplir(geste, c.gestes);
-      remplir(a, c.matieres.filter((m) => m.cle !== "Aucune"));
-      remplir(b, c.matieres);
-    }).catch(() => (this.resultatSouffle.textContent = "Le serveur n'a pas répondu."));
-    bouton.addEventListener("click", async () => {
+      if (choix.some((c) => c.cle === avant)) select.value = avant;
+    };
+    const ligne = (libelle: HTMLElement, champ: HTMLElement) => {
+      const l = el("label", "ligne");
+      l.append(libelle, " ", champ);
+      return l;
+    };
+    const ligneA = ligne(libelleA, a);
+    const ligneB = ligne(libelleB, b);
+    // Chaque geste propose ses propres matières, reliées par son mot (« frapper … contre … », « racler … avec … ») ;
+    // manger ou appliquer propose les plantes qui poussent là où se trouve l'humain.
+    const accorder = () => {
+      const f = formes.find((x) => x.cle === geste.value);
+      if (!f) return;
+      const plante = f.a.length === 1 && f.a[0].cle === "Plante";
+      libelleA.textContent = plante ? "Quelle plante" : "Quoi";
+      remplir(a, plante ? plantes : f.a);
+      ligneA.hidden = plante && plantes.length === 0;
+      libelleB.textContent = f.liaison ? f.liaison.charAt(0).toUpperCase() + f.liaison.slice(1) : "";
+      remplir(b, f.b);
+      ligneB.hidden = f.b.length === 0;
+      bouton.disabled = plante && plantes.length === 0;
+      this.resultatSouffle.textContent = plante && plantes.length === 0 ? "Aucune plante ne pousse ici." : "";
+    };
+    const charger = async () => {
       if (!this.id) return;
+      try {
+        const c = await connexion.invoke<{ gestes: FormeGeste[]; plantes: Choix[] }>("ChoixIntuition", this.id);
+        formes = c.gestes;
+        plantes = c.plantes;
+        remplir(geste, formes.map((f) => ({ cle: f.cle, libelle: f.verbe })));
+        accorder();
+      } catch {
+        this.resultatSouffle.textContent = "Le serveur n'a pas répondu.";
+      }
+    };
+    this.rechargerSouffle = () => void charger();
+    geste.addEventListener("change", accorder);
+    // Les plantes dépendent de l'endroit où se trouve l'humain : on les relit à chaque ouverture du formulaire.
+    bloc.addEventListener("toggle", () => {
+      if (bloc.open) void charger();
+    });
+    bouton.addEventListener("click", async () => {
+      const f = formes.find((x) => x.cle === geste.value);
+      if (!this.id || !f) return;
+      const plante = f.a.length === 1 && f.a[0].cle === "Plante";
       bouton.disabled = true;
       try {
-        this.resultatSouffle.textContent = await connexion.invoke<string>("Souffler", { humain: this.id, geste: geste.value, a: a.value, b: b.value });
+        this.resultatSouffle.textContent = await connexion.invoke<string>("Souffler", {
+          humain: this.id,
+          geste: geste.value,
+          a: plante ? "Plante" : a.value,
+          b: f.b.length === 0 ? "Aucune" : b.value,
+          espece: plante ? Number(a.value) : 0,
+        });
       } catch {
         this.resultatSouffle.textContent = "L'intuition n'a pas pu être soufflée.";
       } finally {
         bouton.disabled = false;
       }
     });
-    const ligne = (libelle: string, champ: HTMLElement) => {
-      const l = el("label", "ligne");
-      l.append(`${libelle} `, champ);
-      return l;
-    };
-    bloc.append(ligne("Geste", geste), ligne("Avec", a), ligne("Et", b), bouton, this.resultatSouffle,
+    bloc.append(ligne(el("span", undefined, "Geste"), geste), ligneA, ligneB, bouton, this.resultatSouffle,
       el("p", "discret", "Il essaie avec ce qu'il a sous la main. Le journal marquera ce qu'il en tire comme venu de l'Entité."));
     this.souffle = bloc;
     return bloc;
+  }
+
+  /** Vrai si l'utilisateur est en train de remplir le formulaire de l'Entité (un menu ouvert ne doit pas être redessiné). */
+  private saisieEnCours(): boolean {
+    return !!this.souffle && (this.souffle.contains(document.activeElement) || this.souffle.matches(":hover"));
   }
 
   private traits(titre: string, traits: Trait[], max: number): HTMLElement {

@@ -158,11 +158,23 @@ public sealed partial class Comportement
         if (meme)
         {
             var tolerance = Social?.ToleranceMoeursDe(h) ?? 0.5;
+            var p = h.Personnalite;
+            var x = autre.Nom;
             (raison, pensee) = h.Lucidite < 0.3
-                ? ("sans comprendre ce trouble", $"{autre.Nom} me trouble. Je ne comprends pas pourquoi.")
+                ? ("sans comprendre ce trouble", Jardin.Varier(h, cle, 0, x,
+                    new Jardin.V($"{x} me trouble. Je ne comprends pas pourquoi.", 0.5),
+                    new Jardin.V($"Pourquoi mon cœur bat-il ainsi près de {x} ?", 0.3, 2),
+                    new Jardin.V($"{x} me trouble.", 0.3, 0))!)
                 : tolerance < 0.4
-                    ? ("car les siens réprouvent ces amours", $"J'aime {autre.Nom}, mais personne ne doit le savoir.")
-                    : ("sans oser le dire", $"Je n'ose pas dire à {autre.Nom} ce que je ressens.");
+                    ? ("car les siens réprouvent ces amours", Jardin.Varier(h, cle, 1, x,
+                        new Jardin.V($"J'aime {x}, mais personne ne doit le savoir.", 0.5),
+                        new Jardin.V($"Ce que je ressens pour {x} doit rester caché.", 0.3),
+                        new Jardin.V($"Si les miens savaient ce que j'éprouve pour {x}…", 0.1 + Jardin.S(p.Nevrosisme), 2))!)
+                    : ("sans oser le dire", Jardin.Varier(h, cle, 2, x,
+                        new Jardin.V($"Je n'ose pas dire à {x} ce que je ressens.", 0.4),
+                        new Jardin.V($"Un jour, je dirai à {x} ce que je ressens.", 0.1 + Jardin.S(p.Extraversion)),
+                        new Jardin.V($"{x} ne sait pas ce que j'éprouve.", 0.3),
+                        new Jardin.V($"Je garde pour moi ce que je ressens pour {x}.", 0.1 + Jardin.S(p.Moral.EvitementAffectif)))!);
             if (h.Lucidite < 0.3) type = TypeIntime.Question;
         }
         else
@@ -170,7 +182,12 @@ public sealed partial class Comportement
             raison = (Social?.ToleranceDe(h) ?? 0.5) < 0.4
                 ? "car les siens réprouvent qu'on s'unisse hors de son couple"
                 : $"par attachement à {VieSociale.Parente(h, compagnon!)}";
-            pensee = $"{autre.Nom} me plaît, mais je reste avec {compagnon!.Nom}.";
+            var p = h.Personnalite;
+            pensee = Jardin.Varier(h, cle, 3, autre.Nom,
+                new Jardin.V($"{autre.Nom} me plaît, mais je reste avec {compagnon!.Nom}.", 0.4),
+                new Jardin.V($"Je pense à {autre.Nom}, mais c'est {compagnon.Nom} que j'ai choisi{E(h)}.", 0.2 + Jardin.S(p.Conscience)),
+                new Jardin.V($"{autre.Nom} me trouble ; je ne trahirai pas {compagnon.Nom}.", 0.1 + Jardin.S(p.Moral.Honnetete) + Jardin.S(p.Moral.Fondements.Loyaute)),
+                new Jardin.V($"{autre.Nom}… non. Il y a {compagnon.Nom}.", 0.2, 0))!;
             type = TypeIntime.Intention;
         }
         var id = Noter(maintenant, TypeEvenement.Attirance, h, autre, $"{h.Nom} désire {autre.Nom}, mais refoule ce désir {raison}.");

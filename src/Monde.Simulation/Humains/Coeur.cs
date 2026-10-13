@@ -86,8 +86,14 @@ public sealed partial class VieSociale
             var mort = s.DeuilDeId >= 1 && s.DeuilDeId <= humains.Count ? humains[s.DeuilDeId - 1] : null;
             var id = Noter(maintenant, TypeEvenement.Entraide, v, s,
                 mort is null ? $"{v.Nom} console {s.Nom}." : $"{v.Nom} console {s.Nom}, qui pleure {Parente(s, mort)}.", s.DeuilEvenementId);
-            Jardin.Confier(v, TypeIntime.Intention, s.Id, $"Je reste près de {s.Nom} tant qu'{(s.Sexe == Sexe.Femme ? "elle" : "il")} a du chagrin.",
-                20 + 30 * p.Moral.Compassion, id, maintenant, cle);
+            var (il, e) = s.Sexe == Sexe.Femme ? ("elle", "e") : ("il", "");
+            var pensee = Jardin.Varier(v, cle, 0, s.Nom,
+                new Jardin.V($"Je reste près de {s.Nom} tant qu'{il} a du chagrin.", 0.4),
+                new Jardin.V($"Je partage la peine de {s.Nom}.", 0.2 + Jardin.S(p.Moral.EmpathieEmotionnelle)),
+                new Jardin.V($"Je trouverai les gestes pour consoler {s.Nom}.", 0.1 + Jardin.S(p.Moral.EmpathieCognitive)),
+                new Jardin.V($"{s.Nom} pleure ; je ne {(e == "e" ? "la" : "le")} laisserai pas seul{e}.", 0.2 + Jardin.S(p.Moral.Compassion)),
+                new Jardin.V($"Je console {s.Nom}.", 0.3, 0))!;
+            Jardin.Confier(v, TypeIntime.Intention, s.Id, pensee, 20 + 30 * p.Moral.Compassion, id, maintenant, cle);
         }
     }
 
@@ -122,7 +128,15 @@ public sealed partial class VieSociale
             var id = Noter(maintenant, TypeEvenement.Entraide, v, s,
                 $"{v.Nom} veille sur {s.Nom}, {etat}, et lui apporte à boire et à manger.", s.InfectionId != 0 ? s.InfectionEvenementId : 0);
             Jardin.Retirer(v, cle);
-            Jardin.Confier(v, TypeIntime.Intention, s.Id, $"Je prends soin de {s.Nom}.", 20 + 40 * p.Moral.Compassion, id, maintenant, cle);
+            var lui = s.Sexe == Sexe.Femme ? "elle" : "lui";
+            var pensee = Jardin.Varier(v, cle, 0, s.Nom,
+                new Jardin.V($"Je prends soin de {s.Nom}.", 0.4),
+                new Jardin.V($"{s.Nom} a besoin de moi ; je reste près {(lui == "lui" ? "de lui" : "d'elle")}.", 0.2 + Jardin.S(p.Moral.Compassion)),
+                new Jardin.V($"Tant que {s.Nom} sera {etat}, je lui porterai à boire et à manger.", 0.2 + Jardin.S(p.Conscience)),
+                new Jardin.V($"Je soigne {s.Nom} ; {(lui == "lui" ? "il" : "elle")} ferait de même pour moi.", 0.1 + Jardin.S(p.Moral.Fondements.Equite)),
+                new Jardin.V($"Je veille sur {s.Nom}.", 0.3, 0),
+                new Jardin.V($"Le mal de {s.Nom} me fait mal à moi aussi.", 0.05 + 2 * Jardin.S(p.Moral.EmpathieEmotionnelle), 2))!;
+            Jardin.Confier(v, TypeIntime.Intention, s.Id, pensee, 20 + 40 * p.Moral.Compassion, id, maintenant, cle);
             return;
         }
     }

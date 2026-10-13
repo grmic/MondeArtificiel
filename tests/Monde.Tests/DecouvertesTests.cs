@@ -169,6 +169,42 @@ public sealed class DecouvertesTests
     }
 
     [Fact]
+    public void Entite_ChaqueGesteNePropose_QueDesMatieresQuiVontAvecLui()
+    {
+        Assert.True(Physique.Convient(Geste.Frapper, Matiere.Silex, Matiere.Galet));
+        Assert.True(Physique.Convient(Geste.Gratter, Matiere.Branche, Matiere.Eclat));
+        Assert.True(Physique.Convient(Geste.Tordre, Matiere.Fibres, Matiere.Aucune));
+        Assert.False(Physique.Convient(Geste.Tordre, Matiere.Fibres, Matiere.Galet));
+        Assert.False(Physique.Convient(Geste.Remplir, Matiere.Calebasse, Matiere.Feu));
+        Assert.False(Physique.Convient(Geste.Gratter, Matiere.Eau, Matiere.Eclat));
+        Assert.False(Physique.Convient(Geste.Frapper, Matiere.Silex, Matiere.Aucune));
+        // Chaque geste a une forme, et chaque forme se vérifie elle-même.
+        foreach (var f in Physique.Formes)
+        {
+            Assert.NotEmpty(f.A);
+            Assert.True(Physique.Convient(f.Geste, f.A[0], f.B.Length == 0 ? Matiere.Aucune : f.B[0]));
+            Assert.True(f.B.Length == 0 || f.Liaison is not null);
+        }
+    }
+
+    [Fact]
+    public void Entite_UnePlanteSouffleeEstGouteeSiElleEstLa_SinonLIdeeSEfface()
+    {
+        var etat = new MondeSimule(Carte, MondeSimule.Nouveau(42)).Etat;
+        var monde = new MondeSimule(Carte, etat);
+        var h = monde.Etat.Humains![0];
+        var ici = monde.Flore.Sur(Carte.BiomeEn(h.X, h.Y));
+        var ailleurs = monde.Flore.Especes.FirstOrDefault(e => !ici.Contains(e));
+
+        if (ailleurs is not null) Assert.Equal(Effet.Rien, monde.Souffler(h.Id, Geste.Manger, Matiere.Plante, Matiere.Aucune, ailleurs.Numero));
+        var journal = monde.Etat.JournalNonEnregistre!;
+        if (ailleurs is not null) Assert.Contains(journal, j => j.Texte.Contains("ne pousse pas ici") && j.Origine == Origine.Entite);
+        if (ici.Count == 0) return;
+        monde.Souffler(h.Id, Geste.Manger, Matiere.Plante, Matiere.Aucune, ici[0].Numero);
+        Assert.Contains(monde.Etat.JournalNonEnregistre!, j => j.Texte.Contains("manger " + ici[0].Nom) && j.Origine == Origine.Entite);
+    }
+
+    [Fact]
     public void Enregistrement_SavoirsObjetsFeuxHuttesEtDecouvertes_SontRelusALIdentique()
     {
         var dossier = Path.Combine(Path.GetTempPath(), "monde-savoirs-" + Guid.NewGuid().ToString("N"));

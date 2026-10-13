@@ -190,8 +190,40 @@ public readonly record struct Resultat(Effet Effet, Matiere Produit, double Qual
 /// jamais.
 /// </para>
 /// </summary>
+/// <summary>
+/// Forme d'un geste que l'Entité peut souffler : le verbe, le mot qui relie les deux matières (null : une seule), et les
+/// matières qui ont un sens pour ce geste (rien n'y garantit un résultat : les lois en décident).
+/// </summary>
+public sealed record FormeGeste(Geste Geste, string Verbe, string? Liaison, Matiere[] A, Matiere[] B);
+
 public static class Physique
 {
+    private static readonly Matiere[] Pierres = [Matiere.Galet, Matiere.Silex, Matiere.Pyrite, Matiere.Obsidienne];
+
+    /// <summary>Gestes que l'Entité peut souffler, avec les matières qui leur conviennent.</summary>
+    public static IReadOnlyList<FormeGeste> Formes { get; } =
+    [
+        new(Geste.Frapper, "frapper", "contre", [.. Pierres, Matiere.BoisSec, Matiere.Branche], [.. Pierres, Matiere.BoisSec, Matiere.Branche]),
+        new(Geste.Frotter, "frotter", "contre", [Matiere.BoisSec, Matiere.Branche, .. Pierres], [Matiere.BoisSec, Matiere.Branche, .. Pierres]),
+        new(Geste.Gratter, "racler", "avec", [Matiere.Branche, Matiere.BoisSec, Matiere.Carcasse, Matiere.Peau, Matiere.Calebasse],
+            [Matiere.Eclat, Matiere.Obsidienne, Matiere.Silex, Matiere.Galet]),
+        new(Geste.Tordre, "tordre", null, [Matiere.Fibres, Matiere.HerbeSeche, Matiere.GrandesFeuilles, Matiere.Branche, Matiere.Peau], []),
+        new(Geste.Entasser, "entasser", "sur", [Matiere.BoisSec, Matiere.Branche, Matiere.GrandesFeuilles, Matiere.HerbeSeche],
+            [Matiere.Feu, Matiere.Brandon, Matiere.Branche, Matiere.Galet]),
+        new(Geste.Approcher, "approcher", "de", [Matiere.Aucune, Matiere.BoisSec, Matiere.Branche, Matiere.BatonPointu, Matiere.Carcasse, Matiere.Argile],
+            [Matiere.Feu]),
+        new(Geste.SeCouvrir, "se couvrir de", null, [Matiere.Peau, Matiere.GrandesFeuilles, Matiere.HerbeSeche, Matiere.Fibres], []),
+        new(Geste.Remplir, "remplir", "de", [Matiere.Calebasse, Matiere.Peau, Matiere.Argile], [Matiere.Eau]),
+        new(Geste.Fouir, "fouir la terre avec", null, [Matiere.Branche, Matiere.BoisSec, Matiere.BatonPointu, Matiere.Epieu, Matiere.Galet, Matiere.Eclat], []),
+        new(Geste.Manger, "manger", null, [Matiere.Plante], []),
+        new(Geste.Appliquer, "appliquer sur son mal", null, [Matiere.Plante], []),
+        new(Geste.Nager, "nager dans", null, [Matiere.Eau], []),
+    ];
+
+    /// <summary>Vrai si ces matières ont un sens pour ce geste (une seule matière : la seconde est « rien »).</summary>
+    public static bool Convient(Geste g, Matiere a, Matiere b) =>
+        Formes.FirstOrDefault(f => f.Geste == g) is { } f && f.A.Contains(a) && (f.B.Length == 0 ? b == Matiere.Aucune : f.B.Contains(b));
+
     public static bool EstDure(Matiere m) => m is Matiere.Galet or Matiere.Silex or Matiere.Obsidienne;
     public static bool EstTranchante(Matiere m) => m is Matiere.Eclat or Matiere.Obsidienne;
     public static bool EstBois(Matiere m) => m is Matiere.BoisSec or Matiere.Branche;

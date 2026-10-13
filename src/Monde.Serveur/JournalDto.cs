@@ -294,6 +294,18 @@ public sealed record FicheDto(
         Simulation.Humains.TypeIntime.Opinion => "opinion",
         Simulation.Humains.TypeIntime.ImageDeSoi => "image-de-soi",
         Simulation.Humains.TypeIntime.Croyance => "croyance",
+        Simulation.Humains.TypeIntime.Desir => "desir",
+        Simulation.Humains.TypeIntime.Amour => "amour",
+        Simulation.Humains.TypeIntime.Jalousie => "jalousie",
+        Simulation.Humains.TypeIntime.Manque => "manque",
+        Simulation.Humains.TypeIntime.Reve => "reve",
+        Simulation.Humains.TypeIntime.Souvenir => "souvenir",
+        Simulation.Humains.TypeIntime.Fierte => "fierte",
+        Simulation.Humains.TypeIntime.Honte => "honte",
+        Simulation.Humains.TypeIntime.Culpabilite => "culpabilite",
+        Simulation.Humains.TypeIntime.Envie => "envie",
+        Simulation.Humains.TypeIntime.Emerveillement => "emerveillement",
+        Simulation.Humains.TypeIntime.Ennui => "ennui",
         _ => "question",
     };
 

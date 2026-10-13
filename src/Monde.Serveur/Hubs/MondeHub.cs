@@ -240,7 +240,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     public List<DecouverteDto> Decouvertes() => Serveur.Decouvertes.Chronologie(service);
 
     /// <summary>Gestes et matières que l'Entité peut souffler.</summary>
-    public ChoixIntuitionDto ChoixIntuition() => Serveur.Decouvertes.Choix();
+    public ChoixIntuitionDto ChoixIntuition(int humain) => Serveur.Decouvertes.Choix(service, humain);
 
     /// <summary>
     /// L'Entité souffle à un humain l'idée d'un geste. Il l'essaie aussitôt avec ce qu'il a sous la main ; les lois du monde
@@ -254,9 +254,16 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         {
             throw new HubException("Geste ou matière inconnus.");
         }
-        var effet = service.Monde.Souffler(demande.Humain, geste, a, b);
+        // Liste blanche : seules les matières qui ont un sens pour ce geste ; une plante doit être désignée par son espèce.
+        var plante = geste is Simulation.Humains.Geste.Manger or Simulation.Humains.Geste.Appliquer;
+        if (!Simulation.Humains.Physique.Convient(geste, a, b) || plante && (demande.Espece < 1 || demande.Espece > service.Monde.Flore.Especes.Count))
+        {
+            throw new HubException("Ce geste ne va pas avec ces matières.");
+        }
+        var effet = service.Monde.Souffler(demande.Humain, geste, a, b, plante ? demande.Espece : 0);
         service.Sauvegarder();
         await Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde));
+        if (plante && effet == Simulation.Humains.Effet.Rien) return "La plante a été essayée ; le journal dira ce qui a été ressenti, et la croyance qui en naît.";
         return effet == Simulation.Humains.Effet.Rien ? "Rien n'en est sorti (le journal dit ce qu'il en a fait)." : "Obtenu : " + Simulation.Humains.Physique.NomEffet(effet) + ".";
     }
 

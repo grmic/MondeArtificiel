@@ -44,11 +44,14 @@ public sealed record DecouverteDto(string Date, long Secondes, string Savoir, in
 /// <summary>Un choix proposé à l'Entité (geste ou matière) : clé et libellé.</summary>
 public sealed record ChoixDto(string Cle, string Libelle);
 
-/// <summary>Ce que l'Entité peut souffler : gestes et matières.</summary>
-public sealed record ChoixIntuitionDto(IReadOnlyList<ChoixDto> Gestes, IReadOnlyList<ChoixDto> Matieres);
+/// <summary>Un geste que l'Entité peut souffler : son verbe, le mot qui relie les matières, et les matières qui lui conviennent.</summary>
+public sealed record FormeGesteDto(string Cle, string Verbe, string? Liaison, IReadOnlyList<ChoixDto> A, IReadOnlyList<ChoixDto> B);
 
-/// <summary>Demande de l'Entité : souffler à un humain l'idée d'un geste avec une ou deux matières.</summary>
-public sealed record DemandeIntuition(int Humain, string Geste, string A, string? B);
+/// <summary>Ce que l'Entité peut souffler à un humain : les gestes, et les plantes qui poussent là où il se trouve.</summary>
+public sealed record ChoixIntuitionDto(IReadOnlyList<FormeGesteDto> Gestes, IReadOnlyList<ChoixDto> Plantes);
+
+/// <summary>Demande de l'Entité : un geste avec une ou deux matières, ou une plante (numéro d'espèce) à manger ou appliquer.</summary>
+public sealed record DemandeIntuition(int Humain, string Geste, string A, string? B, int Espece = 0);
 
 public static class Decouvertes
 {
@@ -64,10 +67,29 @@ public static class Decouvertes
             SavoirsDto.Origine(d.Origine), d.EvenementId, detenteurs.GetValueOrDefault(d.Effet))).ToList();
     }
 
-    /// <summary>Gestes et matières que l'Entité peut suggérer (la matière « rien » sert aux gestes à une seule matière).</summary>
-    public static ChoixIntuitionDto Choix() => new(
-        Enum.GetValues<Geste>().Select(g => new ChoixDto(g.ToString(), Physique.NomGeste(g))).ToList(),
-        Enum.GetValues<Matiere>().Select(m => new ChoixDto(m.ToString(), m == Matiere.Aucune ? "(rien)" : Physique.Nom(m))).ToList());
+    /// <summary>
+    /// Gestes que l'Entité peut souffler à cet humain, chacun avec les seules matières qui ont un sens pour lui, et les
+    /// plantes qui poussent là où il se trouve (pour manger ou appliquer).
+    /// </summary>
+    public static ChoixIntuitionDto Choix(ServiceMonde service, int humain)
+    {
+        var monde = service.Monde;
+        var (_, humains) = monde.InstantaneHumains();
+        static ChoixDto Option(Geste g, Matiere m) => new(m.ToString(), m switch
+        {
+            Matiere.Aucune when g == Geste.Approcher => "ses mains",
+            Matiere.Eau when g == Geste.Nager => "l'eau profonde",
+            Matiere.Plante => "une plante",
+            _ => Physique.Nom(m),
+        });
+        var gestes = Physique.Formes.Select(f => new FormeGesteDto(f.Geste.ToString(), f.Verbe, f.Liaison,
+            f.A.Select(m => Option(f.Geste, m)).ToList(), f.B.Select(m => Option(f.Geste, m)).ToList())).ToList();
+        var plantes = humain >= 1 && humain <= humains.Count
+            ? monde.Flore.Sur(monde.Carte.BiomeEn(humains[humain - 1].X, humains[humain - 1].Y))
+                .Select(e => new ChoixDto(e.Numero.ToString(System.Globalization.CultureInfo.InvariantCulture), e.Nom)).ToList()
+            : [];
+        return new ChoixIntuitionDto(gestes, plantes);
+    }
 
     /// <summary>Savoirs partagés dans une communauté : chaque effet connu, et par combien de ses membres.</summary>
     public static List<string> DeCommunaute(IReadOnlyList<Humain> membres) =>
