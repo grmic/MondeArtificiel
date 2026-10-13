@@ -157,6 +157,29 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, classe?: strin
   return e;
 }
 
+/** Sections de la fiche ouvertes (par leur titre) : Besoins et Humeur par défaut, puis ce que l'observateur a choisi. */
+const CLE_SECTIONS = "fiche.sections";
+let sectionsOuvertes = lireSections();
+
+function lireSections(): Set<string> {
+  try {
+    const brut = localStorage.getItem(CLE_SECTIONS);
+    const liste: unknown = brut ? JSON.parse(brut) : null;
+    if (Array.isArray(liste)) return new Set(liste.filter((x): x is string => typeof x === "string").slice(0, 50));
+  } catch {
+    // Stockage indisponible ou valeur abîmée : on repart des sections par défaut.
+  }
+  return new Set(["Besoins", "Humeur"]);
+}
+
+function enregistrerSections(): void {
+  try {
+    localStorage.setItem(CLE_SECTIONS, JSON.stringify([...sectionsOuvertes]));
+  } catch {
+    // Navigation privée ou stockage plein : le choix vaut pour cette session seulement.
+  }
+}
+
 /** Fiche d'un humain : qui il est, ce qu'il pense, ce dont il se souvient et ce qu'il a vécu. */
 export class PanneauFiche {
   private id = 0;
@@ -273,6 +296,7 @@ export class PanneauFiche {
     corps.append(el("p", "resume", `${h.sexe === "femme" ? "Femme" : "Homme"}, ${age} · ${etat}`));
     if (h.pensee) corps.append(el("p", "pensee", `« ${h.pensee} »`));
     if (f.ame) {
+      corps.append(el("h3", undefined, "Humeur"));
       const ame = el("p", "ame");
       ame.append(`Humeur : ${f.ame.etat} (${f.ame.humeur}/100)`);
       if (f.ame.chagrin > 0) {
@@ -287,7 +311,7 @@ export class PanneauFiche {
       if (f.ame.raisons.length > 0) ame.append(el("br"), `Ce qui pèse sur son humeur : ${f.ame.raisons.join(" ; ")}.`);
       corps.append(ame);
       if (f.ame.rancunes.length > 0) {
-        corps.append(el("h3", undefined, "Rancunes"));
+        corps.append(el("h4", undefined, "Rancunes"));
         const rancunes = el("ul", "liste");
         for (const g of f.ame.rancunes) {
           const li = el("li");
@@ -428,8 +452,71 @@ export class PanneauFiche {
     if (f.histoire.length === 0) histoire.append(el("li", "discret", "Rien encore."));
     corps.append(histoire);
 
+    this.sectionner(corps);
     r.append(corps);
     corps.scrollTop = defilement;
+  }
+
+  /**
+   * Range la fiche en sections déroulantes : chaque titre (h3) ouvre une section qui garde tout ce qui le suit. L'en-tête
+   * (résumé, pensée, communauté, famille) reste visible ; les formulaires de l'Entité vont à la fin. Les sections ouvertes
+   * sont retenues d'un rafraîchissement, d'un humain et d'une session à l'autre.
+   */
+  private sectionner(corps: HTMLElement): void {
+    const entete: Element[] = [];
+    const sections: HTMLDetailsElement[] = [];
+    const fin: Element[] = [];
+    let courante: HTMLDetailsElement | null = null;
+    for (const n of Array.from(corps.children)) {
+      if (n.matches(".resume, .pensee, .communaute, .famille")) {
+        entete.push(n);
+        continue;
+      }
+      if (n.matches(".entite-bloc")) {
+        fin.push(n);
+        continue;
+      }
+      let titre: Element | null = null;
+      if (n.tagName === "H3") titre = n;
+      else if (n.tagName === "DIV" && n.firstElementChild?.tagName === "H3") {
+        titre = n.firstElementChild;
+        titre.remove();
+      }
+      if (titre) {
+        courante = this.section(titre.textContent ?? "");
+        sections.push(courante);
+        if (titre === n) continue;
+      }
+      if (courante) courante.append(n);
+      else entete.push(n);
+    }
+    const boutons = el("div", "sections-boutons");
+    const tout = (ouvrir: boolean) => {
+      for (const s of sections) s.open = ouvrir;
+      sectionsOuvertes = new Set(ouvrir ? sections.map((s) => s.dataset.titre ?? "") : []);
+      enregistrerSections();
+    };
+    for (const [texte, ouvrir] of [["tout ouvrir", true], ["tout fermer", false]] as const) {
+      const b = el("button", "lien", texte);
+      b.type = "button";
+      b.addEventListener("click", () => tout(ouvrir));
+      boutons.append(b);
+    }
+    corps.replaceChildren(boutons, ...entete, ...sections, ...fin);
+  }
+
+  private section(titre: string): HTMLDetailsElement {
+    const d = el("details", "section");
+    d.dataset.titre = titre;
+    d.open = sectionsOuvertes.has(titre);
+    d.append(el("summary", undefined, titre));
+    d.addEventListener("toggle", () => {
+      if (d.open === sectionsOuvertes.has(titre)) return;
+      if (d.open) sectionsOuvertes.add(titre);
+      else sectionsOuvertes.delete(titre);
+      enregistrerSections();
+    });
+    return d;
   }
 
   /** Savoirs (texte, confiance, comment il les a appris et de qui), objets portés, vêtement, nage. */

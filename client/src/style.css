@@ -236,3 +236,8 @@ h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
 .demographie-panneau .note { font-size: 0.78rem; margin-top: 10px; }
 
 .fiche .portrait { color: #d8c8ff; font-size: 0.82rem; margin: 4px 0 6px; }
+.fiche details.section { border-top: 1px solid #2c3746; padding: 2px 0; }
+.fiche details.section > summary { cursor: pointer; font-size: 0.85rem; margin: 6px 0 4px; color: var(--discret); text-transform: uppercase; letter-spacing: 0.04em; }
+.fiche details.section > summary:hover { color: var(--texte); }
+.fiche details.section[open] > summary { margin-bottom: 6px; }
+.fiche .sections-boutons { display: flex; gap: 10px; justify-content: flex-end; font-size: 0.78rem; margin-bottom: 4px; }
