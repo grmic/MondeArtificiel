@@ -61,7 +61,8 @@ public sealed partial class Comportement
 
     private ContexteGeste Contexte(Humain h, Savoir? s = null) =>
         new(FeuIci(h), EauDouceAPortee(h.X, h.Y), Sec(h), carte.BiomeEn(h.X, h.Y), AdressePour(h, s), Ingeniosite(h),
-            s is null ? 0 : h.Savoirs.Where(x => x.Effet == Effet.Flamme && x.Geste == s.Geste && x.A == s.A && x.B == s.B).Sum(x => x.Succes));
+            s is null ? 0 : h.Savoirs.Where(x => x.Effet == Effet.Flamme && x.Geste == s.Geste && x.A == s.A && x.B == s.B).Sum(x => x.Succes),
+            h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe));
 
     private bool VolcanProche(int x, int y) =>
         Catastrophes?.Geologie.Volcans.Any(v => Distance(v.X, v.Y, x, y) <= 25) == true;
@@ -99,7 +100,9 @@ public sealed partial class Comportement
         if (alea.Reel() >= envie) return false;
 
         var materiaux = Materiaux(h);
-        var geste = (Geste)alea.Entier(12);
+        // Les gestes du jeu : frapper, frotter, tordre, entasser, pousser… (assembler, percer, trancher demandent une intention).
+        var tirage = alea.Entier(13);
+        var geste = tirage == 12 ? Geste.Pousser : (Geste)tirage;
         var a = materiaux.Count == 0 ? Matiere.Aucune : materiaux[alea.Entier(materiaux.Count)];
         var b = materiaux.Count == 0 ? Matiere.Aucune : materiaux[alea.Entier(materiaux.Count)];
         if (geste is Geste.Manger or Geste.Appliquer)
@@ -129,6 +132,11 @@ public sealed partial class Comportement
             a = b = Matiere.Eau;
         }
         if (geste == Geste.Approcher && FeuIci(h) && alea.Reel() < 0.3) a = Matiere.Aucune;
+        // Un outil neuf s'essaie sur tout : celui qui a une hache en main frappe le tronc couché à ses pieds.
+        if (geste == Geste.Frapper && materiaux.Contains(Matiere.Tronc) && h.Objets.Exists(o => Lois.Coupe(o) > 0.3) && alea.Reel() < 0.3)
+            (geste, a, b) = (Geste.Trancher, Matiere.Tronc, Matiere.Assemblage);
+        // On pousse une chose sur le sol, ou sur l'eau si l'on est au bord.
+        if (geste == Geste.Pousser) b = EauDouceAPortee(h.X, h.Y) && alea.Reel() < 0.5 ? Matiere.Eau : Matiere.Aucune;
 
         h.Activite = Activite.Experimenter;
         h.CibleX = h.CibleY = -1;
@@ -203,8 +211,10 @@ public sealed partial class Comportement
             case Effet.Foyer:
                 // Le brandon posé sous le bois devient un foyer ; le bois ajouté nourrit le feu quelques heures.
                 h.Objets.RemoveAll(o => o.Matiere == Matiere.Brandon);
-                if (Installations.FoyerEn(h.X, h.Y) is { } f) Installations.Alimenter(f, 4 + 4 * alea.Reel());
-                else Installations.Allumer(h.X, h.Y, 4 + 4 * alea.Reel(), _maintenant, h.Id, evenement);
+                // Avec une hache, on fend de grosses bûches qui brûlent bien plus longtemps que des branches cassées à la main.
+                var bois = (4 + 4 * alea.Reel()) * (1 + (h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe)));
+                if (Installations.FoyerEn(h.X, h.Y) is { } f) Installations.Alimenter(f, bois);
+                else Installations.Allumer(h.X, h.Y, bois, _maintenant, h.Id, evenement);
                 break;
             case Effet.Couvert:
                 if (a == Matiere.Peau)
@@ -216,13 +226,29 @@ public sealed partial class Comportement
                 else h.Vetement = new Objet(a, r.Qualite, 1);
                 break;
             case Effet.Abri:
-                Installations.Batir(h.X, h.Y, r.Qualite, _maintenant, h.Id, evenement);
+                // Une hache taille des perches droites et solides : la hutte tient mieux.
+                var coupe = h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe);
+                Installations.Batir(h.X, h.Y, Math.Clamp(r.Qualite * (1 + 0.4 * coupe), 0, 1), _maintenant, h.Id, evenement);
                 h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));
                 break;
             case Effet.EauPortee:
                 var calebasse = h.Objets.Find(o => o.Matiere == Matiere.Calebasse);
                 if (calebasse is null) Prendre(h, new Objet(Matiere.Calebasse, 1, 1, Plein: true));
                 else h.Objets[h.Objets.IndexOf(calebasse)] = calebasse with { Plein = true };
+                break;
+            case Effet.Rondelle:
+                if (b == Matiere.Assemblage && h.Objets.MaxBy(Lois.Coupe) is { } outil) UserObjet(h, outil, 0.04);
+                else User(h, b, 0.04);
+                Prendre(h, new Objet(Matiere.Rondelle, r.Qualite, 1));
+                break;
+            case Effet.Percage:
+                User(h, b, 0.06);
+                if (r.Produit == Matiere.RondellePercee)
+                {
+                    var rondelle = h.Objets.Find(o => o.Matiere == Matiere.Rondelle);
+                    if (rondelle is not null) h.Objets.Remove(rondelle);
+                    h.Objets.Add(new Objet(Matiere.RondellePercee, Math.Min(r.Qualite, rondelle?.Qualite ?? r.Qualite), 1));
+                }
                 break;
             case Effet.Tubercules:
                 var i = carte.Indice(h.X, h.Y);
@@ -231,6 +257,15 @@ public sealed partial class Comportement
                 User(h, a, 0.03);
                 break;
         }
+    }
+
+    /// <summary>Use cet objet-là (un objet assemblé parmi d'autres) ; hors d'usage, il est jeté.</summary>
+    private static void UserObjet(Humain h, Objet o, double usure)
+    {
+        var i = h.Objets.IndexOf(o);
+        if (i < 0) return;
+        if (o.Usure - usure <= 0) h.Objets.RemoveAt(i);
+        else h.Objets[i] = o with { Usure = o.Usure - usure };
     }
 
     /// <summary>Use un objet porté ; hors d'usage, il est jeté.</summary>
@@ -246,7 +281,7 @@ public sealed partial class Comportement
     /// <summary>Garde un objet sur soi : s'il n'y a plus de place, le moins utile est laissé.</summary>
     private static void Prendre(Humain h, Objet objet)
     {
-        var meme = h.Objets.Find(o => o.Matiere == objet.Matiere);
+        var meme = h.Objets.Find(o => o.Matiere == objet.Matiere && (o.Matiere != Matiere.Assemblage || MemeUsage(o, objet)));
         if (meme is not null)
         {
             if (meme.Qualite * meme.Usure < objet.Qualite * objet.Usure) h.Objets[h.Objets.IndexOf(meme)] = objet;
@@ -255,7 +290,7 @@ public sealed partial class Comportement
         if (h.Objets.Count >= ObjetsMax)
         {
             // On laisse ce dont on ne connaît pas d'usage, sinon le plus usé.
-            var laisse = h.Objets.OrderBy(o => h.Savoirs.Exists(s => (s.A == o.Matiere || s.B == o.Matiere) && s.Confiance >= 0.5) ? 1 : 0)
+            var laisse = h.Objets.OrderBy(o => o.Matiere is Matiere.Assemblage or Matiere.Carcasse || h.Savoirs.Exists(s => (s.A == o.Matiere || s.B == o.Matiere) && s.Confiance >= 0.5) ? 1 : 0)
                 .ThenBy(o => o.Qualite * o.Usure).First();
             h.Objets.Remove(laisse);
         }
@@ -267,23 +302,24 @@ public sealed partial class Comportement
     /// dans le monde, c'est un tournant (★). Renvoie le numéro de l'événement qui le rapporte (0 s'il était déjà connu).
     /// </summary>
     private long Retenir(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, OrigineSavoir origine, int maitreId,
-        IReadOnlyList<Humain> tous, bool succes = true)
+        IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", string? recit = null)
     {
-        var i = h.Savoirs.FindIndex(s => s.Meme(g, a, b, e, espece, mal));
+        var i = h.Savoirs.FindIndex(s => s.Meme(g, a, b, e, espece, mal) && s.Pieces == pieces);
         if (i >= 0)
         {
             var s = h.Savoirs[i];
             h.Savoirs[i] = s with { Essais = s.Essais + 1, Succes = s.Succes + (succes ? 1 : 0), UtiliseLe = _maintenant };
             return 0;
         }
-        var premier = !Installations.Decouvertes.Exists(d => d.Effet == e);
+        var structure = Lois.Structure(pieces);
+        var premier = !Installations.Decouvertes.Exists(d => d.Effet == e && Lois.Structure(d.Pieces) == structure);
         // Un savoir que tout le monde avait perdu, retrouvé : c'est aussi un tournant.
         var retrouve = !premier && espece == 0 && !tous.Any(o => o.EstVivant && o.Savoirs.Exists(s => s.Effet == e && s.Espece == 0));
         var nom = espece > 0 ? Majuscule(Flore.Get(espece).Nom) : null;
-        var nouveau = new Savoir(g, a, b, e, espece, mal, 1, succes ? 1 : 0, _maintenant, _maintenant, origine, maitreId, 0);
+        var nouveau = new Savoir(g, a, b, e, espece, mal, 1, succes ? 1 : 0, _maintenant, _maintenant, origine, maitreId, 0, pieces);
         var maitre = maitreId > 0 && maitreId <= tous.Count ? tous[maitreId - 1] : null;
         var description = Physique.Decrire(nouveau, nom);
-        var comment = origine switch
+        var comment = recit is not null && origine != OrigineSavoir.Imitation ? recit : origine switch
         {
             OrigineSavoir.Essai => Recit(h, nouveau, espece > 0 ? Flore.Get(espece).Nom : null),
             OrigineSavoir.Observation => Observation(h, nouveau),
@@ -302,10 +338,10 @@ public sealed partial class Comportement
             id = Noter(_maintenant, TypeEvenement.Decouverte, h, maitre, texte, significatif: premier || retrouve);
         }
         h.Savoirs.Add(nouveau with { EvenementId = id });
-        if (premier) Installations.Decouvertes.Add(new Decouverte(e, h.Id, _maintenant, id, origine));
+        if (premier) Installations.Decouvertes.Add(new Decouverte(e, h.Id, _maintenant, id, origine, pieces));
         if (premier || !banal)
         {
-            Jardin.Confier(h, TypeIntime.Question, 0, Question(nouveau), 30 + 30 * h.Personnalite.Ouverture, id, _maintenant, $"savoir:{(int)e}:{espece}");
+            Jardin.Confier(h, TypeIntime.Question, 0, Question(nouveau), 30 + 30 * h.Personnalite.Ouverture, id, _maintenant, $"savoir:{(int)e}:{espece}{(pieces.Length > 0 ? ":" + pieces : "")}");
         }
         return id;
     }
@@ -337,6 +373,10 @@ public sealed partial class Comportement
             Effet.Poison => $"{h.Nom} goûte {plante} : son ventre se tord.",
             Effet.Visions => $"{h.Nom} mâche {plante} : le monde se met à onduler.",
             Effet.Soulagement => $"{h.Nom} guérit après avoir pris {plante}.",
+            Effet.Roule => $"{h.Nom} pousse {Physique.Nom(s.A)} : {IlChose(s.A)} roule loin devant.",
+            Effet.Flotte => $"{h.Nom} pousse {Physique.Nom(s.A)} dans l'eau : {IlChose(s.A)} ne coule pas.",
+            Effet.Percage => $"{h.Nom} fait tourner {Physique.Nom(s.B)} contre {Physique.Nom(s.A)}, longtemps : un trou se creuse, puis traverse.",
+            Effet.Rondelle => $"{h.Nom} entaille {Physique.Nom(s.A)} à grands coups : une tranche ronde s'en détache.",
             _ => $"{h.Nom} essaie quelque chose de nouveau.",
         };
     }
@@ -359,6 +399,10 @@ public sealed partial class Comportement
         Effet.Poison => "Pourquoi cette plante veut-elle me tuer ?",
         Effet.Soulagement => "Cette plante a chassé mon mal. Comment le savait-elle ?",
         Effet.Nage => "Pourquoi l'eau me porte-t-elle ?",
+        Effet.Roule => "Pourquoi ce qui est rond s'en va-t-il tout seul quand on le pousse ?",
+        Effet.Flotte => "Pourquoi le bois reste-t-il sur l'eau quand la pierre coule ?",
+        Effet.Flottaison => "L'eau ne me barre plus la route. Jusqu'où peut-on aller ainsi ?",
+        Effet.RouleSurAxe => "Ce qui tourne porte ce qui pèse. Que pourrait-on faire tourner encore ?",
         _ => "Que pourrais-je faire d'autre avec cela ?",
     };
 
@@ -366,22 +410,23 @@ public sealed partial class Comportement
     /// Ceux qui regardent peuvent imiter : d'autant plus qu'ils sont curieux, qu'ils aiment celui qui fait le geste ou
     /// l'admirent, et que celui-ci montre bien (empathie cognitive). Les enfants imitent bien plus (Csibra et Gergely, 2009).
     /// </summary>
-    private void Montrer(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, IReadOnlyList<Humain> tous, long cause)
+    private void Montrer(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, IReadOnlyList<Humain> tous, long cause,
+        string pieces = "")
     {
         if (e is Effet.Tiedeur or Effet.Visions) return;
         foreach (var o in tous)
         {
             if (o.Id == h.Id || !o.EstVivant || o.X != h.X || o.Y != h.Y || o.EstBebe(_maintenant) || o.Activite == Activite.Dormir) continue;
-            if (o.Savoirs.Exists(s => s.Meme(g, a, b, e, espece, mal))) continue;
+            if (o.Savoirs.Exists(s => s.Meme(g, a, b, e, espece, mal) && s.Pieces == pieces)) continue;
             var lien = o.LienAvec(h.Id);
             var affection = lien?.Affection ?? 0;
             if (affection < -30) continue;
             var attention = (0.2 + 0.6 * o.Personnalite.Ouverture) * (o.EstEnfant(_maintenant) ? 1.8 : 1)
                             * (0.5 + affection / 100) * (0.6 + 0.8 * h.Personnalite.Moral.EmpathieCognitive) * (0.5 + h.Personnalite.Charisme);
             // Comprendre un geste compliqué demande de l'intelligence et de l'adresse.
-            var difficile = e is Effet.Flamme or Effet.Durci or Effet.Decoupe ? 0.5 + 0.5 * Ingeniosite(o) : 1;
+            var difficile = e is Effet.Flamme or Effet.Durci or Effet.Decoupe or Effet.Percage || pieces.Length > 0 ? 0.5 + 0.5 * Ingeniosite(o) : 1;
             if (alea.Reel() >= 0.35 * attention * difficile) continue;
-            Retenir(o, g, a, b, e, espece, mal, OrigineSavoir.Imitation, h.Id, tous);
+            Retenir(o, g, a, b, e, espece, mal, OrigineSavoir.Imitation, h.Id, tous, pieces: pieces);
             VieSociale.Gratitude(o, h, 0.5);
         }
     }
@@ -635,24 +680,26 @@ public sealed partial class Comportement
         return h.CibleX >= 0;
     }
 
-    /// <summary>Arme portée pour chasser, et le gain de réussite qu'elle donne (un épieu double presque les prises).</summary>
-    private static (Matiere Arme, double Gain) ArmeDeChasse(Humain h)
+    /// <summary>
+    /// Arme portée pour chasser, et le gain de réussite qu'elle donne : un épieu double presque les prises ; une pointe
+    /// de pierre emmanchée, qui perce mieux et plus profond, fait mieux encore (Churchill, 1993 ; Wilkins et al., 2012).
+    /// </summary>
+    private static (Objet? Arme, double Gain) ArmeDeChasse(Humain h)
     {
-        var epieu = h.Objets.Find(o => o.Matiere == Matiere.Epieu);
-        if (epieu is not null) return (Matiere.Epieu, 0.6 + 0.5 * epieu.Qualite);
-        var baton = h.Objets.Find(o => o.Matiere == Matiere.BatonPointu);
-        if (baton is not null) return (Matiere.BatonPointu, 0.2 + 0.3 * baton.Qualite);
-        return (Matiere.Aucune, 0);
+        var arme = h.Objets.MaxBy(Lois.Chasse);
+        return arme is null || Lois.Chasse(arme) <= 0 ? (null, 0) : (arme, Lois.Chasse(arme));
     }
 
     /// <summary>Après une prise : découper la bête, la faire cuire, retenir que l'arme a servi. Renvoie le facteur de nourriture obtenue.</summary>
-    private double ApresLaChasse(Humain h, Matiere arme, IReadOnlyList<Humain> tous)
+    private double ApresLaChasse(Humain h, Objet? arme, IReadOnlyList<Humain> tous)
     {
         var facteur = 1.0;
-        if (arme != Matiere.Aucune)
+        if (arme is not null)
         {
-            User(h, arme, 0.05);
-            Constater(h, Geste.Frapper, arme, Matiere.Carcasse, new Resultat(Effet.Chasse, Matiere.Aucune, 1), OrigineSavoir.Essai, tous);
+            UserObjet(h, arme, 0.05);
+            if (arme.Matiere != Matiere.Assemblage)
+                Constater(h, Geste.Frapper, arme.Matiere, Matiere.Carcasse, new Resultat(Effet.Chasse, Matiere.Aucune, 1), OrigineSavoir.Essai, tous);
+            else RenforcerAssemblage(h, arme);
         }
         var lame = h.Porte(Matiere.Eclat) ? Matiere.Eclat : h.Porte(Matiere.Obsidienne) ? Matiere.Obsidienne : Matiere.Aucune;
         if (lame != Matiere.Aucune && (h.Sait(Effet.Decoupe) || alea.Reel() < 0.15 * (0.3 + h.Personnalite.Ouverture)))
@@ -990,14 +1037,14 @@ public sealed partial class Comportement
         {
             var manque = APortee(h, a) ? b : a;
             Noter(maintenant, TypeEvenement.Decouverte, h, null,
-                $"{h.Nom} sent une idée lui venir : {Physique.NomGeste(geste)} {Physique.Nom(a)}{(b == Matiere.Aucune ? "" : " et " + Physique.Nom(b))}… mais {Il(h)} n'a pas {Physique.Nom(manque)} sous la main, et l'idée s'efface.");
+                $"{h.Nom} sent une idée lui venir : {Physique.Phrase(geste, a, b)}… mais {Il(h)} n'a pas {Physique.Nom(manque)} sous la main, et l'idée s'efface.");
             return Effet.Rien;
         }
         var r = Physique.Tenter(geste, a, b, Contexte(h), alea);
         if (r.Effet == Effet.Rien)
         {
             Noter(maintenant, TypeEvenement.Decouverte, h, null,
-                $"{h.Nom} sent une idée lui venir : {Physique.NomGeste(geste)} {Physique.Nom(a)}{(b == Matiere.Aucune ? "" : " et " + Physique.Nom(b))}… {Majuscule(Il(h))} essaie, mais rien ne se passe.");
+                $"{h.Nom} sent une idée lui venir : {Physique.Phrase(geste, a, b)}… {Majuscule(Il(h))} essaie, mais rien ne se passe.");
             return Effet.Rien;
         }
         Constater(h, geste, a, b, r, OrigineSavoir.Entite, tous);

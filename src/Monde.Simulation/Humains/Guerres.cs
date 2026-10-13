@@ -14,6 +14,10 @@ public enum Arme : byte
     Baton = 2,
     /// <summary>Un épieu (bâton pointu durci au feu), pour qui en a fabriqué un.</summary>
     Epieu = 3,
+    /// <summary>Une pointe de pierre emmanchée.</summary>
+    Lance = 4,
+    /// <summary>Une pierre emmanchée en travers.</summary>
+    Hache = 5,
 }
 
 /// <summary>Comment une guerre s'est terminée.</summary>
@@ -996,6 +1000,8 @@ public sealed partial class Comportement
     {
         var liste = armes.ToList();
         var mots = new List<string>();
+        if (liste.Contains(Arme.Lance)) mots.Add("de lances à pointe de pierre");
+        if (liste.Contains(Arme.Hache)) mots.Add("de haches de pierre");
         if (liste.Contains(Arme.Epieu)) mots.Add("d'épieux");
         if (liste.Contains(Arme.Baton)) mots.Add("de branches");
         if (liste.Contains(Arme.Pierre)) mots.Add("de pierres");
@@ -1006,7 +1012,7 @@ public sealed partial class Comportement
     /// Efficacité d'un moyen de frapper, relative (1 : pierres). Une branche assomme et brise mieux que des pierres lancées
     /// au jugé ; les poings tuent rarement.
     /// </summary>
-    internal static double Puissance(Arme arme) => arme switch { Arme.Epieu => 1.7, Arme.Baton => 1.25, Arme.Pierre => 1, _ => 0.45 };
+    internal static double Puissance(Arme arme) => arme switch { Arme.Lance => 1.9, Arme.Hache => 1.8, Arme.Epieu => 1.7, Arme.Baton => 1.25, Arme.Pierre => 1, _ => 0.45 };
 
     /// <summary>
     /// Ce qu'un combattant a en main, selon ce que le terrain offre (branches en forêt, pierres en montagne, au désert et
@@ -1014,7 +1020,13 @@ public sealed partial class Comportement
     /// </summary>
     private Arme ChoisirArme(Humain h, double prepare)
     {
-        // Celui qui porte un épieu l'a toujours en main.
+        // Celui qui porte une arme taillée l'a toujours en main : la plus redoutable, d'après ses pièces.
+        foreach (var o in h.Objets)
+        {
+            if (o.Matiere != Matiere.Assemblage || Assemblage.Lire(o.Pieces) is not { } a) continue;
+            if (a.Montage == Montage.Bout && (Lois.De(a.Tete).Forme & Forme.Pointu) != 0) return Arme.Lance;
+        }
+        if (h.Objets.Exists(o => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { Montage: Montage.Travers })) return Arme.Hache;
         if (h.Porte(Matiere.Epieu)) return Arme.Epieu;
         if (alea.Reel() >= prepare) return Arme.Poings;
         var biome = carte.BiomeEn(h.X, h.Y);
@@ -1099,6 +1111,8 @@ public sealed partial class Comportement
             if (!victime.EstVivant) continue;
             var coup = arme switch
             {
+                Arme.Lance => $"est transpercé{E(victime)} par la lance à pointe de pierre de {tueur.Nom}",
+                Arme.Hache => $"tombe sous la hache de pierre de {tueur.Nom}",
                 Arme.Epieu => $"est transpercé{E(victime)} par l'épieu de {tueur.Nom}",
                 Arme.Baton => $"tombe sous les coups de branche de {tueur.Nom}",
                 Arme.Pierre => $"est abattu{E(victime)} à coups de pierres par {tueur.Nom}",

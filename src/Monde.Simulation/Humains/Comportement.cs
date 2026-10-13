@@ -97,7 +97,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         Metaboliser(h, chaleurPartagee, maintenant);
         if (!h.EstVivant) return;
         // La soif fait nager même épuisé, au risque de se noyer : on ne reste pas mourir sur une rive sans eau douce.
-        _nageur = PeutNager(h) || h.Nage >= 0.4 && h.Soif >= 60 && h.Froid < 50;
+        SuivreSesObjets(h);
+        _nageur = PeutNager(h) || h.Nage >= 0.4 && h.Soif >= 60 && h.Froid < 50 || Radeau(h) is not null;
         Ramasser(h);
         ObserverLeFeu(h, tous);
         if (h.EstEnfant(maintenant))
@@ -107,6 +108,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             NourrirEnfant(h, Vivant(tous, h.MereId) ?? (partenaire != pere ? partenaire : null), pere);
         }
         PartagerAvecProches(h, tous);
+        RecevoirViande(h, tous);
         Voler(h, tous, maintenant);
         if (!h.EstVivant) return;
         Grossesse(h, tous, maintenant);
@@ -570,7 +572,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             return;
         }
         if (!abattu && AllerVoirLeFeu(h)) return;
+        if (ApporterViande(h, tous)) return;
         if (Outiller(h, tous)) return;
+        if (Assembler(h, tous)) return;
         if (Experimenter(h, tous)) return;
         if (alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
         {
@@ -732,6 +736,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     private void AllerManger(Humain h, Humain? recours = null)
     {
+        if (MangerSaViande(h)) return;
         var i = carte.Indice(h.X, h.Y);
         if (ecosysteme.Plantes[i] >= 1000)
         {
@@ -759,10 +764,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 h.Faim = Math.Max(0, h.Faim - pris * ValeurGibier * facteur);
                 h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h));
                 if (pris > 0) Catastrophes?.Prise(h, _maintenant);
+                if (pris > 0) Rapporter(h, pris * KgParPart * facteur, _tous);
             }
             else
             {
                 h.Fatigue = Math.Min(100, h.Fatigue + 1);
+                ApresUneChasseManquee(h, _tous);
             }
             return;
         }
@@ -989,6 +996,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 var pas = PremierPasDuChemin(carte.Indice(h.X, h.Y), carte.Indice(cibleX, cibleY));
                 if (pas < 0)
                 {
+                    // L'eau barre la route : au bord, on peut avoir l'idée (ou refaire) de quoi la traverser.
+                    if (!_nageur && Traverser(h, _tous)) return;
                     // Inaccessible : on abandonne cette destination.
                     h.CibleX = h.CibleY = -1;
                     h.Detour = false;
@@ -1007,7 +1016,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             budget -= effort;
             h.X = bx;
             h.Y = by;
-            if (!Climat.EstPraticable(carte.BiomeEn(bx, by)))
+            if (!Climat.EstPraticable(carte.BiomeEn(bx, by)) && Radeau(h) is { } radeau)
+            {
+                // Il traverse sur son radeau.
+                h.Objets[h.Objets.IndexOf(radeau)] = radeau with { Plein = true };
+                h.Fatigue = Math.Min(100, h.Fatigue + 1);
+            }
+            else if (!Climat.EstPraticable(carte.BiomeEn(bx, by)))
             {
                 // Il traverse à la nage.
                 Baignade(h, true);

@@ -30,7 +30,9 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
                     (int)Math.Round(100 * s.Confiance), Origine(s.Origine), s.MaitreId, Nom(s.MaitreId),
                     Calendrier.Decomposer(s.AppriLe).ToString(), s.Essais, s.EvenementId))
                 .ToList(),
-            h.Objets.Select(o => Physique.Nom(o.Matiere) + (o.Plein ? " pleine d'eau" : "") + Etat(o)).ToList(),
+            h.Objets.Select(o => o.Matiere == Matiere.Carcasse
+                ? $"de la viande ({Math.Max(1, Math.Round(100 * o.Qualite))} kg){(o.Usure <= 0.4 ? ", qui commence à se gâter" : "")}"
+                : Physique.Nom(o) + (o.Plein && o.Matiere == Matiere.Calebasse ? " pleine d'eau" : "") + Etat(o)).ToList(),
             h.Vetement is { } v ? (v.Matiere == Matiere.Peau ? "une peau de bête" : "des feuilles") + Etat(v) : null,
             (int)Math.Round(100 * h.Nage));
     }
@@ -63,7 +65,7 @@ public static class Decouvertes
         var detenteurs = humains.Where(h => h.EstVivant).SelectMany(h => h.Savoirs.Select(s => s.Effet).Distinct())
             .GroupBy(e => e).ToDictionary(g => g.Key, g => g.Count());
         return decouvertes.OrderBy(d => d.Le).Select(d => new DecouverteDto(Calendrier.Decomposer(d.Le).ToString(), d.Le,
-            Physique.NomEffet(d.Effet), d.HumainId, d.HumainId >= 1 && d.HumainId <= humains.Count ? humains[d.HumainId - 1].Nom : "?",
+            Physique.NomDecouverte(d.Effet, d.Pieces), d.HumainId, d.HumainId >= 1 && d.HumainId <= humains.Count ? humains[d.HumainId - 1].Nom : "?",
             SavoirsDto.Origine(d.Origine), d.EvenementId, detenteurs.GetValueOrDefault(d.Effet))).ToList();
     }
 
@@ -79,6 +81,8 @@ public static class Decouvertes
         {
             Matiere.Aucune when g == Geste.Approcher => "ses mains",
             Matiere.Eau when g == Geste.Nager => "l'eau profonde",
+            Matiere.Aucune when Physique.SansSeconde(g) is { } sol => sol,
+            Matiere.Assemblage => "son outil emmanché",
             Matiere.Plante => "une plante",
             _ => Physique.Nom(m),
         });

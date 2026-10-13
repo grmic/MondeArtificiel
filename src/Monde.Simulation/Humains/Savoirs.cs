@@ -35,6 +35,10 @@ public enum Matiere : byte
     Eau = 14,
     /// <summary>Le feu : flammes d'un incendie ou d'un foyer, braise.</summary>
     Feu = 15,
+    /// <summary>Un tronc tombé, ébranché : long, rond, lourd, et il flotte.</summary>
+    Tronc = 16,
+    /// <summary>Résine des conifères : chauffée, elle colle et durcit en refroidissant.</summary>
+    Resine = 17,
 
     // Produits.
     Eclat = 20,
@@ -45,6 +49,12 @@ public enum Matiere : byte
     Peau = 24,
     /// <summary>Brandon : branche dont le bout brûle, pour porter le feu.</summary>
     Brandon = 25,
+    /// <summary>Rondelle tranchée dans un tronc : ronde et plate.</summary>
+    Rondelle = 26,
+    /// <summary>Rondelle percée en son centre.</summary>
+    RondellePercee = 27,
+    /// <summary>Objet fait de plusieurs pièces tenues ensemble (voir <see cref="Assemblage"/>).</summary>
+    Assemblage = 28,
 }
 
 /// <summary>Gestes à la portée de tout humain. Ce qu'ils produisent dépend de la matière, pas d'une découverte programmée.</summary>
@@ -70,6 +80,14 @@ public enum Geste : byte
     Appliquer = 10,
     /// <summary>Entrer dans l'eau profonde, s'y débattre, flotter.</summary>
     Nager = 11,
+    /// <summary>Tenir plusieurs pièces ensemble par un lien (voir <see cref="Lois"/>).</summary>
+    Assembler = 12,
+    /// <summary>Pousser une chose sur le sol ou sur l'eau, et regarder ce qu'elle fait.</summary>
+    Pousser = 13,
+    /// <summary>Faire tourner une pointe dure contre du bois pour y faire un trou.</summary>
+    Percer = 14,
+    /// <summary>Entailler à grands coups (un tronc) avec un outil tranchant.</summary>
+    Trancher = 15,
 }
 
 /// <summary>Ce que l'humain constate après un geste.</summary>
@@ -115,6 +133,26 @@ public enum Effet : byte
     Brandon = 20,
     /// <summary>La pointe ou l'épieu fait mieux chasser.</summary>
     Chasse = 21,
+    /// <summary>Ce qui est rond roule quand on le pousse sur un sol dur.</summary>
+    Roule = 22,
+    /// <summary>Ce qui est plus léger que l'eau flotte.</summary>
+    Flotte = 23,
+    /// <summary>Une pierre taillée liée au bout d'un manche : elle perce plus loin et plus fort.</summary>
+    PointeEmmanchee = 24,
+    /// <summary>Une pierre tranchante liée en travers d'un manche : le coup porte plus fort.</summary>
+    TranchantEmmanche = 25,
+    /// <summary>Une charge posée sur des branches liées glisse quand on la tire.</summary>
+    Glisser = 26,
+    /// <summary>Une charge posée sur des troncs roule sur eux.</summary>
+    Rouleaux = 27,
+    /// <summary>Un tronc tranché donne des rondelles.</summary>
+    Rondelle = 28,
+    /// <summary>Une pointe dure qu'on fait tourner perce le bois.</summary>
+    Percage = 29,
+    /// <summary>Des rondelles percées tournent autour d'un bâton fixé sous la charge.</summary>
+    RouleSurAxe = 30,
+    /// <summary>Des pièces de bois liées portent un humain sur l'eau.</summary>
+    Flottaison = 31,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -153,8 +191,9 @@ public enum OrigineSavoir : byte
 /// <param name="Succes">Fois où l'effet est venu.</param>
 /// <param name="MaitreId">Humain qui le lui a appris (imitation), 0 sinon.</param>
 /// <param name="EvenementId">Événement du journal où il l'a appris.</param>
+/// <param name="Pieces">Pour un objet assemblé : ses pièces et son lien (voir <see cref="Assemblage"/>), vide sinon.</param>
 public sealed record Savoir(Geste Geste, Matiere A, Matiere B, Effet Effet, int Espece, Symptome Symptome, int Essais, int Succes,
-    long AppriLe, long UtiliseLe, OrigineSavoir Origine, int MaitreId, long EvenementId)
+    long AppriLe, long UtiliseLe, OrigineSavoir Origine, int MaitreId, long EvenementId, string Pieces = "")
 {
     /// <summary>Confiance de l'humain dans ce savoir (règle de succession de Laplace) : une seule réussite ne prouve pas grand-chose.</summary>
     public double Confiance => (Succes + 1.0) / (Essais + 2.0);
@@ -166,13 +205,15 @@ public sealed record Savoir(Geste Geste, Matiere A, Matiere B, Effet Effet, int 
 
 /// <summary>Un objet porté : sa matière, sa qualité (0 à 1) et son usure (1 : neuf, 0 : hors d'usage).</summary>
 /// <param name="Plein">Pour une calebasse : remplie d'eau.</param>
-public sealed record Objet(Matiere Matiere, double Qualite, double Usure, bool Plein = false);
+/// <param name="Pieces">Pour un objet assemblé : ses pièces et son lien (voir <see cref="Assemblage"/>).</param>
+public sealed record Objet(Matiere Matiere, double Qualite, double Usure, bool Plein = false, string? Pieces = null);
 
 /// <summary>Ce qui accompagne un geste : le feu, l'eau, la saison sèche, l'adresse et l'intelligence de celui qui le fait.</summary>
 /// <param name="Sec">Herbe et bois assez secs pour prendre feu (0 à 1).</param>
 /// <param name="FeuxReussis">Feux que celui qui le fait a déjà obtenus par ce geste : on refait bien mieux ce qu'on sait faire.</param>
+/// <param name="Coupe">Force à la coupe du meilleur outil qu'il a en main (voir <see cref="Lois.Coupe"/>).</param>
 public readonly record struct ContexteGeste(bool FeuProche, bool EauProche, double Sec, Biome Biome, double Adresse, double Ingeniosite,
-    int FeuxReussis = 0);
+    int FeuxReussis = 0, double Coupe = 0);
 
 /// <summary>Résultat d'un geste : l'effet constaté, le produit éventuel et sa qualité.</summary>
 public readonly record struct Resultat(Effet Effet, Matiere Produit, double Qualite);
@@ -218,18 +259,28 @@ public static class Physique
         new(Geste.Manger, "manger", null, [Matiere.Plante], []),
         new(Geste.Appliquer, "appliquer sur son mal", null, [Matiere.Plante], []),
         new(Geste.Nager, "nager dans", null, [Matiere.Eau], []),
+        new(Geste.Pousser, "pousser", "sur", [Matiere.Tronc, Matiere.Galet, Matiere.Branche, Matiere.Rondelle, Matiere.BoisSec],
+            [Matiere.Aucune, Matiere.Eau]),
+        new(Geste.Percer, "percer", "en y faisant tourner", [Matiere.Rondelle, Matiere.Branche, Matiere.BoisSec, Matiere.Calebasse],
+            [Matiere.Eclat, Matiere.Silex, Matiere.Obsidienne, Matiere.BatonPointu, Matiere.BoisSec]),
+        new(Geste.Trancher, "trancher", "à grands coups de", [Matiere.Tronc, Matiere.Branche],
+            [Matiere.Assemblage, Matiere.Eclat, Matiere.Obsidienne, Matiere.Silex, Matiere.Galet]),
     ];
 
     /// <summary>Vrai si ces matières ont un sens pour ce geste (une seule matière : la seconde est « rien »).</summary>
     public static bool Convient(Geste g, Matiere a, Matiere b) =>
         Formes.FirstOrDefault(f => f.Geste == g) is { } f && f.A.Contains(a) && (f.B.Length == 0 ? b == Matiere.Aucune : f.B.Contains(b));
 
+    /// <summary>Libellé de la seconde matière quand elle est « rien » mais a un sens (pousser… sur le sol).</summary>
+    public static string? SansSeconde(Geste g) => g == Geste.Pousser ? "le sol" : null;
+
     public static bool EstDure(Matiere m) => m is Matiere.Galet or Matiere.Silex or Matiere.Obsidienne;
     public static bool EstTranchante(Matiere m) => m is Matiere.Eclat or Matiere.Obsidienne;
     public static bool EstBois(Matiere m) => m is Matiere.BoisSec or Matiere.Branche;
 
     /// <summary>Peut-on porter cette matière sur soi ?</summary>
-    public static bool Portable(Matiere m) => m is not (Matiere.Aucune or Matiere.Eau or Matiere.Feu or Matiere.Carcasse or Matiere.Plante or Matiere.Argile);
+    public static bool Portable(Matiere m) => m is not (Matiere.Aucune or Matiere.Eau or Matiere.Feu or Matiere.Carcasse or Matiere.Plante or Matiere.Argile
+        or Matiere.Tronc);
 
     public static Resultat Tenter(Geste g, Matiere a, Matiere b, ContexteGeste c, Alea alea)
     {
@@ -329,6 +380,37 @@ public static class Physique
 
             case Geste.Nager:
                 return Chance(0.15 + 0.4 * h) ? new(Effet.Nage, Matiere.Aucune, 1) : default;
+
+            case Geste.Pousser:
+                // Sur l'eau, ce qui est moins dense qu'elle flotte (Archimède) ; sur un sol dur, ce qui est rond roule.
+                var pr = Lois.De(a);
+                if (b == Matiere.Eau)
+                    return c.EauProche && pr.Densite < 1 ? new(Effet.Flotte, Matiere.Aucune, 1) : default;
+                var sol = Lois.Sol(c.Biome);
+                return (pr.Forme & Forme.Rond) != 0 && Chance(Math.Clamp(1 - 4 * sol, 0.05, 0.9)) ? new(Effet.Roule, Matiere.Aucune, 1) : default;
+
+            case Geste.Percer:
+            {
+                // Une pointe plus dure que le bois, qu'on fait tourner longtemps, use un trou ; un bâton contre du bois
+                // n'y arrive qu'en le brûlant, très lentement (c'est le geste du feu par friction).
+                var bois = Lois.De(a);
+                var meche = Lois.De(b);
+                if (bois.Durete > 0.35 || a is Matiere.Aucune) return default;
+                var dur = meche.Durete >= bois.Durete + 0.2 && (meche.Forme & Forme.Pointu) != 0;
+                var p = dur ? 0.15 + 0.45 * h : EstBois(b) || b == Matiere.BatonPointu ? 0.02 * h : 0;
+                if (!Chance(p * (0.6 + 0.4 * c.Ingeniosite))) return default;
+                return new(Effet.Percage, a == Matiere.Rondelle ? Matiere.RondellePercee : Matiere.Aucune, Math.Clamp(0.4 + 0.5 * h * alea.Reel(), 0, 1));
+            }
+
+            case Geste.Trancher:
+            {
+                // Abattre et trancher un tronc demande un outil lourd et tranchant : à la main, un éclat n'en vient à bout
+                // qu'au prix d'un jour d'efforts ; une hache de pierre le fait en une heure ou deux.
+                if (a != Matiere.Tronc) return default;
+                var coupe = b == Matiere.Assemblage ? c.Coupe : (Lois.De(b).Forme & Forme.Tranchant) != 0 ? 0.08 : EstDure(b) ? 0.03 : 0;
+                if (!Chance(coupe * (0.4 + 0.6 * h))) return default;
+                return new(Effet.Rondelle, Matiere.Rondelle, Math.Clamp(0.3 + 0.4 * coupe + 0.3 * h * alea.Reel(), 0, 1));
+            }
         }
         return default;
     }
@@ -367,8 +449,34 @@ public static class Physique
         Effet.Visions => "les plantes à visions",
         Effet.Brandon => "emporter le feu avec un brandon",
         Effet.Chasse => "chasser avec une arme taillée",
+        Effet.Roule => "voir rouler ce qui est rond",
+        Effet.Flotte => "voir flotter le bois",
+        Effet.PointeEmmanchee => "emmancher une pointe de pierre",
+        Effet.TranchantEmmanche => "emmancher une pierre tranchante",
+        Effet.Glisser => "traîner une charge sur des branches liées",
+        Effet.Rouleaux => "faire rouler une charge sur des troncs",
+        Effet.Rondelle => "trancher un tronc en rondelles",
+        Effet.Percage => "percer le bois",
+        Effet.RouleSurAxe => "faire tourner des rondelles autour d'un axe",
+        Effet.Flottaison => "aller sur l'eau sur du bois lié",
         _ => "rien",
     };
+
+    /// <summary>Nom d'une découverte dans la chronologie : une seule roue et plusieurs roues sont deux trouvailles.</summary>
+    public static string NomDecouverte(Effet e, string? pieces) => e == Effet.RouleSurAxe && Lois.Structure(pieces) == "axe:1"
+        ? "pousser une charge sur une seule rondelle qui tourne, tenue par deux bras"
+        : NomEffet(e);
+
+    /// <summary>Le geste et ses matières, en mots (« pousser un tronc sur l'eau »).</summary>
+    public static string Phrase(Geste g, Matiere a, Matiere b)
+    {
+        var f = Formes.FirstOrDefault(x => x.Geste == g);
+        var verbe = f?.Verbe ?? NomGeste(g);
+        if (b == Matiere.Aucune) return SansSeconde(g) is { } sol ? $"{verbe} {Nom(a)} sur {sol}" : $"{verbe} {Nom(a)}";
+        var premiere = a == Matiere.Aucune ? "ses mains" : Nom(a);
+        return $"{verbe} {premiere} {f?.Liaison ?? "et"} {(b == Matiere.Assemblage ? "son outil emmanché" : Nom(b))}"
+            .Replace(" de le ", " du ", StringComparison.Ordinal).Replace(" de les ", " des ", StringComparison.Ordinal);
+    }
 
     public static string NomGeste(Geste g) => g switch
     {
@@ -383,6 +491,10 @@ public static class Physique
         Geste.Fouir => "fouir la terre avec",
         Geste.Manger => "manger",
         Geste.Appliquer => "appliquer",
+        Geste.Assembler => "assembler",
+        Geste.Pousser => "pousser",
+        Geste.Percer => "percer",
+        Geste.Trancher => "trancher",
         _ => "nager",
     };
 
@@ -409,8 +521,16 @@ public static class Physique
         Matiere.Corde => "une corde",
         Matiere.Peau => "une peau",
         Matiere.Brandon => "un brandon",
+        Matiere.Tronc => "un tronc",
+        Matiere.Resine => "de la résine",
+        Matiere.Rondelle => "une rondelle de tronc",
+        Matiere.RondellePercee => "une rondelle percée",
+        Matiere.Assemblage => "un objet assemblé",
         _ => "rien",
     };
+
+    /// <summary>Nom d'un objet porté : un objet assemblé est décrit par ses pièces.</summary>
+    public static string Nom(Objet o) => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { } a ? Lois.Decrire(a) : Nom(o.Matiere);
 
     /// <summary>Le savoir en quelques mots, tel que l'humain se le dit.</summary>
     public static string Decrire(Savoir s, string? plante = null) => s.Effet switch
@@ -437,6 +557,11 @@ public static class Physique
         Effet.Visions => $"{plante ?? "Cette plante"} fait voir d'autres mondes.",
         Effet.Brandon => "Une branche approchée du feu emporte le feu avec elle.",
         Effet.Chasse => $"Avec {Nom(s.A)}, on tue plus de bêtes.",
+        Effet.Roule => $"Poussé sur un sol dur, {Nom(s.A)} roule.",
+        Effet.Flotte => $"Posé sur l'eau, {Nom(s.A)} flotte.",
+        Effet.Percage => "Une pointe dure qu'on fait tourner longtemps perce le bois.",
+        Effet.Rondelle => "Un tronc tranché à grands coups donne des rondelles.",
+        _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => "Rien.",
     };
 
@@ -482,6 +607,9 @@ public static class Physique
         if (saisonSeche && b is Biome.PlaineDeFougeres or Biome.ForetDeConiferes or Biome.Desert or Biome.Montagne) yield return Matiere.HerbeSeche;
         if (b is Biome.ForetTropicale or Biome.Marais) yield return Matiere.Calebasse;
         if (b is Biome.Riviere or Biome.Marais) yield return Matiere.Argile;
+        // Arbres tombés : là où il y a des arbres (les forêts, les fougères arborescentes, les rives).
+        if (b is Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere or Biome.Marais) yield return Matiere.Tronc;
+        if (b is Biome.ForetDeConiferes) yield return Matiere.Resine;
     }
 
     /// <summary>

@@ -22,6 +22,13 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 11 (avant les distances réelles et l'allure de marche).</summary>
     /// <summary>Ramène un fichier au schéma 16 (avant les suites des catastrophes).</summary>
     /// <summary>Ramène un fichier au schéma 18 (avant les savoirs, les objets, les feux et les huttes).</summary>
+    internal const string RetourVersion19 = """
+        ALTER TABLE savoirs DROP COLUMN pieces;
+        ALTER TABLE objets DROP COLUMN pieces;
+        ALTER TABLE decouvertes DROP COLUMN pieces;
+        PRAGMA user_version = 19;
+        """;
+
     internal const string RetourVersion18 = """
         DROP TABLE savoirs;
         DROP TABLE objets;

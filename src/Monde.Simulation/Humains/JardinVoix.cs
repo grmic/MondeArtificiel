@@ -145,7 +145,7 @@ public static partial class Jardin
                     new($"{x} ne rechigne jamais à la peine ; je respecte cela.", 0.05 + 2 * S(p.Conscience)),
                     new($"{x} peut m'être utile.", 3 * f, 0),
                     new($"On s'entend bien, {x} et moi.", 0.3, 0),
-                    new($"{x} sait faire des choses que j'ignore ; je devrais l'observer.", autre.Savoirs.Count > h.Savoirs.Count + 1 ? 0.2 + 2 * S(p.Ouverture) : 0),
+                    new($"{x} sait faire des choses que j'ignore ; je devrais l'observer.", Utiles(autre) > Utiles(h) + 1 ? 0.2 + 2 * S(p.Ouverture) : 0),
                     new($"Avec {x}, le temps passe vite.", 0.1 + S(p.Extraversion), 2),
                     new($"{x} {(rel == "parent" ? "m'a élevé" + E(h) : "est des nôtres")} ; cela compte.", 0.05 + 2 * S(m.Fondements.Loyaute)),
                 ],
@@ -688,7 +688,7 @@ public static partial class Jardin
         {
             if (!a.EstVivant || a.Id == h.Id || a.Sexe != h.Sexe || a.CommunauteId != h.CommunauteId || a.EstEnfant(maintenant)) continue;
             var beaute = Attirance.Attractivite(a, ideal, maintenant) - moi - 20;
-            var savoir = (a.Savoirs.Count - h.Savoirs.Count - 2) * 5.0;
+            var savoir = (Utiles(a) - Utiles(h) - 2) * 5.0;
             var couple = seul && a.PartenaireId > 0 ? 10.0 : 0;
             var (e, k) = new[] { (beaute, 1), (savoir, 2), (couple, 3) }.MaxBy(t => t.Item1);
             if (e > ecart) (ecart, cible, motif) = (e, a, k);
@@ -1089,4 +1089,7 @@ public static partial class Jardin
     private static string Beau(Humain h) => h.Sexe == Sexe.Femme ? "belle" : "beau";
 
     private static string Majuscule(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
+    /// <summary>Savoirs qui servent (sans compter ce qu'il sait ne pas marcher).</summary>
+    private static int Utiles(Humain h) => h.Savoirs.Count(s => s.Effet != Effet.Rien);
 }

@@ -214,7 +214,8 @@ public sealed class DecouvertesTests
             {
                 Foyers = [new Foyer(1, 5, 6, 7.5, 100, 1, 11)],
                 Huttes = [new Hutte(2, 8, 9, 0.75, 200, 2, 12)],
-                Decouvertes = [new Decouverte(Effet.Eclat, 1, 50, 10, OrigineSavoir.Essai), new Decouverte(Effet.Abri, 2, 200, 12, OrigineSavoir.Entite)],
+                Decouvertes = [new Decouverte(Effet.Eclat, 1, 50, 10, OrigineSavoir.Essai), new Decouverte(Effet.Abri, 2, 200, 12, OrigineSavoir.Entite),
+                    new Decouverte(Effet.RouleSurAxe, 1, 300, 15, OrigineSavoir.Reflexion, "6x3+27x1/23/4")],
             };
             var h = etat.Humains![0];
             h.Savoirs.Add(new Savoir(Geste.Frapper, Matiere.Silex, Matiere.Galet, Effet.Eclat, 0, Symptome.Aucun, 4, 3, 50, 60, OrigineSavoir.Essai, 0, 10));
@@ -222,6 +223,10 @@ public sealed class DecouvertesTests
                 OrigineSavoir.Imitation, 2, 13));
             h.Objets.Add(new Objet(Matiere.Calebasse, 1, 0.8, Plein: true));
             h.Objets.Add(new Objet(Matiere.Epieu, 0.7, 0.5));
+            var lance = new Assemblage(Matiere.Branche, 1, Matiere.Eclat, 1, Matiere.Corde, Montage.Bout).Signature;
+            h.Objets.Add(new Objet(Matiere.Assemblage, 0.8, 0.9, Pieces: lance));
+            h.Savoirs.Add(new Savoir(Geste.Assembler, Matiere.Branche, Matiere.Eclat, Effet.PointeEmmanchee, 0, Symptome.Aucun, 2, 2, 90, 95,
+                OrigineSavoir.Reflexion, 0, 14, lance));
             h.Vetement = new Objet(Matiere.Peau, 0.6, 0.9);
             h.Nage = 0.45;
             h.CuitJusqua = 123;
@@ -239,6 +244,14 @@ public sealed class DecouvertesTests
             Assert.Equal(etat.Foyers, relu.Foyers);
             Assert.Equal(etat.Huttes, relu.Huttes);
             Assert.Equal(etat.Decouvertes, relu.Decouvertes);
+
+            // Un monde de la version 19 se relit : ses objets n'ont pas de pièces.
+            DepotMondeTests.ExecuterSql(fichier, DepotMondeTests.RetourVersion19);
+            var v19 = new DepotMonde(fichier).Charger()!;
+            Assert.All(v19.Humains![0].Objets, o => Assert.Null(o.Pieces));
+            Assert.All(v19.Humains[0].Savoirs, x => Assert.Equal("", x.Pieces));
+            new DepotMonde(fichier).Enregistrer(v19, remplacer: true);
+            Assert.Equal(DepotMonde.VersionSchema, DepotMonde.Decrire(fichier)!.Version);
 
             // Un monde de la version 18 se relit, sans savoirs.
             DepotMondeTests.ExecuterSql(fichier, DepotMondeTests.RetourVersion18);

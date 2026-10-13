@@ -11,7 +11,8 @@ public sealed record Foyer(int Id, int X, int Y, double Heures, long AllumeLe, i
 public sealed record Hutte(int Id, int X, int Y, double Solidite, long BatieLe, int BatisseurId, long EvenementId);
 
 /// <summary>Première fois qu'un effet a été obtenu dans le monde : par qui, quand, comment.</summary>
-public sealed record Decouverte(Effet Effet, int HumainId, long Le, long EvenementId, OrigineSavoir Origine);
+/// <param name="Pieces">Pour un objet assemblé : ses pièces (voir <see cref="Assemblage"/>).</param>
+public sealed record Decouverte(Effet Effet, int HumainId, long Le, long EvenementId, OrigineSavoir Origine, string Pieces = "");
 
 /// <summary>Ce que les humains ont bâti et allumé dans le monde, et la chronologie de leurs découvertes.</summary>
 public sealed class Installations

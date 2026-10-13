@@ -76,6 +76,16 @@ public sealed partial class DepotMonde
             """);
     }
 
+    /// <summary>Migration vers la version 20 : objets faits de plusieurs pièces.</summary>
+    private static void MigrerVersion20(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        Executer(connexion, transaction, """
+            ALTER TABLE savoirs ADD COLUMN pieces TEXT NOT NULL DEFAULT '';
+            ALTER TABLE objets ADD COLUMN pieces TEXT NOT NULL DEFAULT '';
+            ALTER TABLE decouvertes ADD COLUMN pieces TEXT NOT NULL DEFAULT '';
+            """);
+    }
+
     private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes;";
 
     /// <summary>Nage, remède en cours, vêtement, savoirs et objets de chaque humain.</summary>
@@ -102,7 +112,7 @@ public sealed partial class DepotMonde
             }
         }
         commande.CommandText = """
-            SELECT humain, geste, a, b, effet, espece, symptome, essais, succes, appris_le, utilise_le, origine, maitre, evenement
+            SELECT humain, geste, a, b, effet, espece, symptome, essais, succes, appris_le, utilise_le, origine, maitre, evenement, pieces
             FROM savoirs ORDER BY humain, rang;
             """;
         using (var l = commande.ExecuteReader())
@@ -111,15 +121,16 @@ public sealed partial class DepotMonde
             {
                 Trouver(l.GetInt64(0))?.Savoirs.Add(new Savoir((Geste)l.GetInt32(1), (Matiere)l.GetInt32(2), (Matiere)l.GetInt32(3),
                     (Effet)l.GetInt32(4), l.GetInt32(5), (Symptome)l.GetInt32(6), l.GetInt32(7), l.GetInt32(8), l.GetInt64(9), l.GetInt64(10),
-                    (OrigineSavoir)l.GetInt32(11), l.GetInt32(12), l.GetInt64(13)));
+                    (OrigineSavoir)l.GetInt32(11), l.GetInt32(12), l.GetInt64(13), l.GetString(14)));
             }
         }
-        commande.CommandText = "SELECT humain, matiere, qualite, usure, plein FROM objets ORDER BY humain, rang;";
+        commande.CommandText = "SELECT humain, matiere, qualite, usure, plein, pieces FROM objets ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
         {
             while (l.Read())
             {
-                Trouver(l.GetInt64(0))?.Objets.Add(new Objet((Matiere)l.GetInt32(1), l.GetDouble(2), l.GetDouble(3), l.GetBoolean(4)));
+                Trouver(l.GetInt64(0))?.Objets.Add(new Objet((Matiere)l.GetInt32(1), l.GetDouble(2), l.GetDouble(3), l.GetBoolean(4),
+                    l.GetString(5) is { Length: > 0 } p ? p : null));
             }
         }
     }
@@ -133,12 +144,12 @@ public sealed partial class DepotMonde
             WHERE id = $id;
             """, "$n", "$c", "$re", "$rg", "$rs", "$rl", "$vm", "$vq", "$vu", "$id");
         using var savoirs = Preparer(connexion, transaction, """
-            INSERT INTO savoirs (humain, rang, geste, a, b, effet, espece, symptome, essais, succes, appris_le, utilise_le, origine, maitre, evenement)
-            VALUES ($h, $r, $g, $a, $b, $e, $es, $sy, $n, $s, $ap, $u, $o, $m, $ev);
-            """, "$h", "$r", "$g", "$a", "$b", "$e", "$es", "$sy", "$n", "$s", "$ap", "$u", "$o", "$m", "$ev");
+            INSERT INTO savoirs (humain, rang, geste, a, b, effet, espece, symptome, essais, succes, appris_le, utilise_le, origine, maitre, evenement, pieces)
+            VALUES ($h, $r, $g, $a, $b, $e, $es, $sy, $n, $s, $ap, $u, $o, $m, $ev, $pi);
+            """, "$h", "$r", "$g", "$a", "$b", "$e", "$es", "$sy", "$n", "$s", "$ap", "$u", "$o", "$m", "$ev", "$pi");
         using var objets = Preparer(connexion, transaction,
-            "INSERT INTO objets (humain, rang, matiere, qualite, usure, plein) VALUES ($h, $r, $m, $q, $u, $p);",
-            "$h", "$r", "$m", "$q", "$u", "$p");
+            "INSERT INTO objets (humain, rang, matiere, qualite, usure, plein, pieces) VALUES ($h, $r, $m, $q, $u, $p, $pi);",
+            "$h", "$r", "$m", "$q", "$u", "$p", "$pi");
         foreach (var h in humains)
         {
             var v = h.Vetement;
@@ -148,12 +159,12 @@ public sealed partial class DepotMonde
             {
                 var s = h.Savoirs[r];
                 Lancer(savoirs, h.Id, r, (int)s.Geste, (int)s.A, (int)s.B, (int)s.Effet, s.Espece, (int)s.Symptome, s.Essais, s.Succes,
-                    s.AppriLe, s.UtiliseLe, (int)s.Origine, s.MaitreId, s.EvenementId);
+                    s.AppriLe, s.UtiliseLe, (int)s.Origine, s.MaitreId, s.EvenementId, s.Pieces);
             }
             for (var r = 0; r < h.Objets.Count; r++)
             {
                 var o = h.Objets[r];
-                Lancer(objets, h.Id, r, (int)o.Matiere, o.Qualite, o.Usure, o.Plein);
+                Lancer(objets, h.Id, r, (int)o.Matiere, o.Qualite, o.Usure, o.Plein, o.Pieces ?? "");
             }
         }
     }
@@ -173,12 +184,12 @@ public sealed partial class DepotMonde
             while (l.Read()) huttes.Add(new Hutte(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetDouble(3), l.GetInt64(4), l.GetInt32(5), l.GetInt64(6)));
         }
         var decouvertes = new List<Decouverte>();
-        commande.CommandText = "SELECT effet, humain, le, evenement, origine FROM decouvertes ORDER BY rang;";
+        commande.CommandText = "SELECT effet, humain, le, evenement, origine, pieces FROM decouvertes ORDER BY rang;";
         using (var l = commande.ExecuteReader())
         {
             while (l.Read())
             {
-                decouvertes.Add(new Decouverte((Effet)l.GetInt32(0), l.GetInt32(1), l.GetInt64(2), l.GetInt64(3), (OrigineSavoir)l.GetInt32(4)));
+                decouvertes.Add(new Decouverte((Effet)l.GetInt32(0), l.GetInt32(1), l.GetInt64(2), l.GetInt64(3), (OrigineSavoir)l.GetInt32(4), l.GetString(5)));
             }
         }
         return (foyers, huttes, decouvertes);
@@ -196,13 +207,13 @@ public sealed partial class DepotMonde
             "$i", "$x", "$y", "$s", "$b", "$p", "$e");
         foreach (var h in etat.Huttes ?? []) Lancer(huttes, h.Id, h.X, h.Y, h.Solidite, h.BatieLe, h.BatisseurId, h.EvenementId);
         using var decouvertes = Preparer(connexion, transaction,
-            "INSERT INTO decouvertes (rang, effet, humain, le, evenement, origine) VALUES ($r, $e, $h, $l, $ev, $o);",
-            "$r", "$e", "$h", "$l", "$ev", "$o");
+            "INSERT INTO decouvertes (rang, effet, humain, le, evenement, origine, pieces) VALUES ($r, $e, $h, $l, $ev, $o, $p);",
+            "$r", "$e", "$h", "$l", "$ev", "$o", "$p");
         var liste = etat.Decouvertes ?? [];
         for (var r = 0; r < liste.Count; r++)
         {
             var d = liste[r];
-            Lancer(decouvertes, r, (int)d.Effet, d.HumainId, d.Le, d.EvenementId, (int)d.Origine);
+            Lancer(decouvertes, r, (int)d.Effet, d.HumainId, d.Le, d.EvenementId, (int)d.Origine, d.Pieces);
         }
     }
 }

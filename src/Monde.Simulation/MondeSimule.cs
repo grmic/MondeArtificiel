@@ -768,7 +768,7 @@ public sealed class MondeSimule
             if (!h.EstVivant) continue;
             foreach (var s in h.Savoirs)
             {
-                if (s.Espece == 0 && (!connus.TryGetValue(s.Effet, out var x) || s.Confiance > x.Confiance)) connus[s.Effet] = s;
+                if (s.Espece == 0 && s.Effet != Effet.Rien && (!connus.TryGetValue(s.Effet, out var x) || s.Confiance > x.Confiance)) connus[s.Effet] = s;
             }
         }
         return connus;
