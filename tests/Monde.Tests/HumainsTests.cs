@@ -38,7 +38,7 @@ public sealed class HumainsTests
             Assert.Equal(h.Emplacement, partenaire.Emplacement);
             var emplacement = Carte.Emplacements[h.Emplacement - 1];
             Assert.Equal((emplacement.X, emplacement.Y), (h.X, h.Y));
-            Assert.InRange(h.AgeEnAnnees(6 * Calendrier.SecondesParHeure), 18, 26);
+            Assert.InRange(h.AgeEnAnnees(6 * Calendrier.SecondesParHeure), GenerateurPopulation.AgeMin, GenerateurPopulation.AgeMax);
             Assert.True(h.EstVivant);
         });
     }

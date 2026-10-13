@@ -96,7 +96,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                               || AmiAuMemeEndroit(h, tous);
         Metaboliser(h, chaleurPartagee, maintenant);
         if (!h.EstVivant) return;
-        _nageur = PeutNager(h);
+        // La soif fait nager même épuisé, au risque de se noyer : on ne reste pas mourir sur une rive sans eau douce.
+        _nageur = PeutNager(h) || h.Nage >= 0.4 && h.Soif >= 60 && h.Froid < 50;
         Ramasser(h);
         ObserverLeFeu(h, tous);
         if (h.EstEnfant(maintenant))
@@ -416,6 +417,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var p = h.Personnalite;
         var date = Calendrier.Decomposer(maintenant);
         var danger = Catastrophes?.DangerEn(h.X, h.Y);
+
+        // Dans l'eau, qui ne peut plus nager ou s'y endort regagne la rive la plus proche, même à bout de forces ; un nageur
+        // en état de le faire poursuit sa traversée.
+        if (!Climat.EstPraticable(carte.BiomeEn(h.X, h.Y)) && (!_nageur || h.Activite == Activite.Dormir) && RegagnerLaRive(h)) return;
 
         // Un dormeur ne se réveille que si un besoin devient pressant ou s'il est reposé, ou si le danger le réveille
         // (la fumée, l'eau qui monte, la terre qui gronde).
@@ -922,6 +927,46 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// voisine qui rapproche le plus du but ; si un obstacle (côte, lac) bloque, on passe en mode détour : un chemin
     /// est calculé à chaque case jusqu'à l'arrivée.
     /// </summary>
+    /// <summary>
+    /// Nage d'une case vers la terre ferme la plus proche (dans un rayon de dix cases). L'épuisement et le froid rendent
+    /// chaque brasse plus risquée. Renvoie faux s'il n'y a aucune rive en vue.
+    /// </summary>
+    private bool RegagnerLaRive(Humain h)
+    {
+        var depart = carte.Indice(h.X, h.Y);
+        var parent = new Dictionary<int, int> { [depart] = depart };
+        var file = new Queue<int>();
+        file.Enqueue(depart);
+        while (file.Count > 0)
+        {
+            var i = file.Dequeue();
+            int x = i % carte.Largeur, y = i / carte.Largeur;
+            if (i != depart && Climat.EstPraticable((Biome)carte.Biomes[i]))
+            {
+                while (parent[i] != depart) i = parent[i];
+                h.X = i % carte.Largeur;
+                h.Y = i / carte.Largeur;
+                h.Activite = Activite.Nager;
+                h.CibleX = h.CibleY = -1;
+                h.Fatigue = Math.Min(100, h.Fatigue + 3);
+                Baignade(h, false);
+                return true;
+            }
+            if (Distance(x, y, h.X, h.Y) >= 10) continue;
+            foreach (var (dx, dy) in Voisins8)
+            {
+                int nx = x + dx, ny = y + dy;
+                if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
+                var j = carte.Indice(nx, ny);
+                var b = carte.BiomeEn(nx, ny);
+                if (parent.ContainsKey(j) || b == Biome.Ocean) continue;
+                parent[j] = i;
+                file.Enqueue(j);
+            }
+        }
+        return false;
+    }
+
     private void Avancer(Humain h, int cibleX, int cibleY, Activite activite)
     {
         if (h.CibleX != cibleX || h.CibleY != cibleY) h.Detour = false;

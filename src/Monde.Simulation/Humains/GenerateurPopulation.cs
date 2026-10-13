@@ -6,6 +6,9 @@ namespace Monde.Simulation.Humains;
 /// <summary>Crée les 33 couples de départ, un par emplacement. Tout est tiré au hasard depuis la graine.</summary>
 public static class GenerateurPopulation
 {
+    /// <summary>Âges extrêmes des fondateurs au premier jour.</summary>
+    public const double AgeMin = 14, AgeMax = 40;
+
     public static List<Humain> Generer(Carte carte, ulong graine, long maintenant)
     {
         var alea = new Alea(graine ^ 0x48554D41494E53UL); // flux distinct de celui de la carte
@@ -16,9 +19,13 @@ public static class GenerateurPopulation
         {
             var idFemme = humains.Count + 1;
             var idHomme = idFemme + 1;
+            // Des fondateurs de tous âges, de 14 à 40 ans (choix de zem) : sinon tous vieillissent et meurent en même temps,
+            // et la population s'effondre une génération plus tard. L'homme est le plus souvent un peu plus âgé que sa compagne.
+            var ageFemme = AgeMin + alea.Reel() * (AgeMax - AgeMin);
+            var ageHomme = Math.Clamp(ageFemme + 3 + 4 * Biologie.Normale(alea), AgeMin, AgeMax);
             foreach (var (id, sexe, partenaire) in new[] { (idFemme, Sexe.Femme, idHomme), (idHomme, Sexe.Homme, idFemme) })
             {
-                var age = 18 + alea.Reel() * 8; // jeunes adultes de 18 à 26 ans
+                var age = sexe == Sexe.Femme ? ageFemme : ageHomme;
                 humains.Add(new Humain
                 {
                     Id = id,

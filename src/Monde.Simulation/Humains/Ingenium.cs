@@ -105,8 +105,9 @@ public sealed partial class Comportement
         if (geste is Geste.Manger or Geste.Appliquer)
         {
             // Goûter une plante inconnue : seulement les plus audacieux, et pas les petits (l'aversion pour la nouveauté
-            // alimentaire protège des poisons).
-            if (h.EstPetitEnfant(_maintenant) || alea.Reel() >= 0.15 * p.Ouverture) return false;
+            // alimentaire protège des poisons). Les enfants mangent surtout ce qu'ils ont vu manger les adultes (Cashdan, 1994) :
+            // leur goût du jeu ne va que rarement jusqu'à avaler l'inconnu.
+            if (h.EstPetitEnfant(_maintenant) || alea.Reel() >= 0.15 * p.Ouverture * (enfant ? 0.2 : 1)) return false;
             var especes = Flore.Sur(carte.BiomeEn(h.X, h.Y));
             if (especes.Count == 0) return false;
             var espece = especes[alea.Entier(especes.Count)];
@@ -397,7 +398,10 @@ public sealed partial class Comportement
     {
         if (h.Savoirs.Count == 0 && !h.Porte(Matiere.Brandon)) return false;
         var nuit = !Calendrier.Decomposer(_maintenant).EstJour;
-        var froid = besoin == Activite.SAbriter && valeur >= seuil || (besoin == Activite.Dormir || nuit) && _temperature < 14;
+        // La nuit, le froid fait rester près du feu, mais pas au point d'y mourir de soif ou de faim : un besoin pressant
+        // l'emporte sur la chaleur.
+        var pressant = besoin is Activite.Boire or Activite.Cueillir && valeur >= seuil;
+        var froid = besoin == Activite.SAbriter && valeur >= seuil || (besoin == Activite.Dormir || nuit && !pressant) && _temperature < 14;
         if (froid && Rechauffer(h, besoin, tous)) return true;
         if (besoin == Activite.Cueillir && valeur >= seuil && Fouir(h, tous)) return true;
         return false;
@@ -757,7 +761,9 @@ public sealed partial class Comportement
             PrendreRemede(h, s.Espece, s.Geste, mal, o.Id, tous, OrigineSavoir.Imitation);
             return true;
         }
-        // Essayer une plante au hasard : l'audace, la souffrance et le désespoir y poussent.
+        // Essayer une plante au hasard : l'audace, la souffrance et le désespoir y poussent. Un enfant malade, lui, attend
+        // qu'on le soigne.
+        if (h.EstEnfant(_maintenant)) return false;
         var detresse = Math.Clamp((100 - h.Sante) / 60 + (malade ? Maladies.Fiche(h.Maladie).Gravite / 3 : 0.3), 0, 1.5);
         if (alea.Reel() >= 0.04 * (0.3 + h.Personnalite.Ouverture) * detresse) return false;
         var essai = especes[alea.Entier(especes.Count)];
@@ -796,7 +802,8 @@ public sealed partial class Comportement
         {
             // La plupart des plantes toxiques sont amères : on recrache souvent la première bouchée (le rejet de l'amer
             // protège des poisons : Glendinning, 1994). La dose fait le poison : avalée, elle rend malade, rarement elle tue.
-            var recrachee = alea.Reel() < 0.4 + 0.4 * espece.Toxicite;
+            // Les enfants sentent l'amer plus fort que les adultes et le rejettent davantage (Mennella et al., 2005).
+            var recrachee = alea.Reel() < 0.4 + 0.4 * espece.Toxicite + (h.EstEnfant(_maintenant) ? 0.15 : 0);
             var degats = 45 * espece.Toxicite * (0.4 + alea.Reel()) * (h.EstEnfant(_maintenant) ? 1.6 : 1) * (recrachee ? 0.1 : 1);
             h.Sante -= degats;
             h.Soif = Math.Min(100, h.Soif + (recrachee ? 2 : 15));
