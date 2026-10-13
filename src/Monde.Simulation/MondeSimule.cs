@@ -824,6 +824,63 @@ public sealed class MondeSimule
         }
     }
 
+    /// <summary>
+    /// L'Entité fait comprendre une parole à des humains (un seul, plusieurs, ou tous les membres de communautés) :
+    /// chacun comprend, croit, obéit ou refuse à sa manière. <paramref name="cibleId"/> : la personne désignée (0 : aucune) ;
+    /// <paramref name="param"/> : direction, plante ou communauté. Renvoie, pour chacun, ce qu'il en a fait.
+    /// </summary>
+    public List<(int Humain, string Resultat)> Parler(IReadOnlyCollection<int> humainsIds, IReadOnlyCollection<int> communautes, Parole parole,
+        ModeParole mode, int cibleId, int param)
+    {
+        lock (_verrou)
+        {
+            var ids = humainsIds.Where(id => id >= 1 && id <= _humains.Count).ToHashSet();
+            foreach (var c in communautes)
+                foreach (var h in _humains)
+                    if (h.EstVivant && h.CommunauteId == c && !h.EstBebe(_secondes)) ids.Add(h.Id);
+            var cible = cibleId >= 1 && cibleId <= _humains.Count ? _humains[cibleId - 1] : null;
+            var resultats = new List<(int, string)>();
+            foreach (var id in ids.Order())
+            {
+                var h = _humains[id - 1];
+                if (!h.EstVivant || cible?.Id == h.Id) continue;
+                resultats.Add((id, _comportement.Parler(h, parole, mode, cible, param, _humains, _secondes, ensemble: ids.Count > 1)));
+            }
+            VerserJournal();
+            return resultats;
+        }
+    }
+
+    /// <summary>
+    /// L'Entité inspire un penchant à un humain (ou à chaque adulte de communautés) : pour <paramref name="cibleId"/>, ou pour
+    /// celui que le monde choisit (0). <paramref name="mutuel"/> : l'autre le ressent aussi (coup de foudre).
+    /// </summary>
+    public List<(int Humain, string Resultat)> Inspirer(IReadOnlyCollection<int> humainsIds, IReadOnlyCollection<int> communautes, int cibleId,
+        bool mutuel, bool passion, bool orientation)
+    {
+        lock (_verrou)
+        {
+            var ids = humainsIds.Where(id => id >= 1 && id <= _humains.Count).ToHashSet();
+            foreach (var c in communautes)
+                foreach (var h in _humains)
+                    if (h.EstVivant && h.CommunauteId == c && !h.EstEnfant(_secondes)) ids.Add(h.Id);
+            var cible = cibleId >= 1 && cibleId <= _humains.Count ? _humains[cibleId - 1] : null;
+            var resultats = new List<(int, string)>();
+            foreach (var id in ids.Order())
+            {
+                var h = _humains[id - 1];
+                if (cible?.Id == h.Id) continue;
+                var avant = h.Impulsions.LastOrDefault();
+                resultats.Add((id, _comportement.Inspirer(h, cible, passion, orientation, _humains, _secondes)));
+                // Coup de foudre : l'autre ressent le même penchant en retour.
+                if (mutuel && h.Impulsions.LastOrDefault() is { Parole: Parole.Penchant, Reponse: Reponse.Ressenti } i && !ReferenceEquals(i, avant))
+                    resultats.Add((i.CibleId, _comportement.Inspirer(_humains[i.CibleId - 1], h, passion, orientation, _humains, _secondes)));
+            }
+            VerserJournal();
+            return resultats;
+        }
+    }
+
     /// <summary>Feux, huttes et chronologie des découvertes (copies).</summary>
     public (List<Foyer> Foyers, List<Hutte> Huttes, List<Decouverte> Decouvertes) Installations()
     {

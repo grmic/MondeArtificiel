@@ -115,6 +115,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (!h.EstVivant) return;
         if (h.Activite != Activite.Dormir) Affronter(h, tous, maintenant);
         if (!h.EstVivant) return;
+        if (h.Impulsions.Count > 0) Ressentir(h, tous, maintenant);
         var avant = h.Activite;
         (_motif, _autre) = (Motif.Aucun, null);
         Decider(h, partenaire, tous, maintenant);
@@ -476,6 +477,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // En raid, seul un besoin très pressant arrête la marche.
         if (valeur < 0.8 && MenerRaid(h)) return;
 
+        // Ce que l'Entité lui a demandé, s'il a décidé d'obéir.
+        if (valeur < 0.8 && SuivreLaParole(h, tous, maintenant)) return;
+
         // Celui qui veille sur un petit enfant assoiffé, affamé ou transi l'emmène vers l'eau, la nourriture ou un abri,
         // d'autant plus tôt qu'il y est attaché ; l'enfant le suit.
         if (!h.EstEnfant(maintenant) && valeur < 0.8 && PetitDansLeBesoin(h, tous, maintenant) is var (petit, pourLui))
@@ -556,7 +560,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         // Une communauté en disette part vers de meilleures terres : sa figure et la plupart des membres suivent le mouvement.
         if (Social?.CommunauteDe(h) is { DestinationX: >= 0 } groupe
-            && Distance(h.X, h.Y, groupe.DestinationX, groupe.DestinationY) > 2
+            && Distance(h.X, h.Y, groupe.DestinationX, groupe.DestinationY) > 2 && h.Consigne(Parole.ResteIci, maintenant) is null
             && (h.Activite == Activite.Migrer || alea.Reel() < (h.Id == groupe.FigureId ? 0.8 : 0.5)))
         {
             if (h.Id == groupe.FigureId) _motif = Motif.Guide;

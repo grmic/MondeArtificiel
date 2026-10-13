@@ -417,7 +417,16 @@ public sealed partial class VieSociale
         // L'instigateur persuade d'autant mieux qu'il a du charisme et sait ce que chacun veut entendre (empathie cognitive).
         var persuasion = 0.3 * (instigateur.Personnalite.Charisme - 0.5) + 0.2 * (instigateur.Personnalite.Moral.EmpathieCognitive - 0.5);
         double Avis(Humain h) => Ardeur(h, b.Id, humains) + terres + 0.5 * h.AffectionPour(instigateur.Id) / 100 + persuasion
-            - h.Personnalite.Prudence * danger - 0.5 * Math.Max(0, h.Faim - 60) / 40;
+            - h.Personnalite.Prudence * danger - 0.5 * Math.Max(0, h.Faim - 60) / 40 + Voix(h);
+        // Ce que l'Entité a dit : « Ne va pas à la guerre » retient, « Défends les tiens » pousse quand la guerre est déjà là.
+        double Voix(Humain h)
+        {
+            if (h.Impulsions.Count == 0) return 0;
+            var v = 0.0;
+            if (h.Consigne(Parole.NeVaPasALaGuerre, maintenant) is { } non && (non.Param == 0 || non.Param == b.Id)) v -= 1.5 * non.Force;
+            if (h.Consigne(Parole.DefendsLesTiens, maintenant) is { } oui) v += (RelationEntre(a.Id, b.Id) == EtatRelation.EnGuerre ? 0.4 : 0.1) * oui.Force;
+            return v;
+        }
         const double Suivre = 0.6;
         // La figure du groupe donne son avis, et beaucoup s'y rangent.
         var figureContre = figure.Id != instigateur.Id && Avis(figure) < Suivre - 0.25;
@@ -432,7 +441,9 @@ public sealed partial class VieSociale
         foreach (var h in volontaires.Where(h => h.Id != instigateur.Id))
             Jardin.Confier(h, TypeIntime.Intention, b.FigureId, $"Je suivrai {instigateur.Nom} contre la {nb}.", 40, projet.EvenementId, maintenant, $"guerre:{b.Id}");
         foreach (var h in refus)
-            Jardin.Confier(h, TypeIntime.Intention, instigateur.Id, $"Je ne suivrai pas {instigateur.Nom} dans cette guerre contre la {nb}.", 35, projet.EvenementId, maintenant, $"guerre:{b.Id}");
+            Jardin.Confier(h, TypeIntime.Intention, instigateur.Id, Voix(h) < -0.3
+                ? $"Je ne suivrai pas {instigateur.Nom} contre la {nb} : la voix me l'a défendu."
+                : $"Je ne suivrai pas {instigateur.Nom} dans cette guerre contre la {nb}.", 35, projet.EvenementId, maintenant, $"guerre:{b.Id}");
 
         // Les alliés répondent.
         var renforts = new List<Humain>();

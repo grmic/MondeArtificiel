@@ -1,6 +1,7 @@
 import { connexion } from "./connexion";
 import { distanceDeCases, surfaceDeCases, type Indicateurs } from "./carte";
 import { boutonCause, el } from "./fiche";
+import { FormulaireEntite } from "./entite";
 
 interface Communaute {
   id: number;
@@ -111,6 +112,8 @@ export class PanneauCommunautes {
   private choisie = 0;
   private minuteur?: number;
   private tailles: { id: number; valeurs: Taille[]; lu: number } | null = null;
+  /** Formulaire de l'Entité de chaque communauté : gardé d'un rafraîchissement à l'autre. */
+  private readonly entites = new Map<number, FormulaireEntite>();
 
   constructor(
     private readonly racine: HTMLElement,
@@ -159,6 +162,8 @@ export class PanneauCommunautes {
       connexion.invoke<Communaute[]>("Communautes").catch(() => null),
       connexion.invoke<{ indicateurs: Indicateurs }>("Nature").catch(() => null),
     ]);
+    // Redessiner pendant que l'on compose une parole de l'Entité fermerait les menus.
+    if ([...this.entites.values()].some((f) => f.enCours)) return;
     if (liste) this.dessiner(liste, nature?.indicateurs);
   }
 
@@ -329,6 +334,14 @@ export class PanneauCommunautes {
       });
       bloc.append(membres);
     }
+    let entite = this.entites.get(c.id);
+    if (!entite) {
+      entite = new FormulaireEntite(() => ({
+        humains: [], communautes: [c.id], pres: c.figure, communaute: c.id, libelle: `Chaque membre de la ${c.nom.charAt(0).toLowerCase()}${c.nom.slice(1)}`,
+      }));
+      this.entites.set(c.id, entite);
+    }
+    bloc.append(entite.bloc);
     return bloc;
   }
 }

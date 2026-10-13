@@ -43,6 +43,8 @@ public enum TypeEvenement : byte
     Entraide = 23,
     /// <summary>Vol de nourriture, mensonge démasqué.</summary>
     Vol = 24,
+    /// <summary>L'Entité parle : ce que l'humain a compris, cru, décidé et fait, et ce qu'il en a raconté.</summary>
+    Parole = 25,
 }
 
 /// <summary>

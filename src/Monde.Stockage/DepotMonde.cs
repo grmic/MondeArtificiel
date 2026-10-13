@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 20;
+    public const int VersionSchema = 21;
 
     private readonly string _connexion;
 
@@ -512,6 +512,7 @@ public sealed partial class DepotMonde
         }
         if (actuelle < 19) MigrerVersion19(connexion, transaction);
         if (actuelle < 20) MigrerVersion20(connexion, transaction);
+        if (actuelle < 21) MigrerVersion21(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }

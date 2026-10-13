@@ -86,7 +86,30 @@ public sealed partial class DepotMonde
             """);
     }
 
-    private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes;";
+    /// <summary>Migration vers la version 21 : paroles et penchants venus de l'Entité.</summary>
+    private static void MigrerVersion21(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        Executer(connexion, transaction, """
+            CREATE TABLE IF NOT EXISTS impulsions (
+                humain      INTEGER NOT NULL,
+                rang        INTEGER NOT NULL,
+                parole      INTEGER NOT NULL,
+                mode        INTEGER NOT NULL,
+                cible       INTEGER NOT NULL,
+                param       INTEGER NOT NULL,
+                force       REAL    NOT NULL,
+                le          INTEGER NOT NULL,
+                jusqua      INTEGER NOT NULL,
+                agir_le     INTEGER NOT NULL,
+                reponse     INTEGER NOT NULL,
+                evenement   INTEGER NOT NULL,
+                orientation INTEGER NOT NULL,
+                PRIMARY KEY (humain, rang)
+            );
+            """);
+    }
+
+    private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM impulsions;";
 
     /// <summary>Nage, remède en cours, vêtement, savoirs et objets de chaque humain.</summary>
     private static void LireSavoirs(SqliteCommand commande, List<Humain> humains)
@@ -133,11 +156,27 @@ public sealed partial class DepotMonde
                     l.GetString(5) is { Length: > 0 } p ? p : null));
             }
         }
+        commande.CommandText = """
+            SELECT humain, parole, mode, cible, param, force, le, jusqua, agir_le, reponse, evenement, orientation
+            FROM impulsions ORDER BY humain, rang;
+            """;
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read())
+            {
+                var parole = (Parole)l.GetInt32(1);
+                var mode = (ModeParole)l.GetInt32(2);
+                var reponse = (Reponse)l.GetInt32(9);
+                if (!Enum.IsDefined(parole) || !Enum.IsDefined(mode) || !Enum.IsDefined(reponse)) continue;
+                Trouver(l.GetInt64(0))?.Impulsions.Add(new Impulsion(parole, mode, l.GetInt32(3), l.GetInt32(4), l.GetDouble(5), l.GetInt64(6),
+                    l.GetInt64(7), l.GetInt64(8), reponse, l.GetInt64(10), l.GetBoolean(11)));
+            }
+        }
     }
 
     private static void EnregistrerSavoirs(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
     {
-        Executer(connexion, transaction, "DELETE FROM savoirs; DELETE FROM objets;");
+        Executer(connexion, transaction, "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM impulsions;");
         using var etat = Preparer(connexion, transaction, """
             UPDATE humains SET nage = $n, cuit_jusqua = $c, remede_espece = $re, remede_geste = $rg, remede_symptome = $rs, remede_le = $rl,
                 vetement_matiere = $vm, vetement_qualite = $vq, vetement_usure = $vu
@@ -150,6 +189,10 @@ public sealed partial class DepotMonde
         using var objets = Preparer(connexion, transaction,
             "INSERT INTO objets (humain, rang, matiere, qualite, usure, plein, pieces) VALUES ($h, $r, $m, $q, $u, $p, $pi);",
             "$h", "$r", "$m", "$q", "$u", "$p", "$pi");
+        using var impulsions = Preparer(connexion, transaction, """
+            INSERT INTO impulsions (humain, rang, parole, mode, cible, param, force, le, jusqua, agir_le, reponse, evenement, orientation)
+            VALUES ($h, $r, $p, $m, $c, $pa, $f, $le, $j, $a, $re, $ev, $o);
+            """, "$h", "$r", "$p", "$m", "$c", "$pa", "$f", "$le", "$j", "$a", "$re", "$ev", "$o");
         foreach (var h in humains)
         {
             var v = h.Vetement;
@@ -165,6 +208,12 @@ public sealed partial class DepotMonde
             {
                 var o = h.Objets[r];
                 Lancer(objets, h.Id, r, (int)o.Matiere, o.Qualite, o.Usure, o.Plein, o.Pieces ?? "");
+            }
+            for (var r = 0; r < h.Impulsions.Count; r++)
+            {
+                var i = h.Impulsions[r];
+                Lancer(impulsions, h.Id, r, (int)i.Parole, (int)i.Mode, i.CibleId, i.Param, i.Force, i.Le, i.Jusqua, i.AgirLe, (int)i.Reponse,
+                    i.EvenementId, i.Orientation);
             }
         }
     }

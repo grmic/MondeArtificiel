@@ -326,6 +326,37 @@ public sealed class Humain
     public Symptome RemedeSymptome { get; set; }
     public long RemedeLe { get; set; }
 
+    /// <summary>
+    /// Ce que l'Entité lui a fait comprendre ou ressentir, et ce qu'il en a fait (voir <see cref="Impulsion"/>), de la plus
+    /// ancienne à la plus récente. Les plus anciennes s'effacent ; elles nourrissent un temps sa foi ou son doute.
+    /// </summary>
+    public List<Impulsion> Impulsions { get; set; } = [];
+
+    /// <summary>Force, en ce moment, du penchant que l'Entité lui a inspiré pour un autre (0 sans penchant).</summary>
+    public double Penchant(int id, long maintenant)
+    {
+        var force = 0.0;
+        foreach (var i in Impulsions)
+            if (i.Parole == Parole.Penchant && i.CibleId == id && i.Reponse == Reponse.Ressenti) force = Math.Max(force, i.ForceA(maintenant));
+        return force;
+    }
+
+    /// <summary>
+    /// L'Entité a vaincu en lui le tabou de la parenté envers cet autre : un penchant ressenti sans horreur, ou l'ordre de
+    /// s'unir à lui accepté.
+    /// </summary>
+    public bool CedeA(int id, long maintenant) => Impulsions.Exists(i => i.CibleId == id && i.Active(maintenant)
+        && (i.Parole == Parole.Penchant && i.Reponse == Reponse.Ressenti || i.Parole == Parole.UnisToi));
+
+    /// <summary>Consigne de l'Entité qu'il suit en ce moment (la plus forte), ou null.</summary>
+    public Impulsion? Consigne(Parole parole, long maintenant)
+    {
+        Impulsion? meilleure = null;
+        foreach (var i in Impulsions)
+            if (i.Parole == parole && i.Active(maintenant) && (meilleure is null || i.Force > meilleure.Force)) meilleure = i;
+        return meilleure;
+    }
+
     /// <summary>Savoir de quelqu'un : celui qui a cet effet (et ce mal, pour un remède), ou null.</summary>
     public Savoir? SavoirPour(Effet effet, Symptome symptome = Symptome.Aucun)
     {
@@ -404,6 +435,7 @@ public sealed class Humain
         copie.Exclusions = [.. Exclusions];
         copie.Savoirs = [.. Savoirs];
         copie.Objets = [.. Objets];
+        copie.Impulsions = [.. Impulsions];
         return copie;
     }
 }

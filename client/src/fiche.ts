@@ -1,5 +1,6 @@
 import { connexion } from "./connexion";
 import type { HumainVue } from "./carte";
+import { FormulaireEntite } from "./entite";
 
 interface Evenement {
   id: number;
@@ -96,6 +97,8 @@ interface Fiche {
   /** Le caractère en phrases : style d'attachement, psychopathie, morale dominante. */
   portrait: string[];
   savoirs: Savoirs;
+  /** Paroles et penchants reçus de l'Entité, du plus récent au plus ancien. */
+  paroles: { date: string; mode: string; texte: string; reponse: string; cible: number; evenement: number }[];
 }
 
 /** Ce qu'il sait faire (et à quel point il y croit), ce qu'il porte, son vêtement, son aisance dans l'eau (0 à 100). */
@@ -162,6 +165,10 @@ export class PanneauFiche {
   private souffle: HTMLDetailsElement | null = null;
   private rechargerSouffle: (() => void) | null = null;
   private readonly resultatSouffle = el("p", "discret");
+  /** Parler ou inspirer un amour : construit une fois, comme le formulaire du souffle. */
+  private entite: FormulaireEntite | null = null;
+  private communaute = 0;
+  private nomCourant = "";
 
   constructor(
     private readonly racine: HTMLElement,
@@ -178,6 +185,7 @@ export class PanneauFiche {
     if (id !== this.id) {
       replierCauses();
       this.resultatSouffle.textContent = "";
+      this.entite?.oublier();
     }
     const autre = id !== this.id;
     this.id = id;
@@ -347,6 +355,25 @@ export class PanneauFiche {
 
     this.savoirs(corps, f.savoirs, h.sexe === "femme" ? "e" : "");
     if (h.vivant) corps.append(this.formulaireSouffle());
+    this.communaute = f.communaute?.id ?? 0;
+    this.nomCourant = h.nom;
+    if (f.paroles.length > 0) {
+      corps.append(el("h3", undefined, "Paroles de l'Entité"));
+      const ul = el("ul", "liste");
+      for (const x of f.paroles.slice(0, 20)) {
+        const li = el("li");
+        li.append(el("span", "entite", "✦ "), `${x.date}, ${x.mode} : ${x.texte} `, el("span", "discret", `(${x.reponse})`), " ");
+        if (x.evenement > 0) li.append(boutonCause(li, x.evenement, "ce qui s'est passé"));
+        ul.append(li);
+      }
+      corps.append(ul);
+    }
+    if (h.vivant && h.etape !== "bébé") {
+      this.entite ??= new FormulaireEntite(() => ({
+        humains: [this.id], communautes: [], pres: this.id, communaute: this.communaute, libelle: this.nomCourant,
+      }));
+      corps.append(this.entite.bloc);
+    }
 
     corps.append(el("h3", undefined, "Liens"));
     const liens = el("ul", "liste");
@@ -521,7 +548,7 @@ export class PanneauFiche {
 
   /** Vrai si l'utilisateur est en train de remplir le formulaire de l'Entité (un menu ouvert ne doit pas être redessiné). */
   private saisieEnCours(): boolean {
-    return !!this.souffle && (this.souffle.contains(document.activeElement) || this.souffle.matches(":hover"));
+    return !!this.souffle && (this.souffle.contains(document.activeElement) || this.souffle.matches(":hover")) || !!this.entite?.enCours;
   }
 
   private traits(titre: string, traits: Trait[], max: number): HTMLElement {
@@ -595,7 +622,7 @@ export function ligneEvenement(e: Evenement): HTMLElement {
   li.append(el("span", "date", e.date));
   if (e.significatif) li.append(el("span", "etoile", " ★"));
   li.append(" ", ...texteAvecLiens(e));
-  if (e.origine === "entite") li.append(el("span", "entite", " ✦ soufflé par l'Entité"));
+  if (e.origine === "entite") li.append(el("span", "entite", " ✦ venu de l'Entité"));
   if (e.cause > 0) li.append(" ", boutonCause(li, e.cause, "pourquoi ?"));
   return li;
 }

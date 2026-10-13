@@ -75,7 +75,7 @@ public sealed partial class Comportement
         foreach (var autre in tous)
         {
             if (autre.Id == h.Id || autre.Id == partenaire?.Id || !autre.EstVivant || autre.EstEnfant(maintenant)) continue;
-            if (Distance(h.X, h.Y, autre.X, autre.Y) > 1 || !EstDispose(autre, maintenant) || SontParents(h, autre)) continue;
+            if (Distance(h.X, h.Y, autre.X, autre.Y) > 1 || !EstDispose(autre, maintenant) || Interdit(h, autre, maintenant)) continue;
             if (h.AffectionPour(autre.Id) <= VieSociale.SeuilHostilite || Bannissement.Separes(h, autre, maintenant)) continue;
             if (CompagnonVeille(autre, h, tous)) continue;
             var desir = Attirance.Desir(h, autre, ideal, maintenant);
@@ -99,7 +99,7 @@ public sealed partial class Comportement
             double score = 0;
             foreach (var a in tous)
             {
-                if (a.Id == h.Id || !a.EstVivant || !a.EstFecond(maintenant) || SontParents(h, a)) continue;
+                if (a.Id == h.Id || !a.EstVivant || !a.EstFecond(maintenant) || Interdit(h, a, maintenant)) continue;
                 var d = Distance(h.X, h.Y, a.X, a.Y);
                 if (d > rayon || h.AffectionPour(a.Id) <= VieSociale.SeuilHostilite || Bannissement.Separes(h, a, maintenant)) continue;
                 if (CompagnonVeille(a, h, tous)) continue;
@@ -135,17 +135,37 @@ public sealed partial class Comportement
     {
         var compagnon = Vivant(tous, h.PartenaireId);
         if (compagnon is null || compagnon.Id == autre.Id) return 1;
+        // L'Entité peut pousser vers un autre (un penchant, « Unis-toi avec… ») ou retenir (« Reste avec… »).
+        var entite = 1.0;
+        if (h.Impulsions.Count > 0)
+        {
+            entite = 1 + 15 * h.Penchant(autre.Id, _maintenant) + (h.Impulsions.Exists(i => i.Parole == Parole.UnisToi && i.CibleId == autre.Id && i.Active(_maintenant)) ? 30 : 0);
+            if (h.Consigne(Parole.ResteAvec, _maintenant) is { } reste && reste.CibleId == compagnon.Id) entite *= 1 - 0.8 * reste.Force;
+        }
         var occasion = Distance(h.X, h.Y, compagnon.X, compagnon.Y) > 8 ? 0.04 : 0.01;
         // Plus fréquentes aussi chez les évitants (DeWall et al., 2011), les peu honnêtes et les psychopathes (Lee et Ashton, 2012).
         var m = h.Personnalite.Moral;
-        return (occasion + 0.02 * desir) * (0.4 + 0.6 * (Social?.ToleranceDe(h) ?? 0.5)) * (1.4 - 0.8 * h.Personnalite.Conscience)
+        return Math.Min(1, entite * (occasion + 0.02 * desir) * (0.4 + 0.6 * (Social?.ToleranceDe(h) ?? 0.5)) * (1.4 - 0.8 * h.Personnalite.Conscience)
                * Math.Clamp(1.2 - h.AffectionPour(compagnon.Id) / 100, 0.2, 1.2)
-               * (0.6 + 0.8 * (1 - m.Honnetete)) * (0.8 + 0.4 * m.EvitementAffectif) * (1 + Psyche.Froideur(h.Personnalite));
+               * (0.6 + 0.8 * (1 - m.Honnetete)) * (0.8 + 0.4 * m.EvitementAffectif) * (1 + Psyche.Froideur(h.Personnalite)));
     }
 
     private static bool EstDispose(Humain a, long maintenant) =>
         a.EstVivant && a.EstFecond(maintenant) && a.Activite != Activite.Dormir && a.Desir >= 25
         && a.Faim < 80 && a.Soif < 80;
+
+    /// <summary>Événement de l'Entité qui a poussé l'un vers l'autre (penchant ou « Unis-toi avec… » encore actifs), 0 sinon.</summary>
+    private static long CauseEntite(Humain a, Humain b, long maintenant)
+    {
+        foreach (var (x, y) in new[] { (a, b), (b, a) })
+            foreach (var i in x.Impulsions)
+                if (i.CibleId == y.Id && i.Parole is Parole.Penchant or Parole.UnisToi && i.Active(maintenant)) return i.EvenementId;
+        return 0;
+    }
+
+    /// <summary>Un parent, que l'on ne désire pas, sauf si l'Entité a vaincu ce tabou en lui.</summary>
+    private static bool Interdit(Humain h, Humain autre, long maintenant) =>
+        SontParents(h, autre) && !(h.Impulsions.Count > 0 && h.CedeA(autre.Id, maintenant));
 
     /// <summary>Parents et enfants, frères et sœurs : élevés ensemble, ils ne s'attirent pas (instinct).</summary>
     private static bool SontParents(Humain a, Humain b) =>
@@ -168,7 +188,9 @@ public sealed partial class Comportement
         var homme = a.Sexe == Sexe.Femme ? b : a;
         var infidele = Vivant(tous, a.PartenaireId) is { } pa && pa.Id != b.Id || Vivant(tous, b.PartenaireId) is { } pb && pb.Id != a.Id;
         var hors = infidele ? " (hors de leur couple)" : "";
-        var accouplement = Noter(maintenant, TypeEvenement.Accouplement, femme, homme, $"{femme.Nom} et {homme.Nom} s'accouplent{hors}.");
+        // Un penchant inspiré ou un ordre de l'Entité y a mené : il en est la cause.
+        var accouplement = Noter(maintenant, TypeEvenement.Accouplement, femme, homme, $"{femme.Nom} et {homme.Nom} s'accouplent{hors}.",
+            CauseEntite(a, b, maintenant));
         if (infidele)
         {
             Remords(a, b, accouplement, tous, maintenant);
@@ -190,7 +212,7 @@ public sealed partial class Comportement
         {
             a.PartenaireId = b.Id;
             b.PartenaireId = a.Id;
-            Noter(maintenant, TypeEvenement.Union, femme, homme, $"{femme.Nom} et {homme.Nom} forment un nouveau couple.");
+            Noter(maintenant, TypeEvenement.Union, femme, homme, $"{femme.Nom} et {homme.Nom} forment un nouveau couple.", accouplement);
             VieSociale.Rejouir(a, 10);
             VieSociale.Rejouir(b, 10);
         }

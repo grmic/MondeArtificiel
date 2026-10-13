@@ -162,8 +162,8 @@ public static class Attirance
     /// </summary>
     public static double Desir(Humain h, Humain autre, IdealBeaute idealDeH, long maintenant) =>
         h.Orientation.Vers(autre.Sexe)
-        * (0.65 * Attractivite(autre, idealDeH, maintenant) / 100 + 0.2 * Math.Max(0, h.AffectionPour(autre.Id)) / 100
-           + 0.15 * autre.Personnalite.Charisme);
+        * Math.Min(1, 0.65 * Attractivite(autre, idealDeH, maintenant) / 100 + 0.2 * Math.Max(0, h.AffectionPour(autre.Id)) / 100
+           + 0.15 * autre.Personnalite.Charisme + (h.Impulsions.Count > 0 ? h.Penchant(autre.Id, maintenant) : 0));
 
     /// <summary>
     /// Désir en dessous duquel on ne s'intéresse pas à quelqu'un : ceux qui plaisent beaucoup sont plus exigeants

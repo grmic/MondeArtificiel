@@ -823,6 +823,7 @@ public sealed partial class VieSociale(Alea alea)
     {
         var ids = groupe.Select(h => h.Id).ToHashSet();
         return groupe.Where(h => !h.EstEnfant(maintenant))
-            .MaxBy(h => h.Personnalite.Charisme * (1 + h.Liens.Where(l => ids.Contains(l.Id) && l.Affection > 0).Sum(l => l.Affection) / 100))!;
+            .MaxBy(h => h.Personnalite.Charisme * (1 + h.Liens.Where(l => ids.Contains(l.Id) && l.Affection > 0).Sum(l => l.Affection) / 100)
+                        * (h.Impulsions.Count > 0 && h.Consigne(Parole.TuGuideras, maintenant) is { } elu ? 1 + elu.Force : 1))!;
     }
 }

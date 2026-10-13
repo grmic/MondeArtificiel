@@ -12,6 +12,8 @@ internal enum Refus : byte
     Fidelite = 2,
     /// <summary>Le désir est là, mais on n'ose pas (même sexe, là où c'est mal vu).</summary>
     NOsePas = 3,
+    /// <summary>Celui qui les fait est un parent : on ne s'unit pas entre parents.</summary>
+    Parente = 4,
 }
 
 /// <summary>
@@ -84,7 +86,8 @@ public sealed partial class Comportement
         var retour = Attirance.Desir(autre, h, idealAutre, maintenant);
         var plait = Math.Clamp(0.5 + (retour - Attirance.Exigence(autre, idealAutre, maintenant)) / 0.2, 0, 1);
         var refus = Refus.Aucun;
-        if (alea.Reel() >= plait) refus = Refus.NePlaitPas;
+        if (Interdit(autre, h, maintenant)) refus = Refus.Parente;
+        else if (alea.Reel() >= plait) refus = Refus.NePlaitPas;
         else if (meme)
         {
             Eveiller(autre, retour, maintenant);
@@ -119,6 +122,7 @@ public sealed partial class Comportement
             Refus.Fidelite when Vivant(tous, autre.PartenaireId) is { } c =>
                 $"{autre.Nom} repousse les avances de {h.Nom} : {Il(autre)} tient à {VieSociale.Parente(autre, c)}.",
             Refus.NOsePas => $"{autre.Nom} repousse les avances de {h.Nom}, malgré son trouble.",
+            Refus.Parente => $"{autre.Nom} repousse avec horreur les avances de {h.Nom} : on ne s'unit pas entre parents.",
             _ => $"{autre.Nom} repousse les avances de {h.Nom}, qui ne lui plaît pas.",
         };
         var id = Noter(maintenant, TypeEvenement.Attirance, h, autre, texte);

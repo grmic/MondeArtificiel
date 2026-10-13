@@ -38,6 +38,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Exclusion] = "exclusion",
         [TypeEvenement.Entraide] = "entraide",
         [TypeEvenement.Vol] = "vol",
+        [TypeEvenement.Parole] = "parole",
     };
 
 
@@ -125,7 +126,8 @@ public sealed record FicheDto(
     IReadOnlyList<TraitDto> Coeur,
     IReadOnlyList<TraitDto> Morale,
     IReadOnlyList<string> Portrait,
-    SavoirsDto Savoirs)
+    SavoirsDto Savoirs,
+    IReadOnlyList<ParoleRecueDto> Paroles)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -216,7 +218,8 @@ public sealed record FicheDto(
                 Trait("pureté", p.Moral.Fondements.Purete, "dégoût de ce qui souille, sens du sacré"),
             ],
             Decrire(h, maintenant),
-            SavoirsDto.Depuis(h, humains, monde.Flore));
+            SavoirsDto.Depuis(h, humains, monde.Flore),
+            ParolesEntite.Recues(h, humains, service, maintenant));
     }
 
     /// <summary>Le caractère en quelques phrases : style d'attachement, psychopathie (adulte), morale dominante.</summary>

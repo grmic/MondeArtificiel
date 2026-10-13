@@ -62,6 +62,17 @@ public sealed partial class Comportement
             if (grief is null || g.Intensite > grief.Intensite) (grief, cible) = (g, autre);
         }
         if (grief is null || cible is null || alea.Reel() >= AffrontementParPas * h.Colere / 100) return;
+        // « Ne te venge pas » : celui qui y croit se retient, plus ou moins.
+        if (h.Impulsions.Count > 0 && h.Consigne(Parole.NeTeVengePas, maintenant) is { } retenue && alea.Reel() < retenue.Force)
+        {
+            if (!Recent(h, "entite:retenue", 7, maintenant))
+            {
+                var id0 = Noter(maintenant, TypeEvenement.Conflit, h, cible, $"{h.Nom} sent la colère monter contre {cible.Nom}, mais se retient : la voix le lui a demandé.", retenue.EvenementId);
+                Confier(h, TypeIntime.Intention, cible.Id, $"Je ne me vengerai pas de {cible.Nom}. La voix l'a voulu.", 30, id0, maintenant, "entite:retenue");
+            }
+            h.Colere *= 0.7;
+            return;
+        }
 
         var p = h.Personnalite;
         var motif = grief.Motif switch

@@ -267,6 +267,76 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return effet == Simulation.Humains.Effet.Rien ? "Rien n'en est sorti (le journal dit ce qu'il en a fait)." : "Obtenu : " + Simulation.Humains.Physique.NomEffet(effet) + ".";
     }
 
+    /// <summary>Paroles, manières de se manifester, directions, plantes et communautés que l'Entité peut choisir.</summary>
+    public ChoixParolesDto ChoixParoles() => ParolesEntite.Choix(service);
+
+    /// <summary>Cherche des humains vivants (40 au plus) par leur nom, leur communauté, leur situation ou leur proximité.</summary>
+    public List<HumainTrouveDto> ChercherHumains(FiltreHumains filtre) => ParolesEntite.Chercher(service, filtre);
+
+    /// <summary>
+    /// L'Entité parle : chacun des humains visés (ou chaque membre des communautés visées) comprend, croit, obéit ou refuse
+    /// selon ce qu'il est. Renvoie ce que chacun en a fait.
+    /// </summary>
+    public async Task<List<ResultatParoleDto>> Parler(DemandeParole demande)
+    {
+        var monde = service.Monde;
+        if (!Enum.TryParse<Simulation.Humains.Parole>(demande.Parole, out var parole) || !Enum.IsDefined(parole) || parole == Simulation.Humains.Parole.Penchant
+            || !Enum.TryParse<Simulation.Humains.ModeParole>(demande.Mode, out var mode) || !Enum.IsDefined(mode) || mode == Simulation.Humains.ModeParole.Penchant)
+        {
+            throw new HubException("Parole ou manière inconnues.");
+        }
+        var (humainsIds, communautes) = Destinataires(demande.Humains, demande.Communautes);
+        var (maintenant, humains) = monde.InstantaneHumains();
+        var veutCible = Simulation.Humains.Paroles.VeutCible(parole);
+        if (veutCible && (demande.Cible < 1 || demande.Cible > humains.Count || !humains[demande.Cible - 1].EstVivant))
+            throw new HubException("Il faut désigner un humain vivant.");
+        if (parole == Simulation.Humains.Parole.UnisToi && humains[demande.Cible - 1].EstEnfant(maintenant))
+            throw new HubException("Pour s'unir, il faut désigner un adulte.");
+        var param = parole switch
+        {
+            Simulation.Humains.Parole.PartsVers when demande.Param is >= 0 and <= 7 => demande.Param,
+            Simulation.Humains.Parole.PlanteDangereuse when demande.Param >= 1 && demande.Param <= monde.Flore.Especes.Count => demande.Param,
+            Simulation.Humains.Parole.NeVaPasALaGuerre when demande.Param >= 0 && demande.Param <= monde.Communautes().Count => demande.Param,
+            Simulation.Humains.Parole.PartsVers or Simulation.Humains.Parole.PlanteDangereuse or Simulation.Humains.Parole.NeVaPasALaGuerre
+                => throw new HubException("Précision invalide."),
+            _ => 0,
+        };
+        var resultats = monde.Parler(humainsIds, communautes, parole, mode, veutCible ? demande.Cible : 0, param);
+        service.Sauvegarder();
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        return Resultats(resultats);
+    }
+
+    /// <summary>L'Entité inspire un penchant amoureux (ou une passion) à des humains, pour quelqu'un ou pour qui le monde choisit.</summary>
+    public async Task<List<ResultatParoleDto>> Inspirer(DemandePenchant demande)
+    {
+        var monde = service.Monde;
+        var (humainsIds, communautes) = Destinataires(demande.Humains, demande.Communautes);
+        var (_, humains) = monde.InstantaneHumains();
+        if (demande.Cible != 0 && (demande.Cible < 1 || demande.Cible > humains.Count || !humains[demande.Cible - 1].EstVivant))
+            throw new HubException("Il faut désigner un humain vivant.");
+        var resultats = monde.Inspirer(humainsIds, communautes, demande.Cible, demande.Mutuel, demande.Passion, demande.Orientation);
+        service.Sauvegarder();
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        return Resultats(resultats);
+    }
+
+    /// <summary>Destinataires validés : au moins un, 500 humains et 50 communautés au plus.</summary>
+    private static (int[] Humains, int[] Communautes) Destinataires(int[]? humains, int[]? communautes)
+    {
+        humains ??= [];
+        communautes ??= [];
+        if (humains.Length + communautes.Length == 0 || humains.Length > 500 || communautes.Length > 50)
+            throw new HubException("Destinataires invalides.");
+        return (humains.Distinct().ToArray(), communautes.Distinct().ToArray());
+    }
+
+    private List<ResultatParoleDto> Resultats(List<(int Humain, string Resultat)> resultats)
+    {
+        var (_, humains) = service.Monde.InstantaneHumains();
+        return resultats.Select(r => new ResultatParoleDto(r.Humain, r.Humain >= 1 && r.Humain <= humains.Count ? humains[r.Humain - 1].Nom : "?", r.Resultat)).ToList();
+    }
+
     /// <summary>Au redémarrage du serveur : reprendre la dernière vitesse (vrai) ou repartir en pause (faux).</summary>
     public async Task<HorlogeDto> ChoisirRedemarrage(bool reprendreVitesse)
     {

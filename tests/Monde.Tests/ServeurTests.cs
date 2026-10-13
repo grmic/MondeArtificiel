@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Monde.Serveur.Hubs;
 
@@ -53,6 +54,44 @@ public sealed class ServeurTests(UsineTest usine) : IClassFixture<UsineTest>
 
         Assert.Equal("Monde artificiel", reponse.Monde);
         Assert.True(reponse.HeureServeur > DateTimeOffset.UtcNow.AddMinutes(-1));
+    }
+
+    private sealed record ResultatLu(int Humain, string Nom, string Resultat);
+
+    private sealed record TrouveLu(int Id, string Nom);
+
+    [Fact]
+    public async Task HubSignalR_ParolesDeLEntite_RefusentLesDemandesInvalides()
+    {
+        var connexion = usine.CreerConnexion();
+        await using var _ = connexion;
+        await connexion.StartAsync();
+
+        var trouves = await connexion.InvokeAsync<List<TrouveLu>>("ChercherHumains",
+            new { texte = new string('a', 500) + "'; DROP TABLE humains; --", communaute = 0, seuls = false, adultes = false, sexe = (string?)null, pres = 0 });
+        Assert.Empty(trouves);
+        var tous = await connexion.InvokeAsync<List<TrouveLu>>("ChercherHumains", new { texte = "", communaute = 0, seuls = false, adultes = true, sexe = "femme", pres = 1 });
+        Assert.InRange(tous.Count, 1, 40);
+
+        foreach (var demande in new object[]
+                 {
+                     new { humains = new[] { 1 }, communautes = Array.Empty<int>(), parole = "DROP", mode = "Voix", cible = 0, param = 0 },
+                     new { humains = new[] { 1 }, communautes = Array.Empty<int>(), parole = "Penchant", mode = "Voix", cible = 0, param = 0 },
+                     new { humains = new[] { 1 }, communautes = Array.Empty<int>(), parole = "NAiePasPeur", mode = "99", cible = 0, param = 0 },
+                     new { humains = Array.Empty<int>(), communautes = Array.Empty<int>(), parole = "NAiePasPeur", mode = "Voix", cible = 0, param = 0 },
+                     new { humains = Enumerable.Range(1, 600).ToArray(), communautes = Array.Empty<int>(), parole = "NAiePasPeur", mode = "Voix", cible = 0, param = 0 },
+                     new { humains = new[] { 1 }, communautes = Array.Empty<int>(), parole = "PartsVers", mode = "Voix", cible = 0, param = 99 },
+                     new { humains = new[] { 1 }, communautes = Array.Empty<int>(), parole = "Tue", mode = "Voix", cible = 0, param = 0 },
+                     new { humains = new[] { 1 }, communautes = Array.Empty<int>(), parole = "Tue", mode = "Voix", cible = 100000, param = 0 },
+                 })
+        {
+            await Assert.ThrowsAsync<HubException>(() => connexion.InvokeAsync<List<ResultatLu>>("Parler", demande));
+        }
+        var r = await connexion.InvokeAsync<List<ResultatLu>>("Parler",
+            new { humains = new[] { 1 }, communautes = Array.Empty<int>(), parole = "NAiePasPeur", mode = "Voix", cible = 0, param = 0 });
+        Assert.Single(r);
+        await Assert.ThrowsAsync<HubException>(() => connexion.InvokeAsync<List<ResultatLu>>("Inspirer",
+            new { humains = new[] { 1 }, communautes = Array.Empty<int>(), cible = -5, mutuel = false, passion = false, orientation = false }));
     }
 
     private sealed record EmplacementLu(int Numero, int X, int Y);
