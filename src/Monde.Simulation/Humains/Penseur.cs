@@ -85,6 +85,7 @@ public static class Penseur
             },
             Activite.Raid when h.CibleX < 0 => Choix("Je guette le camp ennemi. Nous frapperons à l'aube.", "Silence. Ils dorment encore."),
             Activite.Raid => Choix($"Nous marchons vers le camp ennemi{vers}.", $"Ils paieront. Nous allons{vers}."),
+            Activite.SuivreRavisseur => Choix("On m'a arrachée aux miens. Je dois suivre celui qui m'a prise.", "Je marche derrière lui. Un jour, je m'enfuirai peut-être."),
             Activite.PartirEnExil => Choix($"Les miens m'ont chassé{e}. Je pars{vers}.", "Je ne peux plus rester ici."),
             Activite.RentrerDuRaid => Choix($"Je rentre auprès des miens{vers}.", "C'est fini. Je retourne au camp."),
             Activite.Experimenter => Choix("Que se passe-t-il si je fais ceci ?", "Je tourne cette chose dans mes mains."),

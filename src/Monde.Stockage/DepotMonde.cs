@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 21;
+    public const int VersionSchema = 22;
 
     private readonly string _connexion;
 
@@ -513,6 +513,17 @@ public sealed partial class DepotMonde
         if (actuelle < 19) MigrerVersion19(connexion, transaction);
         if (actuelle < 20) MigrerVersion20(connexion, transaction);
         if (actuelle < 21) MigrerVersion21(connexion, transaction);
+        if (actuelle < 22)
+        {
+            // Version 22 : femmes enlevées lors des raids (colonnes ajoutées si elles manquent).
+            using var colonnes = connexion.CreateCommand();
+            colonnes.Transaction = transaction;
+            colonnes.CommandText = "SELECT name FROM pragma_table_info('humains');";
+            var existantes = new HashSet<string>();
+            using (var l = colonnes.ExecuteReader()) while (l.Read()) existantes.Add(l.GetString(0));
+            if (!existantes.Contains("captif_de")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN captif_de INTEGER NOT NULL DEFAULT 0;");
+            if (!existantes.Contains("captif_le")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN captif_le INTEGER NOT NULL DEFAULT 0;");
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -572,7 +583,7 @@ public sealed partial class DepotMonde
                    faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
                    marche, progression, bebe_porte_le,
                    symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
-                   honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete
+                   honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -638,6 +649,8 @@ public sealed partial class DepotMonde
                     Progression = lecteur.GetDouble(64),
                     BebePorteLe = lecteur.GetInt64(65),
                     Maladie = (Maladie)lecteur.GetByte(74),
+                    CaptifDe = lecteur.GetInt32(lecteur.GetOrdinal("captif_de")),
+                    CaptifLe = lecteur.GetInt64(lecteur.GetOrdinal("captif_le")),
                 });
                 var h = humains[^1];
                 if (lecteur.IsDBNull(66))
@@ -946,7 +959,7 @@ public sealed partial class DepotMonde
                     faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
                     marche, progression, bebe_porte_le,
                     symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
-                    honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete)
+                    honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -959,7 +972,7 @@ public sealed partial class DepotMonde
                     $faim_soif_jour, $froid_jour, $jours_seul, $colere, $deuil_evenement, $depression_evenement, $mort_evenement, $meurtrier,
                     $marche, $progression, $bebe_porte_le,
                     $symetrie, $harmonie, $taille, $teint, $allure, $vers_hommes, $vers_femmes, $lucidite, $maladie,
-                    $honnetete, $empathie_emo, $empathie_cog, $compassion, $psychopathie, $anxiete_aff, $evitement_aff, $soin, $equite, $loyaute, $autorite, $purete);
+                    $honnetete, $empathie_emo, $empathie_cog, $compassion, $psychopathie, $anxiete_aff, $evitement_aff, $soin, $equite, $loyaute, $autorite, $purete, $captif_de, $captif_le);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -973,7 +986,7 @@ public sealed partial class DepotMonde
                 "$faim_soif_jour", "$froid_jour", "$jours_seul", "$colere", "$deuil_evenement", "$depression_evenement", "$mort_evenement", "$meurtrier",
                 "$marche", "$progression", "$bebe_porte_le",
                 "$symetrie", "$harmonie", "$taille", "$teint", "$allure", "$vers_hommes", "$vers_femmes", "$lucidite", "$maladie",
-                "$honnetete", "$empathie_emo", "$empathie_cog", "$compassion", "$psychopathie", "$anxiete_aff", "$evitement_aff", "$soin", "$equite", "$loyaute", "$autorite", "$purete"];
+                "$honnetete", "$empathie_emo", "$empathie_cog", "$compassion", "$psychopathie", "$anxiete_aff", "$evitement_aff", "$soin", "$equite", "$loyaute", "$autorite", "$purete", "$captif_de", "$captif_le"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -1005,6 +1018,7 @@ public sealed partial class DepotMonde
                     h.Personnalite.Moral.Compassion, h.Personnalite.Moral.Psychopathie, h.Personnalite.Moral.AnxieteAffective,
                     h.Personnalite.Moral.EvitementAffectif, h.Personnalite.Moral.Fondements.Soin, h.Personnalite.Moral.Fondements.Equite,
                     h.Personnalite.Moral.Fondements.Loyaute, h.Personnalite.Moral.Fondements.Autorite, h.Personnalite.Moral.Fondements.Purete,
+                    h.CaptifDe, h.CaptifLe,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();

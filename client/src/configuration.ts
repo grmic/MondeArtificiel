@@ -21,6 +21,7 @@ interface Configuration {
   resume: string;
   version: string;
   auteur: string;
+  journalQuotidien: boolean;
 }
 
 /** Réglages d'un nouveau monde (graine null : au hasard). */
@@ -85,6 +86,8 @@ export class PanneauConfiguration {
   private readonly hasard = el("button", undefined, "🎲");
   private apercuAffiche = false;
   private readonly listeSauvegardes = el("ul", "liste sauvegardes");
+  private readonly journalQuotidien = el("input");
+  private readonly messageJournal = el("p", "message-config");
   private readonly messageSauvegardes = el("p", "message-config");
   private readonly dialogueRestaurer = el("dialog", "dialogue");
   private aRestaurer: string | null = null;
@@ -138,10 +141,19 @@ export class PanneauConfiguration {
     boutonsSauvegarde.append(sauver);
     this.construireDialogue();
 
+    const etiquetteQuotidien = el("label", "case-config");
+    etiquetteQuotidien.append(this.journalQuotidien, " Journaliser la vie quotidienne");
+    this.journalQuotidien.type = "checkbox";
+    this.journalQuotidien.addEventListener("change", () => void this.choisirJournalQuotidien(this.journalQuotidien.checked));
+
     this.corps.append(
       this.apropos,
       el("h3", undefined, "Monde actuel"),
       this.actuel,
+      el("h3", undefined, "Journal"),
+      etiquetteQuotidien,
+      el("p", "discret", "Boire, manger, dormir, se reposer, chercher un abri, aller et venir : décoché, ces gestes ne sont plus notés (ni résumé de la journée, ni pensées qui s'y rapportent). Ce qui touche aux autres reste toujours noté : veiller sur quelqu'un, partager, soigner, consoler, se disputer… Les entrées déjà écrites sont gardées."),
+      this.messageJournal,
       this.titreSauvegardes,
       el("p", "discret", "Une sauvegarde garde tout le monde à cet instant. La restaurer remplace le monde actuel, qui est d'abord sauvegardé lui aussi."),
       boutonsSauvegarde,
@@ -178,6 +190,8 @@ export class PanneauConfiguration {
     }
     this.config = c;
     this.apropos.textContent = `Monde artificiel, version ${c.version} · auteur : ${c.auteur}`;
+    this.journalQuotidien.checked = c.journalQuotidien;
+    this.messageJournal.textContent = "";
     this.actuel.textContent = `Graine ${c.graine} · ${c.couples} couples · ${c.continents} continent${c.continents > 1 ? "s" : ""}${c.origine ? " (réglages d'origine)" : ""}. ${c.resume}`;
     const km = (cases: number) => Math.round(cases * c.kilometresParCase);
     const bornes = (e: HTMLInputElement, min: number, max: number) => {
@@ -221,6 +235,17 @@ export class PanneauConfiguration {
     this.dialogueRestaurer.addEventListener("close", () => {
       if (this.dialogueRestaurer.returnValue === "confirmer" && this.aRestaurer) void this.restaurer(this.aRestaurer);
     });
+  }
+
+  private async choisirJournalQuotidien(oui: boolean): Promise<void> {
+    const c = await connexion.invoke<Configuration>("ChoisirJournalQuotidien", oui).catch(() => null);
+    if (!c) {
+      this.journalQuotidien.checked = !oui;
+      this.messageJournal.textContent = "Le serveur n'a pas répondu : réglage inchangé.";
+      return;
+    }
+    this.journalQuotidien.checked = c.journalQuotidien;
+    this.messageJournal.textContent = c.journalQuotidien ? "La vie quotidienne est maintenant notée." : "La vie quotidienne n'est plus notée.";
   }
 
   private async lireSauvegardes(): Promise<void> {

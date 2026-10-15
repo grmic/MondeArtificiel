@@ -1059,7 +1059,8 @@ public sealed partial class Comportement
     private void Assaut(Communaute c, Communaute cible, Raid raid, List<Humain> humains, long maintenant)
     {
         var assaillants = raid.Guerriers.Select(id => humains[id - 1]).Where(h => h.EstVivant).ToList();
-        var defenseurs = humains.Where(h => h.EstVivant && h.CommunauteId == cible.Id && !h.EstEnfant(maintenant)
+        // Les captives enlevées par ce camp ne le défendent pas.
+        var defenseurs = humains.Where(h => h.EstVivant && h.CommunauteId == cible.Id && !h.EstEnfant(maintenant) && h.CaptifDe == 0
                                             && Distance(h.X, h.Y, raid.X, raid.Y) <= 6).ToList();
         if (defenseurs.Count == 0)
         {
@@ -1077,9 +1078,10 @@ public sealed partial class Comportement
         foreach (var a in assaillants) armes[a.Id] = ChoisirArme(a, prepare: 1);
         foreach (var d in defenseurs) armes[d.Id] = ChoisirArme(d, prepare: d.Activite == Activite.Dormir ? 0.3 : 0.7);
         var blesses = new List<Humain>();
+        var enlevees = new List<(Humain Captive, Humain Ravisseur)>();
         foreach (var a in assaillants.OrderBy(_ => alea.Reel()).ToList())
         {
-            var debout = defenseurs.Where(d => d.EstVivant && tues.All(t => t.Victime != d)).ToList();
+            var debout = defenseurs.Where(d => d.EstVivant && tues.All(t => t.Victime != d) && enlevees.All(e => e.Captive != d)).ToList();
             if (debout.Count == 0) break;
             // Les hommes font face les premiers ; les femmes se défendent aussi.
             var poids = debout.Select(d => d.Sexe == Sexe.Homme ? 3.0 : 1.0).ToList();
@@ -1091,7 +1093,8 @@ public sealed partial class Comportement
             var pTuer = Math.Min(0.6, 0.22 * surprise * 2 * fa / (fa + fd) * Puissance(armes[a.Id]));
             var pMourir = Math.Min(0.5, 0.12 / surprise * nombre * 2 * fd / (fa + fd) * Puissance(armes[d.Id]));
             var u = alea.Reel();
-            if (u < pTuer) tues.Add((d, a, armes[a.Id]));
+            if (u < pTuer && d.Sexe == Sexe.Femme && alea.Reel() < ChanceDEnlever(a, d, maintenant)) enlevees.Add((d, a));
+            else if (u < pTuer) tues.Add((d, a, armes[a.Id]));
             else if (u < pTuer + pMourir) tues.Add((a, d, armes[d.Id]));
             else if (u < pTuer + pMourir + 0.3)
             {
@@ -1111,7 +1114,8 @@ public sealed partial class Comportement
         var bilan = new List<string>();
         if (mortsDefenseurs > 0) bilan.Add($"{Liste(tues.Where(t => t.Victime.CommunauteId == cible.Id).Select(t => t.Victime))} {(mortsDefenseurs > 1 ? "sont tués" : "est tué" + E(tues.First(t => t.Victime.CommunauteId == cible.Id).Victime))}");
         if (mortsAssaillants > 0) bilan.Add($"parmi les assaillants, {Liste(tues.Where(t => t.Victime.CommunauteId != cible.Id).Select(t => t.Victime))} {(mortsAssaillants > 1 ? "tombent" : "tombe")}");
-        var touches = blesses.Where(b => tues.All(t => t.Victime != b)).Distinct().ToList();
+        var touches = blesses.Where(b => tues.All(t => t.Victime != b) && enlevees.All(e => e.Captive != b)).Distinct().ToList();
+        if (enlevees.Count > 0) bilan.Add($"{Liste(enlevees.Select(e => e.Captive))} {(enlevees.Count > 1 ? "sont enlevées" : "est enlevée")}");
         if (touches.Count > 0) bilan.Add($"{Liste(touches)} {(touches.Count > 1 ? "sont blessés" : "est blessé" + E(touches[0]))}");
         if (bilan.Count == 0) bilan.Add("les défenseurs repoussent l'attaque sans perte de part et d'autre");
         var id = Noter(maintenant, TypeEvenement.Guerre, assaillants[0], humains[cible.FigureId - 1],
@@ -1134,6 +1138,7 @@ public sealed partial class Comportement
             victime.MeurtrierId = tueur.Id;
             Social!.Offenser(tueur, victime, 15, victime.MortEvenementId, humains, maintenant);
         }
+        foreach (var (captive, ravisseur) in enlevees) Enlever(captive, ravisseur, c, cible, id, humains, maintenant);
         foreach (var b in touches.Where(b => b.Sante <= 0 && b.EstVivant))
         {
             Tuer(b, maintenant, CauseDeMort.Guerre, $"{b.Nom} meurt de ses blessures, à {AgeEnMots(b, maintenant)}, après le raid de la {nc} contre la {ncible}.", id);
@@ -1163,7 +1168,7 @@ public sealed partial class Comportement
                 30 + 50 * d.Personnalite.Nevrosisme + 10 * mortsDefenseurs, id, maintenant, $"peur:raid:{c.Id}");
         }
         // Même sans mort, l'attaque offense tout le groupe attaqué.
-        if (tues.Count == 0) Social!.Offenser(assaillants[0], defenseurs[0], 5, id, humains, maintenant);
+        if (tues.Count == 0 && enlevees.Count == 0) Social!.Offenser(assaillants[0], defenseurs[0], 5, id, humains, maintenant);
         Social!.Ensanglanter(c, cible, mortsAssaillants, mortsDefenseurs, id, maintenant);
         Rentrer(c, raid, maintenant);
     }

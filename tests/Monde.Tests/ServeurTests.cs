@@ -56,6 +56,21 @@ public sealed class ServeurTests(UsineTest usine) : IClassFixture<UsineTest>
         Assert.True(reponse.HeureServeur > DateTimeOffset.UtcNow.AddMinutes(-1));
     }
 
+    private sealed record JournalLu(bool JournalQuotidien);
+
+    [Fact]
+    public async Task HubSignalR_JournalQuotidien_NonParDefaut_EtSeChoisit()
+    {
+        var connexion = usine.CreerConnexion();
+        await using var _ = connexion;
+        await connexion.StartAsync();
+
+        Assert.False((await connexion.InvokeAsync<JournalLu>("Configuration")).JournalQuotidien);
+        Assert.True((await connexion.InvokeAsync<JournalLu>("ChoisirJournalQuotidien", true)).JournalQuotidien);
+        Assert.True((await connexion.InvokeAsync<JournalLu>("Configuration")).JournalQuotidien);
+        Assert.False((await connexion.InvokeAsync<JournalLu>("ChoisirJournalQuotidien", false)).JournalQuotidien);
+    }
+
     private sealed record ResultatLu(int Humain, string Nom, string Resultat);
 
     private sealed record TrouveLu(int Id, string Nom);

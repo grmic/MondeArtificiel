@@ -58,6 +58,7 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.RentrerDuRaid] = "rentre d'un raid",
         [Simulation.Humains.Activite.Fuir] = "fuit le danger",
         [Simulation.Humains.Activite.PartirEnExil] = "part en exil",
+        [Simulation.Humains.Activite.SuivreRavisseur] = "suit son ravisseur",
         [Simulation.Humains.Activite.Experimenter] = "essaie quelque chose",
         [Simulation.Humains.Activite.Fabriquer] = "fabrique",
         [Simulation.Humains.Activite.Veiller] = "entretient le feu",

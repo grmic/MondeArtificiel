@@ -15,9 +15,11 @@ public sealed class ServiceMonde
     private readonly ILogger<ServiceMonde> _journal;
     private const string CleRedemarrage = "redemarrage";
     private const string ClePauseCatastrophe = "pause_catastrophe";
+    private const string CleJournalQuotidien = "journal_quotidien";
     private volatile MondeSimule _monde;
     private volatile bool _reprendreVitesse;
     private volatile bool _pauseSurCatastrophe;
+    private volatile bool _journalQuotidien;
     private double _facteurAtteint;
 
     public ServiceMonde(IConfiguration configuration, ILogger<ServiceMonde> journal)
@@ -48,7 +50,11 @@ public sealed class ServiceMonde
         var carte = GenerateurContinent.Generer(etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine));
         _reprendreVitesse = Depot.LireReglage(CleRedemarrage) == "vitesse";
         _pauseSurCatastrophe = Depot.LireReglage(ClePauseCatastrophe) != "non";
-        _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 }) { PauseSurCatastrophe = _pauseSurCatastrophe };
+        _journalQuotidien = Depot.LireReglage(CleJournalQuotidien) == "oui";
+        _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 })
+        {
+            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien,
+        };
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
     }
@@ -78,6 +84,18 @@ public sealed class ServiceMonde
             Depot.EcrireReglage(ClePauseCatastrophe, value ? "oui" : "non");
             _pauseSurCatastrophe = value;
             _monde.PauseSurCatastrophe = value;
+        }
+    }
+
+    /// <summary>Noter au journal la vie quotidienne de chacun (non par défaut).</summary>
+    public bool JournalQuotidien
+    {
+        get => _journalQuotidien;
+        set
+        {
+            Depot.EcrireReglage(CleJournalQuotidien, value ? "oui" : "non");
+            _journalQuotidien = value;
+            _monde.JournalQuotidien = value;
         }
     }
 
@@ -118,7 +136,10 @@ public sealed class ServiceMonde
         if (configuration.Erreur() is { } erreur) throw new ArgumentException(erreur, nameof(configuration));
         // La carte est générée avant de toucher à l'ancien monde : un réglage impossible ne détruit rien.
         var etat = MondeSimule.Nouveau(configuration);
-        var nouveau = new MondeSimule(GenerateurContinent.Generer(configuration), etat) { PauseSurCatastrophe = _pauseSurCatastrophe };
+        var nouveau = new MondeSimule(GenerateurContinent.Generer(configuration), etat)
+        {
+            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien,
+        };
         lock (_verrou)
         {
             Sauvegarder();
@@ -184,7 +205,7 @@ public sealed class ServiceMonde
                 var configuration = etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine);
                 restaure = new MondeSimule(GenerateurContinent.Generer(configuration), etat with { Facteur = 0 })
                 {
-                    PauseSurCatastrophe = _pauseSurCatastrophe,
+                    PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien,
                 };
             }
             catch (Exception e) when (e is ArgumentException or InvalidOperationException)

@@ -130,6 +130,13 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Réglages du monde courant et limites acceptées.</summary>
     public ConfigurationDto Configuration() => ConfigurationDto.Depuis(service);
 
+    /// <summary>Noter ou non au journal la vie quotidienne de chacun (boire, manger, dormir, aller et venir).</summary>
+    public ConfigurationDto ChoisirJournalQuotidien(bool oui)
+    {
+        service.JournalQuotidien = oui;
+        return ConfigurationDto.Depuis(service);
+    }
+
     /// <summary>Aperçu de réglages : la carte est générée (et gardée pour l'afficher), le monde courant ne change pas.</summary>
     public ApercuDto ApercuConfiguration(DemandeConfiguration demande)
     {

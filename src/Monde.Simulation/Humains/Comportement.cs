@@ -87,7 +87,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         _nageur = false;
         if (h.EstBebe(maintenant))
         {
-            VivreBebe(h, Vivant(tous, h.MereId), maintenant);
+            // Sans sa mère, le bébé est porté par une femme qui allaite, ou, sevrable, par celui qui veille sur lui.
+            var mere = Vivant(tous, h.MereId);
+            VivreBebe(h, mere ?? Nourrice(h, tous, maintenant), maintenant, mere is null);
             return;
         }
         // Pour un enfant, le « compagnon » à rejoindre (pour dormir, se tenir chaud) est celui qui veille sur lui.
@@ -124,16 +126,37 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (h.Activite != avant && Penseur.Penser(h, _motif, _autre, maintenant) is { } pensee)
         {
             var routine = EstRoutine(h.Activite, _motif);
-            if (routine) Routine.Compter(h.Id, h.Activite);
             // Au journal : les gestes de tous les jours sont résumés une fois par jour ; une autre pensée est notée,
             // sauf si une pensée de même sens figure déjà parmi les dernières (activités qui alternent).
-            var nouvelle = !routine && !h.Memoire.PenseeRecente(pensee, Memoire.PenseesMax);
+            // Sauf choix contraire dans la configuration, la vie quotidienne n'est pas suivie : ni résumé de la journée,
+            // ni pensées sur l'eau, la nourriture, l'abri, le sommeil ou les allées et venues.
+            if (routine && JournalQuotidien) Routine.Compter(h.Id, h.Activite);
+            var nouvelle = !routine && (JournalQuotidien || !EstQuotidien(h.Activite, _motif))
+                           && !h.Memoire.PenseeRecente(pensee, Memoire.PenseesMax);
             if (h.Memoire.Penser(maintenant, pensee) && nouvelle) Noter(maintenant, TypeEvenement.Pensee, h, _autre, $"{h.Nom} : « {pensee} »");
         }
     }
 
     /// <summary>Gestes quotidiens (boire, manger, dormir, se reposer, aller vers ce qu'on voit ou vers les siens) : résumés chaque jour.</summary>
     public JourneeType Routine { get; } = new();
+
+    /// <summary>
+    /// Journaliser la vie quotidienne (résumés de la journée et pensées liées aux besoins et aux allées et venues).
+    /// Non par défaut : le journal garde ce qui touche aux autres, aux découvertes et aux événements.
+    /// </summary>
+    public bool JournalQuotidien { get; set; }
+
+    /// <summary>Activités de la vie quotidienne : besoins du corps, gestes habituels, allées et venues sans enjeu.</summary>
+    private static bool EstQuotidien(Activite a, Motif motif) => a switch
+    {
+        Activite.Boire or Activite.ChercherEau or Activite.Cueillir or Activite.Chasser or Activite.ChercherNourriture
+            or Activite.SAbriter or Activite.ChercherAbri or Activite.Dormir or Activite.Repos or Activite.Explorer
+            or Activite.Nager or Activite.Veiller or Activite.Fabriquer or Activite.Experimenter
+            or Activite.RejoindreProche or Activite.SuivreParent => true,
+        Activite.RejoindrePartenaire => motif != Motif.Desir,
+        Activite.Migrer => motif != Motif.Guide,
+        _ => false,
+    };
 
     private static bool EstRoutine(Activite a, Motif motif) => a switch
     {
@@ -507,6 +530,19 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 case Activite.Dormir: AllerDormir(h, partenaire); return;
                 case Activite.SAbriter: AllerSAbriter(h, partenaire, maintenant); return;
             }
+        }
+
+        // Une captive reste près de celui qui l'a enlevée, tant qu'elle ne s'est pas enfuie.
+        if (h.CaptifDe > 0 && Vivant(tous, h.CaptifDe) is { } ravisseur)
+        {
+            _autre = ravisseur;
+            if (Distance(h.X, h.Y, ravisseur.X, ravisseur.Y) > 1) Avancer(h, ravisseur.X, ravisseur.Y, Activite.SuivreRavisseur);
+            if (h.CibleX < 0)
+            {
+                h.Activite = Activite.Repos;
+                h.CibleX = h.CibleY = -1;
+            }
+            return;
         }
 
         // Aucun besoin pressant. Un enfant suit ses parents, ou celui qui l'a recueilli.

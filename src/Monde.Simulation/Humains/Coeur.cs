@@ -35,6 +35,7 @@ public sealed partial class VieSociale
                 Soigner(s, Voisins(s), maintenant);
         }
         Recueillir(humains, maintenant);
+        Captivites(humains, maintenant);
     }
 
     /// <summary>La terreur d'un voisin gagne ceux qui la ressentent, les sensibles et les empathiques surtout.</summary>

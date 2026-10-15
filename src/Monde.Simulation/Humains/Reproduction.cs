@@ -409,8 +409,66 @@ public sealed partial class Comportement
         }
     }
 
-    /// <summary>Un bébé est porté par sa mère, qui l'allaite. Sans elle, il ne peut pas survivre longtemps.</summary>
-    private void VivreBebe(Humain b, Humain? mere, long maintenant)
+    /// <summary>
+    /// Celle (ou celui) qui prend un bébé dont la mère est morte. Chez les chasseurs-cueilleurs, l'orphelin est d'abord
+    /// allaité par une autre femme qui a du lait, souvent une parente de la mère : l'allaitement partagé est courant chez
+    /// les Aka et les Efe (Hewlett et Winn, 2014 ; Hrdy, 2009). Le lait dure tant qu'un enfant tète : une femme qui a
+    /// accouché depuis moins de trois ans en a encore. Un bébé de plus de six mois peut aussi survivre sans lait, nourri
+    /// d'aliments prémâchés et d'eau par celui qui veille sur lui (son père, un proche) ; plus jeune, il en meurt.
+    /// La bonté et l'attachement de chacune décident, la parenté et la communauté aussi ; un cœur froid ne prend personne.
+    /// </summary>
+    internal Humain? Nourrice(Humain b, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        var cle = $"nourrice:{b.Id}";
+        var morte = b.MereId > 0 ? tous[b.MereId - 1] : null;
+        Humain? choisie = null;
+        var meilleur = 0.0;
+        foreach (var f in tous)
+        {
+            if (!f.EstVivant || f.Sexe != Sexe.Femme || f.EstEnfant(maintenant) || f.Id == b.MereId) continue;
+            if (f.DernierAccouchement is not { } accouchement || maintenant - accouchement >= 3 * Calendrier.SecondesParAn) continue;
+            var d = Distance(b.X, b.Y, f.X, f.Y);
+            var dejaElle = f.Memoire.Jardin.Exists(x => x.Cle == cle);
+            // Elle l'entend pleurer au camp ; celle qui le porte déjà l'emmène où elle va.
+            if (d > (dejaElle ? CasesParPasMax : 3)) continue;
+            var m = f.Personnalite.Moral;
+            var parente = morte is not null && (f.MereId > 0 && f.MereId == morte.MereId || f.Id == morte.MereId || f.Id == b.PereId);
+            var envie = (0.2 + 0.5 * m.Compassion + 0.3 * f.Personnalite.Attachement) * (1 - Psyche.Froideur(f.Personnalite))
+                        + (parente ? 0.3 : 0) + (f.CommunauteId != 0 && f.CommunauteId == b.CommunauteId ? 0.1 : 0)
+                        + (morte is not null ? f.AffectionPour(morte.Id) / 200 : 0) + (dejaElle ? 1 : 0);
+            if (envie < 0.5 || envie <= meilleur || Delaisse(f)) continue;
+            (choisie, meilleur) = (f, envie);
+        }
+        if (choisie is not null)
+        {
+            if (!choisie.Memoire.Jardin.Exists(x => x.Cle == cle))
+            {
+                var id = Noter(maintenant, TypeEvenement.Entraide, choisie, b,
+                    $"{choisie.Nom} prend {b.Nom} ({AgeEnMots(b, maintenant)}){(morte is null ? "" : $", qui a perdu sa mère {morte.Nom},")} et l'allaite comme son enfant.",
+                    morte?.MortEvenementId ?? 0, significatif: true);
+                Jardin.Confier(choisie, TypeIntime.Intention, b.Id, $"Je nourrirai {b.Nom} de mon lait, comme mon enfant.",
+                    40 + 40 * choisie.Personnalite.Moral.Compassion, id, maintenant, cle);
+            }
+            return choisie;
+        }
+        // Sevrable : celui qui veille sur lui le porte et le nourrit d'aliments prémâchés.
+        if (b.AgeEnAnnees(maintenant) < 0.5 || Gardien(b, tous, maintenant) is not { } g || Distance(b.X, b.Y, g.X, g.Y) > CasesParPasMax) return null;
+        if (!g.Memoire.Jardin.Exists(x => x.Cle == cle))
+        {
+            var id = Noter(maintenant, TypeEvenement.Entraide, g, b,
+                $"Faute de lait, {g.Nom} porte {b.Nom} ({AgeEnMots(b, maintenant)}) et {(b.Sexe == Sexe.Femme ? "la" : "le")} nourrit de bouchées mâchées.",
+                morte?.MortEvenementId ?? 0, significatif: true);
+            Jardin.Confier(g, TypeIntime.Intention, b.Id, $"{b.Nom} n'a plus de mère : c'est moi qui le nourrirai.",
+                40 + 40 * g.Personnalite.Moral.Compassion, id, maintenant, cle);
+        }
+        return g;
+    }
+
+    /// <summary>
+    /// Un bébé est porté par sa mère, qui l'allaite. Sans elle (<paramref name="orphelin"/>), une autre femme qui a du lait
+    /// peut le prendre (<see cref="Nourrice"/>) ; à défaut, celui qui veille sur lui le nourrit moins bien, sans lait.
+    /// </summary>
+    private void VivreBebe(Humain b, Humain? mere, long maintenant, bool orphelin = false)
     {
         b.Fatigue = 0;
         b.Desir = 0;
@@ -422,7 +480,9 @@ public sealed partial class Comportement
         var porte = proche && !Delaisse(mere!);
         if (proche && !porte && b.Activite is Activite.PorteParSaMere or Activite.Dormir)
         {
-            Noter(maintenant, TypeEvenement.Delaissement, mere!, b, $"{mere!.Nom}, à bout de forces, délaisse son bébé {b.Nom}.");
+            Noter(maintenant, TypeEvenement.Delaissement, mere!, b, orphelin
+                ? $"{mere!.Nom}, à bout de forces, laisse là {b.Nom}, qu'{(mere.Sexe == Sexe.Femme ? "elle" : "il")} portait."
+                : $"{mere!.Nom}, à bout de forces, délaisse son bébé {b.Nom}.");
         }
         if (mere is not null && porte)
         {
@@ -435,8 +495,13 @@ public sealed partial class Comportement
         // quand elle a trop faim, et baisse quand ses réserves sont épuisées. Le corps de la mère préserve le lait quand elle
         // boit peu (boire plus n'en donne pas davantage : Dusdieker et al., 1985) : c'est elle qui a soif, et le lait ne
         // baisse que lorsqu'elle se déshydrate gravement.
+        // Sans lait (un homme, une femme qui n'allaite plus), des bouchées mâchées et de l'eau : moins que le lait, et seulement
+        // si celui qui le porte n'a pas lui-même trop faim ou soif.
+        var allaitante = porte && mere!.Sexe == Sexe.Femme && mere.DernierAccouchement is { } dernier
+                         && maintenant - dernier < 3 * Calendrier.SecondesParAn;
         var lait = porte
             ? Math.Clamp(Math.Min((100 - mere!.Faim) / 30, (100 - mere.Soif) / 15), 0, 1) * Math.Min(1, 0.4 + mere.Reserves / 40)
+              * (allaitante ? 1 : 0.5)
             : 0;
         Depenser(b, (0.4 - 1.4 * lait) * b.Biologie.Metabolisme);
         b.Soif = Math.Clamp(b.Soif + 0.6 - 1.6 * lait, 0, 100);

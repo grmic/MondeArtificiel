@@ -241,3 +241,4 @@ h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
 .fiche details.section > summary:hover { color: var(--texte); }
 .fiche details.section[open] > summary { margin-bottom: 6px; }
 .fiche .sections-boutons { display: flex; gap: 10px; justify-content: flex-end; font-size: 0.78rem; margin-bottom: 4px; }
+.config-panneau .case-config { display: block; margin: 0.3rem 0; cursor: pointer; }

@@ -235,9 +235,12 @@ public sealed class PsycheEtSocialTests
         var dossier = Path.Combine(Path.GetTempPath(), "monde-social-" + Guid.NewGuid().ToString("N"));
         try
         {
-            var monde = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42));
+            var monde = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42)) { JournalQuotidien = true };
             monde.AvancerDe(2 * An);
             var etat = monde.Etat;
+            // Une captive, pour vérifier aussi sa relecture.
+            etat.Humains![1].CaptifDe = 1;
+            etat.Humains![1].CaptifLe = 5;
             // Une communauté dispersée en plus, pour vérifier aussi sa relecture.
             etat = etat with
             {

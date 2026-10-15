@@ -47,6 +47,8 @@ public enum Activite : byte
     Soigner = 26,
     /// <summary>Nager.</summary>
     Nager = 27,
+    /// <summary>Enlevée lors d'un raid, elle suit celui qui l'a prise.</summary>
+    SuivreRavisseur = 28,
 }
 
 public enum CauseDeMort : byte
@@ -209,6 +211,12 @@ public sealed class Humain
 
     /// <summary>Dernier instant où cette mère portait un bébé (ce pas-ci ou le précédent, selon l'ordre) : ralentit sa marche.</summary>
     public long BebePorteLe { get; set; } = -1;
+
+    /// <summary>Celui qui l'a enlevée lors d'un raid (0 : libre). Voir <see cref="VieSociale.Captivites"/>.</summary>
+    public int CaptifDe { get; set; }
+
+    /// <summary>Quand elle a été enlevée.</summary>
+    public long CaptifLe { get; set; }
 
     /// <summary>Fin de la maladie en secondes du monde (0 si en bonne santé).</summary>
     public long MaladeJusqua { get; set; }
