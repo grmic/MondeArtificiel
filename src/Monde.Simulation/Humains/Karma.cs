@@ -25,6 +25,8 @@ public static class Regard
     public const double NourrirSansLait = 4;
     public const double Allaiter = 5;
     public const double Recueillir = 5;
+    public const double Panser = 1;
+    public const double AiderAccoucher = 2;
 
     public const double Vol = -3;
     public const double Coups = -2;
@@ -34,6 +36,11 @@ public static class Regard
     public const double Enlever = -15;
     public const double TuerAuCombat = -25;
     public const double Meurtre = -50;
+    /// <summary>Se faire nourrir en prétendant guérir.</summary>
+    public const double Tromper = -2;
+    /// <summary>Maudire quelqu'un pour qu'il dépérisse ; s'il en meurt, c'est presque un meurtre.</summary>
+    public const double Maudire = -10;
+    public const double MortMaudit = -25;
 
     /// <summary>Un petit geste (partager, veiller, consoler, donner un remède) ne compte qu'une fois par saison envers une même personne.</summary>
     public const double PetitGeste = 3;

@@ -47,6 +47,8 @@ public enum TypeEvenement : byte
     Parole = 25,
     /// <summary>La croyance d'un humain en l'invisible change d'une dizaine : ce qui l'a fait grandir ou décliner.</summary>
     Croyance = 26,
+    /// <summary>Guérisseurs reconnus ou désavoués, transes, charlatans démasqués, malédictions : la médecine et ses croyances.</summary>
+    Medecine = 27,
 }
 
 /// <summary>
@@ -134,6 +136,7 @@ public static class Libelles
         Humains.CauseDeMort.Chaleur => "de chaleur",
         Humains.CauseDeMort.Guerre => "au combat",
         Humains.CauseDeMort.Empoisonnement => "empoisonné par une plante",
+        Humains.CauseDeMort.Envoutement => "rongé par une malédiction",
         _ => "",
     };
 

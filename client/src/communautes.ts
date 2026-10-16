@@ -48,6 +48,8 @@ interface Communaute {
   /** Moyennes des adultes : karma (regard de l'Entité) et croyance en l'invisible (0 à 100). */
   karma: number | null;
   croyance: number | null;
+  /** Guérisseurs, chamans et charlatans de la communauté. */
+  soignants: { id: number; nom: string; role: string; gueris: number; perdus: number }[] | null;
 }
 
 /** Une guerre en préparation : qui la veut, contre qui, pourquoi, et les alliés sollicités. */
@@ -277,6 +279,18 @@ export class PanneauCommunautes {
         bloc.append(p);
       }
       if (c.ideal) bloc.append(el("p", "discret", `Trouve beaux : ${c.ideal}.`));
+      if (c.soignants && c.soignants.length > 0) {
+        const p = el("p", "usage", "Soignants : ");
+        c.soignants.forEach((x, i) => {
+          if (i > 0) p.append(", ");
+          const b = el("button", "lien", x.nom);
+          b.type = "button";
+          b.addEventListener("click", () => this.ouvrirFiche(x.id));
+          p.append(b, ` (${x.role} ; ${x.gueris} guéris, ${x.perdus} perdus)`);
+        });
+        p.append(".");
+        bloc.append(p);
+      }
     }
     for (const x of c.exiles) {
       const ligne = el("p", "alerte");

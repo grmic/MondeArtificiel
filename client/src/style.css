@@ -86,7 +86,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 button.lien { background: none; border: none; padding: 0; color: #8cc4ff; cursor: pointer; font: inherit; text-decoration: underline dotted; }
 .entite { color: #d9a8ff; }
 .karma { color: #e8c872; font-size: 0.9em; }
-.regard { line-height: 1.5; }
+.regard, .medecine { line-height: 1.5; }
 .journal-panneau .filtres { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 0 14px 6px; }
 .journal-panneau .puce { white-space: nowrap; }
 .journal-panneau .ligne { padding: 0 14px 6px; }

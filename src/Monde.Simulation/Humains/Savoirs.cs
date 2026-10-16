@@ -88,6 +88,8 @@ public enum Geste : byte
     Percer = 14,
     /// <summary>Entailler à grands coups (un tronc) avec un outil tranchant.</summary>
     Trancher = 15,
+    /// <summary>Laver une plaie à l'eau, la presser et la couvrir de feuilles.</summary>
+    Panser = 16,
 }
 
 /// <summary>Ce que l'humain constate après un geste.</summary>
@@ -153,6 +155,8 @@ public enum Effet : byte
     RouleSurAxe = 30,
     /// <summary>Des pièces de bois liées portent un humain sur l'eau.</summary>
     Flottaison = 31,
+    /// <summary>Une plaie lavée ou couverte guérit mieux et pourrit moins.</summary>
+    Pansement = 32,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -459,6 +463,7 @@ public static class Physique
         Effet.Percage => "percer le bois",
         Effet.RouleSurAxe => "faire tourner des rondelles autour d'un axe",
         Effet.Flottaison => "aller sur l'eau sur du bois lié",
+        Effet.Pansement => "soigner une plaie",
         _ => "rien",
     };
 
@@ -495,6 +500,7 @@ public static class Physique
         Geste.Pousser => "pousser",
         Geste.Percer => "percer",
         Geste.Trancher => "trancher",
+        Geste.Panser => "panser une plaie avec",
         _ => "nager",
     };
 
@@ -561,6 +567,8 @@ public static class Physique
         Effet.Flotte => $"Posé sur l'eau, {Nom(s.A)} flotte.",
         Effet.Percage => "Une pointe dure qu'on fait tourner longtemps perce le bois.",
         Effet.Rondelle => "Un tronc tranché à grands coups donne des rondelles.",
+        Effet.Pansement when s.A == Matiere.Eau => "Une plaie lavée à l'eau guérit mieux.",
+        Effet.Pansement => "Une plaie pressée et couverte de feuilles guérit mieux.",
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => "Rien.",
     };

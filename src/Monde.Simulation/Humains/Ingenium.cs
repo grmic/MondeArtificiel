@@ -377,6 +377,8 @@ public sealed partial class Comportement
             Effet.Flotte => $"{h.Nom} pousse {Physique.Nom(s.A)} dans l'eau : {IlChose(s.A)} ne coule pas.",
             Effet.Percage => $"{h.Nom} fait tourner {Physique.Nom(s.B)} contre {Physique.Nom(s.A)}, longtemps : un trou se creuse, puis traverse.",
             Effet.Rondelle => $"{h.Nom} entaille {Physique.Nom(s.A)} à grands coups : une tranche ronde s'en détache.",
+            Effet.Pansement when s.A == Matiere.Eau => $"{h.Nom} a lavé une plaie à l'eau : elle s'est refermée sans pourrir.",
+            Effet.Pansement => $"{h.Nom} a pressé une plaie et l'a couverte de feuilles : elle s'est refermée sans pourrir.",
             _ => $"{h.Nom} essaie quelque chose de nouveau.",
         };
     }
@@ -403,6 +405,7 @@ public sealed partial class Comportement
         Effet.Flotte => "Pourquoi le bois reste-t-il sur l'eau quand la pierre coule ?",
         Effet.Flottaison => "L'eau ne me barre plus la route. Jusqu'où peut-on aller ainsi ?",
         Effet.RouleSurAxe => "Ce qui tourne porte ce qui pèse. Que pourrait-on faire tourner encore ?",
+        Effet.Pansement => "Pourquoi une plaie laissée sale pourrit-elle, et une plaie soignée non ?",
         _ => "Que pourrais-je faire d'autre avec cela ?",
     };
 
@@ -422,7 +425,10 @@ public sealed partial class Comportement
             var affection = lien?.Affection ?? 0;
             if (affection < -30) continue;
             var attention = (0.2 + 0.6 * o.Personnalite.Ouverture) * (o.EstEnfant(_maintenant) ? 1.8 : 1)
-                            * (0.5 + affection / 100) * (0.6 + 0.8 * h.Personnalite.Moral.EmpathieCognitive) * (0.5 + h.Personnalite.Charisme);
+                            * (0.5 + affection / 100) * (0.6 + 0.8 * h.Personnalite.Moral.EmpathieCognitive) * (0.5 + h.Personnalite.Charisme)
+                            // On regarde de plus près les gestes d'un guérisseur reconnu (les enfants apprennent les remèdes
+                            // de ceux qu'on dit savoir soigner : McDade et al., 2007 ; Salali et al., 2016).
+                            * (h.GuerisseurDepuis > 0 && e is Effet.Soulagement or Effet.Pansement ? 1.6 : 1);
             // Comprendre un geste compliqué demande de l'intelligence et de l'adresse.
             var difficile = e is Effet.Flamme or Effet.Durci or Effet.Decoupe or Effet.Percage || pieces.Length > 0 ? 0.5 + 0.5 * Ingeniosite(o) : 1;
             if (alea.Reel() >= 0.35 * attention * difficile) continue;
@@ -793,6 +799,8 @@ public sealed partial class Comportement
             PrendreRemede(h, remede.Espece, remede.Geste, mal, 0, tous, OrigineSavoir.Essai);
             return true;
         }
+        // Le guérisseur, le chaman, ou celui qui se dit tel, s'il est tout près.
+        if (AppelerGuerisseur(h, mal, tous)) return true;
         // Un proche le soigne : il lui donne la plante qu'il croit bonne.
         foreach (var o in tous)
         {
@@ -805,6 +813,8 @@ public sealed partial class Comportement
             var plante = Flore.Get(s.Espece);
             Noter(_maintenant, TypeEvenement.Entraide, o, h,
                 $"{o.Nom} donne à {h.Nom} {plante.Nom}, qu'{Il(o)} croit bonne contre {Physique.Mal(mal)}.", karma: Regard.Remede);
+            MarquerSoin(o, h);
+            Medecine.Placebo(h, o, false);
             PrendreRemede(h, s.Espece, s.Geste, mal, o.Id, tous, OrigineSavoir.Imitation);
             return true;
         }
@@ -973,6 +983,8 @@ public sealed partial class Comportement
                 var stabilite = 120.0 * facteur * Math.Pow(1 + s.Succes, 1.3) * Calendrier.SecondesParJour;
                 // Un poison, une plante qui a fait voir d'autres mondes, la morsure chaude du feu ne s'oublient guère.
                 if (s.Effet is Effet.Poison or Effet.Visions or Effet.Chaleur) stabilite *= 10;
+                // Le geste qui a sauvé une plaie (le sang, la douleur) reste en mémoire, même si les blessures sont rares.
+                else if (s.Effet == Effet.Pansement) stabilite *= 5;
                 if (maintenant - s.UtiliseLe < 1.4 * stabilite) continue;
                 h.Savoirs.RemoveAt(i);
                 oublies.Add((h, s));

@@ -81,6 +81,8 @@ public enum CauseDeMort : byte
     Guerre = 16,
     /// <summary>Empoisonné par une plante.</summary>
     Empoisonnement = 17,
+    /// <summary>Dépéri sous une malédiction à laquelle il croyait (voir <see cref="Humain.MauditParId"/>).</summary>
+    Envoutement = 18,
 }
 
 /// <summary>
@@ -243,6 +245,47 @@ public sealed class Humain
     internal string? CroyanceRaisonBaisse { get; set; }
     internal double CroyanceBaisse { get; set; }
     internal long CroyanceCauseBaisse { get; set; }
+
+    // Médecine (voir Medecine) : ce qu'il a fait comme soignant, tel que les siens le voient.
+
+    /// <summary>Malades et blessés qu'il a soignés (remède, pansement, transe, gestes) et dont l'issue est connue : guéris, morts, ou pas guéris deux mois après.</summary>
+    public int Soignes { get; set; }
+
+    /// <summary>Ceux qui ont guéri après ses soins (qu'il y soit pour quelque chose ou non).</summary>
+    public int Gueris { get; set; }
+
+    /// <summary>Ceux qui sont morts pendant ses soins.</summary>
+    public int Perdus { get; set; }
+
+    /// <summary>Accouchements où elle (ou il) a aidé.</summary>
+    public int AccouchementsAides { get; set; }
+
+    /// <summary>Depuis quand sa communauté le tient pour guérisseur (0 : non).</summary>
+    public long GuerisseurDepuis { get; set; }
+
+    /// <summary>Première transe au chevet d'un malade (0 : jamais) ; dernière transe.</summary>
+    public long ChamanDepuis { get; set; }
+    public long TranseLe { get; set; }
+
+    /// <summary>Depuis quand il prétend guérir sans rien savoir, pour la nourriture et le respect (0 : non).</summary>
+    public long CharlatanDepuis { get; set; }
+
+    /// <summary>Quand les siens l'ont démasqué ou ont cessé de croire en ses soins (0 : jamais).</summary>
+    public long DemasqueLe { get; set; }
+
+    /// <summary>Dernier soignant de ce malade (0 : aucun) et quand il l'a soigné.</summary>
+    public int SoigneurId { get; set; }
+    public long SoigneurLe { get; set; }
+
+    /// <summary>Quand il a été blessé pour la dernière fois (0 : jamais) ; soin reçu par la plaie (0 à 1).</summary>
+    public long PlaieLe { get; set; }
+    public double PlaieSoin { get; set; }
+
+    /// <summary>Malédiction qui le ronge (0 : aucune) : quand, par qui, et sa force (0 à 1).</summary>
+    public long MauditLe { get; set; }
+    public int MauditParId { get; set; }
+    public double MauditForce { get; set; }
+    public long MauditEvenementId { get; set; }
 
     /// <summary>Fin de la maladie en secondes du monde (0 si en bonne santé).</summary>
     public long MaladeJusqua { get; set; }

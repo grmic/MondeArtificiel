@@ -41,6 +41,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Vol] = "vol",
         [TypeEvenement.Parole] = "parole",
         [TypeEvenement.Croyance] = "croyance",
+        [TypeEvenement.Medecine] = "medecine",
     };
 
 
@@ -116,6 +117,16 @@ public sealed record AttraitsDto(int Beaute, int Attractivite, string Orientatio
 /// </summary>
 public sealed record RegardDto(double Karma, string KarmaMots, int Croyance, string CroyanceMots, string? DernierSigne);
 
+/// <summary>
+/// Médecine : ce qu'il a fait comme soignant (soignés, guéris, perdus, accouchements aidés), son rôle et sa renommée
+/// (0 à 100), sa plaie et la malédiction qui le ronge éventuellement.
+/// </summary>
+public sealed record MedecineDto(int Soignes, int Gueris, int Perdus, int AccouchementsAides, string? Role, int Renommee,
+    string? GuerisseurDepuis, string? ChamanDepuis, string? CharlatanDepuis, string? DesavoueLe, string? Plaie, string? Malediction);
+
+/// <summary>Un soignant d'une communauté : guérisseur, chaman ou charlatan.</summary>
+public sealed record SoignantDto(int Id, string Nom, string Role, int Gueris, int Perdus);
+
 /// <summary>Fiche complète d'un humain : état, caractère, intelligence, humeur, liens, mémoire, pensées et histoire.</summary>
 public sealed record FicheDto(
     HumainDto Humain,
@@ -137,7 +148,8 @@ public sealed record FicheDto(
     IReadOnlyList<string> Portrait,
     SavoirsDto Savoirs,
     IReadOnlyList<ParoleRecueDto> Paroles,
-    RegardDto Regard)
+    RegardDto Regard,
+    MedecineDto Medecine)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -231,7 +243,25 @@ public sealed record FicheDto(
             SavoirsDto.Depuis(h, humains, monde.Flore),
             ParolesEntite.Recues(h, humains, service, maintenant),
             new RegardDto(Math.Round(h.Karma, 1), Simulation.Humains.Regard.Dire(h.Karma), (int)Math.Round(h.Croyance), Croyances.Dire(h.Croyance),
-                h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null));
+                h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null),
+            Soins(h, humains, maintenant));
+    }
+
+    private static MedecineDto Soins(Humain h, IReadOnlyList<Humain> humains, long maintenant)
+    {
+        string? plaie = null;
+        if (h.EstVivant && Simulation.Humains.Medecine.PlaieOuverte(h, maintenant))
+            plaie = h.PlaieSoin > 0 ? $"plaie soignée (soin {h.PlaieSoin:0.00})" : "plaie ouverte, pas soignée";
+        string? malediction = null;
+        if (h.MauditLe > 0)
+        {
+            var par = h.MauditParId >= 1 && h.MauditParId <= humains.Count ? humains[h.MauditParId - 1].Nom : "?";
+            malediction = $"maudit{(h.Sexe == Sexe.Femme ? "e" : "")} par {par} le {Date(h.MauditLe)} (force {h.MauditForce:0.00})";
+        }
+        return new MedecineDto(h.Soignes, h.Gueris, h.Perdus, h.AccouchementsAides, Simulation.Humains.Medecine.Role(h),
+            (int)Math.Round(100 * Simulation.Humains.Medecine.Renommee(h)),
+            h.GuerisseurDepuis > 0 ? Date(h.GuerisseurDepuis) : null, h.ChamanDepuis > 0 ? Date(h.ChamanDepuis) : null,
+            h.CharlatanDepuis > 0 ? Date(h.CharlatanDepuis) : null, h.DemasqueLe > 0 ? Date(h.DemasqueLe) : null, plaie, malediction);
     }
 
     /// <summary>Le caractère en quelques phrases : style d'attachement, psychopathie (adulte), morale dominante.</summary>
@@ -404,7 +434,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire,
     string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet,
     string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles, string? Morale, IReadOnlyList<string> Savoirs,
-    double? Karma = null, int? Croyance = null)
+    double? Karma = null, int? Croyance = null, IReadOnlyList<SoignantDto>? Soignants = null)
 {
     /// <summary>
     /// Morale du groupe en mots : la moyenne des fondements de ses adultes, et ce qui y pèse le plus.
@@ -566,7 +596,9 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     Decouvertes.DeCommunaute(membres),
                     // Moyennes des adultes : le karma (regard de l'Entité) et la croyance en l'invisible.
                     adultes.Count == 0 ? null : Math.Round(adultes.Average(m => m.Karma), 1),
-                    adultes.Count == 0 ? null : (int)Math.Round(adultes.Average(m => m.Croyance)));
+                    adultes.Count == 0 ? null : (int)Math.Round(adultes.Average(m => m.Croyance)),
+                    adultes.Where(m => Simulation.Humains.Medecine.Role(m) is not null)
+                        .Select(m => new SoignantDto(m.Id, m.Nom, Simulation.Humains.Medecine.Role(m)!, m.Gueris, m.Perdus)).ToList());
             }).ToList();
     }
 }

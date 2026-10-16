@@ -104,6 +104,12 @@ interface Fiche {
   paroles: { date: string; mode: string; texte: string; reponse: string; cible: number; evenement: number }[];
   /** Regard de l'Entité, invisible aux humains : karma et croyance en l'invisible (0 à 100). */
   regard: { karma: number; karmaMots: string; croyance: number; croyanceMots: string; dernierSigne: string | null };
+  /** Médecine : soins donnés, rôle de soignant, plaie, malédiction. */
+  medecine: {
+    soignes: number; gueris: number; perdus: number; accouchementsAides: number; role: string | null; renommee: number;
+    guerisseurDepuis: string | null; chamanDepuis: string | null; charlatanDepuis: string | null; desavoueLe: string | null;
+    plaie: string | null; malediction: string | null;
+  };
 }
 
 /** Ce qu'il sait faire (et à quel point il y croit), ce qu'il porte, son vêtement, son aisance dans l'eau (0 à 100). */
@@ -390,6 +396,7 @@ export class PanneauFiche {
     if (f.regard.dernierSigne) regard.append(el("br"), `Dernier signe de l'invisible : ${f.regard.dernierSigne}`);
     regard.title = "Invisible aux humains. Les actes qui ont changé son karma sont marqués ☯ dans son histoire.";
     corps.append(regard);
+    this.medecine(corps, f.medecine);
     if (h.vivant) corps.append(this.formulaireSouffle());
     this.communaute = f.communaute?.id ?? 0;
     this.nomCourant = h.nom;
@@ -558,6 +565,30 @@ export class PanneauFiche {
    * L'Entité souffle une idée : un geste et une ou deux matières. L'humain l'essaie aussitôt avec ce qu'il a sous la main ;
    * les lois du monde décident du résultat (rien n'est garanti).
    */
+  /** Section « Médecine » : ce qu'il a fait comme soignant, son rôle, sa plaie et la malédiction qui le ronge. */
+  private medecine(corps: HTMLElement, m: Fiche["medecine"]): void {
+    const rien = m.soignes === 0 && m.accouchementsAides === 0 && !m.role && !m.desavoueLe && !m.plaie && !m.malediction;
+    if (rien) return;
+    corps.append(el("h3", undefined, "Médecine"));
+    const p = el("p", "medecine");
+    const lignes: string[] = [];
+    if (m.role) lignes.push(`Rôle : ${m.role} (renommée ${m.renommee}/100)`);
+    if (m.soignes > 0) lignes.push(`Malades et blessés soignés : ${m.soignes} ; guéris : ${m.gueris} ; perdus : ${m.perdus}`);
+    if (m.accouchementsAides > 0) lignes.push(`Accouchements aidés : ${m.accouchementsAides}`);
+    if (m.guerisseurDepuis) lignes.push(`Tenu pour guérisseur depuis le ${m.guerisseurDepuis}`);
+    if (m.chamanDepuis) lignes.push(`Première transe le ${m.chamanDepuis}`);
+    if (m.charlatanDepuis) lignes.push(`Prétend guérir depuis le ${m.charlatanDepuis}`);
+    if (m.desavoueLe) lignes.push(`Désavoué ou démasqué le ${m.desavoueLe}`);
+    if (m.plaie) lignes.push(`Plaie : ${m.plaie}`);
+    if (m.malediction) lignes.push(m.malediction.charAt(0).toUpperCase() + m.malediction.slice(1));
+    lignes.forEach((l, i) => {
+      if (i > 0) p.append(el("br"));
+      p.append(l);
+    });
+    p.title = "Les guérisons comptées sont celles que les siens lui attribuent, méritées ou non.";
+    corps.append(p);
+  }
+
   private formulaireSouffle(): HTMLDetailsElement {
     if (this.souffle) return this.souffle;
     const bloc = el("details", "entite-bloc");

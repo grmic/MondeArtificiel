@@ -1100,7 +1100,9 @@ public sealed partial class Comportement
             {
                 var blesse = alea.Reel() < fa / (fa + fd) ? d : a;
                 var frappeur = blesse == d ? a : d;
-                blesse.Sante -= (15 + 25 * alea.Reel()) * (0.6 + 0.4 * Puissance(armes[frappeur.Id]));
+                var coup = (15 + 25 * alea.Reel()) * (0.6 + 0.4 * Puissance(armes[frappeur.Id]));
+                blesse.Sante -= coup;
+                Medecine.Blesser(blesse, coup, maintenant);
                 blesses.Add(blesse);
             }
         }

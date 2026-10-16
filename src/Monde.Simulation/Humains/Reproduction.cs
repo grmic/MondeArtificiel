@@ -316,7 +316,9 @@ public sealed partial class Comportement
         var detresse = Detresse(mere);
         // Jumeaux : environ 1 naissance sur 80, un peu plus vers 35 ans.
         var jumeaux = alea.Reel() < 0.004 + 0.008 * (age is >= 30 and < 40 ? 1.5 : 1);
-        var risqueMortNe = RisqueMortNe * FacteurAgeMere(age) * detresse * (premature ? 2 : 1) * (jumeaux ? 2 : 1);
+        // Des femmes (ou des proches) qui ont l'expérience des naissances aident : moins de risque pour la mère, un peu pour l'enfant.
+        var aide = AiderAccouchement(mere, tous, maintenant);
+        var risqueMortNe = RisqueMortNe * FacteurAgeMere(age) * detresse * (premature ? 2 : 1) * (jumeaux ? 2 : 1) * (1 - aide / 2);
         for (var n = jumeaux ? 2 : 1; n > 0; n--)
         {
             if (alea.Reel() >= risqueMortNe) Accouchements.Add((mere, mere.PereEnfantId));
@@ -327,8 +329,45 @@ public sealed partial class Comportement
         mere.DernierAccouchement = maintenant;
         mere.Fatigue = 100;
         var risqueMere = RisqueMortAccouchement * FacteurAgeMere(age) * detresse
-                         * (parite == 0 ? 1.5 : parite >= 5 ? 1.3 : 1) * (jumeaux ? 1.5 : 1);
+                         * (parite == 0 ? 1.5 : parite >= 5 ? 1.3 : 1) * (jumeaux ? 1.5 : 1) * (1 - aide);
         if (alea.Reel() < risqueMere) Mourir(mere, maintenant, CauseDeMort.Accouchement);
+    }
+
+    /// <summary>
+    /// Ceux qui sont là au moment de l'accouchement, proches de la mère, l'aident (presque partout, la mère accouche entourée :
+    /// Rosenberg et Trevathan, 2002). Les plus expérimentées (enfants mis au monde, accouchements aidés) mènent. Renvoie la part
+    /// du risque de mourir en couches qu'elles écartent : de 10 % pour une présence novice à 45 % au plus (estimation, à mesurer).
+    /// </summary>
+    internal double AiderAccouchement(Humain mere, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        var aides = new List<(Humain H, double Experience)>();
+        foreach (var o in tous)
+        {
+            if (o.Id == mere.Id || !o.EstVivant || o.AgeEnAnnees(maintenant) < 15 || Distance(o.X, o.Y, mere.X, mere.Y) > 1
+                || o.EstMalade(maintenant) || o.CaptifDe != 0) continue;
+            var affection = o.AffectionPour(mere.Id);
+            var famille = o.PartenaireId == mere.Id || VieSociale.Parents(o, mere);
+            if (affection < 0 && !famille) continue;
+            var p = o.Personnalite;
+            var envie = Math.Clamp(0.1 + 0.6 * p.Moral.Compassion + affection / 100 + (famille ? 0.4 : 0)
+                                   + (o.CommunauteId != 0 && o.CommunauteId == mere.CommunauteId ? 0.2 : 0), 0, 1) * (1 - Psyche.Froideur(p));
+            if (alea.Reel() >= envie) continue;
+            var enfants = o.Sexe == Sexe.Femme ? NombreDEnfants(o, tous) : 0;
+            aides.Add((o, 1 - Math.Exp(-(enfants + 1.5 * o.AccouchementsAides) / 5.0)));
+        }
+        if (aides.Count == 0) return 0;
+        aides = aides.OrderByDescending(a => a.Experience).ThenBy(a => a.H.Id).Take(3).ToList();
+        foreach (var (a, _) in aides)
+        {
+            a.AccouchementsAides++;
+            a.Fatigue = Math.Min(100, a.Fatigue + 10);
+            VieSociale.Gratitude(a, mere, 2);
+        }
+        var noms = aides.Count == 1 ? aides[0].H.Nom
+            : string.Join(", ", aides.Take(aides.Count - 1).Select(a => a.H.Nom)) + " et " + aides[^1].H.Nom;
+        Noter(maintenant, TypeEvenement.Entraide, aides[0].H, mere,
+            $"{noms} {(aides.Count == 1 ? "aide" : "aident")} {mere.Nom} à accoucher.", karma: Regard.AiderAccoucher);
+        return Math.Min(0.45, 0.1 + 0.3 * aides[0].Experience + 0.05 * (aides.Count - 1));
     }
 
     private static void TerminerGrossesse(Humain mere, long maintenant)

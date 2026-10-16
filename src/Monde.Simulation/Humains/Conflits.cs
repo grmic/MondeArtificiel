@@ -111,6 +111,7 @@ public sealed partial class Comportement
             : $"{h.Nom} s'en prend à {cible.Nom}{motif}, mais {cible.Nom} se défend et {blesse}.", grief.EvenementId, karma: Regard.Coups);
         h.Colere *= 0.4;
         vaincu.Sante -= degats;
+        Medecine.Blesser(vaincu, degats, maintenant);
         vaincu.Humeur = Math.Max(0, vaincu.Humeur - degats / 3);
         Social.ChangerAffection(h, cible, -10, maintenant);
         VieSociale.AjouterGrief(vaincu, new Grief(vainqueur.Id, MotifGrief.Coups, Math.Min(100, 30 + degats), Math.Min(100, 30 + degats), id));

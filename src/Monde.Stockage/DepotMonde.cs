@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 23;
+    public const int VersionSchema = 24;
 
     private readonly string _connexion;
 
@@ -539,6 +539,28 @@ public sealed partial class DepotMonde
             if (!Colonnes(connexion, transaction, "liens").Contains("bienfait"))
                 Executer(connexion, transaction, "ALTER TABLE liens ADD COLUMN bienfait INTEGER NOT NULL DEFAULT 0;");
         }
+        if (actuelle < 24)
+        {
+            // Version 24 : médecine (soignants, plaies, malédictions).
+            var humains = Colonnes(connexion, transaction, "humains");
+            if (!humains.Contains("soignes")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN soignes INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("gueris")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN gueris INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("perdus")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN perdus INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("accouchements_aides")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN accouchements_aides INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("guerisseur_depuis")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN guerisseur_depuis INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("chaman_depuis")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN chaman_depuis INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("transe_le")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN transe_le INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("charlatan_depuis")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN charlatan_depuis INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("demasque_le")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN demasque_le INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("soigneur")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN soigneur INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("soigneur_le")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN soigneur_le INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("plaie_le")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN plaie_le INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("plaie_soin")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN plaie_soin REAL NOT NULL DEFAULT 0;");
+            if (!humains.Contains("maudit_le")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN maudit_le INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("maudit_par")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN maudit_par INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("maudit_force")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN maudit_force REAL NOT NULL DEFAULT 0;");
+            if (!humains.Contains("maudit_evenement")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN maudit_evenement INTEGER NOT NULL DEFAULT 0;");
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -599,7 +621,8 @@ public sealed partial class DepotMonde
                    marche, progression, bebe_porte_le,
                    symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
                    honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le,
-                   karma, croyance, croyance_signe, croyance_notee
+                   karma, croyance, croyance_signe, croyance_notee,
+                   soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -669,6 +692,23 @@ public sealed partial class DepotMonde
                     CaptifLe = lecteur.GetInt64(lecteur.GetOrdinal("captif_le")),
                     Karma = lecteur.GetDouble(lecteur.GetOrdinal("karma")),
                     CroyanceSigneLe = lecteur.GetInt64(lecteur.GetOrdinal("croyance_signe")),
+                    Soignes = lecteur.GetInt32(lecteur.GetOrdinal("soignes")),
+                    Gueris = lecteur.GetInt32(lecteur.GetOrdinal("gueris")),
+                    Perdus = lecteur.GetInt32(lecteur.GetOrdinal("perdus")),
+                    AccouchementsAides = lecteur.GetInt32(lecteur.GetOrdinal("accouchements_aides")),
+                    GuerisseurDepuis = lecteur.GetInt64(lecteur.GetOrdinal("guerisseur_depuis")),
+                    ChamanDepuis = lecteur.GetInt64(lecteur.GetOrdinal("chaman_depuis")),
+                    TranseLe = lecteur.GetInt64(lecteur.GetOrdinal("transe_le")),
+                    CharlatanDepuis = lecteur.GetInt64(lecteur.GetOrdinal("charlatan_depuis")),
+                    DemasqueLe = lecteur.GetInt64(lecteur.GetOrdinal("demasque_le")),
+                    SoigneurId = lecteur.GetInt32(lecteur.GetOrdinal("soigneur")),
+                    SoigneurLe = lecteur.GetInt64(lecteur.GetOrdinal("soigneur_le")),
+                    PlaieLe = lecteur.GetInt64(lecteur.GetOrdinal("plaie_le")),
+                    PlaieSoin = lecteur.GetDouble(lecteur.GetOrdinal("plaie_soin")),
+                    MauditLe = lecteur.GetInt64(lecteur.GetOrdinal("maudit_le")),
+                    MauditParId = lecteur.GetInt32(lecteur.GetOrdinal("maudit_par")),
+                    MauditForce = lecteur.GetDouble(lecteur.GetOrdinal("maudit_force")),
+                    MauditEvenementId = lecteur.GetInt64(lecteur.GetOrdinal("maudit_evenement")),
                 });
                 var h = humains[^1];
                 var croyance = lecteur.GetOrdinal("croyance");
@@ -982,7 +1022,8 @@ public sealed partial class DepotMonde
                     marche, progression, bebe_porte_le,
                     symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
                     honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le,
-                    karma, croyance, croyance_signe, croyance_notee)
+                    karma, croyance, croyance_signe, croyance_notee,
+                    soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -996,7 +1037,8 @@ public sealed partial class DepotMonde
                     $marche, $progression, $bebe_porte_le,
                     $symetrie, $harmonie, $taille, $teint, $allure, $vers_hommes, $vers_femmes, $lucidite, $maladie,
                     $honnetete, $empathie_emo, $empathie_cog, $compassion, $psychopathie, $anxiete_aff, $evitement_aff, $soin, $equite, $loyaute, $autorite, $purete, $captif_de, $captif_le,
-                    $karma, $croyance, $croyance_signe, $croyance_notee);
+                    $karma, $croyance, $croyance_signe, $croyance_notee,
+                    $soignes, $gueris, $perdus, $accouchements_aides, $guerisseur_depuis, $chaman_depuis, $transe_le, $charlatan_depuis, $demasque_le, $soigneur, $soigneur_le, $plaie_le, $plaie_soin, $maudit_le, $maudit_par, $maudit_force, $maudit_evenement);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -1011,7 +1053,8 @@ public sealed partial class DepotMonde
                 "$marche", "$progression", "$bebe_porte_le",
                 "$symetrie", "$harmonie", "$taille", "$teint", "$allure", "$vers_hommes", "$vers_femmes", "$lucidite", "$maladie",
                 "$honnetete", "$empathie_emo", "$empathie_cog", "$compassion", "$psychopathie", "$anxiete_aff", "$evitement_aff", "$soin", "$equite", "$loyaute", "$autorite", "$purete", "$captif_de", "$captif_le",
-                "$karma", "$croyance", "$croyance_signe", "$croyance_notee"];
+                "$karma", "$croyance", "$croyance_signe", "$croyance_notee",
+                "$soignes", "$gueris", "$perdus", "$accouchements_aides", "$guerisseur_depuis", "$chaman_depuis", "$transe_le", "$charlatan_depuis", "$demasque_le", "$soigneur", "$soigneur_le", "$plaie_le", "$plaie_soin", "$maudit_le", "$maudit_par", "$maudit_force", "$maudit_evenement"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -1045,6 +1088,7 @@ public sealed partial class DepotMonde
                     h.Personnalite.Moral.Fondements.Loyaute, h.Personnalite.Moral.Fondements.Autorite, h.Personnalite.Moral.Fondements.Purete,
                     h.CaptifDe, h.CaptifLe,
                     h.Karma, h.Croyance, h.CroyanceSigneLe, double.IsNaN(h.CroyanceNotee) ? h.Croyance : h.CroyanceNotee,
+                    h.Soignes, h.Gueris, h.Perdus, h.AccouchementsAides, h.GuerisseurDepuis, h.ChamanDepuis, h.TranseLe, h.CharlatanDepuis, h.DemasqueLe, h.SoigneurId, h.SoigneurLe, h.PlaieLe, h.PlaieSoin, h.MauditLe, h.MauditParId, h.MauditForce, h.MauditEvenementId,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();

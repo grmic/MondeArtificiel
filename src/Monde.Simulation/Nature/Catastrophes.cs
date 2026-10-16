@@ -501,6 +501,7 @@ public sealed partial class Catastrophes
     private void Blesser(Humain h, Catastrophe c, double gravite, List<Humain> humains, long maintenant)
     {
         h.Sante -= gravite;
+        Medecine.Blesser(h, gravite, maintenant);
         if (h.Sante <= 0)
         {
             Tuer(h, c, c.Type switch

@@ -360,6 +360,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (h.EstMalade(maintenant)) degats[(int)CauseDeMort.Maladie] = DegatsMaladie * Maladies.Fiche(h.Maladie).Gravite * (1.3 - 0.6 * p.Endurance);
         // Coup de chaleur : au-delà de 36 °C, le corps ne se refroidit plus assez, surtout s'il manque d'eau.
         if (_temperature >= 36) degats[(int)CauseDeMort.Chaleur] = 0.01 * (_temperature - 35) * (h.Soif > 60 ? 2 : 1);
+        // Une malédiction crue ronge (voir Medecine) : lentement, d'autant plus que la peur est forte.
+        if (h.MauditLe > 0) degats[(int)CauseDeMort.Envoutement] = 0.006 * h.MauditForce * h.MauditForce;
 
         double total = 0, pire = 0;
         var cause = CauseDeMort.Aucune;
@@ -369,7 +371,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (degats[i] > pire) (pire, cause) = (degats[i], (CauseDeMort)i);
         }
 
-        if (total == 0 && h.Faim < 60 && h.Soif < 60) h.Sante = Math.Min(100, h.Sante + 0.03);
+        // Une plaie soignée se refait plus vite.
+        if (total == 0 && h.Faim < 60 && h.Soif < 60)
+            h.Sante = Math.Min(100, h.Sante + 0.03 * (h.PlaieSoin > 0 && Medecine.PlaieOuverte(h, maintenant) ? 1 + 0.5 * h.PlaieSoin : 1));
         h.Sante -= total;
         if (h.Sante <= 0)
         {
@@ -386,7 +390,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                          * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25);
             if (alea.Reel() < risque * fragilite)
             {
-                h.Maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
+                var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
+                // Une plaie lavée et couverte pourrit moins.
+                if (alea.Reel() < Medecine.Protection(h, maladie, maintenant)) return;
+                h.Maladie = maladie;
                 var fiche = Maladies.Fiche(h.Maladie);
                 h.MaladeJusqua = maintenant + Maladies.Duree(fiche, h, alea);
                 Noter(maintenant, TypeEvenement.Maladie, h, null, $"{h.Nom} tombe malade : {fiche.Nom} (personne ne sait la nommer).");
@@ -401,6 +408,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null, double karmaMeurtrier = Regard.Meurtre)
     {
         RemedeEchoue(h);
+        PerduPourSonSoignant(h, maintenant);
+        var maudisseur = h.MauditParId >= 1 && h.MauditParId <= _tous.Count ? _tous[h.MauditParId - 1] : null;
         // Mort de froid pendant une vague de froid, de chaleur pendant une canicule, d'une maladie contagieuse, de faim dans une
         // terre dévastée qui n'a pas reverdi : la cause est notée, et dite.
         string? contexte = null;
@@ -413,6 +422,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 h.DepressionEvenementId),
             CauseDeMort.Meurtre when meurtrier is not null => Noter(maintenant, TypeEvenement.Mort, h, meurtrier,
                 $"{h.Nom} meurt sous les coups de {meurtrier.Nom}, à {AgeEnMots(h, maintenant)}.", causeId, karmaAutre: karmaMeurtrier),
+            CauseDeMort.Envoutement when maudisseur is not null => Noter(maintenant, TypeEvenement.Mort, h, maudisseur,
+                $"{h.Nom} dépérit et meurt, persuadé{(h.Sexe == Sexe.Femme ? "e" : "")} que la malédiction de {maudisseur.Nom} {(h.Sexe == Sexe.Femme ? "la" : "le")} tue, à {AgeEnMots(h, maintenant)}.",
+                h.MauditEvenementId, karmaAutre: Regard.MortMaudit),
             CauseDeMort.Empoisonnement => Noter(maintenant, TypeEvenement.Mort, h, null,
                 $"{h.Nom} meurt empoisonné{(h.Sexe == Sexe.Femme ? "e" : "")} par la plante qu'{(h.Sexe == Sexe.Femme ? "elle" : "il")} a mangée, à {AgeEnMots(h, maintenant)}.", causeId),
             CauseDeMort.Noyade when causeId == 0 => Noter(maintenant, TypeEvenement.Mort, h, null,
@@ -437,6 +449,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     internal void Tuer(Humain h, long maintenant, CauseDeMort cause, string texte, long causeId, Humain? tueur = null, double karmaTueur = 0)
     {
         if (!h.EstVivant) return;
+        PerduPourSonSoignant(h, maintenant);
         h.MortEvenementId = Noter(maintenant, TypeEvenement.Mort, h, tueur, texte, causeId, karmaAutre: karmaTueur);
         h.MeurtrierId = tueur?.Id ?? 0;
         Deces.Add(h);
@@ -496,7 +509,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var (valeur, besoin) = urgences.MaxBy(u => u.Valeur);
 
         // Un malade éveillé cherche à se soulager.
-        if (valeur < 0.8 && SeSoigner(h, tous)) return;
+        if (valeur < 0.8 && (SoignerPlaie(h, tous) || SeSoigner(h, tous))) return;
 
         // Un petit enfant ne part pas seul chercher de l'eau, de quoi manger ou un abri : il reste près de celui qui
         // veille sur lui, qui le nourrit et l'abreuve, et ne prend que ce qui se trouve à ses pieds.

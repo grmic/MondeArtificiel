@@ -714,6 +714,7 @@ public sealed partial class Comportement
             ? $"{h.Nom} se jette sur {x.Nom} {(tuer ? "pour " + Lx + " tuer" : "et " + Lx + " frappe")}, comme la voix le lui a ordonné."
             : $"{h.Nom} se jette sur {x.Nom}, comme la voix le lui a ordonné, mais {x.Nom} se défend.", i.EvenementId, significatif: true, karma: Regard.Coups);
         vaincu.Sante -= degats;
+        Medecine.Blesser(vaincu, degats, maintenant);
         vaincu.Humeur = Math.Max(0, vaincu.Humeur - degats / 3);
         Social?.ChangerAffection(x, h, -25, maintenant);
         VieSociale.AjouterGrief(x, new Grief(h.Id, MotifGrief.Coups, Math.Min(100, 40 + degats), Math.Min(100, 40 + degats), id));

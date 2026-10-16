@@ -631,6 +631,7 @@ public sealed class MondeSimule
             Savoirs();
             _social.Humeurs(_humains, _secondes);
             _comportement.Croire(_humains, _secondes);
+            _comportement.Soins(_humains, _secondes);
             if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
             {
                 _social.Regrouper(_humains, _communautes, _secondes, _noms);
