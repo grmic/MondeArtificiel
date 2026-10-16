@@ -349,10 +349,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     }
 
     /// <summary>Dégâts sur la santé selon les besoins, mort éventuelle, puis risque de tomber malade.</summary>
+    /// <summary>Nombre de causes de mort (taille du tableau des dégâts) : suit l'énumération quand elle grandit.</summary>
+    private static readonly int NombreDeCauses = Enum.GetValues<CauseDeMort>().Max(c => (int)c) + 1;
+
     private void Souffrir(Humain h, long maintenant, double fragilite)
     {
         var p = h.Personnalite;
-        Span<double> degats = stackalloc double[16];
+        Span<double> degats = stackalloc double[NombreDeCauses];
         if (h.Faim >= 85) degats[(int)CauseDeMort.Faim] = 0.06;
         if (h.Soif >= 85) degats[(int)CauseDeMort.Soif] = 0.25;
         if (h.Froid >= 70) degats[(int)CauseDeMort.Froid] = 0.05 + 0.15 * (h.Froid - 70) / 30;

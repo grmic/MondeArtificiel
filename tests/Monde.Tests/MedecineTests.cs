@@ -179,6 +179,25 @@ public sealed class MedecineTests
     }
 
     [Fact]
+    public void Malediction_RongeLaSantePasAPas_SansPlanter()
+    {
+        var c = Comportement(5);
+        var chaman = Humain(1, transcendance: 0.8, croyance: 70, compassion: 0.1);
+        chaman.ChamanDepuis = Maintenant - An;
+        var croyant = Humain(2, croyance: 95);
+        croyant.Personnalite = croyant.Personnalite with { Nevrosisme = 0.9 };
+        List<Humain> tous = [chaman, croyant];
+        c.Soins(tous, Maintenant);
+        c.Maudire(chaman, croyant);
+        Assert.True(croyant.MauditForce > 0.9, $"{croyant.MauditForce}");
+        croyant.Sante = 80;
+        // Une heure de vie : la malédiction ronge la santé, au lieu de laisser le corps se refaire.
+        for (var pas = 1; pas <= 6; pas++) c.Vivre(croyant, tous, Maintenant + pas * MondeSimule.SecondesParPas);
+        Assert.True(croyant.EstVivant);
+        Assert.True(croyant.Sante < 80, $"{croyant.Sante}");
+    }
+
+    [Fact]
     public void Reconnaissance_LeMeilleurSoignantDevientGuerisseur_LeCharlatanEstDemasque()
     {
         var c = Comportement();
