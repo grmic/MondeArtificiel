@@ -235,7 +235,7 @@ async function demarrer(): Promise<void> {
     for (const [id, n] of nomsParId) if (n.toLocaleLowerCase("fr") === cherche) return id;
     return undefined;
   };
-  definirLiensNoms(idDuNom, (id) => void fiche.ouvrir(id));
+  definirLiensNoms(idDuNom, (id) => void fiche.ouvrir(id), (id) => nomsParId.get(id) ?? "?");
   const journal = new PanneauJournal(element("#journal"), idDuNom, () => [...new Set(nomsParId.values())].sort(), (id) => void fiche.ouvrir(id));
   // Journal et communautés occupent la même place : ouvrir l'un ferme l'autre.
   element("#boutonJournal").addEventListener("click", () => {

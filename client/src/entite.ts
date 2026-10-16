@@ -33,6 +33,23 @@ interface Trouve {
   communaute: string | null;
   seul: boolean;
   distanceKm: number;
+  karma: number;
+}
+
+/** Filtres de karma proposés : bornes incluses (null : sans limite). */
+const KARMAS: { cle: string; libelle: string; min: number | null; max: number | null }[] = [
+  { cle: "", libelle: "tout karma", min: null, max: null },
+  { cle: "lumineux", libelle: "karma lumineux (50 et plus)", min: 50, max: null },
+  { cle: "bon", libelle: "karma bienveillant (5 et plus)", min: 5, max: null },
+  { cle: "neutre", libelle: "karma neutre (−5 à 5)", min: -5, max: 5 },
+  { cle: "charge", libelle: "karma chargé (−5 et moins)", min: null, max: -5 },
+  { cle: "lourd", libelle: "karma lourd (−20 et moins)", min: null, max: -20 },
+];
+
+/** « +2 », « −30 » : un karma signé, à la française. */
+function signe(v: number): string {
+  const n = Math.abs(v).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  return v > 0 ? `+${n}` : v < 0 ? `−${n}` : "0";
 }
 
 interface Resultat {
@@ -84,6 +101,7 @@ class Designer {
   private readonly memeGroupe = el("input");
   private readonly seuls = el("input");
   private readonly pres = el("input");
+  private readonly karma = el("select");
   private minuteur?: number;
 
   constructor(private readonly dest: () => Destinataires, libelle: string, private readonly avecMonde = false) {
@@ -97,13 +115,16 @@ class Designer {
       this.minuteur = window.setTimeout(() => void this.chercher(), 250);
     };
     this.texte.addEventListener("input", relancer);
-    for (const c of [this.memeGroupe, this.seuls, this.pres]) c.addEventListener("change", relancer);
+    for (const c of [this.memeGroupe, this.seuls, this.pres, this.karma]) c.addEventListener("change", relancer);
+    remplir(this.karma, KARMAS.map((k) => ({ cle: k.cle, libelle: k.libelle })));
+    this.karma.title = "Regard de l'Entité : chercher selon le karma (invisible aux humains)";
     const filtres = el("div", "ligne discret");
     filtres.append(el("label", undefined), el("label", undefined), el("label", undefined));
     const [a, b, c] = Array.from(filtres.children) as HTMLLabelElement[];
     a.append(this.memeGroupe, " même communauté");
     b.append(this.seuls, " seuls");
     c.append(this.pres, " les plus proches d'abord");
+    filtres.append(this.karma);
     this.bloc.append(ligne(libelle, this.texte, this.liste), filtres);
   }
 
@@ -125,6 +146,8 @@ class Designer {
         adultes: false,
         sexe: null,
         pres: this.pres.checked ? d.pres : 0,
+        karmaMin: KARMAS.find((k) => k.cle === this.karma.value)?.min ?? null,
+        karmaMax: KARMAS.find((k) => k.cle === this.karma.value)?.max ?? null,
       });
       const avant = this.liste.value;
       const options: HTMLOptionElement[] = [];
@@ -136,7 +159,7 @@ class Designer {
       }
       for (const t of trouves.filter((t) => !d.humains.includes(t.id))) {
         const o = el("option", undefined,
-          `${t.nom} (${t.sexe === "femme" ? "F" : "H"}, ${t.age} ans${t.communaute ? `, ${t.communaute}` : ""}${t.seul ? ", seul" + (t.sexe === "femme" ? "e" : "") : ""}${d.pres ? `, ${t.distanceKm} km` : ""})`);
+          `${t.nom} (${t.sexe === "femme" ? "F" : "H"}, ${t.age} ans${t.communaute ? `, ${t.communaute}` : ""}${t.seul ? ", seul" + (t.sexe === "femme" ? "e" : "") : ""}${d.pres ? `, ${t.distanceKm} km` : ""}, karma ${signe(t.karma)})`);
         o.value = String(t.id);
         o.dataset.nom = t.nom;
         options.push(o);

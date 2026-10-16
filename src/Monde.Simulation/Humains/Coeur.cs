@@ -86,7 +86,7 @@ public sealed partial class VieSociale
             if (v.Memoire.Jardin.Exists(x => x.Cle == cle)) continue;
             var mort = s.DeuilDeId >= 1 && s.DeuilDeId <= humains.Count ? humains[s.DeuilDeId - 1] : null;
             var id = Noter(maintenant, TypeEvenement.Entraide, v, s,
-                mort is null ? $"{v.Nom} console {s.Nom}." : $"{v.Nom} console {s.Nom}, qui pleure {Parente(s, mort)}.", s.DeuilEvenementId);
+                mort is null ? $"{v.Nom} console {s.Nom}." : $"{v.Nom} console {s.Nom}, qui pleure {Parente(s, mort)}.", s.DeuilEvenementId, karma: Regard.Consoler);
             var (il, e) = s.Sexe == Sexe.Femme ? ("elle", "e") : ("il", "");
             var pensee = Jardin.Varier(v, cle, 0, s.Nom,
                 new Jardin.V($"Je reste près de {s.Nom} tant qu'{il} a du chagrin.", 0.4),
@@ -127,7 +127,7 @@ public sealed partial class VieSociale
             if (v.Memoire.Jardin.Exists(x => x.Cle == cle && maintenant - x.Secondes < 30 * Temps.Calendrier.SecondesParJour)) return;
             var etat = s.EstMalade(maintenant) || s.InfectionId != 0 ? "malade" : $"blessé{E(s)}";
             var id = Noter(maintenant, TypeEvenement.Entraide, v, s,
-                $"{v.Nom} veille sur {s.Nom}, {etat}, et lui apporte à boire et à manger.", s.InfectionId != 0 ? s.InfectionEvenementId : 0);
+                $"{v.Nom} veille sur {s.Nom}, {etat}, et lui apporte à boire et à manger.", s.InfectionId != 0 ? s.InfectionEvenementId : 0, karma: Regard.Veiller);
             Jardin.Retirer(v, cle);
             var lui = s.Sexe == Sexe.Femme ? "elle" : "lui";
             var pensee = Jardin.Varier(v, cle, 0, s.Nom,
@@ -157,7 +157,7 @@ public sealed partial class VieSociale
             var dernier = parents.MaxBy(x => x.MortLe ?? 0);
             var id = Noter(maintenant, TypeEvenement.Entraide, g, e,
                 $"{g.Nom} recueille {e.Nom} ({Comportement.AgeEnMots(e, maintenant)}), {(e.Sexe == Sexe.Femme ? "orpheline" : "orphelin")}.",
-                dernier?.MortEvenementId ?? 0);
+                dernier?.MortEvenementId ?? 0, karma: Regard.Recueillir);
             Jardin.Confier(g, TypeIntime.Intention, e.Id, $"Je veillerai sur {e.Nom}.", 30 + 40 * g.Personnalite.Moral.Compassion, id, maintenant, cle);
         }
     }

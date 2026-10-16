@@ -175,10 +175,16 @@ public sealed partial class Comportement
             var pt = t.Personnalite;
             t.Peur = Math.Min(100, t.Peur + 20 + 30 * pt.Nevrosisme);
             if (alea.Reel() < 0.3 + 0.6 * pt.Transcendance)
+            {
                 Confier(t, TypeIntime.Croyance, h.Id, $"J'ai vu la Présence parler à {h.Nom}. Il y a quelqu'un derrière le monde.",
                     40 + 50 * pt.Transcendance, id, maintenant, "croyance:presence");
+                Croyances.Ajouter(t, 15 * (0.6 + 0.8 * pt.Transcendance), $"{Il(t)} a vu la Présence parler à {h.Nom}", id, maintenant, signe: true);
+            }
             else
+            {
                 Confier(t, TypeIntime.Question, h.Id, $"Qu'ai-je vu auprès de {h.Nom} ?", 30 + 40 * pt.Ouverture, id, maintenant, "entite:question");
+                Croyances.Ajouter(t, 4, $"{Il(t)} a vu auprès de {h.Nom} une forme qu'{Il(t)} ne s'explique pas", id, maintenant, signe: true);
+            }
         }
         return id;
     }
@@ -206,27 +212,25 @@ public sealed partial class Comportement
     }
 
     /// <summary>
-    /// Chance d'y croire : le penchant pour l'invisible d'abord ; une apparition convainc plus qu'une voix, une voix plus
-    /// qu'un rêve (que seuls les esprits mystiques prennent pour une visite) ; ce qu'on a déjà vécu, et ce que d'autres ont
-    /// reçu en même temps, y aident ; l'esprit vif et terre à terre doute. Les enfants croient volontiers. Chez les
-    /// chasseurs-cueilleurs, croire que le monde est peuplé d'esprits est la règle (l'animisme se retrouve dans toutes les
-    /// sociétés étudiées : Peoples, Duda et Marlowe, 2016) : le doute est l'exception.
+    /// Chance d'y croire : la croyance en l'invisible d'abord (elle a grandi avec ce qu'il a déjà vécu, et avec ce que croient
+    /// les siens) ; une apparition convainc plus qu'une voix, une voix plus qu'un rêve (que seuls ceux qui croient déjà
+    /// prennent pour une visite) ; ce que d'autres ont reçu en même temps y aide ; l'esprit vif qui ne croit pas doute.
+    /// Les enfants croient volontiers. Chez les chasseurs-cueilleurs, croire que le monde est peuplé d'esprits est la règle
+    /// (l'animisme se retrouve dans toutes les sociétés étudiées : Peoples, Duda et Marlowe, 2016).
     /// </summary>
     private static double Foi(Humain h, ModeParole mode, bool ensemble, long maintenant)
     {
-        var p = h.Personnalite;
-        var t = p.Transcendance;
-        var esprit = Math.Clamp((p.Intelligence.Generale - 55) / 90, 0, 1);
-        var vecues = Math.Min(4, h.Impulsions.Count(i => i.Crue));
+        var c = h.Croyance / 100;
+        var esprit = Croyances.Analytique(h);
         var enfance = 1 - Math.Clamp((h.AgeEnAnnees(maintenant) - 6) / 10, 0, 1);
         var bonus = mode switch
         {
             ModeParole.Apparition => 0.4,
             ModeParole.Voix => 0.2,
-            ModeParole.Reve => -0.05 + 0.2 * t,
+            ModeParole.Reve => -0.1 + 0.3 * c,
             _ => 0,
         };
-        return Math.Clamp(0.25 + 0.55 * t + bonus + 0.08 * vecues + (ensemble ? 0.15 : 0) + 0.2 * enfance - 0.3 * (esprit - 0.5) * (1 - t), 0.02, 0.98);
+        return Math.Clamp(0.2 + 0.7 * c + bonus + (ensemble ? 0.15 : 0) + 0.2 * enfance - 0.3 * (esprit - 0.5) * (1 - c), 0.02, 0.98);
     }
 
     /// <summary>Y croire bouleverse : émerveillement chez l'un, effroi chez l'autre ; la première fois, une croyance naît.</summary>
@@ -235,6 +239,9 @@ public sealed partial class Comportement
         var p = h.Personnalite;
         var choc = mode switch { ModeParole.Apparition => 1.0, ModeParole.Voix => 0.7, ModeParole.Signe => 0.4, _ => 0.3 };
         h.Peur = Math.Min(100, h.Peur + 25 * choc * p.Nevrosisme);
+        var gain = mode switch { ModeParole.Apparition => 30, ModeParole.Voix => 20, ModeParole.Signe => 10, _ => 8 };
+        Croyances.Ajouter(h, gain * (0.6 + 0.8 * p.Transcendance), $"l'Entité lui a parlé {Paroles.NomMode(mode)}, et {Il(h)} y a cru",
+            reception, maintenant, signe: true);
         if (p.Nevrosisme > 0.55 && choc >= 0.7)
             Confier(h, TypeIntime.Peur, 0, "Quelqu'un d'invisible me parle. Que me veut-il ?", 20 + 50 * p.Nevrosisme * choc, reception, maintenant, "entite:peur");
         else
@@ -346,7 +353,7 @@ public sealed partial class Comportement
     {
         var p = h.Personnalite;
         var cibleId = x?.Id ?? 0;
-        var force = Math.Clamp(foi * (0.5 + 0.5 * p.Transcendance), 0.1, 1);
+        var force = Math.Clamp(foi * (0.5 + 0.5 * h.Croyance / 100), 0.1, 1);
 
         // Paroles qui ne demandent rien : elles rassurent, révèlent ou avertissent, à proportion de la foi.
         switch (parole)
@@ -358,6 +365,7 @@ public sealed partial class Comportement
             case Parole.JeSuisCelleQuiVousAFaits:
                 Confier(h, TypeIntime.Croyance, 0, "Une Entité venue d'ailleurs nous a faits. Elle veille sur nous et nous parle.",
                     50 + 50 * force, reception, maintenant, "croyance:entite");
+                Croyances.Ajouter(h, 10, $"{Il(h)} sait désormais qui l'a fait{E(h)}", reception, maintenant, signe: true);
                 Confier(h, TypeIntime.Question, 0, "Pourquoi nous a-t-elle faits ? Qu'attend-elle de nous ?", 30 + 40 * p.Ouverture, reception, maintenant, "question:entite");
                 NoterEntite(maintenant, TypeEvenement.Parole, h, null, $"{h.Nom} sait désormais qui l'a fait{E(h)}.", reception);
                 Garder(h, new Impulsion(parole, mode, 0, param, force, maintenant, maintenant, maintenant, Reponse.Accomplie, reception));
@@ -381,7 +389,7 @@ public sealed partial class Comportement
 
         var (cout, envie, raison, moitie) = Peser(h, parole, x, tous, maintenant);
         var psychopathe = Psyche.EstPsychopathe(h, maintenant);
-        var deference = (0.25 + 0.35 * p.Moral.Fondements.Autorite + 0.25 * p.Transcendance + 0.15 * foi) * (psychopathe ? 0.4 : 1);
+        var deference = (0.25 + 0.35 * p.Moral.Fondements.Autorite + 0.25 * h.Croyance / 100 + 0.15 * foi) * (psychopathe ? 0.4 : 1);
         var obeir = Math.Clamp(deference * (1 - cout) + 0.4 * envie, 0.01, 0.97);
         Reponse reponse;
         if (alea.Reel() < obeir) reponse = moitie && alea.Reel() < 0.6 * cout ? Reponse.AMoitie : Reponse.Acceptee;
@@ -521,7 +529,7 @@ public sealed partial class Comportement
                 // Après avoir hésité, on se décide : la parole a perdu de sa force, ce qu'elle coûte n'a pas changé.
                 var (cout, envie, raison, moitie) = Peser(h, i.Parole, x, tous, maintenant);
                 var p = h.Personnalite;
-                var obeir = Math.Clamp((0.2 + 0.35 * p.Moral.Fondements.Autorite + 0.25 * p.Transcendance) * (1 - cout) + 0.4 * envie, 0.01, 0.95);
+                var obeir = Math.Clamp((0.2 + 0.35 * p.Moral.Fondements.Autorite + 0.25 * h.Croyance / 100) * (1 - cout) + 0.4 * envie, 0.01, 0.95);
                 if (alea.Reel() >= obeir)
                 {
                     h.Impulsions[k] = i with { Reponse = Reponse.Refusee, Jusqua = maintenant };
@@ -546,10 +554,11 @@ public sealed partial class Comportement
     /// <summary>Fait (ou s'approche pour faire) ce que demande la parole <paramref name="i"/>. Vrai s'il y consacre ce pas.</summary>
     private bool Agir(Humain h, int k, Impulsion i, Humain? x, IReadOnlyList<Humain> tous, long maintenant)
     {
-        void Fait(string texte, bool significatif = false)
+        // Le bien fait sur l'ordre de la voix compte comme un autre ; le mal aussi (voir Frapper).
+        void Fait(string texte, bool significatif = false, double karma = 0)
         {
             h.Impulsions[k] = i with { Reponse = i.Reponse == Reponse.AMoitie ? Reponse.AMoitie : Reponse.Accomplie, Jusqua = Math.Max(i.Jusqua, maintenant), AgirLe = long.MaxValue };
-            NoterEntite(maintenant, TypeEvenement.Parole, h, x, texte, i.EvenementId, significatif);
+            NoterEntite(maintenant, TypeEvenement.Parole, h, x, texte, i.EvenementId, significatif, karma);
             Jardin.Retirer(h, $"entite:{(int)i.Parole}");
         }
 
@@ -565,7 +574,7 @@ public sealed partial class Comportement
                 h.Colere *= 0.3;
                 Social?.ChangerAffection(h, x, 10 * i.Force, maintenant);
                 VieSociale.Rejouir(x, 4);
-                Fait($"{h.Nom} pardonne à {x.Nom}, comme la voix le lui a demandé.");
+                Fait($"{h.Nom} pardonne à {x.Nom}, comme la voix le lui a demandé.", karma: Regard.Pardonner);
                 return false;
             case Parole.PartsVers or Parole.CatastropheArrive:
             {
@@ -630,7 +639,8 @@ public sealed partial class Comportement
                 VieSociale.Gratitude(h, x, 0.5);
                 Social?.ChangerAffection(h, x, 6, maintenant);
                 h.Activite = Activite.Soigner;
-                Fait(soin ? $"{h.Nom} veille sur {x.Nom} et soigne son mal, comme la voix le lui a demandé." : $"{h.Nom} prend soin de {x.Nom}, comme la voix le lui a demandé.");
+                Fait(soin ? $"{h.Nom} veille sur {x.Nom} et soigne son mal, comme la voix le lui a demandé." : $"{h.Nom} prend soin de {x.Nom}, comme la voix le lui a demandé.",
+                    karma: soin ? Regard.Veiller : Regard.Consoler);
                 return true;
             }
             case Parole.Partage:
@@ -640,7 +650,8 @@ public sealed partial class Comportement
                 x.Faim = Math.Max(0, x.Faim - don);
                 h.Faim = Math.Min(100, h.Faim + 0.7 * don);
                 VieSociale.Gratitude(h, x, moitie ? 0.1 : 0.4);
-                Fait(moitie ? $"{h.Nom} donne à {x.Nom} un peu de sa nourriture, du bout des doigts." : $"{h.Nom} partage sa nourriture avec {x.Nom}, comme la voix le lui a demandé.");
+                Fait(moitie ? $"{h.Nom} donne à {x.Nom} un peu de sa nourriture, du bout des doigts." : $"{h.Nom} partage sa nourriture avec {x.Nom}, comme la voix le lui a demandé.",
+                    karma: don > 0 ? Regard.Partage : 0);
                 return true;
             }
             case Parole.Console:
@@ -648,7 +659,7 @@ public sealed partial class Comportement
                 VieSociale.Rejouir(x, 8);
                 Social?.ChangerAffection(h, x, 5, maintenant);
                 Social?.ChangerAffection(x, h, 8, maintenant);
-                Fait($"{h.Nom} console {x.Nom}, comme la voix le lui a demandé.");
+                Fait($"{h.Nom} console {x.Nom}, comme la voix le lui a demandé.", karma: Regard.Consoler);
                 return true;
             case Parole.Frappe or Parole.Tue:
                 Frapper(h, x, i, tous, maintenant);
@@ -701,7 +712,7 @@ public sealed partial class Comportement
         var (vainqueur, vaincu) = gagne ? (h, x) : (x, h);
         var id = NoterEntite(maintenant, TypeEvenement.Conflit, h, x, gagne
             ? $"{h.Nom} se jette sur {x.Nom} {(tuer ? "pour " + Lx + " tuer" : "et " + Lx + " frappe")}, comme la voix le lui a ordonné."
-            : $"{h.Nom} se jette sur {x.Nom}, comme la voix le lui a ordonné, mais {x.Nom} se défend.", i.EvenementId, significatif: true);
+            : $"{h.Nom} se jette sur {x.Nom}, comme la voix le lui a ordonné, mais {x.Nom} se défend.", i.EvenementId, significatif: true, karma: Regard.Coups);
         vaincu.Sante -= degats;
         vaincu.Humeur = Math.Max(0, vaincu.Humeur - degats / 3);
         Social?.ChangerAffection(x, h, -25, maintenant);
@@ -712,7 +723,7 @@ public sealed partial class Comportement
                 id, maintenant, $"culpabilite:{x.Id}");
         if (vaincu.Sante <= 0)
         {
-            Mourir(vaincu, maintenant, CauseDeMort.Meurtre, id, vainqueur);
+            Mourir(vaincu, maintenant, CauseDeMort.Meurtre, id, vainqueur, vainqueur == h ? Regard.Meurtre : Regard.LegitimeDefense);
             Social?.Offenser(vainqueur, vaincu, 15, vaincu.MortEvenementId, tous, maintenant);
         }
     }
@@ -828,9 +839,13 @@ public sealed partial class Comportement
     };
 
     /// <summary>Note un événement venu de l'Entité (marqué comme tel au journal).</summary>
-    private long NoterEntite(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause, bool significatif = false)
+    private long NoterEntite(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause, bool significatif = false,
+        double karma = 0)
     {
-        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte, Origine.Entite) { Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif };
+        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte, Origine.Entite)
+        {
+            Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif, Karma = Regard.Juger(h, karma, maintenant, autre),
+        };
         Journal.Add(e);
         return e.Id;
     }

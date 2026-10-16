@@ -71,10 +71,19 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>Température ressentie par l'humain en cours, pour le coup de chaleur.</summary>
     private double _temperature = 20;
 
-    /// <summary>Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause.</summary>
-    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0, bool significatif = false)
+    /// <summary>
+    /// Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause. <paramref name="karma"/> et
+    /// <paramref name="karmaAutre"/> : ce que vaut l'acte, aux yeux de l'Entité, pour <paramref name="h"/> et pour
+    /// <paramref name="autre"/> (voir <see cref="Regard"/>).
+    /// </summary>
+    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0, bool significatif = false,
+        double karma = 0, double karmaAutre = 0)
     {
-        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte) { Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif };
+        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte)
+        {
+            Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif,
+            Karma = Regard.Juger(h, karma, maintenant, autre), KarmaAutre = Regard.Juger(autre, karmaAutre, maintenant, h),
+        };
         Journal.Add(e);
         return e.Id;
     }
@@ -389,7 +398,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// Mort d'un humain. Le suicide a pour cause la dépression ; un meurtre, les coups qui l'ont précédé
     /// (<paramref name="causeId"/>) et son auteur (<paramref name="meurtrier"/>).
     /// </summary>
-    private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null)
+    private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null, double karmaMeurtrier = Regard.Meurtre)
     {
         RemedeEchoue(h);
         // Mort de froid pendant une vague de froid, de chaleur pendant une canicule, d'une maladie contagieuse, de faim dans une
@@ -403,7 +412,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 $"{h.Nom}, accablé{(h.Sexe == Sexe.Femme ? "e" : "")} de tristesse, met fin à ses jours, à {AgeEnMots(h, maintenant)}.",
                 h.DepressionEvenementId),
             CauseDeMort.Meurtre when meurtrier is not null => Noter(maintenant, TypeEvenement.Mort, h, meurtrier,
-                $"{h.Nom} meurt sous les coups de {meurtrier.Nom}, à {AgeEnMots(h, maintenant)}.", causeId),
+                $"{h.Nom} meurt sous les coups de {meurtrier.Nom}, à {AgeEnMots(h, maintenant)}.", causeId, karmaAutre: karmaMeurtrier),
             CauseDeMort.Empoisonnement => Noter(maintenant, TypeEvenement.Mort, h, null,
                 $"{h.Nom} meurt empoisonné{(h.Sexe == Sexe.Femme ? "e" : "")} par la plante qu'{(h.Sexe == Sexe.Femme ? "elle" : "il")} a mangée, à {AgeEnMots(h, maintenant)}.", causeId),
             CauseDeMort.Noyade when causeId == 0 => Noter(maintenant, TypeEvenement.Mort, h, null,
@@ -425,11 +434,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// Mort causée par une catastrophe ou une épidémie, avec son récit : notée comme les autres (journal, deuil des proches),
     /// et rattachée à sa cause.
     /// </summary>
-    internal void Tuer(Humain h, long maintenant, CauseDeMort cause, string texte, long causeId)
+    internal void Tuer(Humain h, long maintenant, CauseDeMort cause, string texte, long causeId, Humain? tueur = null, double karmaTueur = 0)
     {
         if (!h.EstVivant) return;
-        h.MortEvenementId = Noter(maintenant, TypeEvenement.Mort, h, null, texte, causeId);
-        h.MeurtrierId = 0;
+        h.MortEvenementId = Noter(maintenant, TypeEvenement.Mort, h, tueur, texte, causeId, karmaAutre: karmaTueur);
+        h.MeurtrierId = tueur?.Id ?? 0;
         Deces.Add(h);
         h.Sante = 0;
         h.MortLe = maintenant;

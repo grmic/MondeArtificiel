@@ -233,9 +233,11 @@ public sealed partial class Comportement
         var hors = infidele ? " (hors de leur couple)" : "";
         // Comme pour les accouplements, on ne note pas chaque fois : la première, puis au plus une fois par saison.
         var nouveau = !Recent(a, $"amour:{b.Id}", Calendrier.JoursParSaison, maintenant);
+        var (ka, kb) = (PointsInfidelite(a, b, tous), PointsInfidelite(b, a, tous));
         var id = nouveau
-            ? Noter(maintenant, TypeEvenement.Attirance, a, b, secret ? $"{a.Nom} et {b.Nom} s'aiment en secret{hors}." : $"{a.Nom} et {b.Nom} s'aiment{hors}.")
-            : Noter(maintenant, TypeEvenement.Accouplement, a, b, $"{a.Nom} et {b.Nom} s'aiment{hors}.");
+            ? Noter(maintenant, TypeEvenement.Attirance, a, b, secret ? $"{a.Nom} et {b.Nom} s'aiment en secret{hors}." : $"{a.Nom} et {b.Nom} s'aiment{hors}.",
+                karma: ka, karmaAutre: kb)
+            : Noter(maintenant, TypeEvenement.Accouplement, a, b, $"{a.Nom} et {b.Nom} s'aiment{hors}.", karma: ka, karmaAutre: kb);
         foreach (var (x, y) in new[] { (a, b), (b, a) })
         {
             VieSociale.Rejouir(x, 8);

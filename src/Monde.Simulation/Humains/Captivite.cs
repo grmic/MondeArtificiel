@@ -72,7 +72,7 @@ public sealed partial class Comportement
         captive.CaptifLe = maintenant;
         var id = Noter(maintenant, TypeEvenement.Guerre, ravisseur, captive,
             $"{ravisseur.Nom} enlève {captive.Nom} ({AgeEnMots(captive, maintenant)}) lors du raid de la {Minuscule(c.Nom)} contre la {Minuscule(cible.Nom)}.",
-            cause, significatif: true);
+            cause, significatif: true, karma: Regard.Enlever);
         Jardin.Confier(captive, TypeIntime.Peine, ravisseur.Id, $"{ravisseur.Nom} m'a arrachée aux miens. Je veux les revoir.",
             60 + 30 * captive.Personnalite.Nevrosisme, id, maintenant, "captive");
         Jardin.Confier(ravisseur, TypeIntime.Joie, captive.Id, $"J'ai ramené {captive.Nom} de chez la {Minuscule(cible.Nom)}.",

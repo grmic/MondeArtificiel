@@ -20,6 +20,7 @@ const TYPES: [string, string][] = [
   ["vol", "Vols"],
   ["entraide", "Soins et consolation"],
   ["parole", "Paroles de l'Entité"],
+  ["croyance", "Croyance en l'invisible"],
   ["communaute", "Communautés"],
   ["guerre", "Guerres et alliances"],
   ["nature", "Nature"],

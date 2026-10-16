@@ -18,6 +18,9 @@ interface Evenement {
   autreCommunaute: number;
   /** Un tournant (projet de guerre, renoncement, raid, paix, catastrophe…). */
   significatif: boolean;
+  /** Karma gagné ou perdu par cet acte (regard de l'Entité), par l'humain et par l'autre. */
+  karma?: number;
+  karmaAutre?: number;
 }
 
 /** Une chose du jardin secret. */
@@ -99,6 +102,8 @@ interface Fiche {
   savoirs: Savoirs;
   /** Paroles et penchants reçus de l'Entité, du plus récent au plus ancien. */
   paroles: { date: string; mode: string; texte: string; reponse: string; cible: number; evenement: number }[];
+  /** Regard de l'Entité, invisible aux humains : karma et croyance en l'invisible (0 à 100). */
+  regard: { karma: number; karmaMots: string; croyance: number; croyanceMots: string; dernierSigne: string | null };
 }
 
 /** Ce qu'il sait faire (et à quel point il y croit), ce qu'il porte, son vêtement, son aisance dans l'eau (0 à 100). */
@@ -378,6 +383,13 @@ export class PanneauFiche {
     corps.append(el("h3", undefined, "Biologie"), bio);
 
     this.savoirs(corps, f.savoirs, h.sexe === "femme" ? "e" : "");
+    corps.append(el("h3", undefined, "Regard de l'Entité"));
+    const regard = el("p", "regard");
+    regard.append(`Karma : ${signe(f.regard.karma)} (${f.regard.karmaMots})`, el("br"),
+      `Croyance en l'invisible : ${f.regard.croyance}/100 (${f.regard.croyanceMots})`);
+    if (f.regard.dernierSigne) regard.append(el("br"), `Dernier signe de l'invisible : ${f.regard.dernierSigne}`);
+    regard.title = "Invisible aux humains. Les actes qui ont changé son karma sont marqués ☯ dans son histoire.";
+    corps.append(regard);
     if (h.vivant) corps.append(this.formulaireSouffle());
     this.communaute = f.communaute?.id ?? 0;
     this.nomCourant = h.nom;
@@ -675,10 +687,19 @@ export class PanneauFiche {
 /** Retrouve un humain d'après son nom, et ouvre sa fiche : fournis par la page au démarrage. */
 let idDuNom: (nom: string) => number | undefined = () => undefined;
 let ouvrirHumain: (id: number) => void = () => {};
+let nomDeId: (id: number) => string = () => "?";
 
-export function definirLiensNoms(resoudre: (nom: string) => number | undefined, ouvrir: (id: number) => void): void {
+export function definirLiensNoms(resoudre: (nom: string) => number | undefined, ouvrir: (id: number) => void,
+  nomDe?: (id: number) => string): void {
   idDuNom = resoudre;
   ouvrirHumain = ouvrir;
+  if (nomDe) nomDeId = nomDe;
+}
+
+/** Un nombre signé, à la française : « +2 », « −30 », « +0,5 ». */
+export function signe(v: number): string {
+  const n = Math.abs(v).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  return v > 0 ? `+${n}` : v < 0 ? `−${n}` : "0";
 }
 
 /** Le texte d'un événement, où chaque nom d'humain devient un lien vers sa fiche. */
@@ -710,6 +731,14 @@ export function ligneEvenement(e: Evenement): HTMLElement {
   if (e.significatif) li.append(el("span", "etoile", " ★"));
   li.append(" ", ...texteAvecLiens(e));
   if (e.origine === "entite") li.append(el("span", "entite", " ✦ venu de l'Entité"));
+  const karmas: string[] = [];
+  if (e.karma) karmas.push(`${nomDeId(e.humain)} ${signe(e.karma)}`);
+  if (e.karmaAutre) karmas.push(`${nomDeId(e.autre)} ${signe(e.karmaAutre)}`);
+  if (karmas.length > 0) {
+    const k = el("span", "karma", ` ☯ karma : ${karmas.join(", ")}`);
+    k.title = "Regard de l'Entité sur cet acte (invisible aux humains)";
+    li.append(k);
+  }
   if (e.cause > 0) li.append(" ", boutonCause(li, e.cause, "pourquoi ?"));
   return li;
 }

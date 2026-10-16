@@ -28,10 +28,12 @@ public sealed record ResultatParoleDto(int Humain, string Nom, string Resultat);
 /// <param name="Texte">Début ou partie du nom (40 caractères au plus).</param>
 /// <param name="Communaute">Communauté (0 : toutes).</param>
 /// <param name="Pres">Humain auprès de qui chercher (0 : partout).</param>
-public sealed record FiltreHumains(string? Texte, int Communaute = 0, bool Seuls = false, bool Adultes = false, string? Sexe = null, int Pres = 0);
+/// <param name="KarmaMin">Karma au moins égal (null : sans limite) ; <paramref name="KarmaMax"/> : au plus égal.</param>
+public sealed record FiltreHumains(string? Texte, int Communaute = 0, bool Seuls = false, bool Adultes = false, string? Sexe = null, int Pres = 0,
+    double? KarmaMin = null, double? KarmaMax = null);
 
 /// <summary>Un humain trouvé.</summary>
-public sealed record HumainTrouveDto(int Id, string Nom, string Sexe, int Age, string? Communaute, bool Seul, int DistanceKm);
+public sealed record HumainTrouveDto(int Id, string Nom, string Sexe, int Age, string? Communaute, bool Seul, int DistanceKm, double Karma = 0);
 
 /// <summary>Une parole ou un penchant reçus, pour la fiche.</summary>
 public sealed record ParoleRecueDto(string Date, string Mode, string Texte, string Reponse, int Cible, long Evenement);
@@ -75,11 +77,13 @@ public static class ParolesEntite
                 && (f.Communaute == 0 || h.CommunauteId == f.Communaute)
                 && (!f.Seuls || h.PartenaireId == 0 || !humains[h.PartenaireId - 1].EstVivant)
                 && (!f.Adultes || !h.EstEnfant(maintenant))
-                && (f.Sexe is not ("femme" or "homme") || (h.Sexe == Sexe.Femme) == (f.Sexe == "femme")))
+                && (f.Sexe is not ("femme" or "homme") || (h.Sexe == Sexe.Femme) == (f.Sexe == "femme"))
+                && (f.KarmaMin is not { } kmin || !double.IsFinite(kmin) || h.Karma >= kmin)
+                && (f.KarmaMax is not { } kmax || !double.IsFinite(kmax) || h.Karma <= kmax))
             .OrderBy(h => pres is null ? 0 : Km(h)).ThenBy(h => h.Nom, StringComparer.CurrentCulture)
             .Take(Resultats)
             .Select(h => new HumainTrouveDto(h.Id, h.Nom, h.Sexe == Sexe.Femme ? "femme" : "homme", (int)h.AgeEnAnnees(maintenant),
-                noms.GetValueOrDefault(h.CommunauteId), h.PartenaireId == 0 || !humains[h.PartenaireId - 1].EstVivant, Km(h)))
+                noms.GetValueOrDefault(h.CommunauteId), h.PartenaireId == 0 || !humains[h.PartenaireId - 1].EstVivant, Km(h), Math.Round(h.Karma, 1)))
             .ToList();
     }
 

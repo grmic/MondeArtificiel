@@ -57,7 +57,8 @@ public sealed partial class Comportement
         var psychopathe = Psyche.EstPsychopathe(h, maintenant);
         if (!surpris && temoin is null)
         {
-            var id = Noter(maintenant, TypeEvenement.Vol, h, victime, $"{h.Nom} prend en cachette la nourriture de {victime.Nom}, sans être vu{E(h)}.");
+            var id = Noter(maintenant, TypeEvenement.Vol, h, victime, $"{h.Nom} prend en cachette la nourriture de {victime.Nom}, sans être vu{E(h)}.",
+                karma: Regard.Vol);
             if (psychopathe)
                 Confier(h, TypeIntime.ImageDeSoi, 0, "Ils ne voient rien. Je prends ce que je veux.", 40, id, maintenant, "vol");
             else
@@ -75,7 +76,7 @@ public sealed partial class Comportement
         var texte = surpris
             ? $"{victime.Nom} surprend {h.Nom} en train de lui prendre sa nourriture."
             : $"{temoin!.Nom} voit {h.Nom} prendre la nourriture de {victime.Nom}, et le lui dit.";
-        var vol = Noter(maintenant, TypeEvenement.Vol, h, victime, texte, significatif: psychopathe);
+        var vol = Noter(maintenant, TypeEvenement.Vol, h, victime, texte, significatif: psychopathe, karma: Regard.Vol);
         Confier(h, TypeIntime.Intention, victime.Id, psychopathe
             ? $"{victime.Nom} m'a vu{E(h)}. La prochaine fois, je serai plus prudent{E(h)}."
             : $"On m'a vu{E(h)} prendre la nourriture de {victime.Nom}.", 30, vol, maintenant, "vol");
@@ -110,7 +111,8 @@ public sealed partial class Comportement
             var degats = 5 + 15 * alea.Reel();
             victime.Sante -= degats;
             victime.Humeur = Math.Max(0, victime.Humeur - degats / 3);
-            var coups = Noter(maintenant, TypeEvenement.Conflit, h, victime, $"{h.Nom} frappe {victime.Nom}, qui proteste, et garde la nourriture.", vol);
+            var coups = Noter(maintenant, TypeEvenement.Conflit, h, victime, $"{h.Nom} frappe {victime.Nom}, qui proteste, et garde la nourriture.", vol,
+                karma: Regard.Coups);
             VieSociale.AjouterGrief(victime, new Grief(h.Id, MotifGrief.Coups, Math.Min(100, 30 + degats), Math.Min(100, 30 + degats), coups));
             Social.Offenser(h, victime, 4, coups, tous, maintenant);
             if (victime.Sante <= 0)

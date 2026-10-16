@@ -244,7 +244,7 @@ public sealed partial class VieSociale
                     MotifGrief.Vol => $"{h.Nom} pardonne à {autre.Nom} de l'avoir volé{E(h)}.",
                     MotifGrief.Trahison => $"{h.Nom} ne tient plus {autre.Nom} pour un traître.",
                     _ => $"{h.Nom} renonce à se venger de {autre.Nom}.",
-                }, g.EvenementId);
+                }, g.EvenementId, karma: g.Motif == MotifGrief.Moeurs ? Regard.Pardonner / 2 : Regard.Pardonner);
                 continue;
             }
             h.Griefs[i] = g with { Intensite = intensite };

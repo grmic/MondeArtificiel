@@ -108,7 +108,7 @@ public sealed partial class Comportement
         var blesse = grave ? $"{le} blesse grièvement" : $"{le} blesse";
         var id = Noter(maintenant, TypeEvenement.Conflit, h, cible, gagne
             ? $"{h.Nom} frappe {cible.Nom}{motif}, et {blesse}."
-            : $"{h.Nom} s'en prend à {cible.Nom}{motif}, mais {cible.Nom} se défend et {blesse}.", grief.EvenementId);
+            : $"{h.Nom} s'en prend à {cible.Nom}{motif}, mais {cible.Nom} se défend et {blesse}.", grief.EvenementId, karma: Regard.Coups);
         h.Colere *= 0.4;
         vaincu.Sante -= degats;
         vaincu.Humeur = Math.Max(0, vaincu.Humeur - degats / 3);
@@ -120,7 +120,8 @@ public sealed partial class Comportement
 
         if (vaincu.Sante <= 0)
         {
-            Mourir(vaincu, maintenant, CauseDeMort.Meurtre, id, vainqueur);
+            // Tuer celui qui vous attaque pèse bien moins que tuer celui que l'on attaque.
+            Mourir(vaincu, maintenant, CauseDeMort.Meurtre, id, vainqueur, vainqueur == h ? Regard.Meurtre : Regard.LegitimeDefense);
             Social.Offenser(vainqueur, vaincu, 15, vaincu.MortEvenementId, tous, maintenant);
             if (grief.Motif is MotifGrief.Infidelite or MotifGrief.Rival) Social.Durcir(h, 0.1, vaincu.MortEvenementId);
         }

@@ -45,6 +45,8 @@ public enum TypeEvenement : byte
     Vol = 24,
     /// <summary>L'Entité parle : ce que l'humain a compris, cru, décidé et fait, et ce qu'il en a raconté.</summary>
     Parole = 25,
+    /// <summary>La croyance d'un humain en l'invisible change d'une dizaine : ce qui l'a fait grandir ou décliner.</summary>
+    Croyance = 26,
 }
 
 /// <summary>
@@ -80,6 +82,13 @@ public sealed record EvenementJournal(long Secondes, TypeEvenement Type, int Hum
     /// fin d'une guerre, pacte, soumission, catastrophe…). L'observateur peut ne suivre que ceux-là.
     /// </summary>
     public bool Significatif { get; init; }
+
+    /// <summary>
+    /// Karma (regard de l'Entité, invisible aux humains) gagné ou perdu par l'humain (<see cref="HumainId"/>) à cause de cet acte,
+    /// et par l'autre (<see cref="AutreId"/>) : le meurtrier dans une mort, le second dans un accouplement hors du couple.
+    /// </summary>
+    public double Karma { get; init; }
+    public double KarmaAutre { get; init; }
 }
 
 /// <summary>

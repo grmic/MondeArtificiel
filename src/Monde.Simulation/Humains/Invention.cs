@@ -417,7 +417,7 @@ public sealed partial class Comportement
         if (emporte < 1) return;
         Prendre(h, new Objet(Matiere.Carcasse, Math.Clamp(emporte / 100, 0, 1), 1));
         Noter(_maintenant, TypeEvenement.Entraide, h, affame,
-            $"{h.Nom} emporte {Math.Round(emporte)} kg de viande {comment}, pour {affame.Nom} et les siens qui ont faim.");
+            $"{h.Nom} emporte {Math.Round(emporte)} kg de viande {comment}, pour {affame.Nom} et les siens qui ont faim.", karma: Regard.NourrirLesAffames);
     }
 
     /// <summary>Viande d'une part de gibier, en kg.</summary>

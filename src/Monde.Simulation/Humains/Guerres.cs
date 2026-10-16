@@ -1133,9 +1133,10 @@ public sealed partial class Comportement
                 Arme.Pierre => $"est abattu{E(victime)} à coups de pierres par {tueur.Nom}",
                 _ => $"meurt sous les coups de poing de {tueur.Nom}",
             };
+            // L'assaillant qui tue pèse plus lourd que le défenseur qui protège les siens.
             Tuer(victime, maintenant, CauseDeMort.Guerre,
-                $"{victime.Nom} {coup}, à {AgeEnMots(victime, maintenant)}, lors du raid de la {nc} contre la {ncible}.", id);
-            victime.MeurtrierId = tueur.Id;
+                $"{victime.Nom} {coup}, à {AgeEnMots(victime, maintenant)}, lors du raid de la {nc} contre la {ncible}.", id,
+                tueur, victime.CommunauteId == cible.Id ? Regard.TuerAuCombat : Regard.LegitimeDefense);
             Social!.Offenser(tueur, victime, 15, victime.MortEvenementId, humains, maintenant);
         }
         foreach (var (captive, ravisseur) in enlevees) Enlever(captive, ravisseur, c, cible, id, humains, maintenant);

@@ -46,6 +46,7 @@ public static class GenerateurPopulation
                 // Apparence et orientation viennent d'un flux à part, tiré du numéro : le reste du monde n'en dépend pas.
                 var h = humains[^1];
                 (h.Apparence, h.Orientation, h.Lucidite) = Attirance.De(id, sexe, h.Personnalite.Ouverture);
+                h.Croyance = h.CroyanceNotee = Croyances.Initiale(id, h.Personnalite.Transcendance);
             }
         }
         return humains;
@@ -72,7 +73,7 @@ public static class GenerateurPopulation
         var penchant = pere is null ? Attirance.PourSonSexe(mere) : Math.Max(Attirance.PourSonSexe(mere), Attirance.PourSonSexe(pere));
         var freresAines = sexe == Sexe.Homme ? (tous ?? []).Count(a => a.MereId == mere.Id && a.Sexe == Sexe.Homme) : 0;
         var orientation = Attirance.TirerOrientation(sexe, alea, penchant, freresAines);
-        return new Humain
+        var bebe = new Humain
         {
             Id = id,
             Nom = Noms.Nouveau(alea, nomsPris),
@@ -93,5 +94,8 @@ public static class GenerateurPopulation
             // Un nouveau-né naît avec un peu de graisse, d'autant plus que sa mère était bien nourrie.
             Reserves = Math.Clamp(15 + mere.Reserves / 4, 15, 40),
         };
+        // Sa croyance en l'invisible se règlera ensuite sur celle des siens (voir Croyances.Journee).
+        bebe.Croyance = bebe.CroyanceNotee = Croyances.Initiale(id, bebe.Personnalite.Transcendance);
+        return bebe;
     }
 }

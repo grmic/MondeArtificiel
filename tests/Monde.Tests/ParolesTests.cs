@@ -45,6 +45,8 @@ public sealed class ParolesTests
         Emplacement = 1,
         Naissance = Maintenant - (long)(age * An),
         Personnalite = p ?? Caractere(),
+        // Depuis la 0.20.4, la foi suit la croyance en l'invisible : celle d'un esprit qui y croit depuis longtemps.
+        Croyance = 100 * (p ?? Caractere()).Transcendance,
         Biologie = Biologie.ParDefaut(sexe),
         X = Terre.X,
         Y = Terre.Y,

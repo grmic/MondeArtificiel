@@ -45,6 +45,9 @@ interface Communaute {
   morale: string | null;
   /** Savoirs connus de ses membres, avec combien les ont. */
   savoirs: string[];
+  /** Moyennes des adultes : karma (regard de l'Entité) et croyance en l'invisible (0 à 100). */
+  karma: number | null;
+  croyance: number | null;
 }
 
 /** Une guerre en préparation : qui la veut, contre qui, pourquoi, et les alliés sollicités. */
@@ -267,6 +270,12 @@ export class PanneauCommunautes {
       bloc.append(el("p", "usage", `Usage : ${c.usage}.${c.moeurs ? ` Mœurs : ${c.moeurs}.` : ""}${c.temperament ? ` Tempérament : ${c.temperament}.` : ""}`));
       if (c.morale) bloc.append(el("p", "usage", `Morale : ${c.morale}.`));
       if (c.savoirs.length > 0) bloc.append(el("p", "usage", `Savoirs : ${c.savoirs.join(", ")}.`));
+      if (c.karma !== null && c.croyance !== null) {
+        const k = Math.abs(c.karma).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+        const p = el("p", "usage", `Regard de l'Entité : karma moyen ${c.karma > 0 ? "+" : c.karma < 0 ? "−" : ""}${k} ; croyance moyenne en l'invisible ${c.croyance}/100.`);
+        p.title = "Moyennes des adultes, invisibles aux humains";
+        bloc.append(p);
+      }
       if (c.ideal) bloc.append(el("p", "discret", `Trouve beaux : ${c.ideal}.`));
     }
     for (const x of c.exiles) {

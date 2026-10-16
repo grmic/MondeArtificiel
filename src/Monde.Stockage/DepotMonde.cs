@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 22;
+    public const int VersionSchema = 23;
 
     private readonly string _connexion;
 
@@ -524,6 +524,21 @@ public sealed partial class DepotMonde
             if (!existantes.Contains("captif_de")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN captif_de INTEGER NOT NULL DEFAULT 0;");
             if (!existantes.Contains("captif_le")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN captif_le INTEGER NOT NULL DEFAULT 0;");
         }
+        if (actuelle < 23)
+        {
+            // Version 23 : karma (sur l'humain et sur l'acte qui le change) et croyance en l'invisible. Une croyance absente
+            // (monde plus ancien) est tirée du numéro de l'humain au chargement.
+            var humains = Colonnes(connexion, transaction, "humains");
+            if (!humains.Contains("karma")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN karma REAL NOT NULL DEFAULT 0;");
+            if (!humains.Contains("croyance")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN croyance REAL;");
+            if (!humains.Contains("croyance_signe")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN croyance_signe INTEGER NOT NULL DEFAULT 0;");
+            if (!humains.Contains("croyance_notee")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN croyance_notee REAL;");
+            var journal = Colonnes(connexion, transaction, "journal");
+            if (!journal.Contains("karma")) Executer(connexion, transaction, "ALTER TABLE journal ADD COLUMN karma REAL NOT NULL DEFAULT 0;");
+            if (!journal.Contains("karma_autre")) Executer(connexion, transaction, "ALTER TABLE journal ADD COLUMN karma_autre REAL NOT NULL DEFAULT 0;");
+            if (!Colonnes(connexion, transaction, "liens").Contains("bienfait"))
+                Executer(connexion, transaction, "ALTER TABLE liens ADD COLUMN bienfait INTEGER NOT NULL DEFAULT 0;");
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -583,7 +598,8 @@ public sealed partial class DepotMonde
                    faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
                    marche, progression, bebe_porte_le,
                    symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
-                   honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le
+                   honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le,
+                   karma, croyance, croyance_signe, croyance_notee
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -651,8 +667,14 @@ public sealed partial class DepotMonde
                     Maladie = (Maladie)lecteur.GetByte(74),
                     CaptifDe = lecteur.GetInt32(lecteur.GetOrdinal("captif_de")),
                     CaptifLe = lecteur.GetInt64(lecteur.GetOrdinal("captif_le")),
+                    Karma = lecteur.GetDouble(lecteur.GetOrdinal("karma")),
+                    CroyanceSigneLe = lecteur.GetInt64(lecteur.GetOrdinal("croyance_signe")),
                 });
                 var h = humains[^1];
+                var croyance = lecteur.GetOrdinal("croyance");
+                h.Croyance = lecteur.IsDBNull(croyance) ? Croyances.Initiale(id, h.Personnalite.Transcendance) : lecteur.GetDouble(croyance);
+                var notee = lecteur.GetOrdinal("croyance_notee");
+                h.CroyanceNotee = lecteur.IsDBNull(notee) ? h.Croyance : lecteur.GetDouble(notee);
                 if (lecteur.IsDBNull(66))
                 {
                     // Monde enregistré avant que ces traits existent : ils sont tirés du numéro de l'humain.
@@ -820,13 +842,13 @@ public sealed partial class DepotMonde
                     l.GetInt32(5), l.IsDBNull(6) ? null : l.GetInt64(6)));
             }
         }
-        commande.CommandText = "SELECT humain, autre, familiarite, affection, derniere, amis, rivaux FROM liens ORDER BY humain, rang;";
+        commande.CommandText = "SELECT humain, autre, familiarite, affection, derniere, amis, rivaux, bienfait FROM liens ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
         {
             while (l.Read())
             {
                 Trouver(l.GetInt64(0))?.Liens.Add(new Lien(l.GetInt32(1), l.GetDouble(2), l.GetDouble(3), l.GetInt64(4),
-                    l.GetBoolean(5), l.GetBoolean(6)));
+                    l.GetBoolean(5), l.GetBoolean(6), l.GetInt64(7)));
             }
         }
         commande.CommandText = "SELECT humain, secondes, texte FROM pensees ORDER BY humain, rang;";
@@ -959,7 +981,8 @@ public sealed partial class DepotMonde
                     faim_soif_jour, froid_jour, jours_seul, colere, deuil_evenement, depression_evenement, mort_evenement, meurtrier,
                     marche, progression, bebe_porte_le,
                     symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
-                    honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le)
+                    honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le,
+                    karma, croyance, croyance_signe, croyance_notee)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -972,7 +995,8 @@ public sealed partial class DepotMonde
                     $faim_soif_jour, $froid_jour, $jours_seul, $colere, $deuil_evenement, $depression_evenement, $mort_evenement, $meurtrier,
                     $marche, $progression, $bebe_porte_le,
                     $symetrie, $harmonie, $taille, $teint, $allure, $vers_hommes, $vers_femmes, $lucidite, $maladie,
-                    $honnetete, $empathie_emo, $empathie_cog, $compassion, $psychopathie, $anxiete_aff, $evitement_aff, $soin, $equite, $loyaute, $autorite, $purete, $captif_de, $captif_le);
+                    $honnetete, $empathie_emo, $empathie_cog, $compassion, $psychopathie, $anxiete_aff, $evitement_aff, $soin, $equite, $loyaute, $autorite, $purete, $captif_de, $captif_le,
+                    $karma, $croyance, $croyance_signe, $croyance_notee);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -986,7 +1010,8 @@ public sealed partial class DepotMonde
                 "$faim_soif_jour", "$froid_jour", "$jours_seul", "$colere", "$deuil_evenement", "$depression_evenement", "$mort_evenement", "$meurtrier",
                 "$marche", "$progression", "$bebe_porte_le",
                 "$symetrie", "$harmonie", "$taille", "$teint", "$allure", "$vers_hommes", "$vers_femmes", "$lucidite", "$maladie",
-                "$honnetete", "$empathie_emo", "$empathie_cog", "$compassion", "$psychopathie", "$anxiete_aff", "$evitement_aff", "$soin", "$equite", "$loyaute", "$autorite", "$purete", "$captif_de", "$captif_le"];
+                "$honnetete", "$empathie_emo", "$empathie_cog", "$compassion", "$psychopathie", "$anxiete_aff", "$evitement_aff", "$soin", "$equite", "$loyaute", "$autorite", "$purete", "$captif_de", "$captif_le",
+                "$karma", "$croyance", "$croyance_signe", "$croyance_notee"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -1019,6 +1044,7 @@ public sealed partial class DepotMonde
                     h.Personnalite.Moral.EvitementAffectif, h.Personnalite.Moral.Fondements.Soin, h.Personnalite.Moral.Fondements.Equite,
                     h.Personnalite.Moral.Fondements.Loyaute, h.Personnalite.Moral.Fondements.Autorite, h.Personnalite.Moral.Fondements.Purete,
                     h.CaptifDe, h.CaptifLe,
+                    h.Karma, h.Croyance, h.CroyanceSigneLe, double.IsNaN(h.CroyanceNotee) ? h.Croyance : h.CroyanceNotee,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
@@ -1063,8 +1089,8 @@ public sealed partial class DepotMonde
             "INSERT INTO memoire_lieux (humain, rang, type, x, y, vu_le, rappels, decu_le) VALUES ($h, $r, $t, $x, $y, $v, $n, $d);",
             "$h", "$r", "$t", "$x", "$y", "$v", "$n", "$d");
         using var liens = Preparer(connexion, transaction,
-            "INSERT INTO liens (humain, rang, autre, familiarite, affection, derniere, amis, rivaux) VALUES ($h, $r, $a, $f, $af, $d, $am, $ri);",
-            "$h", "$r", "$a", "$f", "$af", "$d", "$am", "$ri");
+            "INSERT INTO liens (humain, rang, autre, familiarite, affection, derniere, amis, rivaux, bienfait) VALUES ($h, $r, $a, $f, $af, $d, $am, $ri, $bf);",
+            "$h", "$r", "$a", "$f", "$af", "$d", "$am", "$ri", "$bf");
         using var pensees = Preparer(connexion, transaction,
             "INSERT INTO pensees (humain, rang, secondes, texte) VALUES ($h, $r, $s, $t);", "$h", "$r", "$s", "$t");
         foreach (var h in humains)
@@ -1078,7 +1104,7 @@ public sealed partial class DepotMonde
             for (var r = 0; r < h.Liens.Count; r++)
             {
                 var l = h.Liens[r];
-                Lancer(liens, h.Id, r, l.Id, l.Familiarite, l.Affection, l.Derniere, l.Amis, l.Rivaux);
+                Lancer(liens, h.Id, r, l.Id, l.Familiarite, l.Affection, l.Derniere, l.Amis, l.Rivaux, l.Bienfait);
             }
             for (var r = 0; r < m.Pensees.Count; r++)
             {
@@ -1173,15 +1199,28 @@ public sealed partial class DepotMonde
         // INSERT OR IGNORE : un événement déjà enregistré (même numéro) n'est pas dupliqué.
         using var commande = Preparer(connexion, transaction,
             """
-            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif)
-            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac, $si);
+            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre)
+            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac, $si, $k, $ka);
             """,
-            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac", "$si");
+            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac", "$si", "$k", "$ka");
         foreach (var e in journal)
         {
             Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, e.Texte, (int)e.Origine, e.CauseId,
-                e.CommunauteId, e.AutreCommunauteId, e.Significatif);
+                e.CommunauteId, e.AutreCommunauteId, e.Significatif, e.Karma, e.KarmaAutre);
         }
+    }
+
+    /// <summary>Noms des colonnes d'une table (le nom de table vient du code, jamais de l'extérieur).</summary>
+    private static HashSet<string> Colonnes(SqliteConnection connexion, SqliteTransaction transaction, string table)
+    {
+        using var commande = connexion.CreateCommand();
+        commande.Transaction = transaction;
+        commande.CommandText = "SELECT name FROM pragma_table_info($table);";
+        commande.Parameters.AddWithValue("$table", table);
+        var noms = new HashSet<string>();
+        using var l = commande.ExecuteReader();
+        while (l.Read()) noms.Add(l.GetString(0));
+        return noms;
     }
 
     private static SqliteCommand Preparer(SqliteConnection connexion, SqliteTransaction transaction, string sql, params string[] noms)
@@ -1243,7 +1282,7 @@ public sealed partial class DepotMonde
         }
         commande.Parameters.AddWithValue("$limite", limite);
         var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
-        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif FROM journal {where} ORDER BY id DESC LIMIT $limite;";
+        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre FROM journal {where} ORDER BY id DESC LIMIT $limite;";
         return LireEvenements(commande);
     }
 
@@ -1252,7 +1291,7 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif FROM journal WHERE id = $id;";
+        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre FROM journal WHERE id = $id;";
         commande.Parameters.AddWithValue("$id", id);
         return LireEvenements(commande).FirstOrDefault();
     }
@@ -1264,7 +1303,8 @@ public sealed partial class DepotMonde
         while (l.Read())
         {
             resultat.Add(new EvenementJournal(l.GetInt64(1), (TypeEvenement)l.GetByte(2), l.GetInt32(3), l.GetInt32(4), l.GetString(5),
-                (Origine)l.GetByte(6)) { Id = l.GetInt64(0), CauseId = l.GetInt64(7), CommunauteId = l.GetInt32(8), AutreCommunauteId = l.GetInt32(9), Significatif = l.GetBoolean(10) });
+                (Origine)l.GetByte(6)) { Id = l.GetInt64(0), CauseId = l.GetInt64(7), CommunauteId = l.GetInt32(8), AutreCommunauteId = l.GetInt32(9), Significatif = l.GetBoolean(10),
+                Karma = l.GetDouble(11), KarmaAutre = l.GetDouble(12) });
         }
         return resultat;
     }

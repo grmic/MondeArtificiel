@@ -218,6 +218,32 @@ public sealed class Humain
     /// <summary>Quand elle a été enlevée.</summary>
     public long CaptifLe { get; set; }
 
+    /// <summary>
+    /// Karma : le regard de l'Entité sur ses actes, invisible aux humains. Monte quand il fait du bien, baisse quand il fait du
+    /// mal ; peut être négatif. Chaque changement est noté au journal avec l'acte qui l'a causé. Voir <see cref="Regard"/>.
+    /// </summary>
+    public double Karma { get; set; }
+
+    /// <summary>Croyance en l'invisible, de 0 à 100. Voir <see cref="Croyances"/>.</summary>
+    public double Croyance { get; set; }
+
+    /// <summary>Dernier signe de l'invisible qu'il a reçu ou cru recevoir (parole de l'Entité, vision) ; 0 : aucun.</summary>
+    public long CroyanceSigneLe { get; set; }
+
+    /// <summary>Croyance au dernier changement noté au journal (NaN : pas encore fixée depuis le chargement).</summary>
+    public double CroyanceNotee { get; set; } = double.NaN;
+
+    /// <summary>
+    /// Ce qui a le plus fait monter sa croyance depuis la dernière note (en mots, sa force, l'événement en cause), et ce qui
+    /// l'a le plus fait baisser.
+    /// </summary>
+    internal string? CroyanceRaison { get; set; }
+    internal double CroyancePoussee { get; set; }
+    internal long CroyanceCause { get; set; }
+    internal string? CroyanceRaisonBaisse { get; set; }
+    internal double CroyanceBaisse { get; set; }
+    internal long CroyanceCauseBaisse { get; set; }
+
     /// <summary>Fin de la maladie en secondes du monde (0 si en bonne santé).</summary>
     public long MaladeJusqua { get; set; }
 

@@ -87,6 +87,12 @@ public sealed class ServeurTests(UsineTest usine) : IClassFixture<UsineTest>
         Assert.Empty(trouves);
         var tous = await connexion.InvokeAsync<List<TrouveLu>>("ChercherHumains", new { texte = "", communaute = 0, seuls = false, adultes = true, sexe = "femme", pres = 1 });
         Assert.InRange(tous.Count, 1, 40);
+        // Recherche par karma : au départ, tous sont neutres (0) ; une borne hors d'atteinte ne trouve personne.
+        var neutres = await connexion.InvokeAsync<List<TrouveLu>>("ChercherHumains",
+            new { texte = "", communaute = 0, seuls = false, adultes = true, sexe = "femme", pres = 1, karmaMin = -3.0, karmaMax = 3.0 });
+        Assert.Equal(tous.Count, neutres.Count);
+        Assert.Empty(await connexion.InvokeAsync<List<TrouveLu>>("ChercherHumains",
+            new { texte = "", communaute = 0, seuls = false, adultes = false, sexe = (string?)null, pres = 0, karmaMin = 1e9, karmaMax = (double?)null }));
 
         foreach (var demande in new object[]
                  {

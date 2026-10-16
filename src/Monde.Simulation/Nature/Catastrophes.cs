@@ -549,6 +549,10 @@ public sealed partial class Catastrophes
         h.Peur = Math.Min(100, Math.Max(h.Peur, gain) + 0.2 * Math.Min(h.Peur, gain));
         if (h.Peur >= avant + 1 || h.PeurEvenementId == 0)
         {
+            // Ce qui terrifie et dépasse l'entendement fait chercher une main derrière le monde (Norenzayan et Hansen, 2006).
+            if (h.PeurEvenementId != c.Id)
+                Croyances.Ajouter(h, Math.Min(6, gain / 15) * (0.3 + h.Personnalite.Transcendance), $"{TypesCatastrophe.Nom(c.Type)} l'a effrayé{(h.Sexe == Sexe.Femme ? "e" : "")}",
+                    c.Id, maintenant);
             h.PeurEvenementId = c.Id;
             h.PeurType = c.Type;
         }

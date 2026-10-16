@@ -190,7 +190,7 @@ public sealed partial class Comportement
         var hors = infidele ? " (hors de leur couple)" : "";
         // Un penchant inspiré ou un ordre de l'Entité y a mené : il en est la cause.
         var accouplement = Noter(maintenant, TypeEvenement.Accouplement, femme, homme, $"{femme.Nom} et {homme.Nom} s'accouplent{hors}.",
-            CauseEntite(a, b, maintenant));
+            CauseEntite(a, b, maintenant), karma: PointsInfidelite(femme, homme, tous), karmaAutre: PointsInfidelite(homme, femme, tous));
         if (infidele)
         {
             Remords(a, b, accouplement, tous, maintenant);
@@ -445,7 +445,7 @@ public sealed partial class Comportement
             {
                 var id = Noter(maintenant, TypeEvenement.Entraide, choisie, b,
                     $"{choisie.Nom} prend {b.Nom} ({AgeEnMots(b, maintenant)}){(morte is null ? "" : $", qui a perdu sa mère {morte.Nom},")} et l'allaite comme son enfant.",
-                    morte?.MortEvenementId ?? 0, significatif: true);
+                    morte?.MortEvenementId ?? 0, significatif: true, karma: Regard.Allaiter);
                 Jardin.Confier(choisie, TypeIntime.Intention, b.Id, $"Je nourrirai {b.Nom} de mon lait, comme mon enfant.",
                     40 + 40 * choisie.Personnalite.Moral.Compassion, id, maintenant, cle);
             }
@@ -457,7 +457,7 @@ public sealed partial class Comportement
         {
             var id = Noter(maintenant, TypeEvenement.Entraide, g, b,
                 $"Faute de lait, {g.Nom} porte {b.Nom} ({AgeEnMots(b, maintenant)}) et {(b.Sexe == Sexe.Femme ? "la" : "le")} nourrit de bouchées mâchées.",
-                morte?.MortEvenementId ?? 0, significatif: true);
+                morte?.MortEvenementId ?? 0, significatif: true, karma: Regard.NourrirSansLait);
             Jardin.Confier(g, TypeIntime.Intention, b.Id, $"{b.Nom} n'a plus de mère : c'est moi qui le nourrirai.",
                 40 + 40 * g.Personnalite.Moral.Compassion, id, maintenant, cle);
         }

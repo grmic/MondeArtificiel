@@ -23,6 +23,18 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 16 (avant les suites des catastrophes).</summary>
     /// <summary>Ramène un fichier au schéma 18 (avant les savoirs, les objets, les feux et les huttes).</summary>
     /// <summary>Ramène un fichier au schéma 20 (avant les paroles et les penchants de l'Entité).</summary>
+    /// <summary>Ramène un fichier au schéma 22 (avant le karma et la croyance en l'invisible).</summary>
+    internal const string RetourVersion22 = """
+        ALTER TABLE humains DROP COLUMN karma;
+        ALTER TABLE humains DROP COLUMN croyance;
+        ALTER TABLE humains DROP COLUMN croyance_signe;
+        ALTER TABLE humains DROP COLUMN croyance_notee;
+        ALTER TABLE journal DROP COLUMN karma;
+        ALTER TABLE journal DROP COLUMN karma_autre;
+        ALTER TABLE liens DROP COLUMN bienfait;
+        PRAGMA user_version = 22;
+        """;
+
     internal const string RetourVersion21 = """
         ALTER TABLE humains DROP COLUMN captif_de;
         ALTER TABLE humains DROP COLUMN captif_le;

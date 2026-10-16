@@ -7,8 +7,9 @@ namespace Monde.Serveur;
 /// <summary>Un événement du journal tel qu'envoyé au navigateur.</summary>
 /// <param name="Cause">Numéro de l'événement qui l'a provoqué (0 : aucune cause notée).</param>
 /// <param name="Significatif">Un tournant (projet de guerre, renoncement, raid, paix, catastrophe…).</param>
+/// <param name="Karma">Karma gagné ou perdu par l'humain par cet acte (regard de l'Entité) ; <paramref name="KarmaAutre"/> : par l'autre.</param>
 public sealed record EvenementDto(long Id, long Secondes, string Date, string Type, int Humain, int Autre, string Texte, string Origine,
-    long Cause, int Communaute, int AutreCommunaute, bool Significatif)
+    long Cause, int Communaute, int AutreCommunaute, bool Significatif, double Karma = 0, double KarmaAutre = 0)
 {
     /// <summary>Clés des types, dans l'ordre de l'énumération (le navigateur filtre avec ces clés).</summary>
     public static readonly IReadOnlyDictionary<TypeEvenement, string> Cles = new Dictionary<TypeEvenement, string>
@@ -39,12 +40,14 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Entraide] = "entraide",
         [TypeEvenement.Vol] = "vol",
         [TypeEvenement.Parole] = "parole",
+        [TypeEvenement.Croyance] = "croyance",
     };
 
 
     public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, Calendrier.Decomposer(e.Secondes).ToString(),
         Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, e.Texte,
-        e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId, e.Significatif);
+        e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId, e.Significatif,
+        e.Karma, e.KarmaAutre);
 
     /// <summary>Traduit les clés reçues ; une clé inconnue rend la demande invalide (null).</summary>
     public static List<TypeEvenement>? TypesDepuis(IEnumerable<string>? cles)
@@ -107,6 +110,12 @@ public sealed record ExclusionDto(string Type, int Par, string NomPar, string Le
 public sealed record AttraitsDto(int Beaute, int Attractivite, string Orientation, int VersHommes, int VersFemmes, string? Conscience,
     string Ideal, IReadOnlyList<ExclusionDto> Exclusions, bool Impubere);
 
+/// <summary>
+/// Le regard de l'Entité, que l'humain ignore : son karma et sa croyance en l'invisible (0 à 100), en chiffres et en mots,
+/// et le dernier signe de l'invisible qu'il a reçu (null : aucun).
+/// </summary>
+public sealed record RegardDto(double Karma, string KarmaMots, int Croyance, string CroyanceMots, string? DernierSigne);
+
 /// <summary>Fiche complète d'un humain : état, caractère, intelligence, humeur, liens, mémoire, pensées et histoire.</summary>
 public sealed record FicheDto(
     HumainDto Humain,
@@ -127,7 +136,8 @@ public sealed record FicheDto(
     IReadOnlyList<TraitDto> Morale,
     IReadOnlyList<string> Portrait,
     SavoirsDto Savoirs,
-    IReadOnlyList<ParoleRecueDto> Paroles)
+    IReadOnlyList<ParoleRecueDto> Paroles,
+    RegardDto Regard)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -219,7 +229,9 @@ public sealed record FicheDto(
             ],
             Decrire(h, maintenant),
             SavoirsDto.Depuis(h, humains, monde.Flore),
-            ParolesEntite.Recues(h, humains, service, maintenant));
+            ParolesEntite.Recues(h, humains, service, maintenant),
+            new RegardDto(Math.Round(h.Karma, 1), Simulation.Humains.Regard.Dire(h.Karma), (int)Math.Round(h.Croyance), Croyances.Dire(h.Croyance),
+                h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null));
     }
 
     /// <summary>Le caractère en quelques phrases : style d'attachement, psychopathie (adulte), morale dominante.</summary>
@@ -391,7 +403,8 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     int Faim, int Reserves, IReadOnlyList<RelationDto> Relations, string Usage, string? NomPropre, string? Sens,
     IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire,
     string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet,
-    string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles, string? Morale, IReadOnlyList<string> Savoirs)
+    string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles, string? Morale, IReadOnlyList<string> Savoirs,
+    double? Karma = null, int? Croyance = null)
 {
     /// <summary>
     /// Morale du groupe en mots : la moyenne des fondements de ses adultes, et ce qui y pèse le plus.
@@ -550,7 +563,10 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                             .Select(e => new ExileDto(m.Id, m.Nom, e.Raison, e.Jusqua == 0 ? null : Calendrier.Decomposer(e.Jusqua).ToString(), e.EvenementId)))
                         .ToList(),
                     DireMorale(adultes),
-                    Decouvertes.DeCommunaute(membres));
+                    Decouvertes.DeCommunaute(membres),
+                    // Moyennes des adultes : le karma (regard de l'Entité) et la croyance en l'invisible.
+                    adultes.Count == 0 ? null : Math.Round(adultes.Average(m => m.Karma), 1),
+                    adultes.Count == 0 ? null : (int)Math.Round(adultes.Average(m => m.Croyance)));
             }).ToList();
     }
 }

@@ -11,7 +11,8 @@ namespace Monde.Simulation.Humains;
 /// <param name="Derniere">Dernière journée passée ensemble.</param>
 /// <param name="Amis">Vrai une fois l'amitié née (affection ≥ 40), jusqu'à ce qu'elle retombe sous 20.</param>
 /// <param name="Rivaux">Vrai une fois l'hostilité née (affection ≤ −30), jusqu'à ce qu'elle remonte au-dessus de −10.</param>
-public sealed record Lien(int Id, double Familiarite, double Affection, long Derniere, bool Amis = false, bool Rivaux = false);
+/// <param name="Bienfait">Dernier geste de bonté de l'humain envers l'autre qui lui a valu du karma (0 : aucun). Voir <see cref="Regard"/>.</param>
+public sealed record Lien(int Id, double Familiarite, double Affection, long Derniere, bool Amis = false, bool Rivaux = false, long Bienfait = 0);
 
 /// <summary>
 /// Un groupe d'humains liés entre eux qui vivent ensemble. Il n'est pas décrété : il est constaté
@@ -203,12 +204,12 @@ public sealed partial class VieSociale(Alea alea)
     /// précisée, l'événement appartient à la chronologie de la communauté de <paramref name="h"/>.
     /// </summary>
     private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0,
-        int communaute = -1, int autreCommunaute = 0, bool significatif = false)
+        int communaute = -1, int autreCommunaute = 0, bool significatif = false, double karma = 0)
     {
         var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte)
         {
             Id = Numeros.Suivant(), CauseId = cause, CommunauteId = communaute >= 0 ? communaute : h.CommunauteId,
-            AutreCommunauteId = autreCommunaute, Significatif = significatif,
+            AutreCommunauteId = autreCommunaute, Significatif = significatif, Karma = Regard.Juger(h, karma, maintenant, autre),
         };
         Journal.Add(e);
         return e.Id;
@@ -262,7 +263,7 @@ public sealed partial class VieSociale(Alea alea)
         {
             var d = humains[donneur - 1];
             var r = humains[receveur - 1];
-            Noter(maintenant, TypeEvenement.Partage, d, r, $"{d.Nom} partage sa nourriture avec {r.Nom}.");
+            Noter(maintenant, TypeEvenement.Partage, d, r, $"{d.Nom} partage sa nourriture avec {r.Nom}.", karma: Regard.Partage);
         }
         PartagesDuJour.Clear();
     }
@@ -374,11 +375,12 @@ public sealed partial class VieSociale(Alea alea)
         }
     }
 
+    /// <summary>Pose un lien vu de <paramref name="h"/> : le dernier bienfait reste le sien (il n'est pas copié de l'autre côté).</summary>
     private static void Poser(Humain h, Lien lien)
     {
         var i = h.Liens.FindIndex(l => l.Id == lien.Id);
-        if (i >= 0) h.Liens[i] = lien;
-        else h.Liens.Add(lien);
+        if (i >= 0) h.Liens[i] = lien with { Bienfait = h.Liens[i].Bienfait };
+        else h.Liens.Add(lien with { Bienfait = 0 });
     }
 
     /// <summary>Parent et enfant, ou frères et sœurs (même mère).</summary>
@@ -545,6 +547,8 @@ public sealed partial class VieSociale(Alea alea)
             if (k >= 25)
             {
                 Noter(maintenant, TypeEvenement.Humeur, h, mort, $"{h.Nom} pleure {Parente(h, mort)}.", mort.MortEvenementId);
+                // Penser à la mort pousse à croire qu'il y a autre chose (Jong et al., 2012) : d'autant plus que le deuil est lourd.
+                Croyances.Ajouter(h, k / 25 * (0.3 + p.Transcendance), $"la mort de {Parente(h, mort)}", mort.MortEvenementId, maintenant);
                 Jardin.Pleurer(h, mort, Parente(h, mort), k, maintenant);
             }
             // La perte d'un très proche peut changer durablement (Jeronimus et al., 2014).
@@ -794,7 +798,7 @@ public sealed partial class VieSociale(Alea alea)
             {
                 id = Noter(maintenant, TypeEvenement.Conflit, h, null,
                     $"Pour les siens de la {Minuscule(quittee.Nom)}, {h.Nom} est {(h.Sexe == Sexe.Femme ? "une traîtresse" : "un traître")} : {(h.Sexe == Sexe.Femme ? "elle" : "il")} est passé{E(h)} chez la {Minuscule(rejointe.Nom)}, leur rivale.",
-                    arrivee, communaute: quittee.Id, autreCommunaute: rejointe.Id);
+                    arrivee, communaute: quittee.Id, autreCommunaute: rejointe.Id, karma: Regard.Trahir);
             }
             AjouterGrief(m, new Grief(h.Id, MotifGrief.Trahison, Math.Min(100, colere), Math.Min(100, colere), id));
             ChangerAffection(m, h, -colere / 4, maintenant);

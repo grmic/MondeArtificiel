@@ -804,7 +804,7 @@ public sealed partial class Comportement
             o.Activite = Activite.Soigner;
             var plante = Flore.Get(s.Espece);
             Noter(_maintenant, TypeEvenement.Entraide, o, h,
-                $"{o.Nom} donne à {h.Nom} {plante.Nom}, qu'{Il(o)} croit bonne contre {Physique.Mal(mal)}.");
+                $"{o.Nom} donne à {h.Nom} {plante.Nom}, qu'{Il(o)} croit bonne contre {Physique.Mal(mal)}.", karma: Regard.Remede);
             PrendreRemede(h, s.Espece, s.Geste, mal, o.Id, tous, OrigineSavoir.Imitation);
             return true;
         }
@@ -879,6 +879,7 @@ public sealed partial class Comportement
                 $"{h.Nom} mange {espece.Nom} : le monde se met à onduler, {Il(h)} voit des formes et entend des voix.");
             Jardin.Confier(h, TypeIntime.Croyance, 0, "J'ai vu ce que les autres ne voient pas. Il y a autre chose derrière le monde.",
                 40 + 40 * h.Personnalite.Transcendance, id, _maintenant, $"visions:{espece.Numero}");
+            Croyances.Ajouter(h, 8 * (0.5 + h.Personnalite.Transcendance), $"{espece.Nom} lui a donné des visions", id, _maintenant, signe: true);
             Retenir(h, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Visions, espece.Numero, Symptome.Aucun, origine, 0, tous);
         }
         // Les vertus agissent sur la maladie réelle, que l'humain le sache ou non.
