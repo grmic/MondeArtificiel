@@ -49,6 +49,8 @@ public enum TypeEvenement : byte
     Croyance = 26,
     /// <summary>Guérisseurs reconnus ou désavoués, transes, charlatans démasqués, malédictions : la médecine et ses croyances.</summary>
     Medecine = 27,
+    /// <summary>Chants, rythmes, danses, fêtes, lamentations, peintures sur la roche : les arts.</summary>
+    Art = 28,
 }
 
 /// <summary>

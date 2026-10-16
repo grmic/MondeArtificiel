@@ -20,14 +20,28 @@ public sealed class Installations
     public List<Foyer> Foyers { get; } = [];
     public List<Hutte> Huttes { get; } = [];
     public List<Decouverte> Decouvertes { get; } = [];
+    /// <summary>Images peintes sur la roche : elles restent.</summary>
+    public List<Oeuvre> Oeuvres { get; } = [];
     private int _prochainId = 1;
+    private int _prochaineOeuvre = 1;
 
-    public Installations(IEnumerable<Foyer>? foyers = null, IEnumerable<Hutte>? huttes = null, IEnumerable<Decouverte>? decouvertes = null)
+    public Installations(IEnumerable<Foyer>? foyers = null, IEnumerable<Hutte>? huttes = null, IEnumerable<Decouverte>? decouvertes = null,
+        IEnumerable<Oeuvre>? oeuvres = null)
     {
         Foyers.AddRange(foyers ?? []);
         Huttes.AddRange(huttes ?? []);
         Decouvertes.AddRange(decouvertes ?? []);
+        Oeuvres.AddRange(oeuvres ?? []);
         _prochainId = 1 + Math.Max(Foyers.Select(f => f.Id).DefaultIfEmpty(0).Max(), Huttes.Select(h => h.Id).DefaultIfEmpty(0).Max());
+        _prochaineOeuvre = 1 + Oeuvres.Select(o => o.Id).DefaultIfEmpty(0).Max();
+    }
+
+    /// <summary>Ajoute une image sur la paroi de cette case.</summary>
+    public Oeuvre Peindre(int x, int y, int auteurId, long maintenant, MotifPeint motif, string description, long evenementId, int communauteId)
+    {
+        var o = new Oeuvre(_prochaineOeuvre++, x, y, auteurId, maintenant, motif, description, evenementId, communauteId);
+        Oeuvres.Add(o);
+        return o;
     }
 
     public Foyer? FoyerEn(int x, int y)
@@ -101,5 +115,5 @@ public sealed class Installations
     /// <summary>Éteint les feux d'une case (pluie torrentielle, eau qui monte).</summary>
     public void Eteindre(int x, int y) => Foyers.RemoveAll(f => f.X == x && f.Y == y);
 
-    public Installations Copier() => new(Foyers, Huttes, Decouvertes);
+    public Installations Copier() => new(Foyers, Huttes, Decouvertes, Oeuvres);
 }

@@ -278,6 +278,7 @@ public sealed class MedecineTests
             }
 
             // Un monde de la version 23 se relit, sans rien de tout cela.
+            DepotMondeTests.ExecuterSql(fichier, DepotMondeTests.RetourVersion24);
             DepotMondeTests.ExecuterSql(fichier, DepotMondeTests.RetourVersion23);
             var v23 = new DepotMonde(fichier).Charger()!;
             Assert.All(v23.Humains!, x => Assert.Equal((0, 0, 0L, 0L), (x.Soignes, x.AccouchementsAides, x.PlaieLe, x.MauditLe)));

@@ -62,7 +62,7 @@ public sealed partial class Comportement
     private ContexteGeste Contexte(Humain h, Savoir? s = null) =>
         new(FeuIci(h), EauDouceAPortee(h.X, h.Y), Sec(h), carte.BiomeEn(h.X, h.Y), AdressePour(h, s), Ingeniosite(h),
             s is null ? 0 : h.Savoirs.Where(x => x.Effet == Effet.Flamme && x.Geste == s.Geste && x.A == s.A && x.B == s.B).Sum(x => x.Succes),
-            h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe));
+            h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe), Humains.Arts.Aptitude(h));
 
     private bool VolcanProche(int x, int y) =>
         Catastrophes?.Geologie.Volcans.Any(v => Distance(v.X, v.Y, x, y) <= 25) == true;
@@ -173,7 +173,10 @@ public sealed partial class Comportement
         // le reste n'est remarqué que par les curieux. Un geste qu'on sait déjà faire, lui, est reconnu.
         if (origine == OrigineSavoir.Essai && !h.Savoirs.Exists(s => s.Geste == g && s.A == a && s.B == b && s.Effet == r.Effet))
         {
-            var remarque = Pertinent(h, r.Effet) ? 0.5 + 0.5 * Ingeniosite(h) : 0.15 + 0.45 * h.Personnalite.Ouverture;
+            // Une cadence, une couleur : ce sont l'oreille et l'œil qui la remarquent.
+            var remarque = Pertinent(h, r.Effet) ? 0.5 + 0.5 * Ingeniosite(h)
+                : r.Effet is Effet.Rythme or Effet.Ocre ? 0.1 + 0.3 * h.Personnalite.Ouverture + 0.4 * Humains.Arts.Aptitude(h)
+                : 0.15 + 0.45 * h.Personnalite.Ouverture;
             if (alea.Reel() >= remarque) return;
         }
         var evenement = Retenir(h, g, a, b, r.Effet, 0, Symptome.Aucun, origine, maitre?.Id ?? 0, tous);
@@ -328,7 +331,8 @@ public sealed partial class Comportement
             _ => $"Une intuition soufflée par l'Entité a guidé la main de {h.Nom}.",
         };
         // Un savoir banal (le feu chauffe, le bois frotté tiédit) n'est pas noté chez chacun : seulement la première fois au monde.
-        var banal = e is Effet.Chaleur or Effet.Tiedeur || origine == OrigineSavoir.Imitation && e is Effet.Etincelle;
+        // Un chant, un rythme, une danse, la parure d'ocre appris des autres : cela se fait à chaque veillée.
+        var banal = e is Effet.Chaleur or Effet.Tiedeur || origine == OrigineSavoir.Imitation && e is Effet.Etincelle or Effet.Chant or Effet.Rythme or Effet.Danse or Effet.Ocre;
         long id = 0;
         if (premier || retrouve || !banal)
         {
@@ -379,6 +383,11 @@ public sealed partial class Comportement
             Effet.Rondelle => $"{h.Nom} entaille {Physique.Nom(s.A)} à grands coups : une tranche ronde s'en détache.",
             Effet.Pansement when s.A == Matiere.Eau => $"{h.Nom} a lavé une plaie à l'eau : elle s'est refermée sans pourrir.",
             Effet.Pansement => $"{h.Nom} a pressé une plaie et l'a couverte de feuilles : elle s'est refermée sans pourrir.",
+            Effet.Rythme => $"{h.Nom} frappe {Physique.Nom(s.A)} contre {Physique.Nom(s.B)}, encore et encore : les coups prennent une cadence qui lui fait hocher la tête.",
+            Effet.Ocre => $"{h.Nom} écrase de la terre rouge et s'en frotte la peau : elle reste rouge, et les autres {Il(h) switch { "elle" => "la", _ => "le" }} regardent.",
+            Effet.Chant => $"{h.Nom} laisse sa voix monter et descendre : c'est un chant.",
+            Effet.Danse => $"{h.Nom} se met à bouger en cadence.",
+            Effet.Peinture => $"{h.Nom} pose de l'ocre sur la roche : la marque reste.",
             _ => $"{h.Nom} essaie quelque chose de nouveau.",
         };
     }
@@ -388,6 +397,7 @@ public sealed partial class Comportement
         Effet.Chaleur => $"{h.Nom}, transi, s'approche des flammes de l'incendie et sent leur chaleur.",
         Effet.Brandon => $"{h.Nom} ramasse une branche qui brûle au bord de l'incendie.",
         Effet.Cuisson => $"{h.Nom} trouve une bête surprise par l'incendie : sa chair grillée est tendre.",
+        Effet.Peinture => $"{h.Nom} contemple une image d'ocre sur la roche, et comprend qu'on peut en faire autant.",
         _ => $"{h.Nom} observe ce qui se passe.",
     };
 
@@ -406,6 +416,11 @@ public sealed partial class Comportement
         Effet.Flottaison => "L'eau ne me barre plus la route. Jusqu'où peut-on aller ainsi ?",
         Effet.RouleSurAxe => "Ce qui tourne porte ce qui pèse. Que pourrait-on faire tourner encore ?",
         Effet.Pansement => "Pourquoi une plaie laissée sale pourrit-elle, et une plaie soignée non ?",
+        Effet.Rythme => "Pourquoi ces coups en cadence me donnent-ils envie de bouger ?",
+        Effet.Chant => "D'où vient ce chant qui sort de moi ? Il dit ce que je ne sais pas dire.",
+        Effet.Danse => "Quand nous bougeons ensemble, je ne suis plus seul. Pourquoi ?",
+        Effet.Ocre => "Pourquoi le rouge attire-t-il tant les regards ?",
+        Effet.Peinture => "L'image restera quand je ne serai plus là. Qui la verra ?",
         _ => "Que pourrais-je faire d'autre avec cela ?",
     };
 

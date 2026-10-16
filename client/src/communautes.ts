@@ -50,6 +50,10 @@ interface Communaute {
   croyance: number | null;
   /** Guérisseurs, chamans et charlatans de la communauté. */
   soignants: { id: number; nom: string; role: string; gueris: number; perdus: number }[] | null;
+  /** Style de ses arts (chants, rythmes, danses, parures, peintures), né du caractère de ses membres. */
+  style: string | null;
+  /** Images peintes sur la roche par ses membres, les plus récentes d'abord. */
+  oeuvres: { id: number; auteurId: number; auteur: string; le: string; description: string; evenementId: number }[] | null;
 }
 
 /** Une guerre en préparation : qui la veut, contre qui, pourquoi, et les alliés sollicités. */
@@ -287,6 +291,19 @@ export class PanneauCommunautes {
           b.type = "button";
           b.addEventListener("click", () => this.ouvrirFiche(x.id));
           p.append(b, ` (${x.role} ; ${x.gueris} guéris, ${x.perdus} perdus)`);
+        });
+        p.append(".");
+        bloc.append(p);
+      }
+      if (c.style) bloc.append(el("p", "usage", `Arts : ${c.style}`));
+      if (c.oeuvres && c.oeuvres.length > 0) {
+        const p = el("p", "discret", "Peint sur la roche : ");
+        c.oeuvres.forEach((o, i) => {
+          if (i > 0) p.append(" ; ");
+          const b = el("button", "lien", o.auteur);
+          b.type = "button";
+          b.addEventListener("click", () => this.ouvrirFiche(o.auteurId));
+          p.append(o.description, " (", b, `, ${o.le})`);
         });
         p.append(".");
         bloc.append(p);

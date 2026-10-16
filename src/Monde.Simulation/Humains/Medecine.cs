@@ -311,6 +311,13 @@ public sealed partial class Comportement
         var vision = s.Savoirs.Where(x => x.Effet == Effet.Visions && especes.Any(e => e.Numero == x.Espece)).Select(x => Flore.Get(x.Espece)).FirstOrDefault();
         string moyen;
         if (vision is not null) moyen = $"après avoir mâché {vision.Nom}";
+        // Le rythme sans fin et la danse jusqu'à l'épuisement mènent aussi à la transe (Neher, 1962 ; Katz, 1982, chez les San).
+        else if (Humains.Arts.Connait(s, Effet.Rythme)) moyen = "au son d'un rythme frappé sans fin";
+        else if (Humains.Arts.Connait(s, Effet.Danse))
+        {
+            moyen = "en dansant jusqu'à l'épuisement";
+            s.Fatigue = Math.Min(100, s.Fatigue + 30);
+        }
         else if (s.Faim >= 40)
         {
             moyen = "après des jours de jeûne";

@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 24;
+    public const int VersionSchema = 25;
 
     private readonly string _connexion;
 
@@ -561,6 +561,8 @@ public sealed partial class DepotMonde
             if (!humains.Contains("maudit_force")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN maudit_force REAL NOT NULL DEFAULT 0;");
             if (!humains.Contains("maudit_evenement")) Executer(connexion, transaction, "ALTER TABLE humains ADD COLUMN maudit_evenement INTEGER NOT NULL DEFAULT 0;");
         }
+        // Version 25 : arts (images peintes sur la roche).
+        if (actuelle < 25) MigrerVersion25(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -735,7 +737,8 @@ public sealed partial class DepotMonde
             LireSanteNature(commande, humains);
             LireSavoirs(commande, humains);
         }
-        var (foyers, huttes, decouvertes) = LireInstallations(commande);
+        var (foyers, huttes, decouvertes, oeuvres) = LireInstallations(commande);
+        if (oeuvres.Count > 0) etat = etat with { Oeuvres = oeuvres };
         if (foyers.Count > 0) etat = etat with { Foyers = foyers };
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };
         if (decouvertes.Count > 0) etat = etat with { Decouvertes = decouvertes };
@@ -1101,7 +1104,7 @@ public sealed partial class DepotMonde
             EnregistrerSanteNature(connexion, transaction, tous);
             EnregistrerSavoirs(connexion, transaction, tous);
         }
-        if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null) EnregistrerInstallations(connexion, transaction, etat);
+        if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Catastrophes is { Count: > 0 } catastrophes) EnregistrerCatastrophes(connexion, transaction, catastrophes);
         if (etat.Pathogenes is { Count: > 0 } pathogenes) EnregistrerPathogenes(connexion, transaction, pathogenes);
         if (etat.Communautes is { } communautes) EnregistrerCommunautes(connexion, transaction, communautes);

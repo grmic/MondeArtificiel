@@ -61,6 +61,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Première fois que chaque effet a été obtenu dans le monde.</summary>
     public IReadOnlyList<Decouverte>? Decouvertes { get; init; }
+
+    /// <summary>Images peintes sur la roche.</summary>
+    public IReadOnlyList<Oeuvre>? Oeuvres { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -147,7 +150,7 @@ public sealed class MondeSimule
         _social.ChargerRelations(etat.Relations ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
         Flore = new Flore(etat.Graine);
-        _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes);
+        _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes, etat.Oeuvres);
         _comportement = new Comportement(carte, _ecosysteme, _alea)
         {
             Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations,
@@ -230,6 +233,7 @@ public sealed class MondeSimule
                     Foyers = _installations.Foyers.ToList(),
                     Huttes = _installations.Huttes.ToList(),
                     Decouvertes = _installations.Decouvertes.ToList(),
+                    Oeuvres = _installations.Oeuvres.ToList(),
                 };
             }
         }
@@ -632,6 +636,7 @@ public sealed class MondeSimule
             _social.Humeurs(_humains, _secondes);
             _comportement.Croire(_humains, _secondes);
             _comportement.Soins(_humains, _secondes);
+            _comportement.Arts(_humains, _secondes);
             if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
             {
                 _social.Regrouper(_humains, _communautes, _secondes, _noms);
@@ -894,5 +899,11 @@ public sealed class MondeSimule
     public (List<Foyer> Foyers, List<Hutte> Huttes, List<Decouverte> Decouvertes) Installations()
     {
         lock (_verrou) return (_installations.Foyers.ToList(), _installations.Huttes.ToList(), _installations.Decouvertes.ToList());
+    }
+
+    /// <summary>Images peintes sur la roche (copie).</summary>
+    public List<Oeuvre> Oeuvres()
+    {
+        lock (_verrou) return _installations.Oeuvres.ToList();
     }
 }

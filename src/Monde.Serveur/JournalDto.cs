@@ -42,6 +42,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Parole] = "parole",
         [TypeEvenement.Croyance] = "croyance",
         [TypeEvenement.Medecine] = "medecine",
+        [TypeEvenement.Art] = "art",
     };
 
 
@@ -126,6 +127,9 @@ public sealed record MedecineDto(int Soignes, int Gueris, int Perdus, int Accouc
 
 /// <summary>Un soignant d'une communauté : guérisseur, chaman ou charlatan.</summary>
 public sealed record SoignantDto(int Id, string Nom, string Role, int Gueris, int Perdus);
+
+/// <summary>Une image peinte sur la roche par un membre de la communauté.</summary>
+public sealed record OeuvreDto(int Id, int AuteurId, string Auteur, string Le, string Description, long EvenementId);
 
 /// <summary>Fiche complète d'un humain : état, caractère, intelligence, humeur, liens, mémoire, pensées et histoire.</summary>
 public sealed record FicheDto(
@@ -434,7 +438,8 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     IReadOnlyList<NomDto> Noms, IReadOnlyList<string> Mots, int Terres, IReadOnlyList<string> Histoire,
     string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet,
     string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles, string? Morale, IReadOnlyList<string> Savoirs,
-    double? Karma = null, int? Croyance = null, IReadOnlyList<SoignantDto>? Soignants = null)
+    double? Karma = null, int? Croyance = null, IReadOnlyList<SoignantDto>? Soignants = null, string? Style = null,
+    IReadOnlyList<OeuvreDto>? Oeuvres = null)
 {
     /// <summary>
     /// Morale du groupe en mots : la moyenne des fondements de ses adultes, et ce qui y pèse le plus.
@@ -533,6 +538,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
         var toutes = monde.Communautes();
         var relations = monde.Relations();
         var guerres = monde.Guerres();
+        var oeuvres = monde.Oeuvres().ToLookup(o => o.CommunauteId);
         return toutes
             .OrderBy(c => c.DisperseeLe is null ? 0 : 1).ThenByDescending(c => parCommunaute[c.Id].Count()).ThenBy(c => c.Id)
             .Select(c =>
@@ -598,7 +604,11 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     adultes.Count == 0 ? null : Math.Round(adultes.Average(m => m.Karma), 1),
                     adultes.Count == 0 ? null : (int)Math.Round(adultes.Average(m => m.Croyance)),
                     adultes.Where(m => Simulation.Humains.Medecine.Role(m) is not null)
-                        .Select(m => new SoignantDto(m.Id, m.Nom, Simulation.Humains.Medecine.Role(m)!, m.Gueris, m.Perdus)).ToList());
+                        .Select(m => new SoignantDto(m.Id, m.Nom, Simulation.Humains.Medecine.Role(m)!, m.Gueris, m.Perdus)).ToList(),
+                    Simulation.Humains.Arts.Style(membres.Where(m => !m.EstBebe(maintenant)).ToList(), oeuvres[c.Id]),
+                    oeuvres[c.Id].OrderByDescending(o => o.Le).Take(12)
+                        .Select(o => new OeuvreDto(o.Id, o.AuteurId, humains[o.AuteurId - 1].Nom, Calendrier.Decomposer(o.Le).ToString(), o.Description, o.EvenementId))
+                        .ToList());
             }).ToList();
     }
 }

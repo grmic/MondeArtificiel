@@ -109,7 +109,7 @@ public sealed partial class DepotMonde
             """);
     }
 
-    private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM impulsions;";
+    private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM impulsions; DELETE FROM oeuvres;";
 
     /// <summary>Nage, remède en cours, vêtement, savoirs et objets de chaque humain.</summary>
     private static void LireSavoirs(SqliteCommand commande, List<Humain> humains)
@@ -218,7 +218,25 @@ public sealed partial class DepotMonde
         }
     }
 
-    private static (List<Foyer>, List<Hutte>, List<Decouverte>) LireInstallations(SqliteCommand commande)
+    /// <summary>Migration vers la version 25 : images peintes sur la roche.</summary>
+    private static void MigrerVersion25(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        Executer(connexion, transaction, """
+            CREATE TABLE IF NOT EXISTS oeuvres (
+                id          INTEGER PRIMARY KEY,
+                x           INTEGER NOT NULL,
+                y           INTEGER NOT NULL,
+                auteur      INTEGER NOT NULL,
+                le          INTEGER NOT NULL,
+                motif       INTEGER NOT NULL,
+                description TEXT    NOT NULL,
+                evenement   INTEGER NOT NULL,
+                communaute  INTEGER NOT NULL
+            );
+            """);
+    }
+
+    private static (List<Foyer>, List<Hutte>, List<Decouverte>, List<Oeuvre>) LireInstallations(SqliteCommand commande)
     {
         var foyers = new List<Foyer>();
         commande.CommandText = "SELECT id, x, y, heures, allume_le, allumeur, evenement FROM foyers ORDER BY id;";
@@ -241,12 +259,22 @@ public sealed partial class DepotMonde
                 decouvertes.Add(new Decouverte((Effet)l.GetInt32(0), l.GetInt32(1), l.GetInt64(2), l.GetInt64(3), (OrigineSavoir)l.GetInt32(4), l.GetString(5)));
             }
         }
-        return (foyers, huttes, decouvertes);
+        var oeuvres = new List<Oeuvre>();
+        commande.CommandText = "SELECT id, x, y, auteur, le, motif, description, evenement, communaute FROM oeuvres ORDER BY id;";
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read())
+            {
+                oeuvres.Add(new Oeuvre(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetInt32(3), l.GetInt64(4), (MotifPeint)l.GetInt32(5), l.GetString(6),
+                    l.GetInt64(7), l.GetInt32(8)));
+            }
+        }
+        return (foyers, huttes, decouvertes, oeuvres);
     }
 
     private static void EnregistrerInstallations(SqliteConnection connexion, SqliteTransaction transaction, EtatMonde etat)
     {
-        Executer(connexion, transaction, "DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes;");
+        Executer(connexion, transaction, "DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM oeuvres;");
         using var foyers = Preparer(connexion, transaction,
             "INSERT INTO foyers (id, x, y, heures, allume_le, allumeur, evenement) VALUES ($i, $x, $y, $h, $a, $p, $e);",
             "$i", "$x", "$y", "$h", "$a", "$p", "$e");
@@ -264,5 +292,10 @@ public sealed partial class DepotMonde
             var d = liste[r];
             Lancer(decouvertes, r, (int)d.Effet, d.HumainId, d.Le, d.EvenementId, (int)d.Origine, d.Pieces);
         }
+        using var oeuvres = Preparer(connexion, transaction,
+            "INSERT INTO oeuvres (id, x, y, auteur, le, motif, description, evenement, communaute) VALUES ($i, $x, $y, $a, $l, $m, $d, $e, $c);",
+            "$i", "$x", "$y", "$a", "$l", "$m", "$d", "$e", "$c");
+        foreach (var o in etat.Oeuvres ?? [])
+            Lancer(oeuvres, o.Id, o.X, o.Y, o.AuteurId, o.Le, (int)o.Motif, o.Description, o.EvenementId, o.CommunauteId);
     }
 }

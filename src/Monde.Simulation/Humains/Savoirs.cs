@@ -39,6 +39,8 @@ public enum Matiere : byte
     Tronc = 16,
     /// <summary>Résine des conifères : chauffée, elle colle et durcit en refroidissant.</summary>
     Resine = 17,
+    /// <summary>Terre rouge riche en fer (ocre) : écrasée, elle colore la peau et la roche.</summary>
+    Ocre = 18,
 
     // Produits.
     Eclat = 20,
@@ -90,6 +92,12 @@ public enum Geste : byte
     Trancher = 15,
     /// <summary>Laver une plaie à l'eau, la presser et la couvrir de feuilles.</summary>
     Panser = 16,
+    /// <summary>Laisser la voix monter et descendre : chanter.</summary>
+    Chanter = 17,
+    /// <summary>Bouger le corps en cadence.</summary>
+    Danser = 18,
+    /// <summary>Poser de l'ocre sur une paroi de roche.</summary>
+    Peindre = 19,
 }
 
 /// <summary>Ce que l'humain constate après un geste.</summary>
@@ -157,6 +165,16 @@ public enum Effet : byte
     Flottaison = 31,
     /// <summary>Une plaie lavée ou couverte guérit mieux et pourrit moins.</summary>
     Pansement = 32,
+    /// <summary>Deux choses frappées en cadence font un rythme qui plaît.</summary>
+    Rythme = 33,
+    /// <summary>La voix qui monte et descend fait un chant.</summary>
+    Chant = 34,
+    /// <summary>Le corps qui bouge en cadence, avec d'autres : la danse.</summary>
+    Danse = 35,
+    /// <summary>L'ocre écrasée colore la peau : on s'en pare.</summary>
+    Ocre = 36,
+    /// <summary>L'ocre posée sur la roche y reste : une image.</summary>
+    Peinture = 37,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -216,8 +234,9 @@ public sealed record Objet(Matiere Matiere, double Qualite, double Usure, bool P
 /// <param name="Sec">Herbe et bois assez secs pour prendre feu (0 à 1).</param>
 /// <param name="FeuxReussis">Feux que celui qui le fait a déjà obtenus par ce geste : on refait bien mieux ce qu'on sait faire.</param>
 /// <param name="Coupe">Force à la coupe du meilleur outil qu'il a en main (voir <see cref="Lois.Coupe"/>).</param>
+/// <param name="Art">Aptitude artistique de celui qui fait le geste (0 à 1) : l'oreille, l'œil.</param>
 public readonly record struct ContexteGeste(bool FeuProche, bool EauProche, double Sec, Biome Biome, double Adresse, double Ingeniosite,
-    int FeuxReussis = 0, double Coupe = 0);
+    int FeuxReussis = 0, double Coupe = 0, double Art = 0);
 
 /// <summary>Résultat d'un geste : l'effet constaté, le produit éventuel et sa qualité.</summary>
 public readonly record struct Resultat(Effet Effet, Matiere Produit, double Qualite);
@@ -257,7 +276,7 @@ public static class Physique
             [Matiere.Feu, Matiere.Brandon, Matiere.Branche, Matiere.Galet]),
         new(Geste.Approcher, "approcher", "de", [Matiere.Aucune, Matiere.BoisSec, Matiere.Branche, Matiere.BatonPointu, Matiere.Carcasse, Matiere.Argile],
             [Matiere.Feu]),
-        new(Geste.SeCouvrir, "se couvrir de", null, [Matiere.Peau, Matiere.GrandesFeuilles, Matiere.HerbeSeche, Matiere.Fibres], []),
+        new(Geste.SeCouvrir, "se couvrir de", null, [Matiere.Peau, Matiere.GrandesFeuilles, Matiere.HerbeSeche, Matiere.Fibres, Matiere.Ocre], []),
         new(Geste.Remplir, "remplir", "de", [Matiere.Calebasse, Matiere.Peau, Matiere.Argile], [Matiere.Eau]),
         new(Geste.Fouir, "fouir la terre avec", null, [Matiere.Branche, Matiere.BoisSec, Matiere.BatonPointu, Matiere.Epieu, Matiere.Galet, Matiere.Eclat], []),
         new(Geste.Manger, "manger", null, [Matiere.Plante], []),
@@ -281,6 +300,9 @@ public static class Physique
     public static bool EstDure(Matiere m) => m is Matiere.Galet or Matiere.Silex or Matiere.Obsidienne;
     public static bool EstTranchante(Matiere m) => m is Matiere.Eclat or Matiere.Obsidienne;
     public static bool EstBois(Matiere m) => m is Matiere.BoisSec or Matiere.Branche;
+
+    /// <summary>Ce qui sonne quand on le frappe : bois, pierre, calebasse.</summary>
+    public static bool Sonore(Matiere m) => EstBois(m) || EstDure(m) || m is Matiere.Calebasse or Matiere.Tronc;
 
     /// <summary>Peut-on porter cette matière sur soi ?</summary>
     public static bool Portable(Matiere m) => m is not (Matiere.Aucune or Matiere.Eau or Matiere.Feu or Matiere.Carcasse or Matiere.Plante or Matiere.Argile
@@ -310,10 +332,16 @@ public static class Physique
                 {
                     var fine = a is Matiere.Silex or Matiere.Obsidienne || b is Matiere.Silex or Matiere.Obsidienne;
                     var p = fine ? 0.3 + 0.45 * h : 0.06 + 0.15 * h;
-                    if (!Chance(p)) return default;
-                    var qualite = Math.Clamp((fine ? 0.5 : 0.25) + 0.4 * h * alea.Reel() + (a == Matiere.Obsidienne || b == Matiere.Obsidienne ? 0.2 : 0), 0, 1);
-                    return new(Effet.Eclat, Matiere.Eclat, qualite);
+                    if (Chance(p))
+                    {
+                        var qualite = Math.Clamp((fine ? 0.5 : 0.25) + 0.4 * h * alea.Reel() + (a == Matiere.Obsidienne || b == Matiere.Obsidienne ? 0.2 : 0), 0, 1);
+                        return new(Effet.Eclat, Matiere.Eclat, qualite);
+                    }
                 }
+                // Deux choses dures frappées l'une contre l'autre, encore et encore : certains y entendent une cadence qui plaît,
+                // d'autant plus qu'ils ont l'oreille (les plus anciennes flûtes ont 40 000 ans, les percussions sans doute bien plus :
+                // Conard et al., 2009).
+                if (Sonore(a) && Sonore(b) && Chance(0.001 + 0.02 * c.Art * c.Art)) return new(Effet.Rythme, Matiere.Aucune, c.Art);
                 return default;
 
             case Geste.Frotter:
@@ -365,6 +393,8 @@ public static class Physique
                 {
                     Matiere.Peau => new(Effet.Couvert, Matiere.Aucune, 0.6),
                     Matiere.GrandesFeuilles => new(Effet.Couvert, Matiere.Aucune, 0.2),
+                    // L'ocre écrasée teint la peau de rouge (son usage remonte à 300 000 ans au moins : Watts et al., 2016).
+                    Matiere.Ocre => new(Effet.Ocre, Matiere.Aucune, 1),
                     _ => default,
                 };
 
@@ -464,6 +494,11 @@ public static class Physique
         Effet.RouleSurAxe => "faire tourner des rondelles autour d'un axe",
         Effet.Flottaison => "aller sur l'eau sur du bois lié",
         Effet.Pansement => "soigner une plaie",
+        Effet.Rythme => "frapper un rythme",
+        Effet.Chant => "chanter",
+        Effet.Danse => "danser",
+        Effet.Ocre => "se parer d'ocre",
+        Effet.Peinture => "peindre sur la roche",
         _ => "rien",
     };
 
@@ -501,6 +536,9 @@ public static class Physique
         Geste.Percer => "percer",
         Geste.Trancher => "trancher",
         Geste.Panser => "panser une plaie avec",
+        Geste.Chanter => "chanter",
+        Geste.Danser => "danser",
+        Geste.Peindre => "peindre avec",
         _ => "nager",
     };
 
@@ -529,6 +567,7 @@ public static class Physique
         Matiere.Brandon => "un brandon",
         Matiere.Tronc => "un tronc",
         Matiere.Resine => "de la résine",
+        Matiere.Ocre => "de la terre rouge (ocre)",
         Matiere.Rondelle => "une rondelle de tronc",
         Matiere.RondellePercee => "une rondelle percée",
         Matiere.Assemblage => "un objet assemblé",
@@ -569,6 +608,11 @@ public static class Physique
         Effet.Rondelle => "Un tronc tranché à grands coups donne des rondelles.",
         Effet.Pansement when s.A == Matiere.Eau => "Une plaie lavée à l'eau guérit mieux.",
         Effet.Pansement => "Une plaie pressée et couverte de feuilles guérit mieux.",
+        Effet.Rythme => $"Frapper {Nom(s.A)} contre {Nom(s.B)} en cadence fait un rythme qui plaît.",
+        Effet.Chant => "La voix qui monte et descend fait un chant.",
+        Effet.Danse => "Bouger en cadence avec les autres réjouit le cœur.",
+        Effet.Ocre => "La terre rouge écrasée colore la peau.",
+        Effet.Peinture => "L'ocre posée sur la roche y laisse une image qui reste.",
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => "Rien.",
     };
@@ -618,7 +662,25 @@ public static class Physique
         // Arbres tombés : là où il y a des arbres (les forêts, les fougères arborescentes, les rives).
         if (b is Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere or Biome.Marais) yield return Matiere.Tronc;
         if (b is Biome.ForetDeConiferes) yield return Matiere.Resine;
+        // Terre rouge (oxydes de fer) : dans les roches des montagnes et des déserts, et par endroits dans les sols rouges des
+        // forêts chaudes, des plaines et des berges.
+        if (b is Biome.Montagne or Biome.Desert || b is Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere && Ocreuse(carte, x, y))
+            yield return Matiere.Ocre;
     }
+
+    /// <summary>Zone de 4 × 4 cases où affleure de la terre rouge (une sur quatre environ), stable pour une graine.</summary>
+    public static bool Ocreuse(Carte carte, int x, int y)
+    {
+        var etat = carte.Graine ^ 0x4F435245UL ^ ((ulong)(x / 4) * 0xD6E8FEB86659FD93UL) ^ ((ulong)(y / 4) * 0x9E3779B97F4A7C15UL);
+        return (Alea.SplitMix64(ref etat) & 0xFFFF) / 65536.0 < 0.25;
+    }
+
+    /// <summary>
+    /// Y a-t-il ici une paroi de roche où peindre ? Dans les montagnes et les déserts, et là où affleurent les roches à silex
+    /// (craies et calcaires, avec leurs abris sous roche).
+    /// </summary>
+    public static bool Paroi(Carte carte, int x, int y) =>
+        carte.BiomeEn(x, y) is Biome.Montagne or Biome.Desert || carte.BiomeEn(x, y) is not (Biome.Ocean or Biome.EauPeuProfonde or Biome.Lac) && (Roches(carte, x, y) & 2) != 0;
 
     /// <summary>
     /// Roches d'une zone de 4 × 4 cases (3,2 km de côté), stables pour une graine : galets (bit 1), silex (bit 2), pyrite (bit 4,
