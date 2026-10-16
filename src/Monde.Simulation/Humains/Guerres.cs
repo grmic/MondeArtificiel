@@ -481,7 +481,8 @@ public sealed partial class VieSociale
         var troupe = volontaires.Take(Math.Clamp((int)Math.Ceiling(guerriers[a.Id].Count * 0.6), 2, 10)).ToList();
         var forceTroupe = troupe.Concat(renforts).Sum(h => h.Sante / 100);
         var defenseurs = guerriers[b.Id].Sum(h => h.Sante / 100);
-        var faimMoyenne = guerriers[a.Id].Average(h => h.Faim);
+        // Les guerriers ont pu mourir ou partir avant le débat : sans eux, personne ne suit (renoncement plus bas).
+        var faimMoyenne = guerriers[a.Id].Count == 0 ? 0 : guerriers[a.Id].Average(h => h.Faim);
         string? renoncement = null;
         if (volontaires.Count < 2)
         {

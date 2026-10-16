@@ -90,6 +90,21 @@ public sealed class GuerresTests
     }
 
     [Fact]
+    public void Projet_SansAucunGuerrierLeJourDuDebat_LeGroupeRenonceSansPlanter()
+    {
+        var (social, tous, communautes, nature) = DeuxGroupes();
+        var a = communautes[0];
+        var t = Semaines(social, tous, communautes, nature, Maintenant, () => a.Projet is not null);
+        // Avant le jour du débat, les autres hommes de A meurent et l'instigateur, blessé, ne peut plus se battre.
+        var instigateur = tous[a.Projet!.InstigateurId - 1];
+        foreach (var h in tous.Where(h => h.CommunauteId == a.Id && h.Sexe == Sexe.Homme && h.Id != instigateur.Id)) h.MortLe = t;
+        instigateur.Sante = 40;
+        Semaines(social, tous, communautes, nature, t, () => a.Projet is null, maximum: 6);
+        Assert.Null(a.Raid);
+        Assert.Contains(social.Journal, j => j.Type == TypeEvenement.Guerre && j.Texte.Contains("personne ne suit"));
+    }
+
+    [Fact]
     public void Raid_PrepareDebattuPuisLanceContreUnEnnemiHaiEtPlusFaible_PuisAssautALAube()
     {
         var (social, tous, communautes, nature) = DeuxGroupes();
