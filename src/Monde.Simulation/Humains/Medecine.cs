@@ -45,6 +45,11 @@ public static class Medecine
     /// <summary>Une blessure (coup, combat, chute de rocher) ouvre une plaie, pas encore soignée.</summary>
     public static void Blesser(Humain h, double degats, long maintenant)
     {
+        if (Tour.Autrui(h))
+        {
+            Tour.Differer(h, x => Blesser(x, degats, maintenant));
+            return;
+        }
         if (!h.EstVivant || degats < 5) return;
         h.PlaieLe = Math.Max(1, maintenant);
         h.PlaieSoin = 0;
@@ -142,11 +147,11 @@ public sealed partial class Comportement
     /// <summary>Un malade meurt : son dernier soignant l'a perdu (si ses soins sont récents).</summary>
     private void PerduPourSonSoignant(Humain h, long maintenant)
     {
-        _pansements.Remove(h.Id);
+        var mort = h.Id;
+        Tour.Differer(() => _pansements.Remove(mort));
         if (h.SoigneurId > 0 && h.SoigneurId <= _tous.Count && maintenant - h.SoigneurLe <= 60 * JourDeSoin)
         {
-            _tous[h.SoigneurId - 1].Soignes++;
-            _tous[h.SoigneurId - 1].Perdus++;
+            Tour.Changer(_tous[h.SoigneurId - 1], s => { s.Soignes++; s.Perdus++; });
         }
         h.SoigneurId = 0;
     }
@@ -189,7 +194,8 @@ public sealed partial class Comportement
         h.PlaieSoin = Medecine.Qualite(m);
         h.Activite = Activite.Soigner;
         h.CibleX = h.CibleY = -1;
-        _pansements[h.Id] = ([m], h.Id, 0);
+        var soi = h.Id;
+        Tour.Differer(() => _pansements[soi] = ([m], soi, 0));
         return true;
     }
 
@@ -200,13 +206,17 @@ public sealed partial class Comportement
     /// </summary>
     internal bool Panser(Humain panseur, Humain blesse, IReadOnlyList<Humain> tous)
     {
-        var techniques = new List<Matiere>();
-        foreach (var s in panseur.Savoirs)
-        {
-            if (s.Effet != Effet.Pansement || s.Confiance < 0.4 || techniques.Contains(s.A)) continue;
-            if (s.A == Matiere.Eau ? EauPourPanser(panseur) : FeuillesPourPanser(panseur)) techniques.Add(s.A);
-        }
+        var techniques = TechniquesDePansement(panseur);
         if (techniques.Count == 0) return false;
+        // Pendant un pas simultané, celui qui soigne un autre le fait après le pas, si tous deux vivent encore.
+        if (Tour.Autrui(panseur) || Tour.Autrui(blesse))
+        {
+            Tour.Differer(tous, panseur, blesse, null, (t, p, b, _) =>
+            {
+                if (p.EstVivant && b.EstVivant) Panser(p, b, t);
+            });
+            return true;
+        }
         var soin = techniques.Sum(Medecine.Qualite);
         var especes = Flore.Sur(carte.BiomeEn(panseur.X, panseur.Y));
         var plante = panseur.Savoirs.Where(x => x.Effet == Effet.Soulagement && x.Symptome == Symptome.Plaie && x.Geste == Geste.Appliquer
@@ -226,10 +236,23 @@ public sealed partial class Comportement
             Medecine.Placebo(blesse, panseur, false);
             VieSociale.Gratitude(panseur, blesse, 2);
         }
-        _pansements[blesse.Id] = (techniques.ToArray(), panseur.Id, id);
+        var pansement = (techniques.ToArray(), panseur.Id, id);
+        var blesseId = blesse.Id;
+        Tour.Differer(() => _pansements[blesseId] = pansement);
         foreach (var t in techniques) Montrer(panseur, Geste.Panser, t, Matiere.Aucune, Effet.Pansement, 0, Symptome.Plaie, tous, id);
         if (plante is not null) Montrer(panseur, Geste.Appliquer, Matiere.Plante, Matiere.Aucune, Effet.Soulagement, plante.Espece, Symptome.Plaie, tous, id);
         return true;
+    }
+
+    private List<Matiere> TechniquesDePansement(Humain panseur)
+    {
+        var techniques = new List<Matiere>();
+        foreach (var s in panseur.Savoirs)
+        {
+            if (s.Effet != Effet.Pansement || s.Confiance < 0.4 || techniques.Contains(s.A)) continue;
+            if (s.A == Matiere.Eau ? EauPourPanser(panseur) : FeuillesPourPanser(panseur)) techniques.Add(s.A);
+        }
+        return techniques;
     }
 
     /// <summary>
@@ -265,6 +288,15 @@ public sealed partial class Comportement
     /// </summary>
     internal void Visiter(Humain s, Humain h, Symptome mal, bool grave, IReadOnlyList<Humain> tous)
     {
+        // Pendant un pas simultané, le soignant vient après le pas, si tous deux vivent encore.
+        if (Tour.Autrui(s) || Tour.Autrui(h))
+        {
+            Tour.Differer(tous, s, h, null, (t, x, y, _) =>
+            {
+                if (x.EstVivant && y.EstVivant) Visiter(x, y, mal, grave, t);
+            });
+            return;
+        }
         s.Activite = Activite.Soigner;
         s.CibleX = s.CibleY = -1;
         MarquerSoin(s, h);

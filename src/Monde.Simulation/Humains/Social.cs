@@ -218,12 +218,21 @@ public sealed partial class VieSociale(Alea alea)
     public const int DistanceCommunaute = 6;
 
     /// <summary>Événements à verser au journal.</summary>
-    public List<EvenementJournal> Journal { get; } = [];
+    public List<EvenementJournal> Journal => Tour.Courant?.Journal ?? _journal;
+
+    private readonly List<EvenementJournal> _journal = [];
 
     private readonly Dictionary<int, int> _voisins = [];
 
     /// <summary>Partages de nourriture du jour (donneur, receveur), notés une fois par jour au journal.</summary>
     public HashSet<(int Donneur, int Receveur)> PartagesDuJour { get; } = [];
+
+    /// <summary>Note un partage du jour (après le pas, pendant un pas simultané).</summary>
+    public void Partager(Humain donneur, Humain receveur)
+    {
+        var partage = (donneur.Id, receveur.Id);
+        Tour.Differer(() => PartagesDuJour.Add(partage));
+    }
 
     /// <summary>
     /// Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause. Sans communauté
@@ -417,6 +426,11 @@ public sealed partial class VieSociale(Alea alea)
     /// <summary>Un geste de bonté rapproche, surtout aux yeux de celui qui reçoit.</summary>
     public static void Gratitude(Humain donneur, Humain receveur, double force)
     {
+        if (Tour.Autrui(donneur) || Tour.Autrui(receveur))
+        {
+            Tour.Differer(donneur, receveur, (d, r) => Gratitude(d, r, force));
+            return;
+        }
         var l = receveur.LienAvec(donneur.Id);
         if (l is null) return;
         var affection = Math.Min(100, l.Affection + force);
@@ -594,7 +608,7 @@ public sealed partial class VieSociale(Alea alea)
     }
 
     /// <summary>Une joie : naissance d'un enfant, nouveau compagnon…</summary>
-    public static void Rejouir(Humain h, double force) => h.Humeur = Math.Min(100, h.Humeur + force);
+    public static void Rejouir(Humain h, double force) => Tour.Changer(h, x => x.Humeur = Math.Min(100, x.Humeur + force));
 
     // ───────────── Communautés ─────────────
 

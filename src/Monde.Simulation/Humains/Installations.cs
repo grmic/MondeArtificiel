@@ -92,6 +92,13 @@ public sealed class Installations
     }
 
     /// <summary>Ajoute du bois au feu de la case (au plus une journée de combustible d'avance).</summary>
+    /// <summary>Ajoute du bois au feu de la case, ou en allume un s'il n'y en a plus.</summary>
+    public void Nourrir(int x, int y, double heures, long maintenant, int humainId, long evenementId)
+    {
+        if (FoyerEn(x, y) is { } f) Alimenter(f, heures);
+        else Allumer(x, y, heures, maintenant, humainId, evenementId);
+    }
+
     public void Alimenter(Foyer f, double heures) => Foyers[Foyers.IndexOf(f)] = f with { Heures = Math.Min(24, f.Heures + heures) };
 
     public Hutte Batir(int x, int y, double solidite, long maintenant, int humainId, long evenementId)

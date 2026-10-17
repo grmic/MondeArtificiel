@@ -175,6 +175,19 @@ public sealed partial class Comportement
 
     private void SAccoupler(Humain a, Humain b, IReadOnlyList<Humain> tous, long maintenant)
     {
+        // Pendant un pas simultané, l'union se fait après le pas, si tous deux vivent encore.
+        if (Tour.Autrui(b))
+        {
+            a.Activite = Activite.SAccoupler;
+            a.CibleX = a.CibleY = -1;
+            a.Desir = 0;
+            var (ia, ib) = (a.Id, b.Id);
+            Tour.Differer(tous, t =>
+            {
+                if (t[ia - 1].EstVivant && t[ib - 1].EstVivant) SAccoupler(t[ia - 1], t[ib - 1], t, maintenant);
+            });
+            return;
+        }
         a.Activite = b.Activite = Activite.SAccoupler;
         a.CibleX = a.CibleY = b.CibleX = b.CibleY = -1;
         a.Desir = b.Desir = 0;
@@ -237,7 +250,7 @@ public sealed partial class Comportement
                                      + 0.2 * m.Fondements.Loyaute, 0, 1) * (1 - Psyche.Froideur(h.Personnalite));
         if (honte < 25) return;
         Confier(h, TypeIntime.Peine, compagnon.Id, $"J'ai trahi {compagnon.Nom} avec {complice.Nom}. J'en ai honte.", honte, accouplement, maintenant, cle);
-        h.Humeur = Math.Max(0, h.Humeur - honte / 10);
+        Tour.Changer(h, x => x.Humeur = Math.Max(0, x.Humeur - honte / 10));
     }
 
     /// <summary>
@@ -321,7 +334,7 @@ public sealed partial class Comportement
         var risqueMortNe = RisqueMortNe * FacteurAgeMere(age) * detresse * (premature ? 2 : 1) * (jumeaux ? 2 : 1) * (1 - aide / 2);
         for (var n = jumeaux ? 2 : 1; n > 0; n--)
         {
-            if (alea.Reel() >= risqueMortNe) Accouchements.Add((mere, mere.PereEnfantId));
+            if (alea.Reel() >= risqueMortNe) { var pere = mere.PereEnfantId; Tour.Differer(mere, m => Accouchements.Add((m, pere))); }
             else Noter(maintenant, TypeEvenement.MortNe, mere, null, $"{mere.Nom} met au monde un enfant mort-né.");
         }
 
@@ -359,8 +372,11 @@ public sealed partial class Comportement
         aides = aides.OrderByDescending(a => a.Experience).ThenBy(a => a.H.Id).Take(3).ToList();
         foreach (var (a, _) in aides)
         {
-            a.AccouchementsAides++;
-            a.Fatigue = Math.Min(100, a.Fatigue + 10);
+            Tour.Changer(a, x =>
+            {
+                x.AccouchementsAides++;
+                x.Fatigue = Math.Min(100, x.Fatigue + 10);
+            });
             VieSociale.Gratitude(a, mere, 2);
         }
         var noms = aides.Count == 1 ? aides[0].H.Nom
@@ -437,13 +453,13 @@ public sealed partial class Comportement
             {
                 var donne = Math.Min(enfant.Faim, part);
                 enfant.Faim -= donne;
-                parent.Faim = Math.Min(100, parent.Faim + 0.6 * donne);
+                Tour.Changer(parent, p => p.Faim = Math.Min(100, p.Faim + 0.6 * donne));
             }
             if (parent.Soif < 75)
             {
                 var donne = Math.Min(enfant.Soif, part);
                 enfant.Soif -= donne;
-                parent.Soif = Math.Min(100, parent.Soif + 0.6 * donne);
+                Tour.Changer(parent, p => p.Soif = Math.Min(100, p.Soif + 0.6 * donne));
             }
         }
     }
@@ -527,7 +543,12 @@ public sealed partial class Comportement
         {
             b.X = mere.X;
             b.Y = mere.Y;
-            mere.BebePorteLe = maintenant;
+            Tour.Changer(mere, m => m.BebePorteLe = maintenant);
+            // Celle qui le porte a pu bouger pendant ce même pas : il est là où elle est arrivée.
+            Tour.Differer(b, mere, (x, m) =>
+            {
+                if (x.EstVivant && m.EstVivant) (x.X, x.Y) = (m.X, m.Y);
+            });
         }
 
         // L'allaitement nourrit et abreuve le bébé, et coûte à la mère (environ 25 % d'énergie en plus) ; le lait se tarit
@@ -546,8 +567,11 @@ public sealed partial class Comportement
         b.Soif = Math.Clamp(b.Soif + 0.6 - 1.6 * lait, 0, 100);
         if (lait > 0)
         {
-            Depenser(mere!, 0.06 * lait);
-            mere!.Soif = Math.Min(100, mere.Soif + 0.08 * lait);
+            Tour.Changer(mere!, m =>
+            {
+                Depenser(m, 0.06 * lait);
+                m.Soif = Math.Min(100, m.Soif + 0.08 * lait);
+            });
         }
 
         if (porte)

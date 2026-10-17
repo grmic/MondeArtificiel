@@ -205,6 +205,11 @@ public sealed partial class Comportement
     private void Eveiller(Humain h, double desir, long maintenant)
     {
         if (h.Lucidite >= 1) return;
+        if (Tour.Autrui(h))
+        {
+            Tour.Differer(h, x => Eveiller(x, desir, maintenant));
+            return;
+        }
         var avant = h.Lucidite;
         h.Lucidite = Math.Min(1, h.Lucidite + 0.00005 * desir * (0.5 + h.Personnalite.Ouverture));
         var autres = Les(h.Sexe);

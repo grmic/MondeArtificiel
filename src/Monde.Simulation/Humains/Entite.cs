@@ -616,12 +616,18 @@ public sealed partial class Comportement
                                && alea.Reel() < 0.4 + x.AffectionPour(h.Id) / 100;
                     if (veut)
                     {
-                        h.PartenaireId = x.Id;
-                        x.PartenaireId = h.Id;
-                        var (a, b) = h.Sexe == Sexe.Femme ? (h, x) : (x, h);
-                        Noter(maintenant, TypeEvenement.Union, a, b, $"{a.Nom} et {b.Nom} forment un nouveau couple.", i.EvenementId);
-                        VieSociale.Rejouir(h, 10);
-                        VieSociale.Rejouir(x, 10);
+                        // Pendant un pas simultané, le couple se forme après le pas, si chacun est encore libre.
+                        var cause = i.EvenementId;
+                        Tour.Differer(tous, h, x, null, (t, u, v, _) =>
+                        {
+                            if (!u.EstVivant || !v.EstVivant || Vivant(t, u.PartenaireId) is not null || Vivant(t, v.PartenaireId) is not null) return;
+                            u.PartenaireId = v.Id;
+                            v.PartenaireId = u.Id;
+                            var (a, b) = u.Sexe == Sexe.Femme ? (u, v) : (v, u);
+                            Noter(maintenant, TypeEvenement.Union, a, b, $"{a.Nom} et {b.Nom} forment un nouveau couple.", cause);
+                            VieSociale.Rejouir(u, 10);
+                            VieSociale.Rejouir(v, 10);
+                        });
                     }
                     Fait(veut ? $"{h.Nom} va vers {x.Nom}, comme la voix le lui avait dit, et {x.Nom} l'accueille."
                         : $"{h.Nom} va vers {x.Nom}, comme la voix le lui avait dit, mais {x.Nom} ne veut pas de {Soi(h)}.");
@@ -630,10 +636,11 @@ public sealed partial class Comportement
             case Parole.PrendsSoin:
             {
                 var soin = x.Sante < 80 || x.EstMalade(maintenant) || x.InfectionId != 0;
-                if (soin) x.Sante = Math.Min(100, x.Sante + 3 + 5 * h.Personnalite.Moral.Compassion);
+                var gain = 3 + 5 * h.Personnalite.Moral.Compassion;
+                if (soin) Tour.Changer(x, y => y.Sante = Math.Min(100, y.Sante + gain));
                 if (x.Faim > 50 && h.Faim < 50)
                 {
-                    x.Faim -= 25;
+                    Tour.Changer(x, y => y.Faim -= 25);
                     h.Faim += 15;
                 }
                 VieSociale.Gratitude(h, x, 0.5);
@@ -647,7 +654,7 @@ public sealed partial class Comportement
             {
                 var moitie = i.Reponse == Reponse.AMoitie;
                 var don = Math.Min(Math.Max(0, 70 - h.Faim), moitie ? 10 : 30);
-                x.Faim = Math.Max(0, x.Faim - don);
+                Tour.Changer(x, y => y.Faim = Math.Max(0, y.Faim - don));
                 h.Faim = Math.Min(100, h.Faim + 0.7 * don);
                 VieSociale.Gratitude(h, x, moitie ? 0.1 : 0.4);
                 Fait(moitie ? $"{h.Nom} donne à {x.Nom} un peu de sa nourriture, du bout des doigts." : $"{h.Nom} partage sa nourriture avec {x.Nom}, comme la voix le lui a demandé.",
@@ -655,7 +662,7 @@ public sealed partial class Comportement
                 return true;
             }
             case Parole.Console:
-                x.Chagrin *= 0.6;
+                Tour.Changer(x, y => y.Chagrin *= 0.6);
                 VieSociale.Rejouir(x, 8);
                 Social?.ChangerAffection(h, x, 5, maintenant);
                 Social?.ChangerAffection(x, h, 8, maintenant);
@@ -680,11 +687,15 @@ public sealed partial class Comportement
             return;
         }
         h.PartenaireId = 0;
-        if (x.PartenaireId == h.Id) x.PartenaireId = 0;
         var id = NoterEntite(maintenant, TypeEvenement.Union, h, x, $"{h.Nom} quitte {x.Nom}, comme une voix le lui a ordonné.", i.EvenementId, significatif: true);
         var aime = Math.Max(0, x.AffectionPour(h.Id)) / 100;
-        x.Chagrin = Math.Min(100, x.Chagrin + 20 + 40 * aime);
-        x.Humeur = Math.Max(0, x.Humeur - 10 - 20 * aime);
+        var quitteur = h.Id;
+        Tour.Changer(x, y =>
+        {
+            if (y.PartenaireId == quitteur) y.PartenaireId = 0;
+            y.Chagrin = Math.Min(100, y.Chagrin + 20 + 40 * aime);
+            y.Humeur = Math.Max(0, y.Humeur - 10 - 20 * aime);
+        });
         Social?.ChangerAffection(x, h, -15, maintenant);
         Confier(x, TypeIntime.Peine, h.Id, $"{h.Nom} m'a quitté{E(x)}, sans raison que je comprenne.", 30 + 60 * aime, id, maintenant, $"quitte:{h.Id}");
         Confier(h, TypeIntime.Culpabilite, x.Id, $"J'ai quitté {x.Nom} parce que la voix l'a voulu.", 20 + 50 * h.Personnalite.Moral.EmpathieEmotionnelle * Math.Max(0, h.AffectionPour(x.Id)) / 100,
@@ -704,6 +715,16 @@ public sealed partial class Comportement
             Social?.ChangerAffection(x, h, -6, maintenant);
             return;
         }
+        // Pendant un pas simultané, l'attaque a lieu après le pas, si tous deux vivent encore.
+        var (ih, ix) = (h.Id, x.Id);
+        Tour.Differer(tous, t =>
+        {
+            if (t[ih - 1].EstVivant && t[ix - 1].EstVivant) Attaquer(t[ih - 1], t[ix - 1], i, tuer, t, maintenant);
+        });
+    }
+
+    private void Attaquer(Humain h, Humain x, Impulsion i, bool tuer, IReadOnlyList<Humain> tous, long maintenant)
+    {
         var Lx = x.Sexe == Sexe.Femme ? "la" : "le";
         var fh = Force(h, maintenant) * 1.4; // l'effet de surprise
         var fx = Force(x, maintenant);

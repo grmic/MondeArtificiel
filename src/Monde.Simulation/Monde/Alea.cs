@@ -12,7 +12,21 @@ public sealed class Alea
 {
     private ulong _s0, _s1, _s2, _s3;
 
-    public Alea(ulong graine)
+    [ThreadStatic] private static Alea? _detour;
+
+    /// <summary>
+    /// Générateur commun du monde : pendant le tour d'un humain (pas simultané), ses tirages sont pris dans le hasard
+    /// propre à ce tour (voir <see cref="Detourner"/>), pour que le résultat ne dépende pas de l'ordre des cœurs.
+    /// </summary>
+    public bool Commun { get; init; }
+
+    /// <summary>Sur ce fil de calcul, envoie les tirages des générateurs communs vers <paramref name="alea"/> (null : plus de détour).</summary>
+    public static void Detourner(Alea? alea) => _detour = alea;
+
+    public Alea(ulong graine) => Reinitialiser(graine);
+
+    /// <summary>Repart de la graine <paramref name="graine"/>, comme un générateur neuf.</summary>
+    public void Reinitialiser(ulong graine)
     {
         var x = graine;
         _s0 = SplitMix64(ref x);
@@ -22,13 +36,13 @@ public sealed class Alea
     }
 
     /// <summary>Reprend un générateur à partir d'un état sauvegardé (voir <see cref="Etat"/>).</summary>
-    public static Alea Depuis(IReadOnlyList<ulong> etat)
+    public static Alea Depuis(IReadOnlyList<ulong> etat, bool commun = false)
     {
         if (etat.Count != 4 || etat.All(v => v == 0))
         {
             throw new ArgumentException("L'état doit contenir 4 valeurs, pas toutes nulles.", nameof(etat));
         }
-        var alea = new Alea(0);
+        var alea = new Alea(0) { Commun = commun };
         (alea._s0, alea._s1, alea._s2, alea._s3) = (etat[0], etat[1], etat[2], etat[3]);
         return alea;
     }
@@ -48,6 +62,7 @@ public sealed class Alea
 
     public ulong Suivant()
     {
+        if (Commun && _detour is { } d) return d.Suivant();
         var resultat = BitOperations.RotateLeft(_s1 * 5, 7) * 9;
         var t = _s1 << 17;
         _s2 ^= _s0;

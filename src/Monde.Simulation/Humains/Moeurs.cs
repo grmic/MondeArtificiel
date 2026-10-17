@@ -129,6 +129,12 @@ public sealed partial class VieSociale
     /// </summary>
     public void DecouvrirMoeurs(Humain temoin, Humain a, Humain? b, long cause, IReadOnlyList<Humain> humains, long maintenant)
     {
+        if (Tour.EnCours)
+        {
+            var (it, ia, ib) = (temoin.Id, a.Id, b?.Id ?? 0);
+            Tour.Differer(humains, t => DecouvrirMoeurs(t[it - 1], t[ia - 1], ib > 0 ? t[ib - 1] : null, cause, t, maintenant));
+            return;
+        }
         var tolerance = 0.5 * ToleranceMoeursDe(temoin) + 0.5 * TemperamentMoeurs(temoin.Personnalite);
         var amitie = Math.Max(0, temoin.AffectionPour(a.Id)) / 100;
         var reprobation = 100 * Math.Clamp((0.6 - tolerance) * 2 * (1.2 - 0.6 * amitie), 0, 1);

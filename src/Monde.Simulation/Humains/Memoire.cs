@@ -38,13 +38,27 @@ public sealed class Memoire
     /// <summary>Après une déception, le lieu n'est plus visé pendant ce temps (la ressource repousse).</summary>
     public const long DureeDeception = 3 * Calendrier.SecondesParJour;
 
-    public List<LieuConnu> Lieux { get; init; } = [];
-    public List<Pensee> Pensees { get; init; } = [];
+    public List<LieuConnu> Lieux { get; internal set; } = [];
+    public List<Pensee> Pensees { get; internal set; } = [];
 
     /// <summary>Le jardin secret (voir <see cref="Humains.Jardin"/>).</summary>
-    public List<Intime> Jardin { get; init; } = [];
+    public List<Intime> Jardin { get; internal set; } = [];
 
     public Memoire Copier() => new() { Lieux = [.. Lieux], Pensees = [.. Pensees], Jardin = [.. Jardin] };
+
+    /// <summary>
+    /// Copie de travail de cette mémoire pour un pas simultané, dans <paramref name="cible"/>. Les lieux et les pensées ne
+    /// regardent que leur propriétaire (personne d'autre ne les lit pendant le pas) : la copie les partage au lieu de les
+    /// recopier. Le jardin secret, que d'autres consultent, est recopié.
+    /// </summary>
+    internal static Memoire Recopier(Memoire source, Memoire? cible)
+    {
+        if (cible is null || ReferenceEquals(cible, source)) cible = new Memoire();
+        cible.Lieux = source.Lieux;
+        cible.Pensees = source.Pensees;
+        cible.Jardin = Humain.Recopier(source.Jardin, cible.Jardin)!;
+        return cible;
+    }
 
     /// <summary>Facteur de mémoire : ×2 tous les 15 points de QI de mémoire (×0,25 à 70, ×4 à 130).</summary>
     public static double Facteur(double aptitude) => Math.Pow(2, (aptitude - 100) / 15);

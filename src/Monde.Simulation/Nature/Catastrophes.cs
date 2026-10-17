@@ -45,7 +45,9 @@ public sealed partial class Catastrophes
     public Geologie Geologie { get; }
 
     /// <summary>Événements survenus : le monde les verse au journal après le pas.</summary>
-    public List<EvenementJournal> Journal { get; } = [];
+    public List<EvenementJournal> Journal => Tour.Courant?.Journal ?? _journal;
+
+    private readonly List<EvenementJournal> _journal = [];
 
     /// <summary>Alertes à transmettre à l'observateur (le monde les retire après le pas).</summary>
     public List<AlerteCatastrophe> Alertes { get; } = [];
@@ -531,9 +533,11 @@ public sealed partial class Catastrophes
     }
 
     /// <summary>La communauté de l'humain compte parmi celles que la catastrophe a touchées.</summary>
-    private static void Toucher(Catastrophe c, Humain h)
+    private static void Toucher(Catastrophe c, Humain h) => Toucher(c, h.CommunauteId);
+
+    private static void Toucher(Catastrophe c, int communaute)
     {
-        if (h.CommunauteId > 0) c.Communautes.Add(h.CommunauteId);
+        if (communaute > 0) c.Communautes.Add(communaute);
     }
 
     /// <summary>
@@ -653,10 +657,14 @@ public sealed partial class Catastrophes
         if (DegatsAutour(h.X, h.Y) < DegatsSensibles) return (0, null);
         var suites = _liste.Where(c => c.EnSuites(maintenant) && DansLaZone(c, h.X, h.Y)).MaxBy(c => c.Id);
         if (suites is null) return (0, null);
-        suites.MortsSuites++;
-        suites.Temoins.Add(h.Id);
-        Toucher(suites, h);
-        if (h.CommunauteId > 0) suites.PertesParCommunaute[h.CommunauteId] = suites.PertesParCommunaute.GetValueOrDefault(h.CommunauteId) + 1;
+        var (mort, communaute) = (h.Id, h.CommunauteId);
+        Tour.Differer(() =>
+        {
+            suites.MortsSuites++;
+            suites.Temoins.Add(mort);
+            Toucher(suites, communaute);
+            if (communaute > 0) suites.PertesParCommunaute[communaute] = suites.PertesParCommunaute.GetValueOrDefault(communaute) + 1;
+        });
         return (suites.Id, $"dans les terres dévastées par {TypesCatastrophe.Nom(suites.Type)}");
     }
 
@@ -689,12 +697,17 @@ public sealed partial class Catastrophes
         return false;
     }
 
+    /// <summary>Compte un mort de la catastrophe (après le pas, pendant un pas simultané).</summary>
     private static void Compter(Catastrophe type, Humain h)
     {
-        type.Morts++;
-        type.Temoins.Add(h.Id);
-        Toucher(type, h);
-        if (h.CommunauteId > 0) type.PertesParCommunaute[h.CommunauteId] = type.PertesParCommunaute.GetValueOrDefault(h.CommunauteId) + 1;
+        var (mort, communaute) = (h.Id, h.CommunauteId);
+        Tour.Differer(() =>
+        {
+            type.Morts++;
+            type.Temoins.Add(mort);
+            Toucher(type, communaute);
+            if (communaute > 0) type.PertesParCommunaute[communaute] = type.PertesParCommunaute.GetValueOrDefault(communaute) + 1;
+        });
     }
 
     // ───────────── Journal et noms ─────────────

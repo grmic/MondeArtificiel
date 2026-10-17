@@ -65,6 +65,11 @@ public static partial class Jardin
     /// <summary>Confie une chose au jardin d'un humain : elle remplace celle de même clé, ou la plus faible si le jardin est plein.</summary>
     public static void Confier(Humain h, TypeIntime type, int sujet, string texte, double intensite, long cause, long maintenant, string cle)
     {
+        if (Tour.Autrui(h))
+        {
+            Tour.Differer(h, x => Confier(x, type, sujet, texte, intensite, cause, maintenant, cle));
+            return;
+        }
         if (!h.EstVivant || intensite < Seuil) return;
         var jardin = h.Memoire.Jardin;
         var e = new Intime(maintenant, type, sujet, texte, Math.Min(100, intensite), cause, cle);
@@ -85,7 +90,7 @@ public static partial class Jardin
     }
 
     /// <summary>Retire une chose (une intention accomplie ou abandonnée, une peur dissipée).</summary>
-    public static void Retirer(Humain h, string cle) => h.Memoire.Jardin.RemoveAll(x => x.Cle == cle);
+    public static void Retirer(Humain h, string cle) => Tour.Changer(h, x => x.Memoire.Jardin.RemoveAll(i => i.Cle == cle));
 
     /// <summary>
     /// Une épreuve laisse sa trace sur le caractère (voir <see cref="Psyche.Eprouver"/>) ; quand elle est profonde,
@@ -93,6 +98,11 @@ public static partial class Jardin
     /// </summary>
     public static void Marquer(Humain h, Epreuve epreuve, double intensite, long cause, long maintenant, Monde.Alea alea)
     {
+        if (Tour.Autrui(h))
+        {
+            Tour.Differer(h, x => Marquer(x, epreuve, intensite, cause, maintenant, alea));
+            return;
+        }
         if (!h.EstVivant || h.EstBebe(maintenant)) return;
         var (apres, trace) = Psyche.Eprouver(h.Personnalite, epreuve, intensite, alea);
         h.Personnalite = apres;

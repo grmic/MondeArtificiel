@@ -55,6 +55,7 @@ public static class Regard
     public static double Juger(Humain? auteur, double points, long maintenant, Humain? envers = null)
     {
         if (auteur is null || points == 0) return 0;
+        var bienfait = false;
         if (points > 0 && points < PetitGeste && envers is not null && envers.Id != auteur.Id)
         {
             var i = auteur.Liens.FindIndex(l => l.Id == envers.Id);
@@ -62,7 +63,7 @@ public static class Regard
             {
                 var b = auteur.Liens[i].Bienfait;
                 if (b > 0 && maintenant - b < DelaiPetitsGestes) return 0;
-                auteur.Liens[i] = auteur.Liens[i] with { Bienfait = Math.Max(1, maintenant) };
+                bienfait = true;
             }
         }
         var d = points;
@@ -73,7 +74,13 @@ public static class Regard
         }
         else if (Psyche.EstPsychopathe(auteur, maintenant)) d *= 0.5;
         d = Math.Round(d, 2);
-        auteur.Karma = Math.Round(auteur.Karma + d, 2);
+        // L'auteur peut être un autre que celui dont c'est le tour : son karma change alors après le pas.
+        var enversId = envers?.Id ?? 0;
+        Tour.Changer(auteur, a =>
+        {
+            if (bienfait && a.Liens.FindIndex(l => l.Id == enversId) is var i and >= 0) a.Liens[i] = a.Liens[i] with { Bienfait = Math.Max(1, maintenant) };
+            a.Karma = Math.Round(a.Karma + d, 2);
+        });
         return d;
     }
 

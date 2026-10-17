@@ -34,6 +34,12 @@ public static class Croyances
     /// </summary>
     public static double Ajouter(Humain h, double delta, string raison, long cause, long maintenant, bool signe = false)
     {
+        // Pour un autre que celui dont c'est le tour, le changement vient après le pas (et n'est pas encore connu).
+        if (Tour.Autrui(h))
+        {
+            Tour.Differer(h, x => Ajouter(x, delta, raison, cause, maintenant, signe));
+            return 0;
+        }
         if (!h.EstVivant || h.EstBebe(maintenant)) return 0;
         if (signe) h.CroyanceSigneLe = maintenant;
         var avant = h.Croyance;

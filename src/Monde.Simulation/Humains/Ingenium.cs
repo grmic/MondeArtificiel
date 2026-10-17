@@ -209,15 +209,19 @@ public sealed partial class Comportement
                 Prendre(h, new Objet(Matiere.Peau, r.Qualite, 1));
                 break;
             case Effet.Flamme:
-                Installations.Allumer(h.X, h.Y, 1, _maintenant, h.Id, evenement);
+            {
+                // Pendant un pas simultané, le feu prend sur la case après le pas.
+                var (x, y, id, le) = (h.X, h.Y, h.Id, _maintenant);
+                Tour.Differer(() => Installations.Allumer(x, y, 1, le, id, evenement));
                 break;
+            }
             case Effet.Foyer:
                 // Le brandon posé sous le bois devient un foyer ; le bois ajouté nourrit le feu quelques heures.
                 h.Objets.RemoveAll(o => o.Matiere == Matiere.Brandon);
                 // Avec une hache, on fend de grosses bûches qui brûlent bien plus longtemps que des branches cassées à la main.
                 var bois = (4 + 4 * alea.Reel()) * (1 + (h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe)));
-                if (Installations.FoyerEn(h.X, h.Y) is { } f) Installations.Alimenter(f, bois);
-                else Installations.Allumer(h.X, h.Y, bois, _maintenant, h.Id, evenement);
+                var (fx, fy, fid, fle) = (h.X, h.Y, h.Id, _maintenant);
+                Tour.Differer(() => Installations.Nourrir(fx, fy, bois, fle, fid, evenement));
                 break;
             case Effet.Couvert:
                 if (a == Matiere.Peau)
@@ -231,7 +235,8 @@ public sealed partial class Comportement
             case Effet.Abri:
                 // Une hache taille des perches droites et solides : la hutte tient mieux.
                 var coupe = h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe);
-                Installations.Batir(h.X, h.Y, Math.Clamp(r.Qualite * (1 + 0.4 * coupe), 0, 1), _maintenant, h.Id, evenement);
+                var (bx, by, bid, ble, solidite) = (h.X, h.Y, h.Id, _maintenant, Math.Clamp(r.Qualite * (1 + 0.4 * coupe), 0, 1));
+                Tour.Differer(() => Installations.Batir(bx, by, solidite, ble, bid, evenement));
                 h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));
                 break;
             case Effet.EauPortee:
@@ -307,6 +312,13 @@ public sealed partial class Comportement
     private long Retenir(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, OrigineSavoir origine, int maitreId,
         IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", string? recit = null)
     {
+        // Ce qu'un autre apprend en regardant celui dont c'est le tour, il le retient après le pas.
+        if (Tour.Autrui(h))
+        {
+            var ih = h.Id;
+            Tour.Differer(tous, t => Retenir(t[ih - 1], g, a, b, e, espece, mal, origine, maitreId, t, succes, pieces, recit));
+            return 0;
+        }
         var i = h.Savoirs.FindIndex(s => s.Meme(g, a, b, e, espece, mal) && s.Pieces == pieces);
         if (i >= 0)
         {
@@ -342,7 +354,15 @@ public sealed partial class Comportement
             id = Noter(_maintenant, TypeEvenement.Decouverte, h, maitre, texte, significatif: premier || retrouve);
         }
         h.Savoirs.Add(nouveau with { EvenementId = id });
-        if (premier) Installations.Decouvertes.Add(new Decouverte(e, h.Id, _maintenant, id, origine, pieces));
+        if (premier)
+        {
+            // Deux qui trouvent la même chose dans le même pas : la première au monde est celle du premier dans l'ordre.
+            var decouverte = new Decouverte(e, h.Id, _maintenant, id, origine, pieces);
+            Tour.Differer(() =>
+            {
+                if (!Installations.Decouvertes.Exists(d => d.Effet == decouverte.Effet && Lois.Structure(d.Pieces) == structure)) Installations.Decouvertes.Add(decouverte);
+            });
+        }
         if (premier || !banal)
         {
             Jardin.Confier(h, TypeIntime.Question, 0, Question(nouveau), 30 + 30 * h.Personnalite.Ouverture, id, _maintenant, $"savoir:{(int)e}:{espece}{(pieces.Length > 0 ? ":" + pieces : "")}");
@@ -826,7 +846,7 @@ public sealed partial class Comportement
             if (s is null || o.AffectionPour(h.Id) < -10) continue;
             var envie = (0.3 + 0.7 * o.Personnalite.Moral.Compassion) * (1 - Psyche.Froideur(o.Personnalite));
             if (alea.Reel() >= envie) continue;
-            o.Activite = Activite.Soigner;
+            Tour.Changer(o, x => x.Activite = Activite.Soigner);
             var plante = Flore.Get(s.Espece);
             Noter(_maintenant, TypeEvenement.Entraide, o, h,
                 $"{o.Nom} donne à {h.Nom} {plante.Nom}, qu'{Il(o)} croit bonne contre {Physique.Mal(mal)}.", karma: Regard.Remede);
@@ -859,7 +879,8 @@ public sealed partial class Comportement
         h.RemedeGeste = geste;
         h.RemedeSymptome = mal;
         h.RemedeLe = _maintenant;
-        RemedeSoigneur[h.Id] = soigneurId;
+        var malade = h.Id;
+        Tour.Differer(() => RemedeSoigneur[malade] = soigneurId);
     }
 
     /// <summary>Qui a donné son dernier remède à un malade (pour le crédit ou le doute qui suivra).</summary>
@@ -970,8 +991,12 @@ public sealed partial class Comportement
     private void RemedeEchoue(Humain h)
     {
         if (h.RemedeEspece == 0) return;
-        _remedesEchoues.Add((h.RemedeEspece, h.RemedeSymptome, RemedeSoigneur.GetValueOrDefault(h.Id, h.Id)));
-        RemedeSoigneur.Remove(h.Id);
+        var (espece, mal, malade) = (h.RemedeEspece, h.RemedeSymptome, h.Id);
+        Tour.Differer(() =>
+        {
+            _remedesEchoues.Add((espece, mal, RemedeSoigneur.GetValueOrDefault(malade, malade)));
+            RemedeSoigneur.Remove(malade);
+        });
     }
 
     // ------------------------------------------------------------------ Usure, oubli

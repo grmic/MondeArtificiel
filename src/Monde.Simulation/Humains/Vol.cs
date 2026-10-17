@@ -33,7 +33,18 @@ public sealed partial class Comportement
             break;
         }
         if (victime is null) return;
+        // Pendant un pas simultané, le vol (et ce qui s'ensuit) a lieu après le pas, si tous deux vivent encore.
+        var (iv, ih) = (victime.Id, h.Id);
+        Tour.Differer(tous, t =>
+        {
+            if (t[ih - 1].EstVivant && t[iv - 1].EstVivant) VolerA(t[ih - 1], t[iv - 1], t, maintenant);
+        });
+    }
 
+    private void VolerA(Humain h, Humain victime, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        var p = h.Personnalite;
+        var froideur = Psyche.Froideur(p);
         var pris = Math.Min(h.Faim - 20, 25 + 10 * alea.Reel());
         h.Faim -= pris;
         victime.Faim = Math.Min(100, victime.Faim + 0.6 * pris);

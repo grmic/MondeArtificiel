@@ -194,6 +194,11 @@ public sealed partial class VieSociale
     /// <summary>Ajoute une rancune, ou ravive celle qui existe déjà contre le même humain pour le même motif.</summary>
     public static void AjouterGrief(Humain h, Grief grief)
     {
+        if (Tour.Autrui(h))
+        {
+            Tour.Differer(h, x => AjouterGrief(x, grief));
+            return;
+        }
         var i = h.Griefs.FindIndex(g => g.ContreId == grief.ContreId && g.Motif == grief.Motif);
         if (i < 0)
         {
@@ -267,6 +272,11 @@ public sealed partial class VieSociale
     public void ChangerAffection(Humain a, Humain b, double delta, long maintenant)
     {
         if (a.Id == b.Id) return;
+        if (Tour.Autrui(a) || Tour.Autrui(b))
+        {
+            Tour.Differer(a, b, (x, y) => ChangerAffection(x, y, delta, maintenant));
+            return;
+        }
         var avant = a.LienAvec(b.Id) ?? new Lien(b.Id, 0, 0, maintenant);
         var apres = Seuils(a, b, avant, avant with { Affection = Math.Clamp(avant.Affection + delta, -100, 100) }, maintenant);
         Poser(a, apres);
@@ -283,6 +293,13 @@ public sealed partial class VieSociale
     public void Decouvrir(Humain trompe, Humain infidele, Humain complice, Humain? temoin, long accouplement,
         IReadOnlyList<Humain> humains, long maintenant)
     {
+        // Pendant un pas simultané, l'affaire (et le bruit qu'elle fait dans la communauté) se règle après le pas.
+        if (Tour.EnCours)
+        {
+            var (it, ii, ic, iw) = (trompe.Id, infidele.Id, complice.Id, temoin?.Id ?? 0);
+            Tour.Differer(humains, t => Decouvrir(t[it - 1], t[ii - 1], t[ic - 1], iw > 0 ? t[iw - 1] : null, accouplement, t, maintenant));
+            return;
+        }
         var amour = Math.Clamp(trompe.AffectionPour(infidele.Id) / 100, 0, 1);
         var tolerance = ToleranceDe(trompe);
         var intensite = 100 * Math.Clamp(Jalousie(trompe.Personnalite) * (0.5 + amour) * (1.4 - 0.8 * tolerance), 0, 1);
@@ -346,6 +363,16 @@ public sealed partial class VieSociale
     public void Durcir(Humain h, double force, long cause)
     {
         if (CommunauteDe(h) is not { } c) return;
+        if (Tour.EnCours)
+        {
+            Tour.Differer(() => Durcir(c, force, cause));
+            return;
+        }
+        Durcir(c, force, cause);
+    }
+
+    private static void Durcir(Communaute c, double force, long cause)
+    {
         c.Tolerance = Math.Clamp(c.Tolerance - force, 0, 1);
         c.DerniereAffaireId = cause;
     }
@@ -359,6 +386,12 @@ public sealed partial class VieSociale
     /// </summary>
     public void Offenser(Humain auteur, Humain victime, double poids, long cause, IReadOnlyList<Humain> humains, long maintenant)
     {
+        if (Tour.EnCours)
+        {
+            var (ia, iv) = (auteur.Id, victime.Id);
+            Tour.Differer(humains, t => Offenser(t[ia - 1], t[iv - 1], poids, cause, t, maintenant));
+            return;
+        }
         var ca = CommunauteDe(auteur);
         var cv = CommunauteDe(victime);
         foreach (var l in auteur.Liens.ToList())

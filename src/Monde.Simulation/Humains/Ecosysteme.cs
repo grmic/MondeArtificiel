@@ -256,11 +256,14 @@ public sealed class Ecosysteme
         return resultat;
     }
 
-    /// <summary>Prélève une quantité (en unités 0 à 100) et renvoie ce qui a vraiment été pris.</summary>
+    /// <summary>
+    /// Prélève une quantité (en unités 0 à 100) et renvoie ce qui a vraiment été pris. Pendant un pas simultané, chacun voit
+    /// la case telle qu'elle était au début du pas ; les prélèvements sont retirés ensuite (sans descendre sous zéro).
+    /// </summary>
     public static int Prelever(ushort[] ressource, int indice, int quantite)
     {
         var pris = Math.Min(ressource[indice], quantite * 100);
-        ressource[indice] -= (ushort)pris;
+        Tour.Differer(() => ressource[indice] -= (ushort)Math.Min(ressource[indice], pris));
         return pris / 100;
     }
 }

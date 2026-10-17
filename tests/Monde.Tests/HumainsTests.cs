@@ -13,12 +13,12 @@ public sealed class HumainsTests
     private static MondeSimule NouveauMonde() => new(Carte, MondeSimule.Nouveau(42));
 
     /// <summary>Résumé texte de tout l'état, pour comparer deux mondes exactement.</summary>
-    private static string Empreinte(MondeSimule monde)
+    internal static string Empreinte(MondeSimule monde, bool listesPropres = true)
     {
         var etat = monde.Etat;
         var humains = string.Join("\n", etat.Humains!.Select(h =>
             $"{h.Id} {h.X} {h.Y} {h.Faim:R} {h.Soif:R} {h.Fatigue:R} {h.Froid:R} {h.Sante:R} {h.Activite} {h.CibleX} {h.CibleY} {h.Detour} {h.MaladeJusqua} {h.MortLe} {h.CauseDeMort} "
-            + $"{string.Join(";", h.Memoire.Lieux)} {string.Join(";", h.Liens)} {h.Humeur:R} {h.Chagrin:R} {h.CommunauteId} {h.DeprimeDepuis} {string.Join(";", h.Memoire.Pensees)} {h.Reserves:R} {h.Biologie}"));
+            + $"{(listesPropres ? string.Join(";", h.Memoire.Lieux) : "")} {string.Join(";", h.Liens)} {h.Humeur:R} {h.Chagrin:R} {h.CommunauteId} {h.DeprimeDepuis} {(listesPropres ? string.Join(";", h.Memoire.Pensees) : "")} {h.Reserves:R} {h.Biologie}"));
         return $"{etat.Secondes} {etat.Pas} {string.Join(",", etat.Alea!)}\n{string.Join(",", etat.Gibier!)}\n{string.Join(",", etat.Plantes!)}\n"
                + $"{string.Join(",", etat.Pluies!.Select(p => p.ToString("R")))}\n{string.Join(";", etat.Relations!)}\n{humains}";
     }

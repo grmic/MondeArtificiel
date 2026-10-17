@@ -142,7 +142,7 @@ public sealed class MondeSimule
             ? h.Select(x => x.Copier()).OrderBy(x => x.Id)
             : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes));
         _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray(), etat.DegatsNature?.ToArray());
-        _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
+        _alea = etat.Alea is { } a ? Alea.Depuis(a, commun: true) : new Alea(etat.Graine ^ 0x534D554C4154UL) { Commun = true };
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
         _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
         _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros, Carte = carte };
@@ -590,16 +590,7 @@ public sealed class MondeSimule
 
         _installations.Bruler(SecondesParPas / (double)Calendrier.SecondesParHeure);
 
-        // On ne fait vivre que ceux qui vivaient au début du pas (la liste ne change pas pendant ce parcours).
-        _humains.Recenser();
-        var vivants = _humains.Vivants;
-        var nombre = vivants.Count;
-        for (var i = 0; i < nombre; i++)
-        {
-            var humain = vivants[i];
-            _comportement.Vivre(humain, _humains, _secondes);
-            if (nouveauJour) _comportement.Vieillir(humain, _secondes);
-        }
+        VivreEnsemble(nouveauJour);
 
         foreach (var (mere, pereId) in _comportement.Accouchements)
         {
@@ -650,6 +641,77 @@ public sealed class MondeSimule
             }
         }
         VerserJournal();
+    }
+
+    /// <summary>
+    /// Nombre de cœurs du processeur donnés au calcul (0 : tous). Le résultat est le même quel que soit ce nombre.
+    /// </summary>
+    public int Coeurs { get; set; }
+
+    // Les tours des humains, réutilisés de pas en pas.
+    private readonly List<Tour> _tours = [];
+
+    /// <summary>Pour les tests : appelé avec vrai avant les tours simultanés d'un pas, avec faux après (avant d'appliquer leurs effets).</summary>
+    internal Action<bool>? Surveillant { get; set; }
+
+    /// <summary>
+    /// Pas simultané : tous ceux qui vivaient au début du pas vivent ces dix minutes en même temps, répartis sur les cœurs.
+    /// Chacun agit sur une copie de lui-même, voit les autres tels qu'ils étaient au début du pas et tire son propre hasard ;
+    /// ce qu'il fait aux autres et au monde commun est appliqué ensuite, humain après humain, dans l'ordre des identifiants.
+    /// </summary>
+    private void VivreEnsemble(bool nouveauJour)
+    {
+        _humains.Recenser();
+        var vivants = _humains.Vivants;
+        var nombre = vivants.Count;
+        if (nombre == 0) return;
+        var cle = _alea.Suivant();
+        var baseNumeros = _numeros.Prochain;
+        _comportement.Preparer();
+        while (_tours.Count < nombre) _tours.Add(new Tour());
+        var tours = _tours;
+        Surveillant?.Invoke(true);
+        var options = new ParallelOptions { MaxDegreeOfParallelism = Coeurs > 0 ? Coeurs : Environment.ProcessorCount };
+        try
+        {
+            Parallel.For(0, nombre, options, i =>
+            {
+                var original = vivants[i];
+                var soi = _humains.CopieDeTravail(original);
+                var tour = tours[i];
+                tour.Commencer(original, soi, cle ^ (ulong)original.Id * 0x9E3779B97F4A7C15UL, baseNumeros, i, nombre);
+                tour.Entrer();
+                Alea.Detourner(tour.Alea);
+                try
+                {
+                    _comportement.Vivre(soi, _humains, _secondes);
+                    if (nouveauJour) _comportement.Vieillir(soi, _secondes);
+                }
+                finally
+                {
+                    Tour.Sortir();
+                    Alea.Detourner(null);
+                }
+            });
+        }
+        catch (AggregateException e) when (e.InnerExceptions.Count > 0)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e.InnerExceptions[0]).Throw();
+        }
+
+        Surveillant?.Invoke(false);
+
+        // Chacun reprend sa place sous sa nouvelle version ; les numéros d'événements reprennent après ceux du pas.
+        var pris = 0;
+        for (var i = 0; i < nombre; i++)
+        {
+            _humains.Remplacer(tours[i].Soi, i);
+            pris = Math.Max(pris, tours[i].NumerosPris);
+        }
+        _numeros.Prochain = baseNumeros + (long)pris * nombre;
+        for (var i = 0; i < nombre; i++) _comportement.Journal.AddRange(tours[i].Journal);
+        _comportement.Reprendre(_humains, _secondes);
+        for (var i = 0; i < nombre; i++) tours[i].Appliquer(_humains);
     }
 
     /// <summary>

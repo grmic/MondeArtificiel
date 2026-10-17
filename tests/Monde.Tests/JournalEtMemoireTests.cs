@@ -127,7 +127,8 @@ public sealed class JournalEtMemoireTests : IDisposable
         var journal = monde.Etat.JournalNonEnregistre!;
         Assert.Contains(journal, e => e.Type == TypeEvenement.Naissance);
         Assert.Contains(journal, e => e.Type == TypeEvenement.Grossesse);
-        Assert.Equal(Enumerable.Range(1, journal.Count).Select(i => (long)i), journal.Select(e => e.Id));
+        // Numéros croissants et uniques (les humains d'un même pas se partagent des numéros entrelacés).
+        Assert.True(journal.Zip(journal.Skip(1)).All(p => p.First.Id < p.Second.Id));
         Assert.All(journal, e => Assert.Equal(Origine.Naturelle, e.Origine));
         // Chaque naissance du journal correspond à un humain né, et inversement.
         var nes = humains.Where(h => h.MereId != 0).Select(h => h.Id).Order();

@@ -107,7 +107,8 @@ public sealed class Numeroteur
 {
     public long Prochain { get; set; } = 1;
 
-    public long Suivant() => Prochain++;
+    /// <summary>Numéro suivant ; pendant le tour d'un humain (pas simultané), pris dans la part de ce tour.</summary>
+    public long Suivant() => Humains.Tour.Courant is { } t ? t.NouveauNumero() : Prochain++;
 }
 
 public static class TypesEvenement

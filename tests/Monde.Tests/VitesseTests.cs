@@ -10,7 +10,7 @@ public sealed class VitesseTests
     private const long An = Calendrier.SecondesParAn;
     private const long Maintenant = 30 * An;
 
-    private static Humain Humain(int id, int mere = 0, int pere = 0, bool mort = false) => new()
+    internal static Humain Humain(int id, int mere = 0, int pere = 0, bool mort = false) => new()
     {
         Id = id, Nom = "H" + id, Sexe = id % 2 == 0 ? Sexe.Homme : Sexe.Femme, PartenaireId = 0, Emplacement = 1, MereId = mere, PereId = pere,
         Naissance = Maintenant - 20 * An, Personnalite = new Personnalite(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, Intelligence.Moyenne),

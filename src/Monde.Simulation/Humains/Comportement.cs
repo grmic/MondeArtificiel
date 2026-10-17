@@ -43,15 +43,19 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private static readonly (int Dx, int Dy)[] Voisins8 =
         [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)];
 
+    // État du calcul en cours, propre à chaque fil de calcul : les humains d'un pas simultané sont calculés en même temps.
+
     /// <summary>Instant du pas en cours.</summary>
-    private long _maintenant;
+    [ThreadStatic] private static long _maintenant;
 
     // Raison de la décision en cours et humain concerné, pour la pensée qui l'accompagne.
-    private Motif _motif;
-    private Humain? _autre;
+    [ThreadStatic] private static Motif _motif;
+    [ThreadStatic] private static Humain? _autre;
 
     /// <summary>Événements survenus pendant le pas : le monde les verse au journal après le pas.</summary>
-    public List<EvenementJournal> Journal { get; } = [];
+    public List<EvenementJournal> Journal => Tour.Courant?.Journal ?? _journal;
+
+    private readonly List<EvenementJournal> _journal = [];
 
     /// <summary>Morts du pas : le monde endeuille leurs proches.</summary>
     public List<Humain> Deces { get; } = [];
@@ -69,7 +73,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private double Temperature(int x, int y, long maintenant) => Climat.Temperature(carte, x, y, maintenant) + (Catastrophes?.Anomalie ?? 0);
 
     /// <summary>Température ressentie par l'humain en cours, pour le coup de chaleur.</summary>
-    private double _temperature = 20;
+    [ThreadStatic] private static double _temperature;
 
     /// <summary>
     /// Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause. <paramref name="karma"/> et
@@ -139,7 +143,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // sauf si une pensée de même sens figure déjà parmi les dernières (activités qui alternent).
             // Sauf choix contraire dans la configuration, la vie quotidienne n'est pas suivie : ni résumé de la journée,
             // ni pensées sur l'eau, la nourriture, l'abri, le sommeil ou les allées et venues.
-            if (routine && JournalQuotidien) Routine.Compter(h.Id, h.Activite);
+            if (routine && JournalQuotidien) { var (id, a) = (h.Id, h.Activite); Tour.Differer(() => Routine.Compter(id, a)); }
             var nouvelle = !routine && (JournalQuotidien || !EstQuotidien(h.Activite, _motif))
                            && !h.Memoire.PenseeRecente(pensee, Memoire.PenseesMax);
             if (h.Memoire.Penser(maintenant, pensee) && nouvelle) Noter(maintenant, TypeEvenement.Pensee, h, _autre, $"{h.Nom} : « {pensee} »");
@@ -215,9 +219,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (envie <= 0.05) continue;
             var donne = Math.Min(h.Faim - 40, 0.6 * envie);
             h.Faim -= donne;
-            d.Faim = Math.Min(100, d.Faim + 0.6 * donne);
+            Tour.Changer(d, x => x.Faim = Math.Min(100, x.Faim + 0.6 * donne));
             VieSociale.Gratitude(d, h, 0.05);
-            Social?.PartagesDuJour.Add((d.Id, h.Id));
+            Social?.Partager(d, h);
             return;
         }
     }
@@ -437,7 +441,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             _ => Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}{suite}, à {AgeEnMots(h, maintenant)}.", causeId),
         };
         h.MeurtrierId = meurtrier?.Id ?? 0;
-        Deces.Add(h);
+        Tour.Differer(h, x => Deces.Add(x));
         h.Sante = 0;
         h.MortLe = maintenant;
         h.CauseDeMort = cause;
@@ -455,7 +459,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         PerduPourSonSoignant(h, maintenant);
         h.MortEvenementId = Noter(maintenant, TypeEvenement.Mort, h, tueur, texte, causeId, karmaAutre: karmaTueur);
         h.MeurtrierId = tueur?.Id ?? 0;
-        Deces.Add(h);
+        Tour.Differer(h, x => Deces.Add(x));
         h.Sante = 0;
         h.MortLe = maintenant;
         h.CauseDeMort = cause;
@@ -830,7 +834,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 var facteur = pris > 0 ? ApresLaChasse(h, arme, _tous) : 1;
                 h.Faim = Math.Max(0, h.Faim - pris * ValeurGibier * facteur);
                 h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h));
-                if (pris > 0) Catastrophes?.Prise(h, _maintenant);
+                // Une maladie de la bête (peut-être nouvelle) passe à l'humain après le pas.
+                if (pris > 0 && Catastrophes is { } catastrophes) { var le = _maintenant; Tour.Differer(h, x => catastrophes.Prise(x, le)); }
                 if (pris > 0) Rapporter(h, pris * KgParPart * facteur, _tous);
             }
             else
@@ -1127,16 +1132,16 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// renvoie la première case du chemin, ou -1 si la cible est hors de portée.
     /// </summary>
     // Tampons des parcours en largeur, réutilisés : une case est « vue » si elle porte le numéro du parcours en cours.
-    private int[] _vus = [];
-    private int[] _parents = [];
-    private int _generation;
-    private readonly Queue<(int Indice, int Distance)> _file = new();
+    [ThreadStatic] private static int[]? _vus;
+    [ThreadStatic] private static int[]? _parents;
+    [ThreadStatic] private static int _generation;
+    [ThreadStatic] private static Queue<(int Indice, int Distance)>? _file;
 
     private int NouveauParcours()
     {
         var n = carte.Largeur * carte.Hauteur;
-        if (_vus.Length != n) { _vus = new int[n]; _parents = new int[n]; _generation = 0; }
-        if (++_generation == int.MaxValue) { Array.Clear(_vus); _generation = 1; }
+        if (_vus is null || _vus.Length != n) { _vus = new int[n]; _parents = new int[n]; _generation = 0; _file ??= new(); }
+        if (++_generation == int.MaxValue) { Array.Clear(_vus!); _generation = 1; }
         return _generation;
     }
 
@@ -1145,10 +1150,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         const int RayonMax = 40;
         int cx = cible % carte.Largeur, cy = cible / carte.Largeur;
         var generation = NouveauParcours();
-        var parent = _parents;
-        _vus[depart] = generation;
+        var (vus, parent, file) = (_vus!, _parents!, _file!);
+        vus[depart] = generation;
         parent[depart] = depart;
-        var file = _file;
         file.Clear();
         file.Enqueue((depart, 0));
         while (file.Count > 0)
@@ -1166,8 +1170,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
-                if (_vus[j] == generation || !Praticable((Biome)carte.Biomes[j])) continue;
-                _vus[j] = generation;
+                if (vus[j] == generation || !Praticable((Biome)carte.Biomes[j])) continue;
+                vus[j] = generation;
                 parent[j] = i;
                 file.Enqueue((j, d + 1));
             }
@@ -1184,8 +1188,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var rayon = rayonMax ?? RayonPerception(h);
         var debut = carte.Indice(h.X, h.Y);
         var generation = NouveauParcours();
-        _vus[debut] = generation;
-        var file = _file;
+        var (vus, file) = (_vus!, _file!);
+        vus[debut] = generation;
         file.Clear();
         file.Enqueue((debut, 0));
         (int X, int Y)? meilleur = null;
@@ -1217,13 +1221,28 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
-                if (_vus[j] == generation) continue;
-                _vus[j] = generation;
+                if (vus[j] == generation) continue;
+                vus[j] = generation;
                 // L'eau non praticable peut être une cible (on boit depuis la rive) mais on ne la traverse pas.
                 if (Praticable((Biome)carte.Biomes[j])) file.Enqueue((j, d + 1));
             }
         }
         return meilleur;
+    }
+
+    /// <summary>Reprend le calcul hors des tours (après un pas simultané) : les effets mis de côté voient la population à jour.</summary>
+    internal void Reprendre(IReadOnlyList<Humain> tous, long maintenant)
+    {
+        _tous = tous;
+        _maintenant = maintenant;
+        _nageur = false;
+    }
+
+    /// <summary>Calcule d'avance ce que les humains liront en même temps pendant un pas simultané.</summary>
+    internal void Preparer()
+    {
+        EauDouceAPortee(0, 0);
+        DistanceEau(0, 0);
     }
 
     // Les biomes ne changent pas : l'eau douce à portée de chaque case est calculée une fois.
@@ -1289,10 +1308,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     }
 
     /// <summary>Humains du pas en cours (pour l'imitation pendant les gestes).</summary>
-    private IReadOnlyList<Humain> _tous = [];
+    [ThreadStatic] private static IReadOnlyList<Humain>? _tousDuFil;
+
+    private static IReadOnlyList<Humain> _tous { get => _tousDuFil ?? []; set => _tousDuFil = value; }
 
     /// <summary>L'humain en cours sait nager et en a la force : l'eau des lacs et des côtes ne l'arrête plus.</summary>
-    private bool _nageur;
+    [ThreadStatic] private static bool _nageur;
 
     private bool Praticable(Biome b) => Climat.EstPraticable(b) || _nageur && b is Biome.Lac or Biome.EauPeuProfonde;
 

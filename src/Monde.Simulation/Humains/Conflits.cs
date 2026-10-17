@@ -94,12 +94,21 @@ public sealed partial class Comportement
             Noter(maintenant, TypeEvenement.Conflit, h, cible, $"{h.Nom} s'emporte contre {cible.Nom}{motif} : cris, reproches et menaces.",
                 grief.EvenementId);
             h.Colere *= 0.6;
-            cible.Colere = Math.Min(100, cible.Colere + 10 * (1 - cible.Personnalite.Agreabilite));
+            Tour.Changer(cible, c => c.Colere = Math.Min(100, c.Colere + 10 * (1 - c.Personnalite.Agreabilite)));
             Social.ChangerAffection(h, cible, -4, maintenant);
             return;
         }
 
-        // Des coups : l'issue dépend de la force de chacun.
+        // Des coups : l'issue dépend de la force de chacun. Pendant un pas simultané, ils se battent après le pas, s'ils vivent encore.
+        var (ih, ic) = (h.Id, cible.Id);
+        Tour.Differer(tous, t =>
+        {
+            if (t[ih - 1].EstVivant && t[ic - 1].EstVivant) Combattre(t[ih - 1], t[ic - 1], grief, motif, t, maintenant);
+        });
+    }
+
+    private void Combattre(Humain h, Humain cible, Grief grief, string motif, IReadOnlyList<Humain> tous, long maintenant)
+    {
         var fh = Force(h, maintenant);
         var fc = Force(cible, maintenant);
         var gagne = alea.Reel() < fh / (fh + fc);

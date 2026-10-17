@@ -526,6 +526,62 @@ public sealed class Humain
 
     public double AgeEnAnnees(long maintenant) => (maintenant - Naissance) / (double)Temps.Calendrier.SecondesParAn;
 
+    /// <summary>
+    /// Recopie cet humain dans <paramref name="cible"/>, champ par champ, en réutilisant les listes de la cible (rien n'est
+    /// alloué quand elles ont déjà la place) : la cible devient une copie indépendante, comme avec <see cref="Copier"/>.
+    /// </summary>
+    public void CopierDans(Humain cible) => Recopieur(this, cible);
+
+    // Tous les champs, y compris ceux des propriétés : un champ ajouté plus tard est recopié sans y penser.
+    private static readonly Action<Humain, Humain> Recopieur = CompilerRecopieur();
+
+    private static Action<Humain, Humain> CompilerRecopieur()
+    {
+        // Code généré une fois (les champs des propriétés init sont en lecture seule pour les expressions, pas pour l'IL).
+        var methode = new System.Reflection.Emit.DynamicMethod("RecopierHumain", null, [typeof(Humain), typeof(Humain)], typeof(Humain), skipVisibility: true);
+        var il = methode.GetILGenerator();
+        var recopierListe = typeof(Humain).GetMethod(nameof(Recopier), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        var recopierMemoire = typeof(Memoire).GetMethod(nameof(Memoire.Recopier), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        foreach (var champ in typeof(Humain).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+        {
+            var t = champ.FieldType;
+            // Le vocabulaire ne change qu'une fois par jour, hors des pas simultanés : la copie de travail le partage.
+            System.Reflection.MethodInfo? profond = champ.Name == $"<{nameof(Vocabulaire)}>k__BackingField" ? null
+                : t.IsGenericType && t.GetGenericTypeDefinition() == typeof(List<>)
+                ? recopierListe.MakeGenericMethod(t.GetGenericArguments())
+                : t == typeof(Memoire) ? recopierMemoire : null;
+            if (profond is null && !t.IsValueType && t != typeof(string) && !EstImmuable(t) && champ.Name != $"<{nameof(Vocabulaire)}>k__BackingField")
+            {
+                throw new InvalidOperationException($"Champ {champ.Name} : type {t.Name} à recopier en profondeur.");
+            }
+            il.Emit(System.Reflection.Emit.OpCodes.Ldarg_1);
+            il.Emit(System.Reflection.Emit.OpCodes.Ldarg_0);
+            il.Emit(System.Reflection.Emit.OpCodes.Ldfld, champ);
+            if (profond is not null)
+            {
+                il.Emit(System.Reflection.Emit.OpCodes.Ldarg_1);
+                il.Emit(System.Reflection.Emit.OpCodes.Ldfld, champ);
+                il.Emit(System.Reflection.Emit.OpCodes.Call, profond);
+            }
+            il.Emit(System.Reflection.Emit.OpCodes.Stfld, champ);
+        }
+        il.Emit(System.Reflection.Emit.OpCodes.Ret);
+        return methode.CreateDelegate<Action<Humain, Humain>>();
+    }
+
+    // Les enregistrements (records) des humains ne sont jamais modifiés en place : on les remplace.
+    private static bool EstImmuable(Type t) => t.GetMethod("<Clone>$") is not null;
+
+    /// <summary>Recopie <paramref name="source"/> dans <paramref name="cible"/> (une nouvelle liste s'il n'y en a pas).</summary>
+    internal static List<T>? Recopier<T>(List<T>? source, List<T>? cible)
+    {
+        if (source is null) return null;
+        if (cible is null || ReferenceEquals(cible, source)) return [.. source];
+        cible.Clear();
+        cible.AddRange(source);
+        return cible;
+    }
+
     /// <summary>Copie indépendante (la mémoire et les liens aussi sont copiés).</summary>
     public Humain Copier()
     {

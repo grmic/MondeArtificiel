@@ -460,11 +460,17 @@ public sealed partial class Comportement
             if (viande is null || d.AffectionPour(h.Id) < 0) continue;
             var kg = Math.Min(100 * viande.Qualite, h.Faim / FaimParKg);
             h.Faim = Math.Max(0, h.Faim - kg * FaimParKg);
-            var reste = viande.Qualite - kg / 100;
-            if (reste <= 0.005) d.Objets.Remove(viande);
-            else d.Objets[d.Objets.IndexOf(viande)] = viande with { Qualite = reste };
+            // Ceux qui en reçoivent dans le même pas se partagent ce qui reste.
+            Tour.Changer(d, x =>
+            {
+                var i = x.Objets.FindIndex(o => o.Matiere == Matiere.Carcasse);
+                if (i < 0) return;
+                var reste = x.Objets[i].Qualite - kg / 100;
+                if (reste <= 0.005) x.Objets.RemoveAt(i);
+                else x.Objets[i] = x.Objets[i] with { Qualite = reste };
+            });
             VieSociale.Gratitude(h, d, 1);
-            Social?.PartagesDuJour.Add((d.Id, h.Id));
+            Social?.Partager(d, h);
             return;
         }
     }
@@ -542,7 +548,14 @@ public sealed partial class Comportement
             && (FeuIci(h) || h.Sait(Effet.Rondelle)) && alea.Reel() < 0.02)
         {
             var effet = Faire(h, Geste.Trancher, Matiere.Tronc, Matiere.Assemblage, OrigineSavoir.Essai, tous);
-            if (effet == Effet.Rondelle && Installations.FoyerEn(h.X, h.Y) is { } f) Installations.Alimenter(f, 2 + 2 * alea.Reel());
+            if (effet == Effet.Rondelle && Installations.FoyerEn(h.X, h.Y) is not null)
+            {
+                var (fx, fy, bois) = (h.X, h.Y, 2 + 2 * alea.Reel());
+                Tour.Differer(() =>
+                {
+                    if (Installations.FoyerEn(fx, fy) is { } f) Installations.Alimenter(f, bois);
+                });
+            }
             h.Activite = Activite.Fabriquer;
             h.CibleX = h.CibleY = -1;
             return true;
