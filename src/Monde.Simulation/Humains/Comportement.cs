@@ -818,7 +818,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             // Chasse à mains nues : réussite rare, meilleure pour les adroits et là où le gibier abonde.
             var (arme, gain) = ArmeDeChasse(h);
-            var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * (1 + gain) * ecosysteme.Gibier[i] / 10_000.0;
+            // Des compagnons qui parlent la même langue se coordonnent mieux (rabattre, encercler).
+            var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * (1 + gain) * ecosysteme.Gibier[i] / 10_000.0 * (1 + 0.05 * h.CompagnonsDeLangue);
             h.Activite = Activite.Chasser;
             h.CibleX = h.CibleY = -1;
             if (alea.Reel() < chance)

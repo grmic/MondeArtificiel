@@ -44,6 +44,30 @@ public sealed class Communaute
     /// </summary>
     public Dictionary<string, string> Lexique { get; set; } = [];
 
+    /// <summary>Signes du groupe (idée → geste), pour qui parle avec les mains.</summary>
+    public Dictionary<string, string> Signes { get; set; } = [];
+
+    /// <summary>Sons de sa langue (consonnes, voyelles, finales, part des signes) ; tirés au premier mot.</summary>
+    public Sons? Sons { get; set; }
+
+    /// <summary>Stade de la langue (0 gestes, 1 mots isolés, 2 mots assemblés, 3 ordre fixe) et ordre des mots.</summary>
+    public byte Stade { get; set; }
+    public OrdreMots Ordre { get; set; }
+
+    /// <summary>Quand la langue a eu son premier mot courant, ses premiers mots assemblés, son ordre des mots (0 : pas encore).</summary>
+    public long ParoleLe { get; set; }
+    public long CombinaisonLe { get; set; }
+    public long OrdreLe { get; set; }
+
+    /// <summary>Plus haut palier de mots déjà noté au journal (10, 25, 50, 100, 200).</summary>
+    public int PalierMots { get; set; }
+
+    /// <summary>Langue qu'elle parle : 0, la sienne ; sinon celle de la communauté dont elle est issue, tant que son parler n'en est qu'un dialecte.</summary>
+    public int LangueId { get; set; }
+
+    /// <summary>Histoire de la langue : chaque mot adopté, déformé, emprunté, remplacé ou oublié.</summary>
+    public List<HistoireMot> HistoireLangue { get; set; } = [];
+
     /// <summary>Noms successifs, du premier au dernier.</summary>
     public List<NomCommunaute> Noms { get; set; } = [];
 
@@ -165,6 +189,8 @@ public sealed class Communaute
     {
         var copie = (Communaute)MemberwiseClone();
         copie.Lexique = new Dictionary<string, string>(Lexique);
+        copie.Signes = new Dictionary<string, string>(Signes);
+        copie.HistoireLangue = [.. HistoireLangue];
         copie.Noms = [.. Noms];
         copie.Territoire = new Dictionary<int, long>(Territoire);
         copie.Raid = Raid?.Copier();
@@ -689,6 +715,12 @@ public sealed partial class VieSociale(Alea alea)
                     OrigineId = scission ? origine.Id : 0,
                     // Ceux qui partent emportent les mots de leur ancien groupe.
                     Lexique = scission ? new Dictionary<string, string>(communautes[origine.Id - 1].Lexique) : [],
+                    Signes = scission ? new Dictionary<string, string>(communautes[origine.Id - 1].Signes) : [],
+                    // Même sons, même stade au départ : un dialecte, qui dérivera.
+                    Sons = scission ? communautes[origine.Id - 1].Sons : null,
+                    Stade = scission ? communautes[origine.Id - 1].Stade : (byte)0,
+                    Ordre = scission ? communautes[origine.Id - 1].Ordre : OrdreMots.Aucun,
+                    LangueId = scission ? Langues.LangueDe(communautes[origine.Id - 1]) : 0,
                 };
                 communautes.Add(communaute);
                 reprises.Add(communaute.Id);

@@ -110,6 +110,18 @@ interface Fiche {
     guerisseurDepuis: string | null; chamanDepuis: string | null; charlatanDepuis: string | null; desavoueLe: string | null;
     plaie: string | null; malediction: string | null;
   };
+  /** Parole : stade, nom dans sa langue, mots les plus sûrs, ordre des mots, autres langues comprises. */
+  langage: Langage | null;
+}
+
+/** Un mot et sa traduction. */
+interface Mot {
+  sens: string; forme: string; signe: boolean; force: number; depuis: string; auteur: number; nomAuteur: string | null;
+}
+
+interface Langage {
+  stade: string; nom: string | null; sens: string | null; nommeLe: string | null; nommePar: number; nomPar: string | null;
+  nomEvenement: number; nombreDeMots: number; mots: Mot[]; ordre: string | null; comprises: { id: number; nom: string; pourcent: number }[];
 }
 
 /** Ce qu'il sait faire (et à quel point il y croit), ce qu'il porte, son vêtement, son aisance dans l'eau (0 à 100). */
@@ -293,7 +305,13 @@ export class PanneauFiche {
     r.hidden = false;
 
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, h.nom));
+    const titre = el("h2", undefined, h.nom);
+    if (f.langage?.nom) {
+      const nom = el("span", "nom-langue", ` « ${f.langage.nom} »`);
+      nom.title = `Son nom dans la langue des siens${f.langage.sens ? ` : « ${f.langage.sens} »` : ""}`;
+      titre.append(nom);
+    }
+    tete.append(titre);
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.title = "Fermer la fiche";
@@ -397,6 +415,7 @@ export class PanneauFiche {
     regard.title = "Invisible aux humains. Les actes qui ont changé son karma sont marqués ☯ dans son histoire.";
     corps.append(regard);
     this.medecine(corps, f.medecine);
+    this.langage(corps, f.langage);
     if (h.vivant) corps.append(this.formulaireSouffle());
     this.communaute = f.communaute?.id ?? 0;
     this.nomCourant = h.nom;
@@ -587,6 +606,36 @@ export class PanneauFiche {
     });
     p.title = "Les guérisons comptées sont celles que les siens lui attribuent, méritées ou non.";
     corps.append(p);
+  }
+
+  /** Section « Langage » : son nom dans sa langue, sa parole, ses mots (avec leur traduction) et les langues qu'il comprend. */
+  private langage(corps: HTMLElement, l: Langage | null): void {
+    if (!l) return;
+    corps.append(el("h3", undefined, "Langage"));
+    const p = el("p", "langage");
+    if (l.nom) {
+      p.append(`Nom dans sa langue : « ${l.nom} »${l.sens ? `, qui veut dire « ${l.sens} »` : ""}`);
+      if (l.nomPar) {
+        p.append(", donné par ", this.lien(l.nommePar, l.nomPar ?? undefined));
+      }
+      if (l.nommeLe) p.append(` le ${l.nommeLe}`);
+      p.append(" ");
+      if (l.nomEvenement > 0) p.append(boutonCause(p, l.nomEvenement, "comment ?"));
+      p.append(el("br"));
+    }
+    p.append(`Parle par ${l.stade} ; connaît ${l.nombreDeMots} mot${l.nombreDeMots > 1 ? "s" : ""}.`);
+    if (l.ordre) p.append(el("br"), `Ordre des mots : ${l.ordre}.`);
+    if (l.comprises.length > 0) p.append(el("br"), `Comprend aussi : ${l.comprises.map((c) => `la langue de la ${c.nom.charAt(0).toLowerCase()}${c.nom.slice(1)} (${c.pourcent} %)`).join(", ")}.`);
+    corps.append(p);
+    if (l.mots.length > 0) {
+      const ul = el("ul", "liste mots");
+      for (const m of l.mots) {
+        const li = el("li");
+        li.append(el("span", "mot", m.forme), ` « ${m.sens} » `, el("span", "discret", `(${m.force}/100${m.nomAuteur ? `, forme due à ${m.nomAuteur}` : ""})`));
+        ul.append(li);
+      }
+      corps.append(ul);
+    }
   }
 
   private formulaireSouffle(): HTMLDetailsElement {

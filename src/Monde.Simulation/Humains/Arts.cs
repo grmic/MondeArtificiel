@@ -56,7 +56,9 @@ public static class Arts
             var n = membres.Average(h => h.Personnalite.Nevrosisme);
             var tempo = e > 0.55 ? "vifs" : e < 0.45 ? "lents" : "posés";
             var ton = n > 0.55 ? " et plaintifs" : n < 0.45 ? " et joyeux" : "";
-            parties.Add($"chants {tempo}{ton}");
+            // Quand la plupart des chanteurs ont des mots, les chants ont des paroles.
+            var paroles = membres.Count(h => Connait(h, Effet.Chant) && h.StadeParole >= 1) * 2 > chantent ? " avec des paroles" : "";
+            parties.Add($"chants {tempo}{ton}{paroles}");
         }
         var rythmes = membres.SelectMany(h => h.Savoirs).Where(s => s.Effet == Effet.Rythme && s.Confiance >= 0.3).ToList();
         if (rythmes.Count > 0)
@@ -99,6 +101,9 @@ public sealed partial class Comportement
     /// <summary>Morts déjà pleurés en chantant, par chanteur (le jardin en garde aussi la trace).</summary>
     private readonly HashSet<(int Chanteur, int Mort)> _lamentations = [];
 
+    /// <summary>Souvenirs déjà racontés, par conteur (chacun raconte une même chose une fois).</summary>
+    private readonly HashSet<(int Conteur, string Cle)> _racontes = [];
+
     /// <summary>Œuvres déjà vues, par humain.</summary>
     private readonly HashSet<(int Humain, int Oeuvre)> _vues = [];
 
@@ -114,6 +119,7 @@ public sealed partial class Comportement
         foreach (var h in presents) InventerChant(h, tous);
         foreach (var h in presents) Lamenter(h, tous);
         Veillees(presents, tous);
+        Raconter(presents, tous);
         foreach (var h in presents) Peindre(h, tous);
         Contempler(presents, tous);
     }
@@ -280,6 +286,42 @@ public sealed partial class Comportement
         for (var j = i + 1; j < lies.Count; j++)
             Social?.ChangerAffection(lies[i], lies[j], danseurs.Contains(lies[i]) && danseurs.Contains(lies[j]) ? 0.3 : 0.2, _maintenant);
         Feter(s, danseurs, chante, rythme);
+    }
+
+    /// <summary>
+    /// Le soir, qui sait assembler des mots raconte ce qui l'a marqué : une croyance, une peur, une peine, une joie. Ceux qui
+    /// l'écoutent dans sa langue en gardent la trace, plus faible ; une croyance racontée fait un peu croire. Ainsi les souvenirs
+    /// passent d'une bouche à l'autre, et d'une génération à la suivante (récits du soir : Wiessner, 2014).
+    /// </summary>
+    private void Raconter(List<Humain> presents, IReadOnlyList<Humain> tous)
+    {
+        foreach (var s in presents)
+        {
+            if (s.StadeParole < 2 || s.CommunauteId == 0 || s.Activite == Activite.Dormir && alea.Reel() < 0.5) continue;
+            if (alea.Reel() >= 0.01 * (0.4 + s.Personnalite.Extraversion) * (0.3 + Langues.Aptitude(s))) continue;
+            var souvenir = s.Memoire.Jardin
+                .Where(x => x.Type is TypeIntime.Croyance or TypeIntime.Peine or TypeIntime.Peur or TypeIntime.Joie
+                            && x.Intensite >= 40 && x.CauseId > 0 && !_racontes.Contains((s.Id, x.Cle)))
+                .MaxBy(x => x.Intensite);
+            if (souvenir is null) continue;
+            var auditeurs = presents.Where(o => o.Id != s.Id && o.CommunauteId == s.CommunauteId && o.StadeParole >= 1
+                                                && Distance(o.X, o.Y, s.X, s.Y) <= 1 && o.AffectionPour(s.Id) > -30).Take(8).ToList();
+            if (auditeurs.Count == 0) continue;
+            _racontes.Add((s.Id, souvenir.Cle));
+            // Un récit déjà entendu se raconte sous le nom de celui qui le dit maintenant.
+            var fond = souvenir.Texte.IndexOf(" m'a raconté : ", StringComparison.Ordinal) is >= 0 and var k ? souvenir.Texte[(k + 15)..] : souvenir.Texte;
+            var cle = souvenir.Cle.StartsWith("recit:", StringComparison.Ordinal) ? souvenir.Cle : "recit:" + souvenir.Cle;
+            var qui = auditeurs.Count == 1 ? auditeurs[0].Nom : $"{auditeurs.Count} des siens";
+            var id = Noter(_maintenant, TypeEvenement.Langage, s, auditeurs.Count == 1 ? auditeurs[0] : null,
+                $"{s.Nom} raconte à {qui}, à la veillée : « {fond} »", souvenir.CauseId);
+            foreach (var o in auditeurs)
+            {
+                Jardin.Confier(o, souvenir.Type, souvenir.SujetId, $"{s.Nom} m'a raconté : {fond}", souvenir.Intensite * (0.4 + 0.3 * o.Personnalite.Ouverture),
+                    id, _maintenant, cle);
+                if (souvenir.Type == TypeIntime.Croyance)
+                    Croyances.Ajouter(o, 1 + 2 * o.Personnalite.Transcendance, $"ce que {s.Nom} a raconté à la veillée", id, _maintenant);
+            }
+        }
     }
 
     /// <summary>Quand beaucoup dansent ensemble, c'est une fête : elle est notée au journal (une par saison et par communauté au plus).</summary>

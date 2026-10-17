@@ -150,6 +150,7 @@ public sealed class MondeSimule
         _social.ChargerRelations(etat.Relations ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
         Flore = new Flore(etat.Graine);
+        _social.Flore = Flore;
         _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes, etat.Oeuvres);
         _comportement = new Comportement(carte, _ecosysteme, _alea)
         {
@@ -637,9 +638,11 @@ public sealed class MondeSimule
             _comportement.Croire(_humains, _secondes);
             _comportement.Soins(_humains, _secondes);
             _comportement.Arts(_humains, _secondes);
+            _social.Parler(_humains, _communautes, Carte, _secondes);
             if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
             {
                 _social.Regrouper(_humains, _communautes, _secondes, _noms);
+                _social.ConstaterLangues(_humains, _communautes, _secondes);
                 _social.Territoires(_humains, _communautes, _ecosysteme, Carte, _secondes);
                 foreach (var h in _humains) if (h.EstVivant || h.Memoire.Jardin.Count > Jardin.TailleApresLaMort) Jardin.Mediter(h, _humains, _communautes, _secondes, Carte);
             }

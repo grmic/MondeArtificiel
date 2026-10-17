@@ -23,6 +23,8 @@ const TYPES: [string, string][] = [
   ["croyance", "Croyance en l'invisible"],
   ["medecine", "Médecine et transes"],
   ["art", "Arts, chants et fêtes"],
+  ["langage", "Langage et récits"],
+  ["mots", "Mots, un par un"],
   ["communaute", "Communautés"],
   ["guerre", "Guerres et alliances"],
   ["nature", "Nature"],
@@ -34,7 +36,7 @@ const TYPES: [string, string][] = [
 ];
 
 /** Types très nombreux : décochés au départ, et non reçus en direct (le bouton ↻ les relit). */
-const FREQUENTS = new Set(["accouplement", "pensee", "journee", "souvenir", "partage"]);
+const FREQUENTS = new Set(["accouplement", "pensee", "journee", "souvenir", "partage", "mots"]);
 
 /** Journal du monde : filtrable par type et par humain, mis à jour en direct, avec les plus anciens à la demande. */
 export class PanneauJournal {
@@ -73,7 +75,7 @@ export class PanneauJournal {
    */
   suivreCommunaute(id: number, nom: string): void {
     this.communaute = { id, nom };
-    this.types = new Set(["communaute", "guerre", "naissance", "mort", "conflit", "union", "catastrophe", "exclusion", "vol", "entraide", "decouverte", "parole", "medecine", "art"]);
+    this.types = new Set(["communaute", "guerre", "naissance", "mort", "conflit", "union", "catastrophe", "exclusion", "vol", "entraide", "decouverte", "parole", "medecine", "art", "langage"]);
     this.racine.querySelectorAll<HTMLInputElement>(".filtres input").forEach((c) => (c.checked = this.types.has(c.dataset.cle ?? "")));
     this.racine.hidden = false;
     void this.recharger();

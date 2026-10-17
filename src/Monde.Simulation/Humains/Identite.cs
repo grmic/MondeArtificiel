@@ -265,7 +265,8 @@ public sealed partial class VieSociale
         c.FusionVersId = 0;
         c.DestinationX = c.DestinationY = -1;
         cible.AccueilLe = maintenant;
-        foreach (var (idee, mot) in c.Lexique) cible.Lexique.TryAdd(idee, mot);
+        // Seuls passent les mots nés en nommant le groupe ; les autres restent ceux des nouveaux venus, qui apprendront ceux de leurs hôtes.
+        foreach (var (idee, mot) in c.Lexique) if (Idees.DeNom(idee) && !c.HistoireLangue.Exists(x => x.Idee == idee)) cible.Lexique.TryAdd(idee, mot);
         foreach (var (indice, vu) in c.Territoire)
         {
             if (!cible.Territoire.TryGetValue(indice, out var deja) || DernierPassage(deja) < DernierPassage(vu)) cible.Territoire[indice] = vu;
@@ -399,7 +400,7 @@ public sealed partial class VieSociale
         string Mot(string idee, int syllabes)
         {
             if (c.Lexique.TryGetValue(idee, out var m) || nouveaux.TryGetValue(idee, out m)) return m;
-            return nouveaux[idee] = Noms.Mot(alea, syllabes);
+            return nouveaux[idee] = Langues.Forger(SonsDe(c), alea, syllabes);
         }
         var ceux = Mot("ceux", 1);
         var mot = sens.Cle switch
@@ -410,7 +411,7 @@ public sealed partial class VieSociale
             _ => Mot(sens.Cle, 1 + alea.Entier(2)) + ceux,
         };
         mot = char.ToUpperInvariant(mot[0]) + mot[1..];
-        while (communautes.Any(x => x.NomPropre == mot)) mot += Noms.Mot(alea, 1);
+        while (communautes.Any(x => x.NomPropre == mot)) mot += Langues.Forger(SonsDe(c), alea, 1);
         return (mot, nouveaux);
     }
 

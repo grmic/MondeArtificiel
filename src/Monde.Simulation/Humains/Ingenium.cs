@@ -443,7 +443,9 @@ public sealed partial class Comportement
                             * (0.5 + affection / 100) * (0.6 + 0.8 * h.Personnalite.Moral.EmpathieCognitive) * (0.5 + h.Personnalite.Charisme)
                             // On regarde de plus près les gestes d'un guérisseur reconnu (les enfants apprennent les remèdes
                             // de ceux qu'on dit savoir soigner : McDade et al., 2007 ; Salali et al., 2016).
-                            * (h.GuerisseurDepuis > 0 && e is Effet.Soulagement or Effet.Pansement ? 1.6 : 1);
+                            * (h.GuerisseurDepuis > 0 && e is Effet.Soulagement or Effet.Pansement ? 1.6 : 1)
+                            // Un mot commun pour la chose montrée aide à comprendre ce qu'on regarde.
+                            * (Langues.Partagent(h, o, espece > 0 ? Idees.Plante(espece) : Idees.Savoir(e)) ? 1.4 : 1);
             // Comprendre un geste compliqué demande de l'intelligence et de l'adresse.
             var difficile = e is Effet.Flamme or Effet.Durci or Effet.Decoupe or Effet.Percage || pieces.Length > 0 ? 0.5 + 0.5 * Ingeniosite(o) : 1;
             if (alea.Reel() >= 0.35 * attention * difficile) continue;
@@ -998,6 +1000,8 @@ public sealed partial class Comportement
                 var stabilite = 120.0 * facteur * Math.Pow(1 + s.Succes, 1.3) * Calendrier.SecondesParJour;
                 // Un poison, une plante qui a fait voir d'autres mondes, la morsure chaude du feu ne s'oublient guère.
                 if (s.Effet is Effet.Poison or Effet.Visions or Effet.Chaleur) stabilite *= 10;
+                // Ce qui a un nom se retient mieux : le mot rappelle la chose.
+                if (Langues.Indice(h, s.Espece > 0 ? Idees.Plante(s.Espece) : Idees.Savoir(s.Effet)) >= 0) stabilite *= 1.5;
                 // Le geste qui a sauvé une plaie (le sang, la douleur) reste en mémoire, même si les blessures sont rares.
                 else if (s.Effet == Effet.Pansement) stabilite *= 5;
                 if (maintenant - s.UtiliseLe < 1.4 * stabilite) continue;

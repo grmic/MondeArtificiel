@@ -173,13 +173,13 @@ public sealed partial class DepotMonde
         return territoire;
     }
 
-    /// <summary>Mots d'un groupe : « idée=mot » séparés par « ; » (idées et mots ne sont faits que de lettres).</summary>
+    /// <summary>Mots d'un groupe : « idée=mot » séparés par « ; » (idées : lettres, chiffres et « : » ; mots : lettres).</summary>
     private static string EcrireLexique(Dictionary<string, string> lexique)
     {
         var texte = new StringBuilder();
         foreach (var (idee, mot) in lexique.OrderBy(m => m.Key, StringComparer.Ordinal))
         {
-            if (!EstMot(idee) || !EstMot(mot)) throw new ArgumentException($"Mot invalide dans le lexique : {idee}={mot}.");
+            if (!EstIdee(idee) || !EstMot(mot)) throw new ArgumentException($"Mot invalide dans le lexique : {idee}={mot}.");
             if (texte.Length > 0) texte.Append(';');
             texte.Append(idee).Append('=').Append(mot);
         }
@@ -192,7 +192,7 @@ public sealed partial class DepotMonde
         foreach (var paire in texte.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             var morceaux = paire.Split('=');
-            if (morceaux.Length != 2 || !EstMot(morceaux[0]) || !EstMot(morceaux[1])) throw new InvalidDataException("Lexique corrompu dans la sauvegarde.");
+            if (morceaux.Length != 2 || !EstIdee(morceaux[0]) || !EstMot(morceaux[1])) throw new InvalidDataException("Lexique corrompu dans la sauvegarde.");
             lexique[morceaux[0]] = morceaux[1];
         }
         return lexique;

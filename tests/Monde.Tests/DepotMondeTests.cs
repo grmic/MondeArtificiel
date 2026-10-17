@@ -24,6 +24,15 @@ public sealed class DepotMondeTests : IDisposable
     /// <summary>Ramène un fichier au schéma 18 (avant les savoirs, les objets, les feux et les huttes).</summary>
     /// <summary>Ramène un fichier au schéma 20 (avant les paroles et les penchants de l'Entité).</summary>
     /// <summary>Ramène un fichier au schéma 22 (avant le karma et la croyance en l'invisible).</summary>
+    /// <summary>Ramène un fichier au schéma 25 (avant le langage).</summary>
+    internal const string RetourVersion25 = """
+        DROP TABLE langage_humains;
+        DROP TABLE mots;
+        DROP TABLE langues;
+        DROP TABLE langue_histoire;
+        PRAGMA user_version = 25;
+        """;
+
     internal const string RetourVersion24 = """
         DROP TABLE oeuvres;
         PRAGMA user_version = 24;

@@ -86,7 +86,9 @@ public sealed partial class Comportement
             _ => grief.VictimeId > 0 ? $", qui a tué {VieSociale.Parente(h, tous[grief.VictimeId - 1])}" : "",
         };
         var violence = (1 - p.Agreabilite) * h.Colere / 100 * (h.Sexe == Sexe.Homme ? 1.3 : 0.7)
-                       * (grief.Motif == MotifGrief.Meurtre ? 1.5 : 1) * (1 + Psyche.Froideur(p)) * (1.2 - 0.4 * p.Moral.Compassion);
+                       * (grief.Motif == MotifGrief.Meurtre ? 1.5 : 1) * (1 + Psyche.Froideur(p)) * (1.2 - 0.4 * p.Moral.Compassion)
+                       // Ceux qui peuvent s'expliquer avec des phrases en viennent moins vite aux mains.
+                       * (Langues.SExpliquent(h, cible) ? 0.75 : 1);
         if (alea.Reel() >= 0.5 * violence)
         {
             Noter(maintenant, TypeEvenement.Conflit, h, cible, $"{h.Nom} s'emporte contre {cible.Nom}{motif} : cris, reproches et menaces.",

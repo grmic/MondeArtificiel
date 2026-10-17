@@ -51,6 +51,10 @@ public enum TypeEvenement : byte
     Medecine = 27,
     /// <summary>Chants, rythmes, danses, fêtes, lamentations, peintures sur la roche : les arts.</summary>
     Art = 28,
+    /// <summary>Premiers mots, mots assemblés, ordre des mots, noms donnés dans la langue : les étapes du langage.</summary>
+    Langage = 29,
+    /// <summary>Un mot adopté, déformé, emprunté, remplacé ou oublié par une communauté.</summary>
+    Mots = 30,
 }
 
 /// <summary>

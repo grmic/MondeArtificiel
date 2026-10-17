@@ -403,6 +403,32 @@ public sealed class Humain
     public Symptome RemedeSymptome { get; set; }
     public long RemedeLe { get; set; }
 
+    /// <summary>Les mots qu'il connaît (idée, forme, parlé ou signé, force), appris des autres ou inventés.</summary>
+    public List<Mot> Vocabulaire { get; set; } = [];
+
+    /// <summary>Stade de sa parole : 0 gestes, 1 mots isolés, 2 mots assemblés, 3 ordre des mots fixe.</summary>
+    public int StadeParole { get; set; }
+
+    /// <summary>A appris à assembler les mots enfant (avant 10 ans) ; et dès le berceau, d'un enfant qui l'avait appris ainsi.</summary>
+    public bool ParoleEnfant { get; set; }
+    public bool ParoleNative { get; set; }
+
+    /// <summary>Ordre des mots qu'il suit, s'il en suit un.</summary>
+    public OrdreMots Ordre { get; set; }
+
+    /// <summary>Son nom dans la langue de sa communauté, ce qu'il veut dire, quand, par qui, et l'événement du journal.</summary>
+    public string? NomLangue { get; set; }
+    public string? NomSens { get; set; }
+    public long NomLangueLe { get; set; }
+    public int NomParId { get; set; }
+    public long NomEvenementId { get; set; }
+
+    /// <summary>Autre communauté dont il parle aussi la langue (0 : aucune) : il peut servir d'interprète.</summary>
+    public int LangueSecondeId { get; set; }
+
+    /// <summary>Proches du jour qui parlent la même langue (0 à 3), pour se coordonner à la chasse.</summary>
+    public int CompagnonsDeLangue { get; set; }
+
     /// <summary>
     /// Ce que l'Entité lui a fait comprendre ou ressentir, et ce qu'il en a fait (voir <see cref="Impulsion"/>), de la plus
     /// ancienne à la plus récente. Les plus anciennes s'effacent ; elles nourrissent un temps sa foi ou son doute.
@@ -513,6 +539,7 @@ public sealed class Humain
         copie.Savoirs = [.. Savoirs];
         copie.Objets = [.. Objets];
         copie.Impulsions = [.. Impulsions];
+        copie.Vocabulaire = [.. Vocabulaire];
         return copie;
     }
 }

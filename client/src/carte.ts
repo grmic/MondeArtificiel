@@ -169,6 +169,8 @@ export interface HumainVue {
   peur: number;
   /** Porteur d'une maladie qui se transmet. */
   contagieux: boolean;
+  /** Son nom dans la langue des siens (null tant qu'on ne lui en a pas donné). */
+  nomLangue: string | null;
 }
 
 /** Indicateurs du monde, tels que renvoyés par le hub (méthode « Nature »). */

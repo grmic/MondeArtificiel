@@ -54,6 +54,21 @@ interface Communaute {
   style: string | null;
   /** Images peintes sur la roche par ses membres, les plus récentes d'abord. */
   oeuvres: { id: number; auteurId: number; auteur: string; le: string; description: string; evenementId: number }[] | null;
+  /** Sa langue : mode, stade, ordre des mots, mots et leur histoire, langues voisines, interprètes. */
+  langue: Langue | null;
+}
+
+/** Un mot de la langue, avec sa traduction et qui lui a donné sa forme. */
+interface MotLangue {
+  sens: string; forme: string; signe: boolean; depuis: string; auteur: number; nomAuteur: string | null;
+}
+
+interface Langue {
+  mode: string; stade: string; ordre: string | null; premierMot: string | null; assemblage: string | null; ordreFixe: string | null;
+  nombreDeMots: number; lexique: MotLangue[]; histoire: { date: string; texte: string; evenement: number }[];
+  proches: { id: number; nom: string; pourcent: number }[]; interpretes: { id: number; nom: string; langue: number; nomLangue: string }[];
+  /** Communauté dont elle parle encore un dialecte (null : sa langue est à elle). */
+  dialecteDe: string | null;
 }
 
 /** Une guerre en préparation : qui la veut, contre qui, pourquoi, et les alliés sollicités. */
@@ -222,6 +237,58 @@ export class PanneauCommunautes {
     this.surligner(choisie ? choisie.membres.map((m) => m.id) : []);
   }
 
+  /** Section « Langue » : comment on y parle, ses étapes, ses mots traduits, son histoire, les langues voisines et ses interprètes. */
+  private langue(bloc: HTMLElement, l: Langue): void {
+    bloc.append(el("h3", undefined, "Langue"));
+    const p = el("p", "langage");
+    p.append(`Langue ${l.mode} ; on y parle par ${l.stade}${l.ordre ? ` ; ordre des mots : ${l.ordre}` : ""}.`);
+    if (l.dialecteDe) p.append(el("br"), `Un dialecte de la langue de la ${l.dialecteDe.charAt(0).toLowerCase()}${l.dialecteDe.slice(1)}.`);
+    const etapes = [l.premierMot ? `premier mot en usage le ${l.premierMot}` : "", l.assemblage ? `mots assemblés depuis le ${l.assemblage}` : "",
+      l.ordreFixe ? `ordre fixe depuis le ${l.ordreFixe}` : ""].filter(Boolean);
+    if (etapes.length > 0) p.append(el("br"), `${etapes.join(" ; ")}.`);
+    if (l.proches.length > 0) {
+      p.append(el("br"), `Proche de : ${l.proches.map((x) => `${x.nom} (${x.pourcent} % de mots parents)`).join(", ")}.`);
+    }
+    if (l.interpretes.length > 0) {
+      p.append(el("br"), "Interprètes : ");
+      l.interpretes.forEach((x, i) => {
+        if (i > 0) p.append(", ");
+        const b = el("button", "lien", x.nom);
+        b.type = "button";
+        b.addEventListener("click", () => this.ouvrirFiche(x.id));
+        p.append(b, ` (parle aussi la langue de ${x.nomLangue})`);
+      });
+      p.append(".");
+    }
+    bloc.append(p);
+    if (l.lexique.length > 0) {
+      const mots = el("details");
+      mots.append(el("summary", undefined, `${l.nombreDeMots} mot${l.nombreDeMots > 1 ? "s" : ""}`));
+      const ul = el("ul", "liste mots");
+      for (const m of l.lexique) {
+        const li = el("li");
+        li.append(el("span", "mot", m.forme), ` « ${m.sens} »`);
+        if (m.depuis) li.append(el("span", "discret", ` (${m.depuis}${m.nomAuteur ? `, ${m.nomAuteur}` : ""})`));
+        ul.append(li);
+      }
+      mots.append(ul);
+      bloc.append(mots);
+    }
+    if (l.histoire.length > 0) {
+      const histoire = el("details");
+      histoire.append(el("summary", undefined, "Histoire de la langue"));
+      const ul = el("ul", "liste");
+      for (const x of l.histoire) {
+        const li = el("li");
+        li.append(el("span", "date", x.date), ` ${x.texte} `);
+        if (x.evenement > 0) li.append(boutonCause(li, x.evenement, "comment ?"));
+        ul.append(li);
+      }
+      histoire.append(ul);
+      bloc.append(histoire);
+    }
+  }
+
   private carte(c: Communaute): HTMLElement {
     const bloc = el("div", `communaute-carte${c.id === this.choisie ? " choisie" : ""}`);
     const titre = el("button", "titre", `${c.nom} · ${c.membres.length} membres${c.disette ? " · disette" : ""}`);
@@ -347,7 +414,8 @@ export class PanneauCommunautes {
         }
         bloc.append(ul);
       }
-      if (c.mots.length > 0) bloc.append(el("p", "discret", `Premiers mots : ${c.mots.join(" · ")}`));
+      if (c.langue) this.langue(bloc, c.langue);
+      else if (c.mots.length > 0) bloc.append(el("p", "discret", `Premiers mots : ${c.mots.join(" · ")}`));
       if (c.guerres.length > 0) {
         bloc.append(el("h3", undefined, "Guerres"));
         const ul = el("ul", "liste");

@@ -28,7 +28,7 @@ function decrireHumain(h: HumainVue): string {
   if (h.mere) liens.push(`enfant de ${nom(h.mere)} et ${h.pere ? nom(h.pere) : "?"}`);
   else liens.push(`couple de départ n° ${h.emplacement}`);
   if (h.partenaire) liens.push(`avec ${nom(h.partenaire)}`);
-  const qui = `${h.nom} (${h.sexe}, ${age}, ${liens.join(", ")})`;
+  const qui = `${h.nom}${h.nomLangue ? ` « ${h.nomLangue} »` : ""} (${h.sexe}, ${age}, ${liens.join(", ")})`;
   if (!h.vivant) return `✝ ${qui}, mort ${h.causeDeMort ?? ""}`;
   const etat = [h.activite, h.humeur ?? "", h.enceinte ? "enceinte" : "", h.malade ? "malade" : "", h.contagieux ? "contagieux" : "",
     h.peur >= 20 ? "apeuré" : ""].filter(Boolean).join(" · ");

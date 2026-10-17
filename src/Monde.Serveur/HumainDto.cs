@@ -31,7 +31,8 @@ public sealed record HumainDto(
     int Communaute,
     double Reserves,
     double Peur,
-    bool Contagieux)
+    bool Contagieux,
+    string? NomLangue = null)
 {
     private static readonly Dictionary<Activite, string> Activites = new()
     {
@@ -94,6 +95,8 @@ public sealed record HumainDto(
             Math.Round(h.Reserves),
             h.EstVivant ? Math.Round(h.Peur) : 0,
             // Porteur d'une maladie : contagieux dès la veille des premiers signes (voir Catastrophes.Contagion).
-            h.EstVivant && h.InfectionId != 0 && maintenant >= h.SymptomesLe - Simulation.Temps.Calendrier.SecondesParJour);
+            h.EstVivant && h.InfectionId != 0 && maintenant >= h.SymptomesLe - Simulation.Temps.Calendrier.SecondesParJour,
+            // Son nom dans la langue des siens, à côté de celui que lui donne l'observateur.
+            h.NomLangue);
     }
 }

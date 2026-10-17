@@ -43,6 +43,8 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Croyance] = "croyance",
         [TypeEvenement.Medecine] = "medecine",
         [TypeEvenement.Art] = "art",
+        [TypeEvenement.Langage] = "langage",
+        [TypeEvenement.Mots] = "mots",
     };
 
 
@@ -153,7 +155,8 @@ public sealed record FicheDto(
     SavoirsDto Savoirs,
     IReadOnlyList<ParoleRecueDto> Paroles,
     RegardDto Regard,
-    MedecineDto Medecine)
+    MedecineDto Medecine,
+    LangageDto? Langage = null)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -248,7 +251,8 @@ public sealed record FicheDto(
             ParolesEntite.Recues(h, humains, service, maintenant),
             new RegardDto(Math.Round(h.Karma, 1), Simulation.Humains.Regard.Dire(h.Karma), (int)Math.Round(h.Croyance), Croyances.Dire(h.Croyance),
                 h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null),
-            Soins(h, humains, maintenant));
+            Soins(h, humains, maintenant),
+            LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore));
     }
 
     private static MedecineDto Soins(Humain h, IReadOnlyList<Humain> humains, long maintenant)
@@ -439,7 +443,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     string? Temperament, IReadOnlyList<string> Guerre, IReadOnlyList<GuerreDto> Guerres, ProjetDto? Projet,
     string? Moeurs, string? Ideal, IReadOnlyList<ExileDto> Exiles, string? Morale, IReadOnlyList<string> Savoirs,
     double? Karma = null, int? Croyance = null, IReadOnlyList<SoignantDto>? Soignants = null, string? Style = null,
-    IReadOnlyList<OeuvreDto>? Oeuvres = null)
+    IReadOnlyList<OeuvreDto>? Oeuvres = null, LangueDto? Langue = null)
 {
     /// <summary>
     /// Morale du groupe en mots : la moyenne des fondements de ses adultes, et ce qui y pèse le plus.
@@ -454,15 +458,6 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
             ("le respect de l'autorité", f.Autorite), ("la pureté", f.Purete) }.MaxBy(x => x.Item2);
         return $"soin {N(f.Soin)}, équité {N(f.Equite)}, loyauté {N(f.Loyaute)}, autorité {N(f.Autorite)}, pureté {N(f.Purete)} ; on y tient d'abord à {nom}";
     }
-
-    /// <summary>Les idées des mots, en français, pour l'observateur.</summary>
-    private static readonly Dictionary<string, string> Idees = new()
-    {
-        ["ceux"] = "ceux (qui sont…)", ["gens"] = "les humains", ["enfants"] = "enfants de", ["riviere"] = "rivière", ["lac"] = "lac",
-        ["rivage"] = "rivage", ["montagnes"] = "montagnes", ["marais"] = "marais", ["sables"] = "sables", ["foret"] = "forêt",
-        ["fougeres"] = "fougères", ["soleil"] = "soleil", ["etoiles"] = "étoiles", ["faim"] = "faim vaincue", ["marche"] = "marcher",
-        ["partis"] = "partir",
-    };
 
     private static List<string> Raconter(Communaute c, List<Communaute> toutes)
     {
@@ -568,7 +563,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     },
                     c.NomPropre, c.Sens,
                     c.Noms.Select(n => new NomDto(n.Nom, n.Sens, Calendrier.Decomposer(n.Depuis).ToString(), n.EvenementId)).ToList(),
-                    c.Lexique.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => $"{Idees.GetValueOrDefault(m.Key, m.Key)} : {m.Value}").ToList(),
+                    c.Lexique.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => $"{Idees.Libelle(m.Key, monde.Flore)} : {m.Value}").ToList(),
                     c.Active ? VieSociale.Etendue(VieSociale.Frequentees(c.Territoire), monde.Carte).Length : 0,
                     Raconter(c, toutes),
                     DireTemperament(c.Bellicisme),
@@ -608,7 +603,8 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     Simulation.Humains.Arts.Style(membres.Where(m => !m.EstBebe(maintenant)).ToList(), oeuvres[c.Id]),
                     oeuvres[c.Id].OrderByDescending(o => o.Le).Take(12)
                         .Select(o => new OeuvreDto(o.Id, o.AuteurId, humains[o.AuteurId - 1].Nom, Calendrier.Decomposer(o.Le).ToString(), o.Description, o.EvenementId))
-                        .ToList());
+                        .ToList(),
+                    LangueDto.Depuis(c, toutes, humains, membres, monde.Flore));
             }).ToList();
     }
 }
