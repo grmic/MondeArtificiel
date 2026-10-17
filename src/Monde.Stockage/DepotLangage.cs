@@ -76,6 +76,9 @@ public sealed partial class DepotMonde
 
     private static bool EstForme(string forme, bool signe) => signe ? EstSigne(forme) : EstMot(forme);
 
+    /// <summary>Une forme remplacée peut venir de l'autre manière de dire (un mot remplacé par un signe, ou l'inverse).</summary>
+    private static bool EstAncienne(string? ancienne) => ancienne is null || EstMot(ancienne) || EstSigne(ancienne);
+
     private static void LireLangage(SqliteCommand commande, List<Humain> humains)
     {
         Humain? Trouver(long id) => id >= 1 && id <= humains.Count ? humains[(int)id - 1] : null;
@@ -198,7 +201,7 @@ public sealed partial class DepotMonde
             {
                 var (idee, forme, signe, type) = (l.GetString(1), l.GetString(2), l.GetBoolean(4), (ChangementMot)l.GetInt32(7));
                 var ancienne = l.IsDBNull(3) ? null : l.GetString(3);
-                if (!EstIdee(idee) || !EstForme(forme, signe) || ancienne is not null && !EstForme(ancienne, signe) || !Enum.IsDefined(type))
+                if (!EstIdee(idee) || !EstForme(forme, signe) || !EstAncienne(ancienne) || !Enum.IsDefined(type))
                     throw new InvalidDataException("Histoire d'une langue corrompue dans la sauvegarde.");
                 Trouver(l.GetInt64(0))?.HistoireLangue.Add(new HistoireMot(idee, forme, ancienne, signe, l.GetInt64(5), l.GetInt32(6), type,
                     l.GetInt32(8), l.GetInt64(9)));
@@ -225,7 +228,7 @@ public sealed partial class DepotMonde
             for (var r = 0; r < c.HistoireLangue.Count; r++)
             {
                 var x = c.HistoireLangue[r];
-                if (!EstIdee(x.Idee) || !EstForme(x.Forme, x.Signe)) throw new ArgumentException($"Mot invalide : {x.Idee}={x.Forme}.");
+                if (!EstIdee(x.Idee) || !EstForme(x.Forme, x.Signe) || !EstAncienne(x.Ancienne)) throw new ArgumentException($"Mot invalide : {x.Idee}={x.Forme}.");
                 Lancer(histoire, c.Id, r, x.Idee, x.Forme, (object?)x.Ancienne ?? DBNull.Value, x.Signe, x.Le, x.AuteurId, (int)x.Type, x.SourceId,
                     x.EvenementId);
             }

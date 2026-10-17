@@ -93,14 +93,17 @@ public sealed record LangueDto(string Mode, string Stade, string? Ordre, string?
         var dit = Langues.Dire(x.Forme, x.Signe);
         return x.Type switch
         {
-            ChangementMot.Deforme => $"« {sens} » se dit désormais « {dit} » (avant : « {Langues.Dire(x.Ancienne ?? "", x.Signe)} »)",
+            ChangementMot.Deforme => $"« {sens} » se dit désormais « {dit} » (avant : « {Avant(x)} »)",
             ChangementMot.Emprunte when x.SourceId >= 1 && x.SourceId <= toutes.Count => $"« {sens} » : « {dit} », pris à la {Minuscule(toutes[x.SourceId - 1].Nom)}",
             ChangementMot.Emprunte => $"« {sens} » : « {dit} », pris à une autre langue",
-            ChangementMot.Remplace => $"« {sens} » : « {dit} » remplace « {Langues.Dire(x.Ancienne ?? "", x.Signe)} »",
+            ChangementMot.Remplace => $"« {sens} » : « {dit} » remplace « {Avant(x)} »",
             ChangementMot.Oublie => $"« {sens} » : le mot « {dit} » s'est perdu",
             _ => $"« {sens} » : « {dit} »",
         };
     }
+
+    // La forme remplacée peut être un signe alors que la nouvelle est un mot, ou l'inverse : un signe s'écrit avec des points.
+    private static string Avant(HistoireMot x) => x.Ancienne is { } a ? Langues.Dire(a, a.Contains('.')) : "";
 
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 }

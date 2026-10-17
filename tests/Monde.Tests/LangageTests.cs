@@ -285,6 +285,9 @@ public sealed class LangageTests
             (c.Sons, c.Stade, c.Ordre, c.ParoleLe, c.CombinaisonLe, c.OrdreLe, c.PalierMots, c.LangueId) =
                 (Sons.Tirer(new Alea(1)), 3, OrdreMots.VSO, 10, 20, 30, 10, 2);
             c.HistoireLangue.Add(new HistoireMot("eau", "kalu", "kalo", false, 9, 1, ChangementMot.Deforme, 0, 4));
+            // Un signe qui remplace un mot, puis l'inverse (0.21.1 : ces changements empêchaient de recharger le monde).
+            c.HistoireLangue.Add(new HistoireMot("oui", "5.5.4", "honou", true, 10, 1, ChangementMot.Remplace, 0, 5));
+            c.HistoireLangue.Add(new HistoireMot("oui", "honou", "5.5.4", false, 11, 2, ChangementMot.Remplace, 0, 6));
             etat = etat with { Communautes = [c] };
             var fichier = Path.Combine(dossier, "monde.db");
             Directory.CreateDirectory(dossier);
