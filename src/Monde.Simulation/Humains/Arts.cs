@@ -115,7 +115,7 @@ public sealed partial class Comportement
     {
         _maintenant = maintenant;
         _tous = tous;
-        var presents = tous.Where(h => h.EstVivant && !h.EstBebe(maintenant) && h.CaptifDe == 0).ToList();
+        var presents = tous.Vivants().Where(h => h.EstVivant && !h.EstBebe(maintenant) && h.CaptifDe == 0).ToList();
         foreach (var h in presents) InventerChant(h, tous);
         foreach (var h in presents) Lamenter(h, tous);
         Veillees(presents, tous);
@@ -156,7 +156,7 @@ public sealed partial class Comportement
         var choeur = tous.Where(o => o.Id != h.Id && o.DeuilDeId == mort.Id && Distance(o.X, o.Y, h.X, h.Y) <= 1 && o.CaptifDe == 0
                                      && PeutLamenter(o, tous)).ToList();
         List<Humain> chanteurs = [h, .. choeur];
-        var proches = tous.Where(o => !chanteurs.Contains(o) && o.EstVivant && !o.EstBebe(_maintenant) && o.CaptifDe == 0 && Distance(o.X, o.Y, h.X, h.Y) <= 1
+        var proches = tous.Vivants().Where(o => !chanteurs.Contains(o) && o.EstVivant && !o.EstBebe(_maintenant) && o.CaptifDe == 0 && Distance(o.X, o.Y, h.X, h.Y) <= 1
                                      && (o.DeuilDeId == mort.Id || o.AffectionPour(mort.Id) >= 30 || o.AffectionPour(h.Id) >= 30)).ToList();
         var avec = choeur.Count == 0 ? "" : choeur.Count == 1 ? $", avec {choeur[0].Nom}"
             : $", avec {string.Join(", ", choeur.Take(choeur.Count - 1).Select(o => o.Nom))} et {choeur[^1].Nom}";

@@ -72,7 +72,7 @@ public sealed partial class Comportement
         // Sinon, celui ou celle qui lui plaît le plus parmi ceux qui sont tout près : l'attrait physique pèse plus que tout le reste.
         Humain? prefere = null;
         double meilleur = 0;
-        foreach (var autre in tous)
+        foreach (var autre in tous.Vivants())
         {
             if (autre.Id == h.Id || autre.Id == partenaire?.Id || !autre.EstVivant || autre.EstEnfant(maintenant)) continue;
             if (Distance(h.X, h.Y, autre.X, autre.Y) > 1 || !EstDispose(autre, maintenant) || Interdit(h, autre, maintenant)) continue;
@@ -97,7 +97,7 @@ public sealed partial class Comportement
             var rayon = RayonPerception(h);
             var ose = Ose(h);
             double score = 0;
-            foreach (var a in tous)
+            foreach (var a in tous.Vivants())
             {
                 if (a.Id == h.Id || !a.EstVivant || !a.EstFecond(maintenant) || Interdit(h, a, maintenant)) continue;
                 var d = Distance(h.X, h.Y, a.X, a.Y);
@@ -341,7 +341,7 @@ public sealed partial class Comportement
     internal double AiderAccouchement(Humain mere, IReadOnlyList<Humain> tous, long maintenant)
     {
         var aides = new List<(Humain H, double Experience)>();
-        foreach (var o in tous)
+        foreach (var o in tous.Vivants())
         {
             if (o.Id == mere.Id || !o.EstVivant || o.AgeEnAnnees(maintenant) < 15 || Distance(o.X, o.Y, mere.X, mere.Y) > 1
                 || o.EstMalade(maintenant) || o.CaptifDe != 0) continue;
@@ -462,7 +462,7 @@ public sealed partial class Comportement
         var morte = b.MereId > 0 ? tous[b.MereId - 1] : null;
         Humain? choisie = null;
         var meilleur = 0.0;
-        foreach (var f in tous)
+        foreach (var f in tous.Vivants())
         {
             if (!f.EstVivant || f.Sexe != Sexe.Femme || f.EstEnfant(maintenant) || f.Id == b.MereId) continue;
             if (f.DernierAccouchement is not { } accouchement || maintenant - accouchement >= 3 * Calendrier.SecondesParAn) continue;

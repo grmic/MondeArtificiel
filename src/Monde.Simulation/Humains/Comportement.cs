@@ -689,7 +689,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 h.CibleX = h.CibleY = -1;
                 return true;
             }
-            var abri = Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 8);
+            var abri = Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 8, scoreMax: 0);
             if (abri is not { } a) return false;
             Avancer(h, a.X, a.Y, Activite.Fuir);
             return h.CibleX >= 0;
@@ -763,7 +763,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             return;
         }
         if (BoireALaCalebasse(h)) return;
-        var cible = Chercher(h, i => EauDouceAPortee(i % carte.Largeur, i / carte.Largeur), _ => 0);
+        var cible = DistanceEau(h.X, h.Y) > RayonPerception(h) ? null
+            : Chercher(h, i => EauDouceAPortee(i % carte.Largeur, i / carte.Largeur), _ => 0, scoreMax: 0);
         if (cible is { } c)
         {
             _motif = Motif.Vu;
@@ -936,7 +937,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 Avancer(h, partenaire.X, partenaire.Y, h.EstEnfant(_maintenant) ? Activite.SuivreParent : Activite.RejoindrePartenaire);
                 return;
             }
-            var abri = Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 4);
+            var abri = Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 4, scoreMax: 0);
             if (abri is { } a)
             {
                 Avancer(h, a.X, a.Y, Activite.ChercherAbri);
@@ -1125,12 +1126,30 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// Plus court chemin (parcours en largeur, 8 directions) vers la cible ou une case voisine d'elle ;
     /// renvoie la première case du chemin, ou -1 si la cible est hors de portée.
     /// </summary>
+    // Tampons des parcours en largeur, réutilisés : une case est « vue » si elle porte le numéro du parcours en cours.
+    private int[] _vus = [];
+    private int[] _parents = [];
+    private int _generation;
+    private readonly Queue<(int Indice, int Distance)> _file = new();
+
+    private int NouveauParcours()
+    {
+        var n = carte.Largeur * carte.Hauteur;
+        if (_vus.Length != n) { _vus = new int[n]; _parents = new int[n]; _generation = 0; }
+        if (++_generation == int.MaxValue) { Array.Clear(_vus); _generation = 1; }
+        return _generation;
+    }
+
     private int PremierPasDuChemin(int depart, int cible)
     {
         const int RayonMax = 40;
         int cx = cible % carte.Largeur, cy = cible / carte.Largeur;
-        var parent = new Dictionary<int, int> { [depart] = depart };
-        var file = new Queue<(int Indice, int Distance)>();
+        var generation = NouveauParcours();
+        var parent = _parents;
+        _vus[depart] = generation;
+        parent[depart] = depart;
+        var file = _file;
+        file.Clear();
         file.Enqueue((depart, 0));
         while (file.Count > 0)
         {
@@ -1147,7 +1166,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
-                if (parent.ContainsKey(j) || !Praticable((Biome)carte.Biomes[j])) continue;
+                if (_vus[j] == generation || !Praticable((Biome)carte.Biomes[j])) continue;
+                _vus[j] = generation;
                 parent[j] = i;
                 file.Enqueue((j, d + 1));
             }
@@ -1159,12 +1179,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// Parcours en largeur autour de l'humain (dans son rayon de perception) ; renvoie la case
     /// qui satisfait <paramref name="convient"/> avec le meilleur score, en pénalisant la distance.
     /// </summary>
-    private (int X, int Y)? Chercher(Humain h, Func<int, bool> convient, Func<int, int> score, int? rayonMax = null)
+    private (int X, int Y)? Chercher(Humain h, Func<int, bool> convient, Func<int, int> score, int? rayonMax = null, int? scoreMax = null)
     {
         var rayon = rayonMax ?? RayonPerception(h);
         var debut = carte.Indice(h.X, h.Y);
-        var vus = new HashSet<int> { debut };
-        var file = new Queue<(int Indice, int Distance)>();
+        var generation = NouveauParcours();
+        _vus[debut] = generation;
+        var file = _file;
+        file.Clear();
         file.Enqueue((debut, 0));
         (int X, int Y)? meilleur = null;
         var meilleurScore = int.MinValue;
@@ -1173,6 +1195,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         while (file.Count > 0)
         {
             var (i, d) = file.Dequeue();
+            // Plus loin, aucune case ne peut plus égaler la meilleure : le parcours s'arrête (même résultat, tirages compris).
+            if (scoreMax is { } plafond && meilleur is not null && plafond - d * 300 < meilleurScore) break;
             if (i != debut && convient(i))
             {
                 var s = score(i) - d * 300;
@@ -1193,7 +1217,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
-                if (!vus.Add(j)) continue;
+                if (_vus[j] == generation) continue;
+                _vus[j] = generation;
                 // L'eau non praticable peut être une cible (on boit depuis la rive) mais on ne la traverse pas.
                 if (Praticable((Biome)carte.Biomes[j])) file.Enqueue((j, d + 1));
             }
@@ -1201,7 +1226,55 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         return meilleur;
     }
 
+    // Les biomes ne changent pas : l'eau douce à portée de chaque case est calculée une fois.
+    private bool[]? _eauAPortee;
+
     private bool EauDouceAPortee(int x, int y)
+    {
+        if (_eauAPortee is null)
+        {
+            var eau = new bool[carte.Largeur * carte.Hauteur];
+            for (var j = 0; j < eau.Length; j++) eau[j] = CalculerEauDouceAPortee(j % carte.Largeur, j / carte.Largeur);
+            _eauAPortee = eau;
+        }
+        return _eauAPortee[carte.Indice(x, y)];
+    }
+
+    // Distance (en cases, à vol d'oiseau) de chaque case à la plus proche où l'on peut boire : au-delà du regard, inutile de chercher.
+    private int[]? _distanceEau;
+
+    private int DistanceEau(int x, int y)
+    {
+        if (_distanceEau is null)
+        {
+            int l = carte.Largeur, n = l * carte.Hauteur;
+            var dist = new int[n];
+            Array.Fill(dist, int.MaxValue);
+            var file = new Queue<int>();
+            for (var j = 0; j < n; j++)
+            {
+                if (EauDouceAPortee(j % l, j / l)) { dist[j] = 0; file.Enqueue(j); }
+            }
+            while (file.Count > 0)
+            {
+                var i = file.Dequeue();
+                int ix = i % l, iy = i / l;
+                foreach (var (dx, dy) in Voisins8)
+                {
+                    int nx = ix + dx, ny = iy + dy;
+                    if (nx < 0 || ny < 0 || nx >= l || ny >= carte.Hauteur) continue;
+                    var j = carte.Indice(nx, ny);
+                    if (dist[j] != int.MaxValue) continue;
+                    dist[j] = dist[i] + 1;
+                    file.Enqueue(j);
+                }
+            }
+            _distanceEau = dist;
+        }
+        return _distanceEau[carte.Indice(x, y)];
+    }
+
+    private bool CalculerEauDouceAPortee(int x, int y)
     {
         if (Biomes.EstEauDouce(carte.BiomeEn(x, y))) return true;
         foreach (var (dx, dy) in Voisins8)

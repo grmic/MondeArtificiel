@@ -375,7 +375,7 @@ public sealed partial class VieSociale
         Jardin.Confier(instigateur, TypeIntime.Intention, b.FigureId, $"Frapper la {nb}, {raison}.", 50 + 25 * Math.Min(2, Ardeur(instigateur, b.Id, humains)),
             id, maintenant, $"guerre:{b.Id}");
 
-        List<Humain> adultesDe(Communaute c) => humains.Where(h => h.EstVivant && h.CommunauteId == c.Id && !h.EstEnfant(maintenant)).ToList();
+        List<Humain> adultesDe(Communaute c) => humains.Vivants().Where(h => h.EstVivant && h.CommunauteId == c.Id && !h.EstEnfant(maintenant)).ToList();
     }
 
     /// <summary>
@@ -515,7 +515,7 @@ public sealed partial class VieSociale
         var id = Noter(maintenant, TypeEvenement.Guerre, instigateur ?? humains[a.FigureId - 1], null, texte, projet.EvenementId,
             communaute: a.Id, autreCommunaute: projet.CibleId, significatif: true);
         var cle = $"guerre:{projet.CibleId}";
-        foreach (var h in humains.Where(h => h.EstVivant && h.CommunauteId == a.Id))
+        foreach (var h in humains.Vivants().Where(h => h.EstVivant && h.CommunauteId == a.Id))
         {
             // Ceux qui voulaient y aller oublient leur intention ; ceux qui ont refusé gardent la leur en mémoire.
             if (h.Id == projet.InstigateurId || h.Memoire.Jardin.Any(x => x.Cle == cle && x.Texte.StartsWith("Je suivrai", StringComparison.Ordinal))) Jardin.Retirer(h, cle);
@@ -750,7 +750,7 @@ public sealed partial class VieSociale
         _relations.Remove(Paire(a.Id, b.Id));
         _debutsRelations.Remove(Paire(a.Id, b.Id));
         _offenses.Remove(Paire(a.Id, b.Id));
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || (h.CommunauteId != a.Id && h.CommunauteId != b.Id)) continue;
             var autre = h.CommunauteId == a.Id ? b.Id : a.Id;
@@ -955,7 +955,7 @@ public sealed partial class Comportement
             else
             {
                 // Le camp visé : là où vit le membre le plus proche du centre du groupe ennemi.
-                var camp = humains.Where(h => h.EstVivant && h.CommunauteId == cible.Id && !h.EstEnfant(maintenant))
+                var camp = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId == cible.Id && !h.EstEnfant(maintenant))
                     .MinBy(h => (Distance(h.X, h.Y, cible.CentreX, cible.CentreY), h.Id));
                 if (camp is not null) (raid.X, raid.Y) = (camp.X, camp.Y);
                 var arrives = raid.Guerriers.Count(id => Distance(humains[id - 1].X, humains[id - 1].Y, raid.X, raid.Y) <= 3);
@@ -1061,7 +1061,7 @@ public sealed partial class Comportement
     {
         var assaillants = raid.Guerriers.Select(id => humains[id - 1]).Where(h => h.EstVivant).ToList();
         // Les captives enlevées par ce camp ne le défendent pas.
-        var defenseurs = humains.Where(h => h.EstVivant && h.CommunauteId == cible.Id && !h.EstEnfant(maintenant) && h.CaptifDe == 0
+        var defenseurs = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId == cible.Id && !h.EstEnfant(maintenant) && h.CaptifDe == 0
                                             && Distance(h.X, h.Y, raid.X, raid.Y) <= 6).ToList();
         if (defenseurs.Count == 0)
         {
@@ -1082,7 +1082,7 @@ public sealed partial class Comportement
         var enlevees = new List<(Humain Captive, Humain Ravisseur)>();
         foreach (var a in assaillants.OrderBy(_ => alea.Reel()).ToList())
         {
-            var debout = defenseurs.Where(d => d.EstVivant && tues.All(t => t.Victime != d) && enlevees.All(e => e.Captive != d)).ToList();
+            var debout = defenseurs.Vivants().Where(d => d.EstVivant && tues.All(t => t.Victime != d) && enlevees.All(e => e.Captive != d)).ToList();
             if (debout.Count == 0) break;
             // Les hommes font face les premiers ; les femmes se défendent aussi.
             var poids = debout.Select(d => d.Sexe == Sexe.Homme ? 3.0 : 1.0).ToList();
@@ -1143,7 +1143,7 @@ public sealed partial class Comportement
             Social!.Offenser(tueur, victime, 15, victime.MortEvenementId, humains, maintenant);
         }
         foreach (var (captive, ravisseur) in enlevees) Enlever(captive, ravisseur, c, cible, id, humains, maintenant);
-        foreach (var b in touches.Where(b => b.Sante <= 0 && b.EstVivant))
+        foreach (var b in touches.Vivants().Where(b => b.Sante <= 0 && b.EstVivant))
         {
             Tuer(b, maintenant, CauseDeMort.Guerre, $"{b.Nom} meurt de ses blessures, à {AgeEnMots(b, maintenant)}, après le raid de la {nc} contre la {ncible}.", id);
         }
@@ -1166,7 +1166,7 @@ public sealed partial class Comportement
             var siens = tues.Count(t => t.Victime.CommunauteId == h.CommunauteId) + touches.Count(t => !t.EstVivant && t.CommunauteId == h.CommunauteId);
             if (siens > 0) Jardin.Marquer(h, Epreuve.Guerre, Math.Min(1, 0.3 + 0.2 * siens), id, maintenant, alea);
         }
-        foreach (var d in defenseurs.Where(d => d.EstVivant))
+        foreach (var d in defenseurs.Vivants().Where(d => d.EstVivant))
         {
             Jardin.Confier(d, TypeIntime.Peur, c.FigureId, $"J'ai peur que les guerriers de la {nc} reviennent nous surprendre.",
                 30 + 50 * d.Personnalite.Nevrosisme + 10 * mortsDefenseurs, id, maintenant, $"peur:raid:{c.Id}");

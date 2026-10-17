@@ -74,7 +74,7 @@ public sealed partial class VieSociale
     /// </summary>
     private void Moeurs(List<Humain> humains, List<Communaute> communautes, long maintenant)
     {
-        var groupes = humains.Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant))
+        var groupes = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant))
             .GroupBy(h => h.CommunauteId).ToDictionary(g => g.Key, g => g.ToList());
         foreach (var c in communautes)
         {
@@ -175,7 +175,7 @@ public sealed partial class VieSociale
             : $"La {Minuscule(c.Nom)} réprouve les amours de {a.Nom} et {b.Nom}.", cause, communaute: c.Id);
         foreach (var x in b is null ? [a] : new[] { a, b })
         {
-            foreach (var m in humains)
+            foreach (var m in humains.Vivants())
             {
                 if (!m.EstVivant || m.Id == x.Id || m.CommunauteId != c.Id || m.EstEnfant(maintenant) || (b is not null && m.Id == b.Id)) continue;
                 var rigidite = 1 - TemperamentMoeurs(m.Personnalite);

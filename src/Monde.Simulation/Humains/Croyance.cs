@@ -146,9 +146,9 @@ public sealed partial class Comportement
     public void Croire(IReadOnlyList<Humain> humains, long maintenant)
     {
         _maintenant = maintenant;
-        var moyennes = humains.Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant))
+        var moyennes = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant))
             .GroupBy(h => h.CommunauteId).ToDictionary(g => g.Key, g => g.Average(h => h.Croyance));
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant) continue;
             Croyances.Journee(h, humains, moyennes, maintenant);

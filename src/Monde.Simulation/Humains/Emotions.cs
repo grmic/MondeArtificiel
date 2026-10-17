@@ -368,7 +368,7 @@ public sealed partial class VieSociale
             ChangerAffection(m, auteur, -poids, maintenant);
         }
         if (ca is null || cv is null || ca.Id == cv.Id) return;
-        foreach (var m in humains)
+        foreach (var m in humains.Vivants())
         {
             if (!m.EstVivant || m.CommunauteId != cv.Id) continue;
             foreach (var l in m.Liens.ToList())
@@ -408,7 +408,7 @@ public sealed partial class VieSociale
     /// </summary>
     private void Usages(List<Humain> humains, List<Communaute> communautes, long maintenant)
     {
-        var adultes = humains.Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant))
+        var adultes = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant))
             .GroupBy(h => h.CommunauteId).ToDictionary(g => g.Key, g => g.Average(h => TemperamentFidelite(h.Personnalite)));
         foreach (var c in communautes)
         {

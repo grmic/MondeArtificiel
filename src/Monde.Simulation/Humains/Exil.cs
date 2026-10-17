@@ -116,7 +116,7 @@ public sealed partial class VieSociale
     /// </summary>
     internal void Exiler(List<Humain> humains, List<Communaute> actives, Dictionary<int, List<Humain>> membres, long maintenant)
     {
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || h.Exclusions.Count == 0) continue;
             for (var i = 0; i < h.Exclusions.Count; i++)
@@ -171,7 +171,7 @@ public sealed partial class VieSociale
         }
 
         // Un parent qui en veut profondément à son enfant adulte peut le renier, d'autant plus qu'il est peu bienveillant et peu attaché.
-        foreach (var x in humains)
+        foreach (var x in humains.Vivants())
         {
             if (!x.EstVivant || x.EstEnfant(maintenant) || x.AgeEnAnnees(maintenant) < 16) continue;
             foreach (var pid in new[] { x.MereId, x.PereId })

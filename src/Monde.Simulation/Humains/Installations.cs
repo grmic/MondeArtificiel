@@ -24,6 +24,19 @@ public sealed class Installations
     public List<Oeuvre> Oeuvres { get; } = [];
     private int _prochainId = 1;
     private int _prochaineOeuvre = 1;
+    // Nombre de feux et de huttes par case : la plupart des cases n'en ont pas, et on les interroge très souvent.
+    private readonly Dictionary<long, int> _casesFoyers = [];
+    private readonly Dictionary<long, int> _casesHuttes = [];
+
+    private static long Case(int x, int y) => ((long)x << 32) | (uint)y;
+
+    private static void Compter(Dictionary<long, int> cases, int x, int y, int n)
+    {
+        var c = Case(x, y);
+        var total = cases.GetValueOrDefault(c) + n;
+        if (total > 0) cases[c] = total;
+        else cases.Remove(c);
+    }
 
     public Installations(IEnumerable<Foyer>? foyers = null, IEnumerable<Hutte>? huttes = null, IEnumerable<Decouverte>? decouvertes = null,
         IEnumerable<Oeuvre>? oeuvres = null)
@@ -32,6 +45,8 @@ public sealed class Installations
         Huttes.AddRange(huttes ?? []);
         Decouvertes.AddRange(decouvertes ?? []);
         Oeuvres.AddRange(oeuvres ?? []);
+        foreach (var f in Foyers) Compter(_casesFoyers, f.X, f.Y, 1);
+        foreach (var h in Huttes) Compter(_casesHuttes, h.X, h.Y, 1);
         _prochainId = 1 + Math.Max(Foyers.Select(f => f.Id).DefaultIfEmpty(0).Max(), Huttes.Select(h => h.Id).DefaultIfEmpty(0).Max());
         _prochaineOeuvre = 1 + Oeuvres.Select(o => o.Id).DefaultIfEmpty(0).Max();
     }
@@ -46,12 +61,14 @@ public sealed class Installations
 
     public Foyer? FoyerEn(int x, int y)
     {
+        if (!_casesFoyers.ContainsKey(Case(x, y))) return null;
         foreach (var f in Foyers) if (f.X == x && f.Y == y) return f;
         return null;
     }
 
     public Hutte? HutteEn(int x, int y)
     {
+        if (!_casesHuttes.ContainsKey(Case(x, y))) return null;
         foreach (var h in Huttes) if (h.X == x && h.Y == y) return h;
         return null;
     }
@@ -70,6 +87,7 @@ public sealed class Installations
         }
         var nouveau = new Foyer(_prochainId++, x, y, heures, maintenant, humainId, evenementId);
         Foyers.Add(nouveau);
+        Compter(_casesFoyers, x, y, 1);
         return nouveau;
     }
 
@@ -86,6 +104,7 @@ public sealed class Installations
         }
         var nouvelle = new Hutte(_prochainId++, x, y, solidite, maintenant, humainId, evenementId);
         Huttes.Add(nouvelle);
+        Compter(_casesHuttes, x, y, 1);
         return nouvelle;
     }
 
@@ -95,7 +114,11 @@ public sealed class Installations
         for (var i = Foyers.Count - 1; i >= 0; i--)
         {
             var f = Foyers[i];
-            if (f.Heures <= heures) Foyers.RemoveAt(i);
+            if (f.Heures <= heures)
+            {
+                Foyers.RemoveAt(i);
+                Compter(_casesFoyers, f.X, f.Y, -1);
+            }
             else Foyers[i] = f with { Heures = f.Heures - heures };
         }
     }
@@ -107,13 +130,20 @@ public sealed class Installations
         {
             var h = Huttes[i];
             var reste = h.Solidite - jours * usure(h.Id);
-            if (reste <= 0) Huttes.RemoveAt(i);
+            if (reste <= 0)
+            {
+                Huttes.RemoveAt(i);
+                Compter(_casesHuttes, h.X, h.Y, -1);
+            }
             else Huttes[i] = h with { Solidite = reste };
         }
     }
 
     /// <summary>Éteint les feux d'une case (pluie torrentielle, eau qui monte).</summary>
-    public void Eteindre(int x, int y) => Foyers.RemoveAll(f => f.X == x && f.Y == y);
+    public void Eteindre(int x, int y)
+    {
+        if (Foyers.RemoveAll(f => f.X == x && f.Y == y) > 0) _casesFoyers.Remove(Case(x, y));
+    }
 
     public Installations Copier() => new(Foyers, Huttes, Decouvertes, Oeuvres);
 }

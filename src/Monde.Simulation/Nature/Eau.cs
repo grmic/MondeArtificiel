@@ -78,7 +78,7 @@ public sealed partial class Catastrophes
         // Le flot d'une crue subite passe en une à trois heures ; une crue lente monte pendant six à dix-huit heures.
         c.Prochaine = maintenant + (subite ? 1 + _alea.Entier(3) : 6 + _alea.Entier(13)) * Calendrier.SecondesParHeure;
         foreach (var i in cases) Ravager(c, i, 0.5, 0.7, 0.4);
-        if (humains.Any(h => h.EstVivant && cases.Contains(_carte.Indice(h.X, h.Y)))) Signaler(c, texte);
+        if (humains.Vivants().Any(h => h.EstVivant && cases.Contains(_carte.Indice(h.X, h.Y)))) Signaler(c, texte);
         return c;
     }
 
@@ -126,7 +126,7 @@ public sealed partial class Catastrophes
         if (categorie >= 3)
         {
             var mer = DistanceMer();
-            foreach (var h in humains)
+            foreach (var h in humains.Vivants())
             {
                 if (!h.EstVivant) continue;
                 var i = _carte.Indice(h.X, h.Y);
@@ -148,7 +148,7 @@ public sealed partial class Catastrophes
     private void Souffler(Catastrophe c, List<Humain> humains, long maintenant)
     {
         var categorie = c.Intensite;
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || Distance(h.X, h.Y, c.X, c.Y) > c.Rayon) continue;
             var biome = _carte.BiomeEn(h.X, h.Y);

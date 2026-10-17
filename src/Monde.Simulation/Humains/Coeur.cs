@@ -12,7 +12,7 @@ public sealed partial class VieSociale
     {
         // Voisins : même case ou case voisine.
         var parCase = new Dictionary<(int, int), List<Humain>>();
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || h.EstBebe(maintenant)) continue;
             (parCase.TryGetValue((h.X, h.Y), out var l) ? l : parCase[(h.X, h.Y)] = []).Add(h);
@@ -145,7 +145,7 @@ public sealed partial class VieSociale
     /// <summary>Un enfant qui n'a plus ni père ni mère : celui qui le prend sous son aile le fait savoir au journal.</summary>
     private void Recueillir(List<Humain> humains, long maintenant)
     {
-        foreach (var e in humains)
+        foreach (var e in humains.Vivants())
         {
             if (!e.EstVivant || !e.EstEnfant(maintenant) || e.MereId == 0 && e.PereId == 0) continue;
             if (e.MereId > 0 && humains[e.MereId - 1].EstVivant || e.PereId > 0 && humains[e.PereId - 1].EstVivant) continue;

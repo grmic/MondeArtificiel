@@ -250,7 +250,7 @@ public sealed partial class VieSociale(Alea alea)
     /// <summary>Une journée : ceux qui sont proches l'un de l'autre se lient ; les autres liens s'estompent.</summary>
     public void Journee(List<Humain> humains, long maintenant)
     {
-        var presents = humains.Where(h => h.EstVivant && !h.EstBebe(maintenant)).ToList();
+        var presents = humains.Vivants().Where(h => h.EstVivant && !h.EstBebe(maintenant)).ToList();
         // Nombre d'humains à moins de 4 cases de chacun : la foule crée des frictions.
         _voisins.Clear();
         foreach (var h in presents)
@@ -436,7 +436,7 @@ public sealed partial class VieSociale(Alea alea)
     public void Humeurs(List<Humain> humains, long maintenant)
     {
         const double pasParJour = Calendrier.SecondesParJour / MondeSimule.SecondesParPas;
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant) continue;
             var p = h.Personnalite;
@@ -539,7 +539,7 @@ public sealed partial class VieSociale(Alea alea)
     /// </summary>
     public void Endeuiller(Humain mort, List<Humain> humains, long maintenant)
     {
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || h.Id == mort.Id || h.EstBebe(maintenant)) continue;
             double k = 0;
@@ -609,7 +609,7 @@ public sealed partial class VieSociale(Alea alea)
     /// </summary>
     public void Regrouper(List<Humain> humains, List<Communaute> communautes, long maintenant, ISet<string> noms)
     {
-        var membres = humains.Where(h => h.EstVivant).ToList();
+        var membres = humains.Vivants().Where(h => h.EstVivant).ToList();
         var parent = new Dictionary<int, int>();
         int Racine(int id)
         {

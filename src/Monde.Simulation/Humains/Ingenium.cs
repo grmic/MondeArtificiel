@@ -317,7 +317,7 @@ public sealed partial class Comportement
         var structure = Lois.Structure(pieces);
         var premier = !Installations.Decouvertes.Exists(d => d.Effet == e && Lois.Structure(d.Pieces) == structure);
         // Un savoir que tout le monde avait perdu, retrouvé : c'est aussi un tournant.
-        var retrouve = !premier && espece == 0 && !tous.Any(o => o.EstVivant && o.Savoirs.Exists(s => s.Effet == e && s.Espece == 0));
+        var retrouve = !premier && espece == 0 && !tous.Vivants().Any(o => o.EstVivant && o.Savoirs.Exists(s => s.Effet == e && s.Espece == 0));
         var nom = espece > 0 ? Majuscule(Flore.Get(espece).Nom) : null;
         var nouveau = new Savoir(g, a, b, e, espece, mal, 1, succes ? 1 : 0, _maintenant, _maintenant, origine, maitreId, 0, pieces);
         var maitre = maitreId > 0 && maitreId <= tous.Count ? tous[maitreId - 1] : null;
@@ -432,7 +432,7 @@ public sealed partial class Comportement
         string pieces = "")
     {
         if (e is Effet.Tiedeur or Effet.Visions) return;
-        foreach (var o in tous)
+        foreach (var o in tous.Vivants())
         {
             if (o.Id == h.Id || !o.EstVivant || o.X != h.X || o.Y != h.Y || o.EstBebe(_maintenant) || o.Activite == Activite.Dormir) continue;
             if (o.Savoirs.Exists(s => s.Meme(g, a, b, e, espece, mal) && s.Pieces == pieces)) continue;
@@ -819,7 +819,7 @@ public sealed partial class Comportement
         // Le guérisseur, le chaman, ou celui qui se dit tel, s'il est tout près.
         if (AppelerGuerisseur(h, mal, tous)) return true;
         // Un proche le soigne : il lui donne la plante qu'il croit bonne.
-        foreach (var o in tous)
+        foreach (var o in tous.Vivants())
         {
             if (o.Id == h.Id || !o.EstVivant || o.X != h.X || o.Y != h.Y || o.EstEnfant(_maintenant) || o.Activite == Activite.Dormir) continue;
             var s = o.Savoirs.Where(x => x.Effet == Effet.Soulagement && x.Symptome == mal && x.Confiance >= 0.55 && Ici(x.Espece)).MaxBy(x => x.Confiance);
@@ -889,7 +889,7 @@ public sealed partial class Comportement
             {
                 Mourir(h, _maintenant, CauseDeMort.Empoisonnement, id);
                 // Ceux qui l'ont vu mourir retiennent que la plante tue.
-                foreach (var o in tous)
+                foreach (var o in tous.Vivants())
                 {
                     if (o.Id == h.Id || !o.EstVivant || Distance(o.X, o.Y, h.X, h.Y) > 1 || o.EstBebe(_maintenant)) continue;
                     Retenir(o, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Poison, espece.Numero, Symptome.Aucun, OrigineSavoir.Observation, h.Id, tous);
@@ -935,7 +935,7 @@ public sealed partial class Comportement
     public void BilanDesRemedes(IReadOnlyList<Humain> tous, long maintenant)
     {
         _maintenant = maintenant;
-        foreach (var h in tous)
+        foreach (var h in tous.Vivants())
         {
             if (!h.EstVivant || h.RemedeEspece == 0) continue;
             var encore = h.EstMalade(maintenant) || h.InfectionId != 0 && h.GuerisonLe > maintenant;
@@ -984,7 +984,7 @@ public sealed partial class Comportement
     public List<(Humain Humain, Savoir Savoir)> UserEtOublier(IReadOnlyList<Humain> tous, long maintenant)
     {
         var oublies = new List<(Humain, Savoir)>();
-        foreach (var h in tous)
+        foreach (var h in tous.Vivants())
         {
             if (!h.EstVivant) continue;
             if (h.Vetement is { } v)

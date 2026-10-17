@@ -201,7 +201,7 @@ public sealed partial class Catastrophes
                 : "Une boule de feu raye le ciel nocturne et laisse une longue traînée lumineuse.",
             humains, maintenant, origine, duree: Calendrier.SecondesParHeure);
         if (chute) c.Cases.Add(_carte.Indice(x, y));
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || h.Activite == Activite.Dormir || Distance(h.X, h.Y, x, y) > c.Rayon) continue;
             if (chute && Distance(h.X, h.Y, x, y) <= 6)
@@ -227,7 +227,7 @@ public sealed partial class Catastrophes
         var c = Commencer(TypeCatastrophe.Impact, x, y, rayon, megatonnes, $"Chute d'un astéroïde {Ou(x, y)} ({megatonnes.ToString(megatonnes < 10 ? "0.#" : "N0", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"))} Mt)",
             $"Un second soleil traverse le ciel et explose {Ou(x, y)} : le souffle couche les arbres à perte de vue et le ciel s'embrase.",
             humains, maintenant, origine, duree: Calendrier.SecondesParHeure);
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant) continue;
             var d = Distance(h.X, h.Y, x, y);

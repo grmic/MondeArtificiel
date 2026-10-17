@@ -294,7 +294,7 @@ public static partial class Jardin
                 new("Je fais toujours ce qui doit être fait.", 0.05 + 2 * S(p.Conscience)),
                 new("Demain, je ferai mieux.", 0.05 + 2 * Bas(p.Conscience)),
                 new("Je ne sais pas encore qui je suis.", h.AgeEnAnnees(maintenant) < 22 ? 0.2 + S(p.Ouverture) : 0),
-                new("Mes enfants ont besoin de moi ; cela me suffit.", humains.Any(e => (e.MereId == h.Id || e.PereId == h.Id) && e.EstVivant && e.EstEnfant(maintenant)) ? 0.2 + p.Attachement : 0),
+                new("Mes enfants ont besoin de moi ; cela me suffit.", humains.EnfantsDe(h.Id).Any(e => e.EstVivant && e.EstEnfant(maintenant)) ? 0.2 + p.Attachement : 0),
                 new("J'aime être parmi les autres.", 0.05 + 2 * S(p.Extraversion)),
                 new($"Je suis bien seul{E(h)}, à l'écart.", 0.05 + 2 * Bas(p.Extraversion)),
                 new("Je ne veux de mal à personne.", 0.05 + 2 * S(p.Agreabilite)),
@@ -417,7 +417,7 @@ public static partial class Jardin
         var exigence = Attirance.Exigence(h, ideal, maintenant);
         Humain? cible = null;
         var meilleur = 0.0;
-        foreach (var a in humains)
+        foreach (var a in humains.Vivants())
         {
             if (!a.EstVivant || a.Id == h.Id || a.Id == h.PartenaireId || a.EstEnfant(maintenant) || Apparentes(h, a)) continue;
             if (a.CommunauteId != h.CommunauteId && h.LienAvec(a.Id) is null) continue;
@@ -594,8 +594,8 @@ public static partial class Jardin
         var authentique = 0.1 + S(p.Conscience) + 0.5 * S(p.Agreabilite);
         var trouve = h.Savoirs.Where(s => s.Origine != OrigineSavoir.Imitation && s.Confiance >= 0.6 && s.Effet is not (Effet.Rien or Effet.Poison or Effet.Visions))
             .MinBy(s => s.AppriLe);
-        var eleves = trouve is null ? 0 : humains.Count(a => a.EstVivant && a.Savoirs.Exists(s => s.MaitreId == h.Id));
-        var enfants = humains.Count(a => a.MereId == h.Id || a.PereId == h.Id);
+        var eleves = trouve is null ? 0 : humains.Vivants().Count(a => a.EstVivant && a.Savoirs.Exists(s => s.MaitreId == h.Id));
+        var enfants = humains.EnfantsDe(h.Id).Count();
         var figure = communaute?.FigureId == h.Id;
         var beau = Attirance.Attractivite(h, ideal, maintenant) >= 75;
         if (trouve is null && !figure && enfants < 3 && !beau)
@@ -625,7 +625,7 @@ public static partial class Jardin
     {
         Humain? victime = null;
         Grief? pire = null;
-        foreach (var a in humains)
+        foreach (var a in humains.Vivants())
         {
             if (!a.EstVivant || a.Id == h.Id) continue;
             foreach (var g in a.Griefs)
@@ -684,7 +684,7 @@ public static partial class Jardin
         Humain? cible = null;
         var motif = 0;
         var ecart = 0.0;
-        foreach (var a in humains)
+        foreach (var a in humains.Vivants())
         {
             if (!a.EstVivant || a.Id == h.Id || a.Sexe != h.Sexe || a.CommunauteId != h.CommunauteId || a.EstEnfant(maintenant)) continue;
             var beaute = Attirance.Attractivite(a, ideal, maintenant) - moi - 20;
@@ -721,7 +721,7 @@ public static partial class Jardin
     {
         var p = h.Personnalite;
         var m = p.Moral;
-        var petits = humains.Any(e => (e.MereId == h.Id || e.PereId == h.Id) && e.EstVivant && e.EstEnfant(maintenant));
+        var petits = humains.EnfantsDe(h.Id).Any(e => e.EstVivant && e.EstEnfant(maintenant));
         if (h.Faim >= 70 || h.Reserves < 15)
         {
             var texte = Choisir(h, "peur:faim", petits ? 1 : 0,
@@ -787,7 +787,7 @@ public static partial class Jardin
                 new V("Un jour, quelqu'un marchera à mon côté.", 0.2 + S(p.Ouverture), 2),
                 new V("Je trouverai bien quelqu'un.", 0.2 + S(p.Extraversion), 0))!, 20 + 20 * p.Extraversion, 0, maintenant, "espoir:amour");
         else Retirer(h, "espoir:amour");
-        var enfants = humains.Count(e => e.MereId == h.Id || e.PereId == h.Id);
+        var enfants = humains.EnfantsDe(h.Id).Count();
         if (enfants == 0 && age is >= 18 and < 40 && p.Attachement >= 0.6)
             Confier(h, TypeIntime.Espoir, 0, Choisir(h, "espoir:enfants", 0,
                 new V("J'espère avoir des enfants un jour.", 0.5),
@@ -896,7 +896,7 @@ public static partial class Jardin
         var maitre = h.Savoirs.Where(s => s.Origine == OrigineSavoir.Imitation && s.MaitreId > 0).MinBy(s => s.AppriLe);
         if (maitre is not null)
             options.Add(new($"Je me souviens de {humains[maitre.MaitreId - 1].Nom}, qui m'a appris à {Moi(Physique.NomEffet(maitre.Effet))}.", 0.4 * gai + S(p.Moral.Honnetete)));
-        var aine = humains.Where(e => e.MereId == h.Id || e.PereId == h.Id).MinBy(e => e.Naissance);
+        var aine = humains.EnfantsDe(h.Id).MinBy(e => e.Naissance);
         if (aine is not null) options.Add(new($"Je me souviens de la naissance de {aine.Nom}.", 0.5 * gai + p.Attachement / 2));
         var mere = h.MereId > 0 ? humains[h.MereId - 1] : null;
         if (mere is { EstVivant: false }) options.Add(new($"Je me souviens des mains de {mere.Nom}.", 0.5 * triste, 2));
@@ -921,7 +921,7 @@ public static partial class Jardin
         var palier = semaine / Rythme(h);
         if (!Tirer(h, "emerveillement", palier, 0.05 + 0.4 * p.Ouverture * (0.6 + 0.8 * p.Transcendance) * (h.Humeur >= 30 ? 1 : 0.3))) return;
         var biome = carte?.BiomeEn(h.X, h.Y) ?? Biome.PlaineDeFougeres;
-        var bebe = humains.FirstOrDefault(e => (e.MereId == h.Id || e.PereId == h.Id) && e.EstVivant && e.EstBebe(maintenant));
+        var bebe = humains.EnfantsDe(h.Id).FirstOrDefault(e => e.EstVivant && e.EstBebe(maintenant));
         var options = new List<V>
         {
             new("La nuit, les étoiles sont si nombreuses ; d'où viennent-elles ?", 0.3 + S(p.Ouverture)),

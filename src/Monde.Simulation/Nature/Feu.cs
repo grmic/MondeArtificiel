@@ -121,7 +121,7 @@ public sealed partial class Catastrophes
         c.Rayon = Math.Max(c.Rayon, nouvelles.Select(j => (int)Math.Ceiling(Distance(j % _carte.Largeur, j / _carte.Largeur, c.X, c.Y))).DefaultIfEmpty(0).Max());
 
         // Ceux qui voient les flammes de près s'en souviendront : la première rencontre avec le feu.
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || h.EstBebe(maintenant)) continue;
             if (!_danger.TryGetValue(_carte.Indice(h.X, h.Y), out var d) || d.Source != c || !c.Temoins.Add(h.Id)) continue;

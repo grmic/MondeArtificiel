@@ -91,7 +91,7 @@ public sealed partial class VieSociale
     public void Territoires(List<Humain> humains, List<Communaute> communautes, Ecosysteme nature, Carte carte, long maintenant)
     {
         var actives = communautes.Where(c => c.Active).ToList();
-        var membres = humains.Where(h => h.EstVivant && h.CommunauteId != 0).GroupBy(h => h.CommunauteId)
+        var membres = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId != 0).GroupBy(h => h.CommunauteId)
             .ToDictionary(g => g.Key, g => g.ToList());
         foreach (var c in actives)
         {
@@ -199,7 +199,7 @@ public sealed partial class VieSociale
 
         // Somme et nombre des liens entre membres de deux communautés.
         var sommes = new Dictionary<(int, int), (double Somme, int Nombre)>();
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || h.CommunauteId == 0 || !ids.Contains(h.CommunauteId)) continue;
             foreach (var l in h.Liens)

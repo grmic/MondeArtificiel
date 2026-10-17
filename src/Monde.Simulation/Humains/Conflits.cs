@@ -32,7 +32,7 @@ public sealed partial class Comportement
                        && alea.Reel() < 0.5 * Perspicacite(trompe) * cache;
             if (!voit)
             {
-                foreach (var t in tous)
+                foreach (var t in tous.Vivants())
                 {
                     if (!t.EstVivant || t.Id == a.Id || t.Id == b.Id || t.Id == trompe.Id || t.EstEnfant(maintenant)
                         || t.Activite == Activite.Dormir || Distance(t.X, t.Y, infidele.X, infidele.Y) > 2

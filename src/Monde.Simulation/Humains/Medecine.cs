@@ -165,7 +165,7 @@ public sealed partial class Comportement
     {
         if (h.PlaieSoin > 0 || (_maintenant / MondeSimule.SecondesParPas + h.Id) % 6 != 0 || !Medecine.PlaieOuverte(h, _maintenant)) return false;
         if (!h.EstEnfant(_maintenant) && Medecine.SaitPanser(h) && Panser(h, h, tous)) return true;
-        foreach (var o in tous)
+        foreach (var o in tous.Vivants())
         {
             if (o.Id == h.Id || !o.EstVivant || o.EstEnfant(_maintenant) || o.Activite == Activite.Dormir || o.EstMalade(_maintenant) || o.CaptifDe != 0) continue;
             if (Distance(o.X, o.Y, h.X, h.Y) > (o.GuerisseurDepuis > 0 ? 1 : 0) || !Medecine.SaitPanser(o)) continue;
@@ -242,7 +242,7 @@ public sealed partial class Comportement
         var grave = h.Sante < 60 || h.InfectionId != 0 || h.EstMalade(_maintenant) && Maladies.Fiche(h.Maladie).Gravite >= 1;
         Humain? choisi = null;
         var meilleur = 0.0;
-        foreach (var o in tous)
+        foreach (var o in tous.Vivants())
         {
             if (o.Id == h.Id || !o.EstVivant || o.EstEnfant(_maintenant) || o.Activite == Activite.Dormir || o.EstMalade(_maintenant) || o.CaptifDe != 0) continue;
             if (Distance(o.X, o.Y, h.X, h.Y) > 1) continue;
@@ -338,7 +338,7 @@ public sealed partial class Comportement
         if (premiere) s.ChamanDepuis = Math.Max(1, _maintenant);
         s.TranseLe = Math.Max(1, _maintenant);
         Croyances.Ajouter(s, 4, "les esprits lui ont parlé en transe", id, _maintenant, signe: true);
-        foreach (var o in tous)
+        foreach (var o in tous.Vivants())
         {
             if (o.Id == s.Id || !o.EstVivant || o.X != s.X || o.Y != s.Y || o.EstBebe(_maintenant)) continue;
             Croyances.Ajouter(o, 3 * (0.3 + o.Personnalite.Transcendance), $"a vu {s.Nom} en transe", id, _maintenant, signe: true);
@@ -400,7 +400,7 @@ public sealed partial class Comportement
         _maintenant = maintenant;
         _tous = tous;
         // Guérisons : le dernier soignant en reçoit le crédit, mérité ou non.
-        foreach (var h in tous)
+        foreach (var h in tous.Vivants())
         {
             if (!h.EstVivant || h.SoigneurId == 0) continue;
             if (!Medecine.Souffrant(h, maintenant))
@@ -463,7 +463,7 @@ public sealed partial class Comportement
 
     private void Maledictions(IReadOnlyList<Humain> tous, long maintenant)
     {
-        foreach (var t in tous)
+        foreach (var t in tous.Vivants())
         {
             if (!t.EstVivant || t.MauditLe == 0) continue;
             var f = t.MauditForce;
@@ -473,7 +473,7 @@ public sealed partial class Comportement
             t.Humeur = Math.Max(0, t.Humeur - 3 * f);
             // Un soignant (autre que celui qui a maudit) peut chasser la malédiction, s'il y croit et si le maudit croit en lui.
             Humain? soignant = null;
-            foreach (var o in tous)
+            foreach (var o in tous.Vivants())
             {
                 if (o.Id == t.Id || o.Id == t.MauditParId || !o.EstVivant || o.EstEnfant(maintenant) || Distance(o.X, o.Y, t.X, t.Y) > 1) continue;
                 if (o.GuerisseurDepuis == 0 && o.ChamanDepuis == 0 || o.AffectionPour(t.Id) < 0) continue;
@@ -493,7 +493,7 @@ public sealed partial class Comportement
             if (alea.Reel() < (1.2 - 0.7 * f) / 45) Delivrer(t, null, tous);
         }
         // Les chamans au cœur dur maudissent ceux qu'ils haïssent.
-        foreach (var s in tous)
+        foreach (var s in tous.Vivants())
         {
             if (!s.EstVivant || s.ChamanDepuis == 0 || s.EstEnfant(maintenant)) continue;
             var p = s.Personnalite;
@@ -512,13 +512,13 @@ public sealed partial class Comportement
     private void Charlatans(IReadOnlyList<Humain> tous, long maintenant)
     {
         HashSet<int>? avecGuerisseur = null;
-        foreach (var h in tous)
+        foreach (var h in tous.Vivants())
         {
             if (!h.EstVivant || h.CommunauteId == 0 || h.CharlatanDepuis > 0 || h.GuerisseurDepuis > 0 || h.EstEnfant(maintenant)) continue;
             if (h.DemasqueLe > 0 && maintenant - h.DemasqueLe < 5 * Calendrier.SecondesParAn || !Medecine.PorteAuCharlatanisme(h, maintenant)) continue;
             if (h.Savoirs.Exists(s => s.Effet == Effet.Soulagement && s.Confiance >= 0.5)) continue;
             // Voir un guérisseur honoré donne l'idée (trois fois plus).
-            avecGuerisseur ??= tous.Where(o => o.EstVivant && (o.GuerisseurDepuis > 0 || o.ChamanDepuis > 0)).Select(o => o.CommunauteId).ToHashSet();
+            avecGuerisseur ??= tous.Vivants().Where(o => o.EstVivant && (o.GuerisseurDepuis > 0 || o.ChamanDepuis > 0)).Select(o => o.CommunauteId).ToHashSet();
             var chance = (avecGuerisseur.Contains(h.CommunauteId) ? 3 : 1) / (360.0 * 40);
             if (alea.Reel() >= chance) continue;
             h.CharlatanDepuis = Math.Max(1, maintenant);
@@ -536,7 +536,7 @@ public sealed partial class Comportement
     /// </summary>
     private void Reconnaissance(IReadOnlyList<Humain> tous, long maintenant)
     {
-        foreach (var g in tous.Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant)).GroupBy(h => h.CommunauteId))
+        foreach (var g in tous.Vivants().Where(h => h.EstVivant && h.CommunauteId != 0 && !h.EstEnfant(maintenant)).GroupBy(h => h.CommunauteId))
         {
             var membres = g.ToList();
             var moyenne = membres.Average(h => h.Gueris);

@@ -357,7 +357,7 @@ public sealed partial class VieSociale
     public void Parler(List<Humain> humains, List<Communaute> communautes, Carte carte, long maintenant)
     {
         var parCase = new Dictionary<int, List<Humain>>();
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || Age(h, maintenant) < 1.5) continue;
             var k = h.Y * carte.Largeur + h.X;
@@ -367,7 +367,7 @@ public sealed partial class VieSociale
         var meres = new HashSet<int>();
         foreach (var h in humains) if (h.EstVivant && h.MereId > 0 && h.EstBebe(maintenant)) meres.Add(h.MereId);
         var voisins = new List<Humain>();
-        foreach (var s in humains)
+        foreach (var s in humains.Vivants())
         {
             if (!s.EstVivant || Age(s, maintenant) < 1.5) continue;
             voisins.Clear();
@@ -528,7 +528,7 @@ public sealed partial class VieSociale
         if (alea.Reel() >= (bebe ? 0.02 : 0.003)) return;
         var mere = h.MereId > 0 ? humains[h.MereId - 1] : null;
         var parrain = mere is { EstVivant: true } && mere.CommunauteId == c.Id && mere.StadeParole >= 1 ? mere
-            : humains.Where(o => o.EstVivant && o.Id != h.Id && o.CommunauteId == c.Id && o.StadeParole >= 1 && !o.EstEnfant(maintenant))
+            : humains.Vivants().Where(o => o.EstVivant && o.Id != h.Id && o.CommunauteId == c.Id && o.StadeParole >= 1 && !o.EstEnfant(maintenant))
                 .OrderByDescending(o => o.AffectionPour(h.Id) + (o.Id == c.FigureId ? 20 : 0)).FirstOrDefault();
         if (parrain is null) return;
         var p = h.Personnalite;
@@ -555,7 +555,7 @@ public sealed partial class VieSociale
         var sons = SonsDe(c);
         var nom = c.Lexique[idee];
         if (alea.Reel() < 0.5) nom += Langues.Forger(sons, alea, 1);
-        var pris = humains.Where(o => o.EstVivant && o.CommunauteId == c.Id && o.NomLangue is not null).Select(o => o.NomLangue!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var pris = humains.Vivants().Where(o => o.EstVivant && o.CommunauteId == c.Id && o.NomLangue is not null).Select(o => o.NomLangue!).ToHashSet(StringComparer.OrdinalIgnoreCase);
         while (pris.Contains(nom)) nom += Langues.Forger(sons, alea, 1);
         nom = char.ToUpperInvariant(nom[0]) + nom[1..];
         var sens = Idees.Libelle(idee, Flore);
@@ -589,7 +589,7 @@ public sealed partial class VieSociale
                 else h.Vocabulaire[i] = m with { Force = m.Force - 0.02 };
             }
         }
-        var membres = humains.Where(h => h.EstVivant && h.CommunauteId > 0 && Age(h, maintenant) >= 3).ToLookup(h => h.CommunauteId);
+        var membres = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId > 0 && Age(h, maintenant) >= 3).ToLookup(h => h.CommunauteId);
         foreach (var c in communautes)
         {
             if (!c.Active) continue;
@@ -623,7 +623,7 @@ public sealed partial class VieSociale
     {
         var grandes = actives.Where(c => c.Lexique.Count + c.Signes.Count >= 15).ToList();
         if (grandes.Count < 2) return;
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || h.Vocabulaire.Count < 10) continue;
             if (h.LangueSecondeId > 0 && (h.LangueSecondeId == h.CommunauteId || !grandes.Exists(c => c.Id == h.LangueSecondeId))) h.LangueSecondeId = 0;

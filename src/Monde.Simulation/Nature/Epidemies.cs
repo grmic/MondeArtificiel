@@ -103,7 +103,7 @@ public sealed partial class Catastrophes
     private void Contagion(List<Humain> humains, long maintenant)
     {
         if (_pathogenes.Count == 0) return;
-        var malades = humains.Where(h => h.EstVivant && h.InfectionId != 0).ToList();
+        var malades = humains.Vivants().Where(h => h.EstVivant && h.InfectionId != 0).ToList();
         if (malades.Count == 0)
         {
             foreach (var c in _liste.Where(c => c.Active && c.Type == TypeCatastrophe.Epidemie).ToList()) Terminer(c, humains, maintenant);
@@ -112,7 +112,7 @@ public sealed partial class Catastrophes
 
         // Qui est où : les contacts se font sur la même case ou une case voisine.
         var parCase = new Dictionary<int, List<Humain>>();
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant) continue;
             var i = _carte.Indice(h.X, h.Y);
@@ -143,7 +143,7 @@ public sealed partial class Catastrophes
             }
         }
 
-        foreach (var m in malades)
+        foreach (var m in malades.Vivants())
         {
             if (!m.EstVivant) continue;
             var p = PathogeneDe(m);
@@ -204,7 +204,7 @@ public sealed partial class Catastrophes
     /// </summary>
     private void Epidemies(List<Humain> humains, long maintenant)
     {
-        foreach (var groupe in humains.Where(h => h.EstVivant && h.InfectionId != 0).GroupBy(h => h.InfectionId).OrderBy(g => g.Key))
+        foreach (var groupe in humains.Vivants().Where(h => h.EstVivant && h.InfectionId != 0).GroupBy(h => h.InfectionId).OrderBy(g => g.Key))
         {
             var p = _pathogenes[groupe.Key - 1];
             var malades = groupe.ToList();
@@ -229,7 +229,7 @@ public sealed partial class Catastrophes
         }
         foreach (var c in _liste.Where(c => c.Active && c.Type == TypeCatastrophe.Epidemie).ToList())
         {
-            if (!humains.Any(h => h.EstVivant && h.InfectionId == c.Parametre)) Terminer(c, humains, maintenant);
+            if (!humains.Vivants().Any(h => h.EstVivant && h.InfectionId == c.Parametre)) Terminer(c, humains, maintenant);
         }
     }
 }

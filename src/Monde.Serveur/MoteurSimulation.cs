@@ -5,8 +5,8 @@ using Monde.Serveur.Hubs;
 namespace Monde.Serveur;
 
 /// <summary>
-/// Boucle de fond qui fait avancer le monde, diffuse l'horloge aux navigateurs
-/// et sauvegarde régulièrement l'état.
+/// Fait avancer le monde sur un fil à lui, à plein temps ; une boucle de fond diffuse l'horloge aux navigateurs
+/// et sauvegarde régulièrement l'état, sans arrêter le calcul.
 /// </summary>
 public sealed class MoteurSimulation(
     ServiceMonde service,
@@ -16,15 +16,17 @@ public sealed class MoteurSimulation(
     private static readonly TimeSpan Cadence = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan IntervalleDiffusion = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan IntervalleSauvegarde = TimeSpan.FromSeconds(10);
-    // Temps de calcul accordé au monde à chaque tour : le reste sert à diffuser et à répondre aux navigateurs.
-    private static readonly TimeSpan BudgetCalcul = TimeSpan.FromMilliseconds(70);
+    // Le calcul se fait par tranches : entre deux, le monde est libre pour être lu (diffusion, fiches, sauvegarde).
+    private static readonly TimeSpan Tranche = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan FenetreMesure = TimeSpan.FromSeconds(1);
 
     protected override async Task ExecuteAsync(CancellationToken arret)
     {
         using var minuteur = new PeriodicTimer(Cadence);
         var chrono = Stopwatch.StartNew();
-        var precedent = chrono.Elapsed;
+        using var finCalcul = CancellationTokenSource.CreateLinkedTokenSource(arret);
+        var calcul = new Thread(() => Calculer(chrono, finCalcul.Token)) { IsBackground = true, Name = "Monde" };
+        calcul.Start();
         var derniereDiffusion = TimeSpan.Zero;
         var derniereSauvegarde = TimeSpan.Zero;
         var debutMesure = TimeSpan.Zero;
@@ -36,10 +38,10 @@ public sealed class MoteurSimulation(
         {
             while (await minuteur.WaitForNextTickAsync(arret))
             {
+                // Une erreur du calcul arrête le serveur, comme avant (elle est transmise ici).
+                _panne?.Throw();
                 var maintenant = chrono.Elapsed;
                 var monde = service.Monde;
-                monde.Avancer(maintenant - precedent, BudgetCalcul);
-                precedent = maintenant;
 
                 // Vitesse réellement atteinte, mesurée sur environ une seconde.
                 if (!ReferenceEquals(monde, mondeMesure))
@@ -107,8 +109,36 @@ public sealed class MoteurSimulation(
         }
         finally
         {
+            finCalcul.Cancel();
+            calcul.Join();
             service.Sauvegarder();
             journal.LogInformation("Monde sauvegardé à l'arrêt ({Date}).", service.Monde.Date);
+        }
+    }
+
+    private volatile System.Runtime.ExceptionServices.ExceptionDispatchInfo? _panne;
+
+    /// <summary>
+    /// Fil du calcul : avance le monde selon le temps réel écoulé, par tranches. En retard (vitesse au-delà de ce que la
+    /// machine suit), il enchaîne les tranches et ne s'interrompt qu'un instant pour laisser lire le monde ; à l'heure, il attend.
+    /// </summary>
+    private void Calculer(Stopwatch chrono, CancellationToken fin)
+    {
+        try
+        {
+            var precedent = chrono.Elapsed;
+            while (!fin.IsCancellationRequested)
+            {
+                var debut = chrono.Elapsed;
+                service.Monde.Avancer(debut - precedent, Tranche);
+                precedent = debut;
+                Thread.Sleep(chrono.Elapsed - debut >= Tranche ? 1 : 10);
+            }
+        }
+        catch (Exception e)
+        {
+            journal.LogCritical(e, "Le calcul du monde s'est arrêté sur une erreur.");
+            _panne = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(e);
         }
     }
 }

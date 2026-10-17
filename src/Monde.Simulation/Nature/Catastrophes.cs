@@ -442,7 +442,7 @@ public sealed partial class Catastrophes
     private void Exposer(List<Humain> humains, long maintenant)
     {
         if (_danger.Count == 0) return;
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant) continue;
             if (!_danger.TryGetValue(_carte.Indice(h.X, h.Y), out var d) || d.Niveau < 2) continue;
@@ -606,7 +606,7 @@ public sealed partial class Catastrophes
     /// <summary>Une fois par jour, la peur s'apaise : en quelques jours pour la plupart, en des semaines pour les plus sensibles.</summary>
     private static void Apaiser(List<Humain> humains)
     {
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || h.Peur <= 0) continue;
             var demiVie = 4 * Math.Exp(3.5 * (h.Personnalite.Nevrosisme - 0.5)) * (1 + h.Peur / 50);
@@ -719,7 +719,7 @@ public sealed partial class Catastrophes
         List<Humain> humains, long maintenant, Origine origine = Origine.Naturelle, double direction = 0, int parametre = 0, long cause = 0, long duree = 0, bool alerter = true)
     {
         // Significative si elle menace des humains, ou si tous peuvent la voir (phénomène du ciel).
-        var menace = humains.Any(h => h.EstVivant && Distance(h.X, h.Y, x, y) <= rayon + 3);
+        var menace = humains.Vivants().Any(h => h.EstVivant && Distance(h.X, h.Y, x, y) <= rayon + 3);
         var phenomene = TypesCatastrophe.EstPhenomene(type);
         var id = Noter(maintenant, null, texte, cause, origine: origine, significatif: phenomene || menace);
         var c = new Catastrophe

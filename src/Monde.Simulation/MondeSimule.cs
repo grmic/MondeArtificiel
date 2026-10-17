@@ -85,7 +85,7 @@ public sealed class MondeSimule
     private const long PasParJour = Calendrier.SecondesParJour / SecondesParPas;
 
     private readonly object _verrou = new();
-    private readonly List<Humain> _humains;
+    private readonly Population _humains;
     private readonly Ecosysteme _ecosysteme;
     private readonly Alea _alea;
     private readonly Comportement _comportement;
@@ -138,9 +138,9 @@ public sealed class MondeSimule
         _secondes = etat.Secondes;
         _pas = etat.Pas;
         _facteur = Vitesse.FacteurValide(etat.Facteur) ? etat.Facteur : 0;
-        _humains = etat.Humains is { Count: > 0 } h
-            ? h.Select(x => x.Copier()).OrderBy(x => x.Id).ToList()
-            : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes);
+        _humains = new Population(etat.Humains is { Count: > 0 } h
+            ? h.Select(x => x.Copier()).OrderBy(x => x.Id)
+            : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes));
         _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray(), etat.DegatsNature?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a) : new Alea(etat.Graine ^ 0x534D554C4154UL);
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
@@ -162,7 +162,7 @@ public sealed class MondeSimule
         };
         _comportement.Catastrophes = _catastrophes;
         _noms = _humains.Select(x => x.Nom).ToHashSet();
-        _eteint = !_humains.Any(x => x.EstVivant);
+        _eteint = !_humains.Vivants().Any(x => x.EstVivant);
         _effetsConnus = EffetsConnus();
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
         _archivesNonEnregistrees.AddRange(etat.ArchivesNonEnregistrees ?? []);
@@ -392,7 +392,7 @@ public sealed class MondeSimule
     {
         lock (_verrou)
         {
-            var vivants = _humains.Where(h => h.EstVivant).ToList();
+            var vivants = _humains.Vivants().Where(h => h.EstVivant).ToList();
             var regions = vivants.Select(h => _ecosysteme.Region(h.X, h.Y)).ToHashSet();
             double actuel = 0, naturel = 0;
             for (var i = 0; i < Carte.Biomes.Length; i++)
@@ -494,7 +494,7 @@ public sealed class MondeSimule
         var objectif = _objectif;
         if (objectif is not null) fin = Math.Min(fin, objectif.Limite);
         var nombreAvant = _humains.Count;
-        var vivantsAvant = objectif?.Type == TypeObjectif.Mort ? _humains.Count(h => h.EstVivant) : 0;
+        var vivantsAvant = objectif?.Type == TypeObjectif.Mort ? _humains.Vivants().Count(h => h.EstVivant) : 0;
 
         var pas = 0;
         var evenement = false;
@@ -541,7 +541,7 @@ public sealed class MondeSimule
                 {
                     TypeObjectif.Naissance => _humains.Count > nombreAvant,
                     // Les naissances du pas sont vivantes : on compare aux vivants d'avant, nouveau-nés compris.
-                    TypeObjectif.Mort => _humains.Count(h => h.EstVivant) < vivantsAvant + (_humains.Count - nombreAvant),
+                    TypeObjectif.Mort => _humains.Vivants().Count(h => h.EstVivant) < vivantsAvant + (_humains.Count - nombreAvant),
                     _ => false,
                 };
                 if (evenement) break;
@@ -590,11 +590,13 @@ public sealed class MondeSimule
 
         _installations.Bruler(SecondesParPas / (double)Calendrier.SecondesParHeure);
 
-        // La liste peut grandir pendant le pas : on ne fait vivre que ceux qui existaient au début.
-        var nombre = _humains.Count;
+        // On ne fait vivre que ceux qui vivaient au début du pas (la liste ne change pas pendant ce parcours).
+        _humains.Recenser();
+        var vivants = _humains.Vivants;
+        var nombre = vivants.Count;
         for (var i = 0; i < nombre; i++)
         {
-            var humain = _humains[i];
+            var humain = vivants[i];
             _comportement.Vivre(humain, _humains, _secondes);
             if (nouveauJour) _comportement.Vieillir(humain, _secondes);
         }
@@ -603,7 +605,7 @@ public sealed class MondeSimule
         {
             var pere = pereId > 0 ? _humains[pereId - 1] : null;
             var bebe = GenerateurPopulation.Naissance(_humains.Count + 1, mere, pere, _secondes, _alea, _noms, _humains);
-            _humains.Add(bebe);
+            _humains.Ajouter(bebe);
             var fils = bebe.Sexe == Sexe.Femme ? "fille" : "fils";
             var naissance = new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
                 $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}.") { Id = _numeros.Suivant() };
@@ -626,7 +628,7 @@ public sealed class MondeSimule
 
         if (nouveauJour)
         {
-            _comportement.Population = _humains.Count(h => h.EstVivant);
+            _comportement.Population = _humains.Vivants().Count(h => h.EstVivant);
             _comportement.Journal.AddRange(_comportement.Routine.Resumer(_humains, _secondes).Select(e => e with { Id = _numeros.Suivant() }));
             _social.Journee(_humains, _secondes);
             _social.Coeur(_humains, _secondes);
@@ -692,7 +694,7 @@ public sealed class MondeSimule
     /// </summary>
     private void VerserJournal()
     {
-        if (!_eteint && _humains.Count > 0 && !_humains.Any(h => h.EstVivant)) Eteindre();
+        if (!_eteint && _humains.Count > 0 && !_humains.Vivants().Any(h => h.EstVivant)) Eteindre();
         foreach (var mort in _comportement.Deces) _social.Endeuiller(mort, _humains, _secondes);
         _comportement.Deces.Clear();
         foreach (var e in _comportement.Journal.Concat(_social.Journal).Concat(_catastrophes.Journal).OrderBy(e => e.Id)) Ajouter(e);
@@ -712,7 +714,7 @@ public sealed class MondeSimule
     {
         var avant = _ecosysteme.Pluies.ToArray();
         _ecosysteme.NouvelleAnnee(_alea);
-        var habitees = _humains.Where(h => h.EstVivant).GroupBy(h => _ecosysteme.Region(h.X, h.Y))
+        var habitees = _humains.Vivants().Where(h => h.EstVivant).GroupBy(h => _ecosysteme.Region(h.X, h.Y))
             .ToDictionary(g => g.Key, g => g.OrderBy(h => h.Id).First());
         var dejaDits = new HashSet<string>();
         foreach (var (r, temoin) in habitees.OrderBy(p => p.Key))
@@ -738,7 +740,7 @@ public sealed class MondeSimule
     /// </summary>
     private void Murir()
     {
-        foreach (var h in _humains)
+        foreach (var h in _humains.Vivants())
         {
             if (!h.EstVivant) continue;
             // Ce que cache un psychopathe, lui le sait : il le garde pour lui.
@@ -758,7 +760,7 @@ public sealed class MondeSimule
     /// <summary>Une fois par jour, chacun peut oublier des lieux, plus ou moins vite selon sa mémoire.</summary>
     private void Oublier()
     {
-        foreach (var h in _humains)
+        foreach (var h in _humains.Vivants())
         {
             if (!h.EstVivant || h.EstBebe(_secondes)) continue;
             foreach (var l in h.Memoire.OublierAvecLeTemps(h.Personnalite.Intelligence.Memoire, _alea))
@@ -780,7 +782,7 @@ public sealed class MondeSimule
     private Dictionary<Effet, Savoir> EffetsConnus()
     {
         var connus = new Dictionary<Effet, Savoir>();
-        foreach (var h in _humains)
+        foreach (var h in _humains.Vivants())
         {
             if (!h.EstVivant) continue;
             foreach (var s in h.Savoirs)

@@ -67,7 +67,7 @@ public sealed partial class VieSociale
     /// <summary>Toutes les heures : chaque membre marque la case où il se trouve comme terre de son groupe.</summary>
     public void Parcourir(List<Humain> humains, Carte carte, long maintenant)
     {
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant || CommunauteDe(h) is not { } c) continue;
             var i = carte.Indice(h.X, h.Y);
@@ -126,7 +126,7 @@ public sealed partial class VieSociale
     /// <summary>Au début de chaque saison : taille et terres de chaque communauté active, pour son histoire.</summary>
     public void Archiver(List<Humain> humains, List<Communaute> communautes, Carte carte, long maintenant)
     {
-        var membres = humains.Where(h => h.EstVivant && h.CommunauteId != 0).ToLookup(h => h.CommunauteId);
+        var membres = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId != 0).ToLookup(h => h.CommunauteId);
         foreach (var c in communautes.Where(c => c.Active))
         {
             var groupe = membres[c.Id].ToList();

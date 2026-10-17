@@ -251,7 +251,7 @@ public sealed partial class Comportement
         // Un témoin, là où l'on cache ces amours, peut les surprendre.
         if (Social is not null)
         {
-            foreach (var t in tous)
+            foreach (var t in tous.Vivants())
             {
                 if (!t.EstVivant || t.Id == a.Id || t.Id == b.Id || t.EstEnfant(maintenant) || t.Activite == Activite.Dormir
                     || Distance(t.X, t.Y, a.X, a.Y) > 2) continue;

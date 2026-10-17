@@ -100,7 +100,7 @@ public sealed partial class Catastrophes
     {
         var profondeur = c.Direction;
         var ressentie = new SortedSet<int>();
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant) continue;
             var intensite = Mercalli(magnitude, Echelle.Kilometres(Distance(h.X, h.Y, c.X, c.Y)), profondeur);
@@ -213,7 +213,7 @@ public sealed partial class Catastrophes
         c.Cases = cases;
         c.Prochaine = maintenant + delai;
         // Le danger n'existe que sur les côtes noyées : l'alerte vaut s'il y a quelqu'un là.
-        if (!c.Signalee && humains.Any(h => h.EstVivant && cases.Contains(_carte.Indice(h.X, h.Y)))) Signaler(c, Journal[^1].Texte);
+        if (!c.Signalee && humains.Vivants().Any(h => h.EstVivant && cases.Contains(_carte.Indice(h.X, h.Y)))) Signaler(c, Journal[^1].Texte);
         return c;
     }
 
@@ -319,7 +319,7 @@ public sealed partial class Catastrophes
 
         // Nuées ardentes : presque personne n'y survit (Saint-Pierre, 1902 ; Pompéi, 79).
         var nuees = RayonNuees(c);
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant) continue;
             var d = Distance(h.X, h.Y, c.X, c.Y);
@@ -341,7 +341,7 @@ public sealed partial class Catastrophes
             if (f <= 0.05) continue;
             Ravager(c, i, 1 - 0.9 * f, 1 - 0.6 * f, Math.Pow(f, 0.7));
         }
-        foreach (var h in humains)
+        foreach (var h in humains.Vivants())
         {
             if (!h.EstVivant) continue;
             var d = Distance(h.X, h.Y, c.X, c.Y);

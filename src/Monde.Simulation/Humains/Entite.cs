@@ -164,7 +164,7 @@ public sealed partial class Comportement
         var id = NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, 0, significatif: true);
         // Quand tout un groupe la voit à la fois, chacun la reçoit pour lui-même : pas de témoins à part.
         if (mode != ModeParole.Apparition || ensemble) return id;
-        var temoins = tous.Where(o => o.Id != h.Id && o.EstVivant && !o.EstBebe(maintenant) && o.Activite != Activite.Dormir
+        var temoins = tous.Vivants().Where(o => o.Id != h.Id && o.EstVivant && !o.EstBebe(maintenant) && o.Activite != Activite.Dormir
                                       && Distance(o.X, o.Y, h.X, h.Y) <= 1).ToList();
         if (temoins.Count == 0) return id;
         NoterEntite(maintenant, TypeEvenement.Parole, temoins[0], h, temoins.Count == 1
@@ -741,7 +741,7 @@ public sealed partial class Comportement
         var p = h.Personnalite;
         var honte = Paroles.Nuit(parole) || parole is Parole.UnisToi or Parole.Quitte;
         if (h.EstEnfant(maintenant) && h.AgeEnAnnees(maintenant) < 5 || alea.Reel() >= (0.15 + 0.6 * p.Extraversion) * (honte ? 0.25 : 1)) return;
-        var auditeurs = tous.Where(o => o.Id != h.Id && o.EstVivant && !o.EstEnfant(maintenant) && Distance(o.X, o.Y, h.X, h.Y) <= 3
+        var auditeurs = tous.Vivants().Where(o => o.Id != h.Id && o.EstVivant && !o.EstEnfant(maintenant) && Distance(o.X, o.Y, h.X, h.Y) <= 3
                                         && (h.CommunauteId == 0 || o.CommunauteId == h.CommunauteId)).Take(12).ToList();
         if (auditeurs.Count == 0) return;
         int croient = 0, rient = 0;
@@ -792,7 +792,7 @@ public sealed partial class Comportement
         var rayon = Math.Max(RayonPerception(h), 6);
         Humain? choisi = null;
         var meilleur = 0.0;
-        foreach (var a in tous)
+        foreach (var a in tous.Vivants())
         {
             if (a.Id == h.Id || !a.EstVivant || a.EstEnfant(maintenant) || SontParents(h, a)) continue;
             if (Distance(h.X, h.Y, a.X, a.Y) > rayon && (h.CommunauteId == 0 || a.CommunauteId != h.CommunauteId)) continue;

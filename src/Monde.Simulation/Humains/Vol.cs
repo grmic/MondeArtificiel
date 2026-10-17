@@ -23,7 +23,7 @@ public sealed partial class Comportement
         if (Recent(h, "vol", 3, maintenant)) return;
 
         Humain? victime = null;
-        foreach (var v in tous)
+        foreach (var v in tous.Vivants())
         {
             if (!v.EstVivant || v.Id == h.Id || v.Faim >= 35 || v.EstEnfant(maintenant) || Distance(h.X, h.Y, v.X, v.Y) > 1) continue;
             // On ne vole pas ceux qu'on aime, sauf si l'on n'aime personne.
@@ -45,7 +45,7 @@ public sealed partial class Comportement
         Humain? temoin = null;
         if (!surpris)
         {
-            foreach (var t in tous)
+            foreach (var t in tous.Vivants())
             {
                 if (!t.EstVivant || t.Id == h.Id || t.Id == victime.Id || t.EstEnfant(maintenant) || t.Activite == Activite.Dormir
                     || Distance(t.X, t.Y, h.X, h.Y) > 1) continue;

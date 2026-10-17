@@ -47,7 +47,7 @@ public sealed partial class Catastrophes
     /// <summary>Le vivant le plus proche tombe malade d'une maladie nouvelle (le premier malade d'une épidémie).</summary>
     private long Contaminer(int x, int y, List<Humain> humains, long maintenant, Origine origine)
     {
-        var h = humains.Where(h => h.EstVivant && h.InfectionId == 0).MinBy(h => Distance(h.X, h.Y, x, y));
+        var h = humains.Vivants().Where(h => h.EstVivant && h.InfectionId == 0).MinBy(h => Distance(h.X, h.Y, x, y));
         if (h is null) return 0;
         var p = NouveauPathogene(h, maintenant);
         var id = Noter(maintenant, h, $"{h.Nom} tombe malade d'un mal inconnu : {p.Nom} vient d'apparaître.", type: TypeEvenement.Maladie, origine: origine);
