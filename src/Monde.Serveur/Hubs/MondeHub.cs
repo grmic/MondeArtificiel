@@ -137,6 +137,14 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return ConfigurationDto.Depuis(service);
     }
 
+    /// <summary>Cœurs donnés au calcul : 1 = l'un après l'autre (classique), 0 = tous, 2 ou plus = ce nombre, en même temps.</summary>
+    public ConfigurationDto ChoisirCoeurs(int coeurs)
+    {
+        if (coeurs < 0 || coeurs > ServiceMonde.CoeursMachine) throw new HubException($"Nombre de cœurs invalide (0 à {ServiceMonde.CoeursMachine}).");
+        service.Coeurs = coeurs;
+        return ConfigurationDto.Depuis(service);
+    }
+
     /// <summary>Aperçu de réglages : la carte est générée (et gardée pour l'afficher), le monde courant ne change pas.</summary>
     public ApercuDto ApercuConfiguration(DemandeConfiguration demande)
     {

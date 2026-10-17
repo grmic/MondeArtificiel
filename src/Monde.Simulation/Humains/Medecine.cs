@@ -194,10 +194,12 @@ public sealed partial class Comportement
         h.PlaieSoin = Medecine.Qualite(m);
         h.Activite = Activite.Soigner;
         h.CibleX = h.CibleY = -1;
-        var soi = h.Id;
-        Tour.Differer(() => _pansements[soi] = ([m], soi, 0));
+        PoserPansement(h.Id, m);
         return true;
     }
+
+    // À part : la fermeture n'est créée que si la plaie est pansée.
+    private void PoserPansement(int soi, Matiere m) => Tour.Differer(() => _pansements[soi] = ([m], soi, 0));
 
     /// <summary>
     /// <paramref name="panseur"/> soigne la plaie de <paramref name="blesse"/> avec ce qu'il sait faire et ce qu'il a sous la

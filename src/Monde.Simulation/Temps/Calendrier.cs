@@ -42,7 +42,19 @@ public static class Calendrier
     /// <summary>Durée du jour (lever au coucher), en heures, pour chaque saison.</summary>
     private static readonly double[] DureeJour = [12, 15, 12, 9];
 
+    // Dernière date décomposée sur ce fil : chacun la redemande plusieurs fois par pas (la date est immuable, on la rend telle quelle).
+    [ThreadStatic] private static DateMonde? _derniere;
+    [ThreadStatic] private static long _secondesDerniere;
+
     public static DateMonde Decomposer(long secondes)
+    {
+        if (_derniere is { } d && _secondesDerniere == secondes) return d;
+        d = Calculer(secondes);
+        (_derniere, _secondesDerniere) = (d, secondes);
+        return d;
+    }
+
+    private static DateMonde Calculer(long secondes)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(secondes);
 

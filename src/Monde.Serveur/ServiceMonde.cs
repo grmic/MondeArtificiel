@@ -16,10 +16,12 @@ public sealed class ServiceMonde
     private const string CleRedemarrage = "redemarrage";
     private const string ClePauseCatastrophe = "pause_catastrophe";
     private const string CleJournalQuotidien = "journal_quotidien";
+    private const string CleCoeurs = "coeurs";
     private volatile MondeSimule _monde;
     private volatile bool _reprendreVitesse;
     private volatile bool _pauseSurCatastrophe;
     private volatile bool _journalQuotidien;
+    private volatile int _coeurs;
     private double _facteurAtteint;
 
     public ServiceMonde(IConfiguration configuration, ILogger<ServiceMonde> journal)
@@ -51,9 +53,12 @@ public sealed class ServiceMonde
         _reprendreVitesse = Depot.LireReglage(CleRedemarrage) == "vitesse";
         _pauseSurCatastrophe = Depot.LireReglage(ClePauseCatastrophe) != "non";
         _journalQuotidien = Depot.LireReglage(CleJournalQuotidien) == "oui";
+        // Un cœur par défaut (le plus rapide mesuré sur une partie de 400 habitants) ; une valeur illisible ou hors limites aussi.
+        _coeurs = int.TryParse(Depot.LireReglage(CleCoeurs), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var c)
+                  && c <= CoeursMachine ? c : 1;
         _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 })
         {
-            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien,
+            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs,
         };
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
@@ -99,6 +104,26 @@ public sealed class ServiceMonde
         }
     }
 
+    /// <summary>Cœurs logiques de cette machine.</summary>
+    public static int CoeursMachine => Environment.ProcessorCount;
+
+    /// <summary>
+    /// Cœurs donnés au calcul : 1 = pas classique, l'un après l'autre (par défaut) ; 0 = tous ; 2 ou plus = pas simultané sur ce nombre.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">Hors de 0 à <see cref="CoeursMachine"/>.</exception>
+    public int Coeurs
+    {
+        get => _coeurs;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, CoeursMachine);
+            Depot.EcrireReglage(CleCoeurs, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            _coeurs = value;
+            _monde.Coeurs = value;
+        }
+    }
+
     /// <summary>Vitesse réellement atteinte, mesurée par le moteur (secondes du monde par seconde réelle).</summary>
     public double FacteurAtteint
     {
@@ -138,7 +163,7 @@ public sealed class ServiceMonde
         var etat = MondeSimule.Nouveau(configuration);
         var nouveau = new MondeSimule(GenerateurContinent.Generer(configuration), etat)
         {
-            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien,
+            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs,
         };
         lock (_verrou)
         {
@@ -205,7 +230,7 @@ public sealed class ServiceMonde
                 var configuration = etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine);
                 restaure = new MondeSimule(GenerateurContinent.Generer(configuration), etat with { Facteur = 0 })
                 {
-                    PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien,
+                    PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs,
                 };
             }
             catch (Exception e) when (e is ArgumentException or InvalidOperationException)

@@ -22,6 +22,9 @@ interface Configuration {
   version: string;
   auteur: string;
   journalQuotidien: boolean;
+  /** Cœurs donnés au calcul : 1 l'un après l'autre (classique), 0 tous, n ce nombre en même temps. */
+  coeurs: number;
+  coeursMachine: number;
 }
 
 /** Réglages d'un nouveau monde (graine null : au hasard). */
@@ -88,6 +91,13 @@ export class PanneauConfiguration {
   private readonly listeSauvegardes = el("ul", "liste sauvegardes");
   private readonly journalQuotidien = el("input");
   private readonly messageJournal = el("p", "message-config");
+  private readonly coeurs = (() => {
+    const ligne = el("label", "reglage");
+    const choix = el("select");
+    ligne.append(el("span", "libelle", "Cœurs du processeur"), choix);
+    return { ligne, choix };
+  })();
+  private readonly messageCoeurs = el("p", "message-config");
   private readonly messageSauvegardes = el("p", "message-config");
   private readonly dialogueRestaurer = el("dialog", "dialogue");
   private aRestaurer: string | null = null;
@@ -145,6 +155,7 @@ export class PanneauConfiguration {
     etiquetteQuotidien.append(this.journalQuotidien, " Journaliser la vie quotidienne");
     this.journalQuotidien.type = "checkbox";
     this.journalQuotidien.addEventListener("change", () => void this.choisirJournalQuotidien(this.journalQuotidien.checked));
+    this.coeurs.choix.addEventListener("change", () => void this.choisirCoeurs(Number(this.coeurs.choix.value)));
 
     this.corps.append(
       this.apropos,
@@ -154,6 +165,10 @@ export class PanneauConfiguration {
       etiquetteQuotidien,
       el("p", "discret", "Boire, manger, dormir, se reposer, chercher un abri, aller et venir : décoché, ces gestes ne sont plus notés (ni résumé de la journée, ni pensées qui s'y rapportent). Ce qui touche aux autres reste toujours noté : veiller sur quelqu'un, partager, soigner, consoler, se disputer… Les entrées déjà écrites sont gardées."),
       this.messageJournal,
+      el("h3", undefined, "Calcul"),
+      this.coeurs.ligne,
+      el("p", "discret", "Un cœur : les humains vivent chaque pas l'un après l'autre, comme jusqu'à la version 0.22.0. Plusieurs cœurs : ils vivent chaque pas en même temps, répartis sur les cœurs ; l'histoire n'est pas la même qu'avec un cœur, mais la même graine redonne le même monde quel que soit leur nombre. Le plus rapide dépend de la machine et du nombre d'humains : comparez la vitesse atteinte. Le changement s'applique au pas suivant."),
+      this.messageCoeurs,
       this.titreSauvegardes,
       el("p", "discret", "Une sauvegarde garde tout le monde à cet instant. La restaurer remplace le monde actuel, qui est d'abord sauvegardé lui aussi."),
       boutonsSauvegarde,
@@ -192,6 +207,8 @@ export class PanneauConfiguration {
     this.apropos.textContent = `Monde artificiel, version ${c.version} · auteur : ${c.auteur}`;
     this.journalQuotidien.checked = c.journalQuotidien;
     this.messageJournal.textContent = "";
+    this.remplirCoeurs(c);
+    this.messageCoeurs.textContent = "";
     this.actuel.textContent = `Graine ${c.graine} · ${c.couples} couples · ${c.continents} continent${c.continents > 1 ? "s" : ""}${c.origine ? " (réglages d'origine)" : ""}. ${c.resume}`;
     const km = (cases: number) => Math.round(cases * c.kilometresParCase);
     const bornes = (e: HTMLInputElement, min: number, max: number) => {
@@ -246,6 +263,33 @@ export class PanneauConfiguration {
     }
     this.journalQuotidien.checked = c.journalQuotidien;
     this.messageJournal.textContent = c.journalQuotidien ? "La vie quotidienne est maintenant notée." : "La vie quotidienne n'est plus notée.";
+  }
+
+  private remplirCoeurs(c: Configuration): void {
+    const options = [el("option", undefined, "Un cœur (l'un après l'autre)")];
+    options[0].value = "1";
+    for (let n = 2; n < c.coeursMachine; n++) {
+      const o = el("option", undefined, `${n} cœurs en même temps`);
+      o.value = String(n);
+      options.push(o);
+    }
+    const tous = el("option", undefined, `Tous les cœurs (${c.coeursMachine}) en même temps`);
+    tous.value = "0";
+    options.push(tous);
+    this.coeurs.choix.replaceChildren(...options);
+    this.coeurs.choix.value = String(c.coeurs === c.coeursMachine && c.coeursMachine > 1 ? 0 : c.coeurs);
+  }
+
+  private async choisirCoeurs(coeurs: number): Promise<void> {
+    const c = await connexion.invoke<Configuration>("ChoisirCoeurs", coeurs).catch(() => null);
+    if (!c) {
+      if (this.config) this.remplirCoeurs(this.config);
+      this.messageCoeurs.textContent = "Le serveur n'a pas répondu : réglage inchangé.";
+      return;
+    }
+    this.config = c;
+    this.remplirCoeurs(c);
+    this.messageCoeurs.textContent = c.coeurs === 1 ? "Le calcul se fait maintenant sur un cœur." : "Le calcul se fait maintenant sur plusieurs cœurs.";
   }
 
   private async lireSauvegardes(): Promise<void> {

@@ -143,12 +143,15 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // sauf si une pensée de même sens figure déjà parmi les dernières (activités qui alternent).
             // Sauf choix contraire dans la configuration, la vie quotidienne n'est pas suivie : ni résumé de la journée,
             // ni pensées sur l'eau, la nourriture, l'abri, le sommeil ou les allées et venues.
-            if (routine && JournalQuotidien) { var (id, a) = (h.Id, h.Activite); Tour.Differer(() => Routine.Compter(id, a)); }
+            if (routine && JournalQuotidien) CompterRoutine(h.Id, h.Activite);
             var nouvelle = !routine && (JournalQuotidien || !EstQuotidien(h.Activite, _motif))
                            && !h.Memoire.PenseeRecente(pensee, Memoire.PenseesMax);
             if (h.Memoire.Penser(maintenant, pensee) && nouvelle) Noter(maintenant, TypeEvenement.Pensee, h, _autre, $"{h.Nom} : « {pensee} »");
         }
     }
+
+    // À part : la fermeture n'est créée que si la routine est comptée.
+    private void CompterRoutine(int id, Activite a) => Tour.Differer(() => Routine.Compter(id, a));
 
     /// <summary>Gestes quotidiens (boire, manger, dormir, se reposer, aller vers ce qu'on voit ou vers les siens) : résumés chaque jour.</summary>
     public JourneeType Routine { get; } = new();
@@ -506,14 +509,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.Soif = 0;
             h.Memoire.Retenir(TypeLieu.Eau, h.X, h.Y, maintenant, Aptitude(h));
         }
-        var urgences = new (double Valeur, Activite Besoin)[]
-        {
-            (Urgence(h.Soif) * 1.2, Activite.Boire),
-            (Urgence(h.Faim), Activite.Cueillir),
-            (Urgence(h.Fatigue) * 0.9 + (date.EstJour ? 0 : 0.35), Activite.Dormir),
-            (Urgence(h.Froid) * (0.8 + p.Prudence * 0.4), Activite.SAbriter),
-        };
-        var (valeur, besoin) = urgences.MaxBy(u => u.Valeur);
+        // Le besoin le plus pressant (à égalité, le premier de la liste).
+        var (valeur, besoin) = (Urgence(h.Soif) * 1.2, Activite.Boire);
+        Plus(Urgence(h.Faim), Activite.Cueillir, ref valeur, ref besoin);
+        Plus(Urgence(h.Fatigue) * 0.9 + (date.EstJour ? 0 : 0.35), Activite.Dormir, ref valeur, ref besoin);
+        Plus(Urgence(h.Froid) * (0.8 + p.Prudence * 0.4), Activite.SAbriter, ref valeur, ref besoin);
 
         // Un malade éveillé cherche à se soulager.
         if (valeur < 0.8 && (SoignerPlaie(h, tous) || SeSoigner(h, tous))) return;
@@ -750,6 +750,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     }
 
     /// <summary>Urgence d'un besoin : croît avec lui, et beaucoup plus vite au-delà de 70 (danger).</summary>
+    private static void Plus(double u, Activite a, ref double valeur, ref Activite besoin)
+    {
+        if (u.CompareTo(valeur) > 0) (valeur, besoin) = (u, a);
+    }
+
     private static double Urgence(double besoin) => besoin / 100 + (besoin > 70 ? (besoin - 70) / 30 * 0.8 : 0);
 
     private int RayonPerception(Humain h) =>
@@ -880,12 +885,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (e.Naissance < debut) break;
             if (!e.EstVivant || e.EstBebe(maintenant) || !e.EstPetitEnfant(maintenant) || Distance(h.X, h.Y, e.X, e.Y) > 2) continue;
             if (e.MereId != h.Id && e.PereId != h.Id && Gardien(e, tous, maintenant)?.Id != h.Id) continue;
-            var (valeur, besoin) = new (double, Activite)[]
-            {
-                (Urgence(e.Soif) * 1.2, Activite.Boire),
-                (Urgence(e.Faim), Activite.Cueillir),
-                (Urgence(e.Froid), Activite.SAbriter),
-            }.MaxBy(u => u.Item1);
+            // Le besoin le plus pressant (à égalité, le premier de la liste).
+            var (valeur, besoin) = (Urgence(e.Soif) * 1.2, Activite.Boire);
+            Plus(Urgence(e.Faim), Activite.Cueillir, ref valeur, ref besoin);
+            Plus(Urgence(e.Froid), Activite.SAbriter, ref valeur, ref besoin);
             if (valeur >= seuil) return (e, besoin);
         }
         return null;

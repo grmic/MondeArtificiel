@@ -99,13 +99,16 @@ public sealed partial class Comportement
             return;
         }
 
+        DiffererCombat(h.Id, cible.Id, grief, motif, tous, maintenant);
+    }
+
+    // À part : la fermeture n'est créée que s'il y a des coups.
+    private void DiffererCombat(int ih, int ic, Grief grief, string motif, IReadOnlyList<Humain> tous, long maintenant) =>
         // Des coups : l'issue dépend de la force de chacun. Pendant un pas simultané, ils se battent après le pas, s'ils vivent encore.
-        var (ih, ic) = (h.Id, cible.Id);
         Tour.Differer(tous, t =>
         {
             if (t[ih - 1].EstVivant && t[ic - 1].EstVivant) Combattre(t[ih - 1], t[ic - 1], grief, motif, t, maintenant);
         });
-    }
 
     private void Combattre(Humain h, Humain cible, Grief grief, string motif, IReadOnlyList<Humain> tous, long maintenant)
     {

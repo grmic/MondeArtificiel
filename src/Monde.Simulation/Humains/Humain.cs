@@ -469,9 +469,19 @@ public sealed class Humain
         return meilleur;
     }
 
-    public bool Sait(Effet effet) => Savoirs.Exists(s => s.Effet == effet && s.Confiance >= 0.4);
+    public bool Sait(Effet effet)
+    {
+        foreach (var s in Savoirs)
+            if (s.Effet == effet && s.Confiance >= 0.4) return true;
+        return false;
+    }
 
-    public bool Porte(Matiere m) => Objets.Exists(o => o.Matiere == m);
+    public bool Porte(Matiere m)
+    {
+        foreach (var o in Objets)
+            if (o.Matiere == m) return true;
+        return false;
+    }
 
     public bool EstDeprime => DeprimeDepuis is not null;
 

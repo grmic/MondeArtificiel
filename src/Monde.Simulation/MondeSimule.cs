@@ -590,7 +590,8 @@ public sealed class MondeSimule
 
         _installations.Bruler(SecondesParPas / (double)Calendrier.SecondesParHeure);
 
-        VivreEnsemble(nouveauJour);
+        if (Coeurs == 1) VivreChacunSonTour(nouveauJour);
+        else VivreEnsemble(nouveauJour);
 
         foreach (var (mere, pereId) in _comportement.Accouchements)
         {
@@ -644,9 +645,32 @@ public sealed class MondeSimule
     }
 
     /// <summary>
-    /// Nombre de cœurs du processeur donnés au calcul (0 : tous). Le résultat est le même quel que soit ce nombre.
+    /// Cœurs du processeur donnés au calcul. 1 : pas classique, chacun vit à son tour, l'un après l'autre (comme jusqu'à la 0.22.0).
+    /// 0 (tous) ou plus de 1 : pas simultané, réparti sur les cœurs ; son histoire est la même quel que soit leur nombre,
+    /// mais diffère de celle du pas classique. Modifiable en cours de route : pris en compte au pas suivant.
     /// </summary>
-    public int Coeurs { get; set; }
+    public int Coeurs
+    {
+        get => Volatile.Read(ref _coeurs);
+        set => Volatile.Write(ref _coeurs, Math.Max(0, value));
+    }
+
+    private int _coeurs;
+
+    /// <summary>Pas classique : ceux qui vivaient au début du pas vivent l'un après l'autre, et chacun voit ce qu'ont fait ceux d'avant.</summary>
+    private void VivreChacunSonTour(bool nouveauJour)
+    {
+        // La liste ne change pas pendant ce parcours.
+        _humains.Recenser();
+        var vivants = _humains.Vivants;
+        var nombre = vivants.Count;
+        for (var i = 0; i < nombre; i++)
+        {
+            var humain = vivants[i];
+            _comportement.Vivre(humain, _humains, _secondes);
+            if (nouveauJour) _comportement.Vieillir(humain, _secondes);
+        }
+    }
 
     // Les tours des humains, réutilisés de pas en pas.
     private readonly List<Tour> _tours = [];
@@ -671,7 +695,8 @@ public sealed class MondeSimule
         while (_tours.Count < nombre) _tours.Add(new Tour());
         var tours = _tours;
         Surveillant?.Invoke(true);
-        var options = new ParallelOptions { MaxDegreeOfParallelism = Coeurs > 0 ? Coeurs : Environment.ProcessorCount };
+        var coeurs = Coeurs;
+        var options = new ParallelOptions { MaxDegreeOfParallelism = coeurs > 0 ? coeurs : Environment.ProcessorCount };
         try
         {
             Parallel.For(0, nombre, options, i =>

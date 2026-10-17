@@ -460,20 +460,24 @@ public sealed partial class Comportement
             if (viande is null || d.AffectionPour(h.Id) < 0) continue;
             var kg = Math.Min(100 * viande.Qualite, h.Faim / FaimParKg);
             h.Faim = Math.Max(0, h.Faim - kg * FaimParKg);
-            // Ceux qui en reçoivent dans le même pas se partagent ce qui reste.
-            Tour.Changer(d, x =>
-            {
-                var i = x.Objets.FindIndex(o => o.Matiere == Matiere.Carcasse);
-                if (i < 0) return;
-                var reste = x.Objets[i].Qualite - kg / 100;
-                if (reste <= 0.005) x.Objets.RemoveAt(i);
-                else x.Objets[i] = x.Objets[i] with { Qualite = reste };
-            });
+            Entamer(d, kg);
             VieSociale.Gratitude(h, d, 1);
             Social?.Partager(d, h);
             return;
         }
     }
+
+    // À part : la fermeture n'est créée que si la viande est vraiment donnée.
+    private static void Entamer(Humain d, double kg) =>
+        // Ceux qui en reçoivent dans le même pas se partagent ce qui reste.
+        Tour.Changer(d, x =>
+        {
+            var i = x.Objets.FindIndex(o => o.Matiere == Matiere.Carcasse);
+            if (i < 0) return;
+            var reste = x.Objets[i].Qualite - kg / 100;
+            if (reste <= 0.005) x.Objets.RemoveAt(i);
+            else x.Objets[i] = x.Objets[i] with { Qualite = reste };
+        });
 
     /// <summary>Celui qui porte de la viande en mange quand il a faim.</summary>
     private bool MangerSaViande(Humain h)

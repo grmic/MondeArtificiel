@@ -71,6 +71,25 @@ public sealed class ServeurTests(UsineTest usine) : IClassFixture<UsineTest>
         Assert.False((await connexion.InvokeAsync<JournalLu>("ChoisirJournalQuotidien", false)).JournalQuotidien);
     }
 
+    private sealed record CoeursLus(int Coeurs, int CoeursMachine);
+
+    [Fact]
+    public async Task HubSignalR_Coeurs_UnParDefaut_EtSeChoisissent()
+    {
+        var connexion = usine.CreerConnexion();
+        await using var _ = connexion;
+        await connexion.StartAsync();
+
+        var lus = await connexion.InvokeAsync<CoeursLus>("Configuration");
+        Assert.Equal((1, Environment.ProcessorCount), (lus.Coeurs, lus.CoeursMachine));
+        Assert.Equal(0, (await connexion.InvokeAsync<CoeursLus>("ChoisirCoeurs", 0)).Coeurs);
+        Assert.Equal(0, (await connexion.InvokeAsync<CoeursLus>("Configuration")).Coeurs);
+        await Assert.ThrowsAsync<HubException>(() => connexion.InvokeAsync<CoeursLus>("ChoisirCoeurs", -1));
+        await Assert.ThrowsAsync<HubException>(() => connexion.InvokeAsync<CoeursLus>("ChoisirCoeurs", Environment.ProcessorCount + 1));
+        Assert.Equal(0, (await connexion.InvokeAsync<CoeursLus>("Configuration")).Coeurs);
+        Assert.Equal(1, (await connexion.InvokeAsync<CoeursLus>("ChoisirCoeurs", 1)).Coeurs);
+    }
+
     private sealed record ResultatLu(int Humain, string Nom, string Resultat);
 
     private sealed record TrouveLu(int Id, string Nom);

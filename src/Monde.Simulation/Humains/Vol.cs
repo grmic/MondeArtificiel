@@ -33,13 +33,16 @@ public sealed partial class Comportement
             break;
         }
         if (victime is null) return;
+        DiffererVol(h.Id, victime.Id, tous, maintenant);
+    }
+
+    // À part : la fermeture n'est créée que s'il y a vol.
+    private void DiffererVol(int ih, int iv, IReadOnlyList<Humain> tous, long maintenant) =>
         // Pendant un pas simultané, le vol (et ce qui s'ensuit) a lieu après le pas, si tous deux vivent encore.
-        var (iv, ih) = (victime.Id, h.Id);
         Tour.Differer(tous, t =>
         {
             if (t[ih - 1].EstVivant && t[iv - 1].EstVivant) VolerA(t[ih - 1], t[iv - 1], t, maintenant);
         });
-    }
 
     private void VolerA(Humain h, Humain victime, IReadOnlyList<Humain> tous, long maintenant)
     {

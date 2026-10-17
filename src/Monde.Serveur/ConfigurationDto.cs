@@ -21,7 +21,7 @@ public sealed record DemandeConfiguration(long? Graine, int Couples, int Largeur
 public sealed record ConfigurationDto(
     uint Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement, bool Origine, double KilometresParCase,
     int CouplesMin, int CouplesMax, int TailleMin, int TailleMax, int ContinentsMin, int ContinentsMax, string Resume,
-    string Version, string Auteur, bool JournalQuotidien)
+    string Version, string Auteur, bool JournalQuotidien, int Coeurs, int CoeursMachine)
 {
     private static readonly System.Reflection.Assembly Application = typeof(ConfigurationDto).Assembly;
 
@@ -40,7 +40,8 @@ public sealed record ConfigurationDto(
         return new((uint)c.Graine, c.Couples, c.Largeur, c.Hauteur, c.Continents, c.Placement, c == ConfigurationMonde.ParDefaut(c.Graine),
             Echelle.KilometresParCase, ConfigurationMonde.CouplesMin, ConfigurationMonde.CouplesMax,
             ConfigurationMonde.TailleMin, ConfigurationMonde.TailleMax, ConfigurationMonde.ContinentsMin, ConfigurationMonde.ContinentsMax,
-            Resumer(c, monde.Carte), VersionApplication, AuteurApplication, service.JournalQuotidien);
+            Resumer(c, monde.Carte), VersionApplication, AuteurApplication, service.JournalQuotidien,
+            service.Coeurs, ServiceMonde.CoeursMachine);
     }
 
     /// <summary>Résumé d'une carte : dimensions, continents et îles, en mots.</summary>
