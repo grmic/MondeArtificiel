@@ -329,6 +329,9 @@ public sealed class Humain
     /// <summary>Communauté à laquelle il appartient (0 : aucune).</summary>
     public int CommunauteId { get; set; }
 
+    /// <summary>Communauté qu'il a perdue en dernier (sa dispersion ou son départ), tant qu'il n'en a pas d'autre (0 : aucune).</summary>
+    public int AncienneCommunauteId { get; set; }
+
     /// <summary>Inconfort cumulé depuis le début de la journée (faim, soif, froid, maladie), pour l'humeur.</summary>
     public double InconfortDuJour { get; set; }
 

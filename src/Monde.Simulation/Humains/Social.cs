@@ -614,11 +614,14 @@ public sealed partial class VieSociale(Alea alea)
 
     /// <summary>
     /// Une fois par semaine : les humains reliés par des liens d'affection forment des groupes.
-    /// Un groupe d'au moins 5 humains dont 3 adultes est une communauté. Elle garde son identité
-    /// tant qu'elle conserve au moins la moitié de ses membres ; sinon elle se disperse, ou se fond dans celle
-    /// qui a accueilli la plupart d'entre eux.
+    /// Il faut au moins 5 humains dont 3 adultes pour fonder une communauté ; elle dure ensuite tant que deux de ses adultes
+    /// au moins vivent encore ensemble et qu'elle conserve au moins la moitié de ses membres ; sinon elle se disperse,
+    /// ou se fond dans celle qui a accueilli la plupart d'entre eux. Le campement change souvent chez les chasseurs-cueilleurs,
+    /// l'appartenance au groupe beaucoup moins (Hill et al., 2011).
     /// Il faut une amitié pour entrer, un simple lien d'affection pour rester (évite les va-et-vient),
-    /// et les deux humains doivent vivre à moins de <see cref="DistanceCommunaute"/> cases l'un de l'autre.
+    /// et les deux humains doivent vivre à moins de <see cref="DistanceCommunaute"/> cases l'un de l'autre ; celui qui
+    /// s'éloigne un temps (cueillette, exploration) reste des leurs (voir <see cref="AbsenceToleree"/>).
+    /// Des anciens d'une communauté dispersée qui se retrouvent la font renaître.
     /// Deux groupes qui ont décidé de s'unir restent unis le temps que leurs membres apprennent à se connaître.
     /// </summary>
     public void Regrouper(List<Humain> humains, List<Communaute> communautes, long maintenant, ISet<string> noms)
@@ -658,14 +661,16 @@ public sealed partial class VieSociale(Alea alea)
                 if (l.Id < h.Id || !parent.ContainsKey(l.Id)) continue;
                 var autre = humains[l.Id - 1];
                 if (autre.EstEnfant(maintenant) || Bannissement.Separes(h, autre, maintenant)) continue;
-                // Une communauté vit ensemble : des amis qui vivent loin l'un de l'autre n'en font pas une.
+                var dejaEnsemble = h.CommunauteId != 0 && h.CommunauteId == autre.CommunauteId;
+                // Une communauté vit ensemble : des amis qui vivent loin l'un de l'autre n'en font pas une. Mais celui qui
+                // s'est éloigné depuis peu des siens reste des leurs.
                 if (Math.Max(Math.Abs(h.X - autre.X), Math.Abs(h.Y - autre.Y)) > DistanceCommunaute
-                    && !enRaid.Contains(h.Id) && !enRaid.Contains(autre.Id)) continue;
+                    && !enRaid.Contains(h.Id) && !enRaid.Contains(autre.Id)
+                    && !(dejaEnsemble && maintenant - l.Derniere <= AbsenceToleree(h, autre, l))) continue;
                 // Tant que la guerre dure, on ne passe pas chez l'ennemi, même par amitié.
                 if (h.CommunauteId != autre.CommunauteId && h.CommunauteId != 0 && autre.CommunauteId != 0
                     && RelationEntre(h.CommunauteId, autre.CommunauteId) == EtatRelation.EnGuerre) continue;
                 // Pour entrer, il faut une amitié ; pour rester, un lien d'affection suffit (ou, en guerre, de ne pas se détester).
-                var dejaEnsemble = h.CommunauteId != 0 && h.CommunauteId == autre.CommunauteId;
                 // Le loyal reste avec les siens même quand les liens s'usent, et plus encore dans la disette ; le peu loyal
                 // s'en va quand le groupe ne le nourrit plus.
                 var loyaute = (h.Personnalite.Moral.Fondements.Loyaute + autre.Personnalite.Moral.Fondements.Loyaute) / 2;
@@ -679,7 +684,7 @@ public sealed partial class VieSociale(Alea alea)
 
         var groupes = membres.GroupBy(h => Racine(h.Id))
             .Select(g => g.ToList())
-            .Where(g => g.Count >= 5 && g.Count(h => !h.EstEnfant(maintenant)) >= 3)
+            .Where(g => g.Count(h => !h.EstEnfant(maintenant)) >= 2)
             .OrderByDescending(g => g.Count).ThenBy(g => g.Min(h => h.Id))
             .ToList();
 
@@ -687,6 +692,7 @@ public sealed partial class VieSociale(Alea alea)
         var tailles = membres.Where(h => h.CommunauteId != 0).GroupBy(h => h.CommunauteId).ToDictionary(g => g.Key, g => g.Count());
         var reprises = new HashSet<int>();
         var nouvelles = new Dictionary<int, int>(); // humain → communauté
+        var renees = new HashSet<int>();
         foreach (var g in groupes)
         {
             // La communauté d'avant la mieux représentée dans le groupe, si elle y garde au moins la moitié de ses membres.
@@ -696,10 +702,28 @@ public sealed partial class VieSociale(Alea alea)
                 .OrderByDescending(c => c.Nombre).ThenBy(c => c.Id)
                 .FirstOrDefault();
             Communaute communaute;
+            var fondatrice = g.Count >= 5 && g.Count(h => !h.EstEnfant(maintenant)) >= 3;
             if (candidate.Id != 0 && candidate.Nombre * 2 >= tailles[candidate.Id])
             {
                 communaute = communautes[candidate.Id - 1];
                 reprises.Add(communaute.Id);
+            }
+            else if (!fondatrice)
+            {
+                // Trop peu nombreux pour fonder une communauté : ils restent sans groupe.
+                continue;
+            }
+            else if (Renaissante(g, communautes, reprises, maintenant) is { } ancienne)
+            {
+                communaute = ancienne;
+                communaute.DisperseeLe = null;
+                communaute.HeritiereId = 0;
+                reprises.Add(communaute.Id);
+                renees.Add(communaute.Id);
+                var figure = Figure(g, maintenant);
+                Noter(maintenant, TypeEvenement.Communaute, figure, null,
+                    $"Les anciens de la {Minuscule(communaute.Nom)} se retrouvent autour de {figure.Nom} : la communauté renaît, {g.Count} humains vivent de nouveau ensemble.",
+                    communaute: communaute.Id);
             }
             else
             {
@@ -806,10 +830,12 @@ public sealed partial class VieSociale(Alea alea)
             var avant = anciens[h.Id];
             var apres = nouvelles.GetValueOrDefault(h.Id);
             h.CommunauteId = apres;
+            if (apres != 0) h.AncienneCommunauteId = 0;
+            else if (avant != 0) h.AncienneCommunauteId = avant;
             if (avant == apres || accompagnes.Contains(h.Id) || h.EstBebe(maintenant)) continue;
-            // Les arrivées dans une communauté qui vient de naître sont déjà dans l'annonce de sa formation,
+            // Les arrivées dans une communauté qui vient de naître (ou de renaître) sont déjà dans l'annonce de sa formation,
             // celles d'une fusion dans l'annonce de la fusion.
-            if (apres != 0 && communautes[apres - 1].FondeeLe != maintenant
+            if (apres != 0 && communautes[apres - 1].FondeeLe != maintenant && !renees.Contains(apres)
                 && fondues.GetValueOrDefault(avant) != apres)
             {
                 var arrivee = Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}{Avec(h)}{AgeSiEnfant(h, maintenant)}.",
@@ -826,6 +852,33 @@ public sealed partial class VieSociale(Alea alea)
         }
         Usages(humains, communautes, maintenant);
         Moeurs(humains, communautes, maintenant);
+    }
+
+    /// <summary>
+    /// Combien de temps celui qui s'est éloigné des siens (cueillette, chasse, exploration) reste des leurs : d'une semaine
+    /// environ pour qui tient peu à eux à quatre mois pour un loyal très attaché. Les chasseurs-cueilleurs partent souvent
+    /// quelques jours ou quelques semaines et reviennent (Kelly, 2013) ; aucune étude ne mesure ce délai : ordre de grandeur.
+    /// </summary>
+    internal static long AbsenceToleree(Humain h, Humain autre, Lien l)
+    {
+        var loyaute = (h.Personnalite.Moral.Fondements.Loyaute + autre.Personnalite.Moral.Fondements.Loyaute) / 2;
+        var semaines = (2 + 10 * loyaute) * Math.Clamp(0.5 + l.Affection / 100, 0.5, 1.5);
+        return (long)(semaines * 7 * Calendrier.SecondesParJour);
+    }
+
+    /// <summary>
+    /// La communauté dispersée que ce groupe fait renaître : la plupart de ses adultes en étaient, et personne d'autre ne la
+    /// continue (ni héritière, ni fusion). Null s'il n'y en a pas.
+    /// </summary>
+    private static Communaute? Renaissante(List<Humain> g, List<Communaute> communautes, HashSet<int> reprises, long maintenant)
+    {
+        var adultes = g.Where(h => !h.EstEnfant(maintenant)).ToList();
+        var (id, nombre) = adultes.Where(h => h.CommunauteId == 0 && h.AncienneCommunauteId != 0)
+            .GroupBy(h => h.AncienneCommunauteId).Select(x => (Id: x.Key, Nombre: x.Count()))
+            .OrderByDescending(x => x.Nombre).ThenBy(x => x.Id).FirstOrDefault();
+        if (id == 0 || nombre * 2 <= adultes.Count || reprises.Contains(id)) return null;
+        var c = communautes[id - 1];
+        return !c.Active && c.HeritiereId == 0 && c.FusionneeDansId == 0 ? c : null;
     }
 
     /// <summary>

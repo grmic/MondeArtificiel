@@ -35,7 +35,7 @@ public sealed partial class VieSociale
     public const long MemoireTerritoire = Calendrier.SecondesParAn;
 
     /// <summary>Un groupe ne songe à se nommer qu'après avoir vécu quelques semaines ensemble.</summary>
-    private const long AgeAvantDeSeNommer = 8 * 7 * Calendrier.SecondesParJour;
+    internal const long AgeAvantDeSeNommer = 8 * 7 * Calendrier.SecondesParJour;
 
     /// <summary>Chance par semaine qu'un adulte aux aptitudes moyennes ait l'idée de nommer son groupe.</summary>
     private const double EnvieDeNommer = 0.003;

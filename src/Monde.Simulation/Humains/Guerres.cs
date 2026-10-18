@@ -247,6 +247,8 @@ public sealed partial class VieSociale
             // Un projet en cours se débat le jour venu (voir Debattre).
             if (a.Projet is not null) continue;
             if (a.Raid is not null || maintenant - a.DernierRaidLe < RepitEntreRaids || guerriers[a.Id].Count < 2 || a.FusionVersId != 0) continue;
+            // Un groupe qui vit ensemble depuis trop peu de temps pour s'être donné un nom n'a pas encore d'ennemis à lui.
+            if (maintenant - a.FondeeLe < AgeAvantDeSeNommer) continue;
             Communaute? cible = null;
             var meilleure = 0.0;
             foreach (var b in actives)
