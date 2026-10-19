@@ -246,3 +246,6 @@ h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
 .fiche details.section[open] > summary { margin-bottom: 6px; }
 .fiche .sections-boutons { display: flex; gap: 10px; justify-content: flex-end; font-size: 0.78rem; margin-bottom: 4px; }
 .config-panneau .case-config { display: block; margin: 0.3rem 0; cursor: pointer; }
+.liste.remarquables { list-style: decimal; padding-left: 2rem; }
+.filtres-remarquables { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0.4rem 0; }
+.filtres-remarquables .case-config { display: inline; margin: 0; }

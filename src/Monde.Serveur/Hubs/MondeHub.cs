@@ -145,6 +145,14 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return ConfigurationDto.Depuis(service);
     }
 
+    /// <summary>Clémence du monde, de 0 à 100 % des risques visés écartés par l'Entité.</summary>
+    public ConfigurationDto ChoisirClemence(int clemence)
+    {
+        if (clemence is < 0 or > 100) throw new HubException("Clémence invalide (0 à 100 %).");
+        service.Clemence = clemence;
+        return ConfigurationDto.Depuis(service);
+    }
+
     /// <summary>Aperçu de réglages : la carte est générée (et gardée pour l'afficher), le monde courant ne change pas.</summary>
     public ApercuDto ApercuConfiguration(DemandeConfiguration demande)
     {
@@ -253,6 +261,12 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
 
     /// <summary>Chronologie des découvertes : la première fois que chaque savoir est apparu dans le monde.</summary>
     public List<DecouverteDto> Decouvertes() => Serveur.Decouvertes.Chronologie(service);
+
+    /// <summary>Critères de la fenêtre « Remarquables ».</summary>
+    public List<CritereRemarquableDto> CriteresRemarquables() => Serveur.Remarquables.ListeCriteres();
+
+    /// <summary>Les humains les plus remarquables selon un critère (les plus bas si demandé), vivants ou aussi les morts.</summary>
+    public List<RemarquableDto> Remarquables(string critere, bool bas, bool morts) => Serveur.Remarquables.Classer(service, critere, bas, morts);
 
     /// <summary>Gestes et matières que l'Entité peut souffler.</summary>
     public ChoixIntuitionDto ChoixIntuition(int humain) => Serveur.Decouvertes.Choix(service, humain);

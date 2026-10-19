@@ -4,6 +4,7 @@ import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
 import { PanneauDecouvertes } from "./decouvertes";
 import { PanneauDemographie } from "./demographie";
+import { PanneauRemarquables } from "./remarquables";
 import { PanneauConfiguration, type Reglages } from "./configuration";
 import { definirLiensNoms, PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
@@ -174,6 +175,7 @@ async function demarrer(): Promise<void> {
     configuration.fermer();
     demographie.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     catastrophes.basculer();
   });
 
@@ -186,19 +188,36 @@ async function demarrer(): Promise<void> {
     configuration.fermer();
     demographie.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     panneauMonde.basculer();
   });
 
   const demographie = new PanneauDemographie(element("#demographie"), (id) => {
     demographie.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     void catastrophes.ouvrir(id);
   }, (id) => {
     demographie.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     void communautes?.ouvrir(id);
   });
   const decouvertes = new PanneauDecouvertes(element("#decouvertes"), (id) => void fiche.ouvrir(id));
+  const remarquables = new PanneauRemarquables(element("#remarquables"), (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id);
+  }, (ids) => vue.surligner(ids));
+  element("#boutonRemarquables").addEventListener("click", () => {
+    journal.fermer();
+    communautes?.fermer();
+    catastrophes.fermer();
+    panneauMonde.fermer();
+    configuration.fermer();
+    demographie.fermer();
+    decouvertes.fermer();
+    remarquables.basculer();
+  });
   element("#boutonDecouvertes").addEventListener("click", () => {
     journal.fermer();
     communautes?.fermer();
@@ -215,6 +234,7 @@ async function demarrer(): Promise<void> {
     panneauMonde.fermer();
     configuration.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     demographie.basculer();
   });
 
@@ -245,6 +265,7 @@ async function demarrer(): Promise<void> {
     configuration.fermer();
     demographie.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     journal.basculer();
   });
   element("#boutonCommunautes").addEventListener("click", () => {
@@ -254,6 +275,7 @@ async function demarrer(): Promise<void> {
     configuration.fermer();
     demographie.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     communautes?.basculer();
   });
 
@@ -289,6 +311,7 @@ async function demarrer(): Promise<void> {
     panneauMonde.fermer();
     demographie.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     element("#extinction").hidden = true;
     void configuration.ouvrir(section);
   };
@@ -301,6 +324,7 @@ async function demarrer(): Promise<void> {
     panneauMonde.fermer();
     demographie.fermer();
     decouvertes.fermer();
+    remarquables.fermer();
     configuration.basculer();
   });
 

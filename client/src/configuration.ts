@@ -25,6 +25,8 @@ interface Configuration {
   /** Cœurs donnés au calcul : 1 l'un après l'autre (classique), 0 tous, n ce nombre en même temps. */
   coeurs: number;
   coeursMachine: number;
+  /** Clémence du monde : part (0 à 100 %) des risques de maladie, de couches, des tout-petits et des catastrophes écartée. */
+  clemence: number;
 }
 
 /** Réglages d'un nouveau monde (graine null : au hasard). */
@@ -98,6 +100,18 @@ export class PanneauConfiguration {
     return { ligne, choix };
   })();
   private readonly messageCoeurs = el("p", "message-config");
+  private readonly clemence = (() => {
+    const ligne = el("label", "reglage");
+    const curseur = el("input");
+    curseur.type = "range";
+    curseur.min = "0";
+    curseur.max = "100";
+    curseur.step = "5";
+    const valeur = el("span", "valeur", "0 %");
+    ligne.append(el("span", "libelle", "Clémence du monde"), curseur, valeur);
+    return { ligne, curseur, valeur };
+  })();
+  private readonly messageClemence = el("p", "message-config");
   private readonly messageSauvegardes = el("p", "message-config");
   private readonly dialogueRestaurer = el("dialog", "dialogue");
   private aRestaurer: string | null = null;
@@ -156,6 +170,8 @@ export class PanneauConfiguration {
     this.journalQuotidien.type = "checkbox";
     this.journalQuotidien.addEventListener("change", () => void this.choisirJournalQuotidien(this.journalQuotidien.checked));
     this.coeurs.choix.addEventListener("change", () => void this.choisirCoeurs(Number(this.coeurs.choix.value)));
+    this.clemence.curseur.addEventListener("input", () => (this.clemence.valeur.textContent = `${this.clemence.curseur.value} %`));
+    this.clemence.curseur.addEventListener("change", () => void this.choisirClemence(Number(this.clemence.curseur.value)));
 
     this.corps.append(
       this.apropos,
@@ -169,6 +185,10 @@ export class PanneauConfiguration {
       this.coeurs.ligne,
       el("p", "discret", "Un cœur : les humains vivent chaque pas l'un après l'autre, comme jusqu'à la version 0.22.0. Plusieurs cœurs : ils vivent chaque pas en même temps, répartis sur les cœurs ; l'histoire n'est pas la même qu'avec un cœur, mais la même graine redonne le même monde quel que soit leur nombre. Le plus rapide dépend de la machine et du nombre d'humains : comparez la vitesse atteinte. Le changement s'applique au pas suivant."),
       this.messageCoeurs,
+      el("h3", undefined, "Clémence du monde"),
+      this.clemence.ligne,
+      el("p", "discret", "Main de l'Entité : la part des risques de maladie (épidémies comprises), d'infection, de mort en couches, de mort des enfants de moins de 5 ans et de mort dans les catastrophes qu'elle écarte. À 0 %, le monde tel quel ; à 100 %, plus personne ne meurt de ces causes. La faim, la soif, le froid, la vieillesse, les guerres et les meurtres ne changent pas. Chaque changement est noté au journal comme un acte de l'Entité ; il s'applique au pas suivant."),
+      this.messageClemence,
       this.titreSauvegardes,
       el("p", "discret", "Une sauvegarde garde tout le monde à cet instant. La restaurer remplace le monde actuel, qui est d'abord sauvegardé lui aussi."),
       boutonsSauvegarde,
@@ -209,6 +229,8 @@ export class PanneauConfiguration {
     this.messageJournal.textContent = "";
     this.remplirCoeurs(c);
     this.messageCoeurs.textContent = "";
+    this.remplirClemence(c.clemence);
+    this.messageClemence.textContent = "";
     this.actuel.textContent = `Graine ${c.graine} · ${c.couples} couples · ${c.continents} continent${c.continents > 1 ? "s" : ""}${c.origine ? " (réglages d'origine)" : ""}. ${c.resume}`;
     const km = (cases: number) => Math.round(cases * c.kilometresParCase);
     const bornes = (e: HTMLInputElement, min: number, max: number) => {
@@ -290,6 +312,23 @@ export class PanneauConfiguration {
     this.config = c;
     this.remplirCoeurs(c);
     this.messageCoeurs.textContent = c.coeurs === 1 ? "Le calcul se fait maintenant sur un cœur." : "Le calcul se fait maintenant sur plusieurs cœurs.";
+  }
+
+  private remplirClemence(clemence: number): void {
+    this.clemence.curseur.value = String(clemence);
+    this.clemence.valeur.textContent = `${clemence} %`;
+  }
+
+  private async choisirClemence(clemence: number): Promise<void> {
+    const c = await connexion.invoke<Configuration>("ChoisirClemence", clemence).catch(() => null);
+    if (!c) {
+      if (this.config) this.remplirClemence(this.config.clemence);
+      this.messageClemence.textContent = "Le serveur n'a pas répondu : réglage inchangé.";
+      return;
+    }
+    this.config = c;
+    this.remplirClemence(c.clemence);
+    this.messageClemence.textContent = c.clemence === 0 ? "Le monde reprend toute sa dureté." : `L'Entité écarte maintenant ${c.clemence} % de ces risques.`;
   }
 
   private async lireSauvegardes(): Promise<void> {

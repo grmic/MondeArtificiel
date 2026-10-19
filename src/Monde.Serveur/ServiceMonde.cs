@@ -17,11 +17,13 @@ public sealed class ServiceMonde
     private const string ClePauseCatastrophe = "pause_catastrophe";
     private const string CleJournalQuotidien = "journal_quotidien";
     private const string CleCoeurs = "coeurs";
+    private const string CleClemence = "clemence";
     private volatile MondeSimule _monde;
     private volatile bool _reprendreVitesse;
     private volatile bool _pauseSurCatastrophe;
     private volatile bool _journalQuotidien;
     private volatile int _coeurs;
+    private volatile int _clemence;
     private double _facteurAtteint;
 
     public ServiceMonde(IConfiguration configuration, ILogger<ServiceMonde> journal)
@@ -56,9 +58,12 @@ public sealed class ServiceMonde
         // Un cœur par défaut (le plus rapide mesuré sur une partie de 400 habitants) ; une valeur illisible ou hors limites aussi.
         _coeurs = int.TryParse(Depot.LireReglage(CleCoeurs), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var c)
                   && c <= CoeursMachine ? c : 1;
+        // Clémence du monde : 0 (le monde tel quel) par défaut, et pour une valeur illisible ou hors limites.
+        _clemence = int.TryParse(Depot.LireReglage(CleClemence), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var cl)
+                    && cl <= 100 ? cl : 0;
         _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 })
         {
-            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs,
+            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence,
         };
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
@@ -124,6 +129,24 @@ public sealed class ServiceMonde
         }
     }
 
+    /// <summary>
+    /// Clémence du monde, de 0 à 100 % : la part des risques de maladie, d'infection, de mort en couches, de mort des tout-petits
+    /// et de mort dans les catastrophes que l'Entité écarte. Gardée en base ; un changement est noté au journal du monde.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">Hors de 0 à 100.</exception>
+    public int Clemence
+    {
+        get => _clemence;
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 100);
+            Depot.EcrireReglage(CleClemence, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            _clemence = value;
+            _monde.ChoisirClemence(value);
+        }
+    }
+
     /// <summary>Vitesse réellement atteinte, mesurée par le moteur (secondes du monde par seconde réelle).</summary>
     public double FacteurAtteint
     {
@@ -163,7 +186,7 @@ public sealed class ServiceMonde
         var etat = MondeSimule.Nouveau(configuration);
         var nouveau = new MondeSimule(GenerateurContinent.Generer(configuration), etat)
         {
-            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs,
+            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence,
         };
         lock (_verrou)
         {
@@ -230,7 +253,7 @@ public sealed class ServiceMonde
                 var configuration = etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine);
                 restaure = new MondeSimule(GenerateurContinent.Generer(configuration), etat with { Facteur = 0 })
                 {
-                    PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs,
+                    PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence,
                 };
             }
             catch (Exception e) when (e is ArgumentException or InvalidOperationException)

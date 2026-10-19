@@ -120,9 +120,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             // Un orphelin est nourri par celui qui l'a pris sous son aile.
             var pere = Vivant(tous, h.PereId);
-            NourrirEnfant(h, Vivant(tous, h.MereId) ?? (partenaire != pere ? partenaire : null), pere);
+            NourrirEnfant(h, Vivant(tous, h.MereId) ?? (partenaire != pere ? partenaire : null), pere, tous);
         }
         PartagerAvecProches(h, tous);
+        NourrirLaMere(h, tous);
         RecevoirViande(h, tous);
         Voler(h, tous, maintenant);
         if (!h.EstVivant) return;
@@ -312,6 +313,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>Niveau de réserves vers lequel tend un humain bien nourri (environ dix kilos de graisse).</summary>
     internal const double ReservesDeConfort = 65;
 
+    /// <summary>Clémence du monde, de 0 à 1 (voir <see cref="MondeSimule.Clemence"/>) : part des risques visés que l'Entité écarte.</summary>
+    public double Clemence { get; set; }
+
+    /// <summary>Facteur appliqué aux risques visés par la clémence.</summary>
+    private double Adouci => 1 - Clemence;
+
     /// <summary>
     /// Dépense d'énergie du pas, relative à celle d'un adulte moyen : métabolisme propre à chacun, effort du moment
     /// (dormir coûte moins que marcher ou chasser) et grossesse. Une grossesse demande environ 4 %, 12 % puis 21 %
@@ -398,7 +405,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // La dénutrition (réserves épuisées) affaiblit l'immunité (Schaible et Kaufmann, 2007).
             var risque = ProbabiliteMaladieDeBase * (1 + (100 - h.Sante) / 25 + h.Faim / 50 + h.Froid / 50) * (1.3 - 0.6 * p.Endurance)
                          * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25);
-            if (alea.Reel() < risque * fragilite)
+            if (alea.Reel() < risque * fragilite * Adouci)
             {
                 var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
                 // Une plaie lavée et couverte pourrit moins.

@@ -58,6 +58,9 @@ public sealed partial class Catastrophes
     /// <summary>Pour noter les morts comme les autres (deuil, journal) ; fourni par le monde.</summary>
     public Comportement? Comportement { get; set; }
 
+    /// <summary>Clémence du monde, de 0 à 1 (voir <see cref="MondeSimule.Clemence"/>) : part des morts dans les catastrophes et des contagions que l'Entité écarte.</summary>
+    public double Clemence { get; set; }
+
     /// <summary>Communautés (fourni par le monde), pour nommer celles qui sont touchées.</summary>
     public IReadOnlyList<Communaute> Communautes { get; set; } = [];
 
@@ -472,7 +475,7 @@ public sealed partial class Catastrophes
         var age = h.AgeEnAnnees(maintenant);
         var fragilite = (age < 5 ? 1.8 : age > 60 ? 1.6 : 1) * (1.3 - 0.6 * h.Personnalite.Endurance) * (h.Sante < 50 ? 1.5 : 1);
         c.Temoins.Add(h.Id);
-        if (_alea.Reel() < Math.Min(0.95, mort * fragilite))
+        if (_alea.Reel() < Math.Min(0.95, mort * fragilite) * (1 - Clemence))
         {
             Tuer(h, c, cause, humains, maintenant);
             return;
@@ -504,6 +507,8 @@ public sealed partial class Catastrophes
     {
         h.Sante -= gravite;
         Medecine.Blesser(h, gravite, maintenant);
+        // La clémence du monde laisse en vie, à bout de forces, une part de ceux que la blessure aurait tués.
+        if (h.Sante <= 0 && Clemence > 0 && _alea.Reel() < Clemence) h.Sante = 1;
         if (h.Sante <= 0)
         {
             Tuer(h, c, c.Type switch

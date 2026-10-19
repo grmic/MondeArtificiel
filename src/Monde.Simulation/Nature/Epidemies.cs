@@ -45,7 +45,7 @@ public sealed partial class Catastrophes
     /// <summary>Une bête vient d'être prise et dépecée : une maladie peut passer à l'humain.</summary>
     public void Prise(Humain h, long maintenant)
     {
-        if (h.InfectionId != 0 || _alea.Reel() >= PassageParPrise) return;
+        if (h.InfectionId != 0 || _alea.Reel() >= PassageParPrise * (1 - Clemence)) return;
         // Une maladie déjà connue peut revenir de son réservoir animal (comme Ebola, d'une épidémie à l'autre).
         var p = _pathogenes.Count > 0 && _alea.Reel() < 0.5 ? _pathogenes[_alea.Entier(_pathogenes.Count)] : NouveauPathogene(h, maintenant);
         if (EstImmunise(h, p, maintenant)) return;
@@ -131,7 +131,7 @@ public sealed partial class Catastrophes
                     int nx = m.X + dx, ny = m.Y + dy;
                     if (nx < 0 || ny < 0 || nx >= _carte.Largeur || ny >= _carte.Hauteur) continue;
                     if (!parCase.TryGetValue(_carte.Indice(nx, ny), out var voisins)) continue;
-                    var risque = p.Transmission * (dx == 0 && dy == 0 ? 1 : 0.3);
+                    var risque = p.Transmission * (dx == 0 && dy == 0 ? 1 : 0.3) * (1 - Clemence);
                     foreach (var v in voisins)
                     {
                         if (v.Id == m.Id || v.InfectionId != 0 || EstImmunise(v, p, maintenant) || _alea.Reel() >= risque) continue;

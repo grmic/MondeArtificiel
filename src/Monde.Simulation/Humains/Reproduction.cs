@@ -331,7 +331,7 @@ public sealed partial class Comportement
         var jumeaux = alea.Reel() < 0.004 + 0.008 * (age is >= 30 and < 40 ? 1.5 : 1);
         // Des femmes (ou des proches) qui ont l'expérience des naissances aident : moins de risque pour la mère, un peu pour l'enfant.
         var aide = AiderAccouchement(mere, tous, maintenant);
-        var risqueMortNe = RisqueMortNe * FacteurAgeMere(age) * detresse * (premature ? 2 : 1) * (jumeaux ? 2 : 1) * (1 - aide / 2);
+        var risqueMortNe = RisqueMortNe * FacteurAgeMere(age) * detresse * (premature ? 2 : 1) * (jumeaux ? 2 : 1) * (1 - aide / 2) * Adouci;
         for (var n = jumeaux ? 2 : 1; n > 0; n--)
         {
             if (alea.Reel() >= risqueMortNe) { var pere = mere.PereEnfantId; Tour.Differer(mere, m => Accouchements.Add((m, pere))); }
@@ -342,7 +342,7 @@ public sealed partial class Comportement
         mere.DernierAccouchement = maintenant;
         mere.Fatigue = 100;
         var risqueMere = RisqueMortAccouchement * FacteurAgeMere(age) * detresse
-                         * (parite == 0 ? 1.5 : parite >= 5 ? 1.3 : 1) * (jumeaux ? 1.5 : 1) * (1 - aide);
+                         * (parite == 0 ? 1.5 : parite >= 5 ? 1.3 : 1) * (jumeaux ? 1.5 : 1) * (1 - aide) * Adouci;
         if (alea.Reel() < risqueMere) Mourir(mere, maintenant, CauseDeMort.Accouchement);
     }
 
@@ -443,7 +443,7 @@ public sealed partial class Comportement
     /// d'autant plus qu'il y est attaché, tant qu'il n'est pas lui-même affamé ou assoiffé.
     /// (Chez les chasseurs-cueilleurs, les enfants dépendent des adultes jusqu'à l'adolescence ; Kaplan et al. 2000.)
     /// </summary>
-    private static void NourrirEnfant(Humain enfant, Humain? mere, Humain? pere)
+    private static void NourrirEnfant(Humain enfant, Humain? mere, Humain? pere, IReadOnlyList<Humain> tous)
     {
         foreach (var parent in new[] { mere, pere })
         {
@@ -462,6 +462,20 @@ public sealed partial class Comportement
                 Tour.Changer(parent, p => p.Soif = Math.Min(100, p.Soif + 0.6 * donne));
             }
         }
+        // Ses grand-mères, si elles sont là et qu'il a encore faim : chez les Hadza, elles nourrissent les petits sevrés
+        // et soulagent leur mère (Hawkes et al., 1998).
+        GrandMereNourrit(enfant, enfant.MereId, tous);
+        GrandMereNourrit(enfant, enfant.PereId, tous);
+    }
+
+    private static void GrandMereNourrit(Humain enfant, int parentId, IReadOnlyList<Humain> tous)
+    {
+        if (enfant.Faim < 30 || parentId == 0 || Vivant(tous, tous[parentId - 1].MereId) is not { } gm) return;
+        if (gm.Faim >= 60 || gm.Activite == Activite.Dormir || Distance(enfant.X, enfant.Y, gm.X, gm.Y) > 1) return;
+        var donne = Math.Min(enfant.Faim - 20, 0.35 * gm.Personnalite.Attachement);
+        if (donne <= 0) return;
+        enfant.Faim -= donne;
+        Tour.Changer(gm, g => g.Faim = Math.Min(100, g.Faim + 0.6 * donne));
     }
 
     /// <summary>
@@ -597,6 +611,9 @@ public sealed partial class Comportement
         if (!h.EstVivant) return;
         var age = h.AgeEnAnnees(maintenant);
         var taux = MortaliteParAge.First(t => age < t.AgeMax).TauxAnnuel;
+        // Avant 50 ans, ces morts sont des maladies (voir plus bas) et des morts de tout-petits : la clémence du monde les écarte ;
+        // l'usure de l'âge, non.
+        if (age < 50) taux *= Adouci;
         if (alea.Reel() < taux / Calendrier.JoursParAn)
         {
             // Avant 50 ans, ces morts sont surtout des infections, des poumons et du ventre (Gurven et Kaplan, 2007).

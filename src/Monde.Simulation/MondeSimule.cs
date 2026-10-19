@@ -285,6 +285,41 @@ public sealed class MondeSimule
         set { lock (_verrou) _comportement.JournalQuotidien = value; }
     }
 
+    /// <summary>
+    /// Clémence du monde, de 0 à 100 : la part des risques de maladie, d'infection, de mort en couches, de mort de nourrisson
+    /// et de mort dans une catastrophe que l'Entité écarte (0 : le monde tel quel ; 100 : aucune de ces morts). Les écarts entre
+    /// individus restent ; les guerres et les meurtres, choix des humains, ne changent pas.
+    /// </summary>
+    public int Clemence
+    {
+        get => (int)Math.Round(100 * _comportement.Clemence);
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value);
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(value, 100);
+            lock (_verrou) _comportement.Clemence = _catastrophes.Clemence = value / 100.0;
+        }
+    }
+
+    /// <summary>L'Entité change la clémence du monde : c'est noté au journal comme son acte.</summary>
+    public void ChoisirClemence(int clemence)
+    {
+        lock (_verrou)
+        {
+            var avant = Clemence;
+            Clemence = clemence;
+            if (clemence == avant) return;
+            var texte = clemence == 0 ? "L'Entité cesse d'adoucir le monde : maladies, couches et catastrophes reprennent toute leur dureté."
+                : clemence > avant ? $"L'Entité adoucit le monde : {clemence} % des risques de maladie, d'infection, de mort en couches, de mort des tout-petits et de mort dans les catastrophes sont écartés."
+                : $"L'Entité adoucit moins le monde : elle n'écarte plus que {clemence} % des risques de maladie, d'infection, de mort en couches, de mort des tout-petits et de mort dans les catastrophes.";
+            _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Nature, 0, 0, texte, Origine.Entite)
+            {
+                Id = _numeros.Suivant(), Significatif = true,
+            });
+            VerserJournal();
+        }
+    }
+
     /// <summary>Alertes survenues depuis le dernier appel (elles ne sont rendues qu'une fois).</summary>
     public List<AlerteCatastrophe> PrendreAlertes()
     {
@@ -562,6 +597,9 @@ public sealed class MondeSimule
         return (pas, true);
     }
 
+    /// <summary>QI à partir duquel une naissance est signalée à l'Entité (trois écarts-types au-dessus de la moyenne).</summary>
+    public const double EspritHorsDuCommun = 145;
+
     /// <summary>Un pas de simulation (10 minutes du monde).</summary>
     private void ExecuterPas()
     {
@@ -602,6 +640,15 @@ public sealed class MondeSimule
             var naissance = new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
                 $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}.") { Id = _numeros.Suivant() };
             _comportement.Journal.Add(naissance);
+            // Regard de l'Entité : un esprit hors du commun (QI de 145 ou plus, environ une naissance sur 740) ; nul ne le sait.
+            if (bebe.Personnalite.Intelligence.Generale >= EspritHorsDuCommun)
+            {
+                _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
+                    $"Regard de l'Entité : {bebe.Nom} naît avec un esprit hors du commun (QI {Math.Round(bebe.Personnalite.Intelligence.Generale)}). Nul ne le sait encore.")
+                {
+                    Id = _numeros.Suivant(), CauseId = naissance.Id, Significatif = true,
+                });
+            }
             Jardin.Confier(mere, TypeIntime.Joie, bebe.Id, $"{bebe.Nom} est né{(bebe.Sexe == Sexe.Femme ? "e" : "")} de moi : quelle joie !",
                 30 + 60 * mere.Personnalite.Attachement, naissance.Id, _secondes, $"naissance:{bebe.Id}");
             if (pere is { EstVivant: true } && pere.PartenaireId == mere.Id)
