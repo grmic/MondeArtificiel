@@ -406,11 +406,23 @@ public sealed partial class Comportement
 
     /// <summary>
     /// Un parent attaché retourne vers son enfant éloigné ; plus l'attachement est faible, plus il le laisse
-    /// s'éloigner, et en dessous de 0,3 il ne s'en soucie pas.
+    /// s'éloigner, et en dessous de 0,3 il ne s'en soucie pas. Un bébé, lui, ne peut pas suivre : sa mère qui l'a posé
+    /// revient le prendre, quel que soit son attachement, tant qu'elle n'est pas à bout de forces (chez les
+    /// chasseurs-cueilleurs, un nourrisson est porté presque sans cesse : Konner, 2005).
     /// </summary>
-    private static Humain? EnfantAVeiller(Humain parent, IReadOnlyList<Humain> tous, long maintenant)
+    internal static Humain? EnfantAVeiller(Humain parent, IReadOnlyList<Humain> tous, long maintenant)
     {
         var attachement = parent.Personnalite.Attachement;
+        var debutBebe = maintenant - 2 * Calendrier.SecondesParAn;
+        if (parent.Sexe == Sexe.Femme && parent.DernierAccouchement >= debutBebe && !Delaisse(parent))
+        {
+            for (var i = tous.Count - 1; i >= 0; i--)
+            {
+                var e = tous[i];
+                if (e.Naissance < debutBebe) break;
+                if (e.EstVivant && e.MereId == parent.Id && (e.X != parent.X || e.Y != parent.Y)) return e;
+            }
+        }
         if (attachement < 0.3) return null;
         var limite = 2 + (1 - attachement) * 12;
         var debutEnfance = maintenant - 14 * Calendrier.SecondesParAn;
@@ -431,12 +443,13 @@ public sealed partial class Comportement
     }
 
     /// <summary>
-    /// Une mère qui souffre trop (faim, soif, froid) cesse de porter son bébé si elle y est peu attachée.
-    /// Le seuil dépasse 100, donc n'est jamais atteint, dès que l'attachement vaut plus de 0,5 ;
-    /// une mère déprimée s'occupe moins de son bébé (le seuil baisse de 25).
+    /// Une mère à bout de forces (faim, soif, froid) cesse de porter son bébé si elle y est peu attachée. Même une mère
+    /// peu attachée porte son nourrisson tant qu'elle n'est pas dans la détresse : l'abandon d'un enfant déjà allaité est
+    /// rare et suit une misère extrême (Hrdy, 1999 ; Daly et Wilson, 1984). Le seuil dépasse 100, donc n'est jamais
+    /// atteint, dès que l'attachement vaut plus de 0,4 ; une mère déprimée s'occupe moins de son bébé (le seuil baisse de 10).
     /// </summary>
     internal static bool Delaisse(Humain mere) =>
-        Math.Max(mere.Faim, Math.Max(mere.Soif, mere.Froid)) > 60 + 80 * mere.Personnalite.Attachement - (mere.EstDeprime ? 25 : 0);
+        Math.Max(mere.Faim, Math.Max(mere.Soif, mere.Froid)) > 80 + 50 * mere.Personnalite.Attachement - (mere.EstDeprime ? 10 : 0);
 
     /// <summary>
     /// Un enfant sevré ne sait pas encore se nourrir seul : un parent proche partage avec lui nourriture et eau,
@@ -565,8 +578,10 @@ public sealed partial class Comportement
             });
         }
 
-        // L'allaitement nourrit et abreuve le bébé, et coûte à la mère (environ 25 % d'énergie en plus) ; le lait se tarit
-        // quand elle a trop faim, et baisse quand ses réserves sont épuisées. Le corps de la mère préserve le lait quand elle
+        // L'allaitement nourrit et abreuve le bébé, et coûte à la mère (environ 25 % d'énergie en plus). Le corps de la mère
+        // protège le lait : il puise dans ses réserves, et la quantité de lait ne baisse guère chez les mères mal nourries ;
+        // elle ne chute qu'en cas de dénutrition grave (Prentice et al., 1986 ; Dewey, 1997). Le lait ne tarit donc que si elle
+        // meurt de faim, et baisse d'un tiers au plus quand ses réserves sont épuisées. De même, elle le préserve quand elle
         // boit peu (boire plus n'en donne pas davantage : Dusdieker et al., 1985) : c'est elle qui a soif, et le lait ne
         // baisse que lorsqu'elle se déshydrate gravement.
         // Sans lait (un homme, une femme qui n'allaite plus), des bouchées mâchées et de l'eau : moins que le lait, et seulement
@@ -574,7 +589,7 @@ public sealed partial class Comportement
         var allaitante = porte && mere!.Sexe == Sexe.Femme && mere.DernierAccouchement is { } dernier
                          && maintenant - dernier < 3 * Calendrier.SecondesParAn;
         var lait = porte
-            ? Math.Clamp(Math.Min((100 - mere!.Faim) / 30, (100 - mere.Soif) / 15), 0, 1) * Math.Min(1, 0.4 + mere.Reserves / 40)
+            ? Math.Clamp(Math.Min((100 - mere!.Faim) / 8, (100 - mere.Soif) / 15), 0, 1) * Math.Min(1, 0.65 + mere.Reserves / 30)
               * (allaitante ? 1 : 0.5)
             : 0;
         Depenser(b, (0.4 - 1.4 * lait) * b.Biologie.Metabolisme);
@@ -619,7 +634,10 @@ public sealed partial class Comportement
             // Avant 50 ans, ces morts sont surtout des infections, des poumons et du ventre (Gurven et Kaplan, 2007).
             if (age < 50 && !h.EstMalade(maintenant))
             {
-                h.Maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
+                var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
+                // Les maux de ventre qu'évitent l'hygiène des siens ne tuent pas.
+                if (Hygiene.DuVentre(maladie) && alea.Reel() < ProtectionHygiene(h, maladie, _tous)) return;
+                h.Maladie = maladie;
                 h.MaladeJusqua = maintenant + Calendrier.SecondesParJour;
             }
             Mourir(h, maintenant, age >= 50 ? CauseDeMort.Vieillesse : CauseDeMort.Maladie);

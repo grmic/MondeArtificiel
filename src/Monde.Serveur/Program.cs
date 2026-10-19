@@ -39,7 +39,18 @@ app.Use(async (contexte, suite) =>
 
 // Client web (fichiers produits par Vite dans wwwroot).
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = fichier =>
+    {
+        // La page est revalidée à chaque chargement : une nouvelle version s'affiche sans rechargement forcé.
+        // Les scripts et styles de Vite portent une empreinte dans leur nom : ils peuvent rester en cache.
+        var entetes = fichier.Context.Response.Headers;
+        entetes.CacheControl = fichier.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
+            ? "no-cache"
+            : fichier.Context.Request.Path.StartsWithSegments("/assets") ? "public, max-age=31536000, immutable" : "no-cache";
+    },
+});
 
 app.MapGet("/api/etat", () => Results.Ok(new
 {

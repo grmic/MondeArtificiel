@@ -120,6 +120,8 @@ public sealed class HorlogeTests
         var annonce = new TaskCompletionSource<string>();
         connexion.On<string>("ObjectifAtteint", t => annonce.TrySetResult(t));
         await connexion.StartAsync();
+        // Une catastrophe en route mettrait la course en pause : ce n'est pas ce qu'on vérifie ici.
+        await connexion.InvokeAsync<HorlogeDto>("ChoisirPauseCatastrophe", false);
 
         var enRoute = await connexion.InvokeAsync<HorlogeDto>("AllerJusqua", new DemandeObjectif("saison"));
         Assert.Equal("An 1, jour 1 de l'été, 00:00", enRoute.Objectif);

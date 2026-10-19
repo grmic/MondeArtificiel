@@ -520,7 +520,8 @@ public sealed partial class Comportement
             var o = h.Objets[i];
             if (o.Matiere == Matiere.Carcasse)
             {
-                var usure = MondeSimule.SecondesParPas / (3.0 * Calendrier.SecondesParJour);
+                // Fumée, elle se garde un mois environ (estimation) ; fraîche, trois jours.
+                var usure = MondeSimule.SecondesParPas / ((o.Plein ? 30.0 : 3.0) * Calendrier.SecondesParJour);
                 if (o.Usure - usure <= 0) h.Objets.RemoveAt(i);
                 else h.Objets[i] = o with { Usure = o.Usure - usure };
                 continue;

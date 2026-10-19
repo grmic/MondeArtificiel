@@ -61,6 +61,18 @@ public sealed partial class Catastrophes
         }
     }
 
+    /// <summary>
+    /// Un humain met le feu aux herbes sèches (<paramref name="cause"/> : l'événement qui le rapporte). Le feu ne prend que
+    /// sur une terre qui peut brûler et qui ne brûle pas déjà ; ensuite, il va où le vent et la sécheresse le poussent.
+    /// </summary>
+    public void MettreLeFeu(int x, int y, List<Humain> humains, long maintenant, long cause)
+    {
+        var i = _carte.Indice(x, y);
+        if (Inflammabilite(_carte.BiomeEn(x, y)) < 0.01 || EstDangereuse(i) || BruleAutour(x, y)) return;
+        Allumer(x, y, humains, maintenant, Origine.Naturelle, cause);
+        CalculerDangers();
+    }
+
     private Catastrophe Allumer(int x, int y, List<Humain> humains, long maintenant, Origine origine, long cause)
     {
         var i = _carte.Indice(x, y);

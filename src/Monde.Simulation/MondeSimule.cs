@@ -942,6 +942,7 @@ public sealed class MondeSimule
             if (_alea.Reel() < 0.12 * _ecosysteme.PluieEn(Carte.Indice(f.X, f.Y))) _installations.Eteindre(f.X, f.Y);
         }
         _comportement.BilanDesRemedes(_humains, _secondes);
+        _comportement.Hygienes(_humains, _secondes);
         foreach (var (h, s) in _comportement.UserEtOublier(_humains, _secondes))
         {
             if (s.Effet is Effet.Chaleur or Effet.Tiedeur || s.Confiance < 0.5) continue;

@@ -116,6 +116,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         _nageur = PeutNager(h) || h.Nage >= 0.4 && h.Soif >= 60 && h.Froid < 50 || Radeau(h) is not null;
         Ramasser(h);
         ObserverLeFeu(h, tous);
+        SentirLaFumee(h, tous);
         if (h.EstEnfant(maintenant))
         {
             // Un orphelin est nourri par celui qui l'a pris sous son aile.
@@ -408,8 +409,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (alea.Reel() < risque * fragilite * Adouci)
             {
                 var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
-                // Une plaie lavée et couverte pourrit moins.
+                // Une plaie lavée et couverte pourrit moins ; des mains lavées, des excréments écartés, une eau vive gardent du ventre.
                 if (alea.Reel() < Medecine.Protection(h, maladie, maintenant)) return;
+                if (alea.Reel() < ProtectionFumee(h, maladie)) return;
+                if (Hygiene.DuVentre(maladie))
+                {
+                    if (alea.Reel() < ProtectionHygiene(h, maladie, _tous)) return;
+                    DouterHygiene(h);
+                }
                 h.Maladie = maladie;
                 var fiche = Maladies.Fiche(h.Maladie);
                 h.MaladeJusqua = maintenant + Maladies.Duree(fiche, h, alea);
@@ -426,6 +433,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     {
         RemedeEchoue(h);
         PerduPourSonSoignant(h, maintenant);
+        if (cause == CauseDeMort.Maladie && Hygiene.DuVentre(h.Maladie) && h.AgeEnAnnees(maintenant) < 15)
+        {
+            var mort = h.Id;
+            Tour.Differer(() => _mortsDuVentre.Add(mort));
+        }
         var maudisseur = h.MauditParId >= 1 && h.MauditParId <= _tous.Count ? _tous[h.MauditParId - 1] : null;
         // Mort de froid pendant une vague de froid, de chaleur pendant une canicule, d'une maladie contagieuse, de faim dans une
         // terre dévastée qui n'a pas reverdi : la cause est notée, et dite.
@@ -555,6 +567,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // Ce qu'il sait faire peut répondre au besoin : le feu, une peau, une hutte, un bâton à fouir.
         if (!h.EstPetitEnfant(maintenant) && UtiliserSavoirs(h, besoin, valeur, seuil, tous)) return;
 
+        // Au calme, le soir : fumer la viande qu'on porte, allumer le feu du camp.
+        if (valeur < seuil && (FumerLaViande(h, tous) || FeuDuSoir(h, tous))) return;
+
         if (valeur >= seuil)
         {
             // Un enfant qui ne sait pas où trouver ce qu'il lui faut retourne auprès des siens plutôt que de se perdre.
@@ -651,6 +666,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (ApporterViande(h, tous)) return;
         if (Outiller(h, tous)) return;
         if (Assembler(h, tous)) return;
+        if (AvoirUneIdee(h, tous)) return;
         if (Experimenter(h, tous)) return;
         if (alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
         {
@@ -836,7 +852,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // Chasse à mains nues : réussite rare, meilleure pour les adroits et là où le gibier abonde.
             var (arme, gain) = ArmeDeChasse(h);
             // Des compagnons qui parlent la même langue se coordonnent mieux (rabattre, encercler).
-            var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * (1 + gain) * ecosysteme.Gibier[i] / 10_000.0 * (1 + 0.05 * h.CompagnonsDeLangue);
+            // Sur une terre qui brûle, les bêtes débusquées fuient à découvert (Bird et al., 2005).
+            var auFeu = TerreEnFeu(h);
+            var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * (1 + gain) * ecosysteme.Gibier[i] / 10_000.0 * (1 + 0.05 * h.CompagnonsDeLangue)
+                         * (auFeu ? 2 : 1);
             h.Activite = Activite.Chasser;
             h.CibleX = h.CibleY = -1;
             if (alea.Reel() < chance)
@@ -849,6 +868,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 // Une maladie de la bête (peut-être nouvelle) passe à l'humain après le pas.
                 if (pris > 0 && Catastrophes is { } catastrophes) { var le = _maintenant; Tour.Differer(h, x => catastrophes.Prise(x, le)); }
                 if (pris > 0) Rapporter(h, pris * KgParPart * facteur, _tous);
+                if (pris > 0) GarderDeLaViande(h, pris * KgParPart * facteur);
+                if (pris > 0 && auFeu) ChasseAuFeu(h, _tous);
             }
             else
             {
@@ -857,6 +878,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             }
             return;
         }
+        if (Incendier(h, _tous)) return;
         var cible = Chercher(h,
             j => ecosysteme.Plantes[j] >= 1000 || ecosysteme.Gibier[j] >= 2000,
             j => ecosysteme.Plantes[j] + ecosysteme.Gibier[j] / 2);

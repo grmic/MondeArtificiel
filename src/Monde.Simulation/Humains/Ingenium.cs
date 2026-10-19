@@ -159,7 +159,7 @@ public sealed partial class Comportement
     /// donné quelque chose, et ceux qui le regardaient peuvent l'imiter.
     /// </summary>
     private void Constater(Humain h, Geste g, Matiere a, Matiere b, Resultat r, OrigineSavoir origine, IReadOnlyList<Humain> tous,
-        Humain? maitre = null)
+        Humain? maitre = null, string? recit = null)
     {
         if (r.Effet == Effet.Rien)
         {
@@ -179,7 +179,7 @@ public sealed partial class Comportement
                 : 0.15 + 0.45 * h.Personnalite.Ouverture;
             if (alea.Reel() >= remarque) return;
         }
-        var evenement = Retenir(h, g, a, b, r.Effet, 0, Symptome.Aucun, origine, maitre?.Id ?? 0, tous);
+        var evenement = Retenir(h, g, a, b, r.Effet, 0, Symptome.Aucun, origine, maitre?.Id ?? 0, tous, recit: recit);
         Produire(h, g, a, b, r, evenement);
         if (origine != OrigineSavoir.Imitation) Montrer(h, g, a, b, r.Effet, 0, Symptome.Aucun, tous, evenement);
     }
@@ -240,9 +240,10 @@ public sealed partial class Comportement
                 h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));
                 break;
             case Effet.EauPortee:
-                var calebasse = h.Objets.Find(o => o.Matiere == Matiere.Calebasse);
-                if (calebasse is null) Prendre(h, new Objet(Matiere.Calebasse, 1, 1, Plein: true));
-                else h.Objets[h.Objets.IndexOf(calebasse)] = calebasse with { Plein = true };
+                // Une calebasse (on en cueille une s'il le faut), ou la peau qu'il porte, nouée en outre.
+                var recipient = h.Objets.Find(o => o.Matiere == a);
+                if (recipient is null && a == Matiere.Calebasse) Prendre(h, new Objet(Matiere.Calebasse, 1, 1, Plein: true));
+                else if (recipient is not null) h.Objets[h.Objets.IndexOf(recipient)] = recipient with { Plein = true };
                 break;
             case Effet.Rondelle:
                 if (b == Matiere.Assemblage && h.Objets.MaxBy(Lois.Coupe) is { } outil) UserObjet(h, outil, 0.04);
@@ -441,6 +442,10 @@ public sealed partial class Comportement
         Effet.Danse => "Quand nous bougeons ensemble, je ne suis plus seul. Pourquoi ?",
         Effet.Ocre => "Pourquoi le rouge attire-t-il tant les regards ?",
         Effet.Peinture => "L'image restera quand je ne serai plus là. Qui la verra ?",
+        Effet.MainsPropres or Effet.Latrines or Effet.EauVive or Effet.ViandeSaine => "Qu'y a-t-il dans la saleté qui rend malade ? On ne le voit pas.",
+        Effet.Fumage => "Pourquoi la fumée empêche-t-elle la viande de pourrir ?",
+        Effet.Fumee => "Pourquoi les moustiques fuient-ils la fumée ?",
+        Effet.Brulis => "Le feu chasse les bêtes. Pourrait-on le mener où l'on veut ?",
         _ => "Que pourrais-je faire d'autre avec cela ?",
     };
 
@@ -760,10 +765,10 @@ public sealed partial class Comportement
         return facteur;
     }
 
-    /// <summary>Boire à sa calebasse quand l'eau est loin.</summary>
+    /// <summary>Boire à sa calebasse (ou à son outre) quand l'eau est loin.</summary>
     private bool BoireALaCalebasse(Humain h)
     {
-        var c = h.Objets.Find(o => o.Matiere == Matiere.Calebasse && o.Plein);
+        var c = h.Objets.Find(o => o.Matiere is Matiere.Calebasse or Matiere.Peau && o.Plein);
         if (c is null) return false;
         h.Objets[h.Objets.IndexOf(c)] = c with { Plein = false, Usure = c.Usure - 0.01 };
         h.Soif = Math.Max(0, h.Soif - 45);
@@ -772,11 +777,20 @@ public sealed partial class Comportement
         return true;
     }
 
-    /// <summary>Après avoir bu : remplir sa calebasse, ou en prendre une, si l'on sait qu'elle garde l'eau.</summary>
+    /// <summary>
+    /// Après avoir bu : remplir sa calebasse, ou en prendre une, si l'on sait qu'elle garde l'eau ; sinon remplir la peau
+    /// qu'il porte, s'il sait qu'une outre la garde.
+    /// </summary>
     private void Remplir(Humain h, IReadOnlyList<Humain> tous)
     {
+        if (h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau && o.Plein)) return;
         var c = h.Objets.Find(o => o.Matiere == Matiere.Calebasse);
-        if (c is { Plein: true }) return;
+        if (c is null && h.Porte(Matiere.Peau) && h.Savoirs.Exists(s => s.Effet == Effet.EauPortee && s.A == Matiere.Peau && s.Confiance >= 0.4)
+            && !APortee(h, Matiere.Calebasse))
+        {
+            Faire(h, Geste.Remplir, Matiere.Peau, Matiere.Eau, OrigineSavoir.Essai, tous);
+            return;
+        }
         if (h.Sait(Effet.EauPortee) ? (c is not null || APortee(h, Matiere.Calebasse))
             : c is not null && alea.Reel() < 0.02 * (0.3 + h.Personnalite.Ouverture))
         {

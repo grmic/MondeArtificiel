@@ -98,6 +98,18 @@ public enum Geste : byte
     Danser = 18,
     /// <summary>Poser de l'ocre sur une paroi de roche.</summary>
     Peindre = 19,
+    /// <summary>Se laver les mains à l'eau.</summary>
+    Laver = 20,
+    /// <summary>S'écarter du camp et de l'eau pour ses besoins, et les couvrir de terre.</summary>
+    Enfouir = 21,
+    /// <summary>Boire à l'eau qui court plutôt qu'à l'eau qui dort.</summary>
+    Puiser = 22,
+    /// <summary>Flairer la viande et jeter celle qui sent mauvais.</summary>
+    Flairer = 23,
+    /// <summary>Suspendre la viande dans la fumée d'un feu.</summary>
+    Fumer = 24,
+    /// <summary>Mettre le feu aux herbes sèches.</summary>
+    Incendier = 25,
 }
 
 /// <summary>Ce que l'humain constate après un geste.</summary>
@@ -175,6 +187,20 @@ public enum Effet : byte
     Ocre = 36,
     /// <summary>L'ocre posée sur la roche y reste : une image.</summary>
     Peinture = 37,
+    /// <summary>Des mains lavées avant de manger donnent moins de maux de ventre.</summary>
+    MainsPropres = 38,
+    /// <summary>L'eau qui court rend moins malade que l'eau qui dort.</summary>
+    EauVive = 39,
+    /// <summary>Faire ses besoins loin du camp et les couvrir épargne les maux de ventre à tous.</summary>
+    Latrines = 40,
+    /// <summary>La viande qui sent mauvais rend malade : on la jette.</summary>
+    ViandeSaine = 41,
+    /// <summary>La viande passée longtemps dans la fumée se garde des semaines.</summary>
+    Fumage = 42,
+    /// <summary>La fumée du feu chasse les moustiques.</summary>
+    Fumee = 43,
+    /// <summary>Devant le feu, les bêtes fuient et se découvrent : on les chasse mieux là où l'herbe brûle.</summary>
+    Brulis = 44,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -226,7 +252,7 @@ public sealed record Savoir(Geste Geste, Matiere A, Matiere B, Effet Effet, int 
 }
 
 /// <summary>Un objet porté : sa matière, sa qualité (0 à 1) et son usure (1 : neuf, 0 : hors d'usage).</summary>
-/// <param name="Plein">Pour une calebasse : remplie d'eau.</param>
+/// <param name="Plein">Pour une calebasse : remplie d'eau. Pour de la viande : fumée, elle se garde des semaines.</param>
 /// <param name="Pieces">Pour un objet assemblé : ses pièces et son lien (voir <see cref="Assemblage"/>).</param>
 public sealed record Objet(Matiere Matiere, double Qualite, double Usure, bool Plein = false, string? Pieces = null);
 
@@ -311,6 +337,8 @@ public static class Physique
     public static Resultat Tenter(Geste g, Matiere a, Matiere b, ContexteGeste c, Alea alea)
     {
         var h = c.Adresse;
+        // Qui sait déjà faire le feu choisit le bois mort sur pied et garde son amadou au sec : il n'attend pas la sécheresse.
+        if (c.FeuxReussis > 0) c = c with { Sec = Math.Max(c.Sec, 0.6) };
         bool Chance(double p) => alea.Reel() < p;
         switch (g)
         {
@@ -399,7 +427,10 @@ public static class Physique
                 };
 
             case Geste.Remplir:
-                return a == Matiere.Calebasse && c.EauProche ? new(Effet.EauPortee, Matiere.Calebasse, 1) : default;
+                // Une calebasse garde l'eau ; une peau nouée en outre aussi, si on la tient bien fermée.
+                if (!c.EauProche) return default;
+                if (a == Matiere.Calebasse) return new(Effet.EauPortee, Matiere.Calebasse, 1);
+                return a == Matiere.Peau && Chance(0.3 + 0.5 * h) ? new(Effet.EauPortee, Matiere.Peau, 0.7) : default;
 
             case Geste.Fouir:
                 if (!(EstBois(a) || a is Matiere.BatonPointu or Matiere.Epieu)) return default;
@@ -499,6 +530,13 @@ public static class Physique
         Effet.Danse => "danser",
         Effet.Ocre => "se parer d'ocre",
         Effet.Peinture => "peindre sur la roche",
+        Effet.MainsPropres => "se laver les mains avant de manger",
+        Effet.EauVive => "boire l'eau qui court",
+        Effet.Latrines => "faire ses besoins loin du camp",
+        Effet.ViandeSaine => "jeter la viande gâtée",
+        Effet.Fumage => "fumer la viande pour la garder",
+        Effet.Fumee => "chasser les moustiques par la fumée",
+        Effet.Brulis => "chasser au feu",
         _ => "rien",
     };
 
@@ -512,11 +550,17 @@ public static class Physique
     {
         var f = Formes.FirstOrDefault(x => x.Geste == g);
         var verbe = f?.Verbe ?? NomGeste(g);
-        if (b == Matiere.Aucune) return SansSeconde(g) is { } sol ? $"{verbe} {Nom(a)} sur {sol}" : $"{verbe} {Nom(a)}";
+        if (b == Matiere.Aucune) return Elider(SansSeconde(g) is { } sol ? $"{verbe} {Nom(a)} sur {sol}" : $"{verbe} {Nom(a)}");
         var premiere = a == Matiere.Aucune ? "ses mains" : Nom(a);
         return $"{verbe} {premiere} {f?.Liaison ?? "et"} {(b == Matiere.Assemblage ? "son outil emmanché" : Nom(b))}"
             .Replace(" de le ", " du ", StringComparison.Ordinal).Replace(" de les ", " des ", StringComparison.Ordinal);
     }
+
+    /// <summary>« se couvrir de de grandes feuilles » devient « se couvrir de grandes feuilles », « de une peau », « d'une peau ».</summary>
+    private static string Elider(string s) => s
+        .Replace(" de de ", " de ", StringComparison.Ordinal).Replace(" de des ", " de ", StringComparison.Ordinal)
+        .Replace(" de du ", " de ", StringComparison.Ordinal).Replace(" de une ", " d'une ", StringComparison.Ordinal)
+        .Replace(" de un ", " d'un ", StringComparison.Ordinal);
 
     public static string NomGeste(Geste g) => g switch
     {
@@ -539,6 +583,12 @@ public static class Physique
         Geste.Chanter => "chanter",
         Geste.Danser => "danser",
         Geste.Peindre => "peindre avec",
+        Geste.Laver => "se laver les mains à",
+        Geste.Enfouir => "enfouir ses besoins loin du camp",
+        Geste.Puiser => "boire à",
+        Geste.Flairer => "flairer",
+        Geste.Fumer => "fumer",
+        Geste.Incendier => "mettre le feu à",
         _ => "nager",
     };
 
@@ -592,6 +642,7 @@ public static class Physique
         Effet.Corde => "Des fibres tordues deviennent une corde.",
         Effet.Couvert => $"Se couvrir {(s.A == Matiere.Peau ? "d'une peau" : "de feuilles")} protège du froid.",
         Effet.Abri => "Des feuilles posées sur des branches font un abri.",
+        Effet.EauPortee when s.A == Matiere.Peau => "Une peau nouée en outre garde l'eau pour la route.",
         Effet.EauPortee => "Une calebasse garde l'eau pour la route.",
         Effet.Tubercules => $"Fouir la terre avec {Nom(s.A)} donne des racines à manger.",
         Effet.Cuisson => "La viande passée au feu est meilleure.",
@@ -613,6 +664,13 @@ public static class Physique
         Effet.Danse => "Bouger en cadence avec les autres réjouit le cœur.",
         Effet.Ocre => "La terre rouge écrasée colore la peau.",
         Effet.Peinture => "L'ocre posée sur la roche y laisse une image qui reste.",
+        Effet.MainsPropres => "Se laver les mains à l'eau avant de manger garde des maux de ventre.",
+        Effet.EauVive => "L'eau qui court rend moins malade que l'eau qui dort.",
+        Effet.Latrines => "Faire ses besoins loin du camp et de l'eau, et les couvrir de terre, garde tout le monde des maux de ventre.",
+        Effet.ViandeSaine => "La viande qui sent mauvais rend malade : il faut la jeter.",
+        Effet.Fumage => "La viande suspendue longtemps dans la fumée ne pourrit pas : elle se garde des semaines.",
+        Effet.Fumee => "La fumée du feu chasse les moustiques.",
+        Effet.Brulis => "Devant le feu, les bêtes fuient et se découvrent : là où l'herbe brûle, la chasse est bonne.",
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => "Rien.",
     };

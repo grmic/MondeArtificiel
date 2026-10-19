@@ -34,6 +34,22 @@ public sealed class ServeurTests(UsineTest usine) : IClassFixture<UsineTest>
     }
 
     [Fact]
+    public async Task PageAccueil_EstRevalidee_EtLesScriptsAEmpreinteRestentEnCache()
+    {
+        using var client = usine.CreateClient();
+
+        var page = await client.GetAsync("/");
+        Assert.True(page.Headers.CacheControl?.NoCache);
+        var html = await page.Content.ReadAsStringAsync();
+        var script = System.Text.RegularExpressions.Regex.Match(html, "/assets/[A-Za-z0-9_.-]+\\.js").Value;
+        Assert.NotEmpty(script);
+
+        var reponse = await client.GetAsync(script);
+        Assert.Equal(HttpStatusCode.OK, reponse.StatusCode);
+        Assert.Equal(TimeSpan.FromDays(365), reponse.Headers.CacheControl?.MaxAge);
+    }
+
+    [Fact]
     public async Task RouteInconnue_Renvoie404()
     {
         using var client = usine.CreateClient();

@@ -31,8 +31,9 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
                     Calendrier.Decomposer(s.AppriLe).ToString(), s.Essais, s.EvenementId))
                 .ToList(),
             h.Objets.Select(o => o.Matiere == Matiere.Carcasse
-                ? $"de la viande ({Math.Max(1, Math.Round(100 * o.Qualite))} kg){(o.Usure <= 0.4 ? ", qui commence à se gâter" : "")}"
-                : Physique.Nom(o) + (o.Plein && o.Matiere == Matiere.Calebasse ? " pleine d'eau" : "") + Etat(o)).ToList(),
+                ? $"de la viande{(o.Plein ? " fumée" : "")} ({Math.Max(1, Math.Round(100 * o.Qualite))} kg){(o.Usure <= 0.4 ? ", qui commence à se gâter" : "")}"
+                : Physique.Nom(o) + (o.Plein ? o.Matiere switch { Matiere.Calebasse => " pleine d'eau", Matiere.Peau => " nouée en outre, pleine d'eau", _ => "" } : "")
+                  + Etat(o)).ToList(),
             h.Vetement is { } v ? (v.Matiere == Matiere.Peau ? "une peau de bête" : "des feuilles") + Etat(v) : null,
             (int)Math.Round(100 * h.Nage));
     }
