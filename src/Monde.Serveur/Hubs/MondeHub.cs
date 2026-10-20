@@ -296,6 +296,25 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return effet == Simulation.Humains.Effet.Rien ? "Rien n'en est sorti (le journal dit ce qu'il en a fait)." : "Obtenu : " + Simulation.Humains.Physique.NomEffet(effet) + ".";
     }
 
+    /// <summary>Prières en mémoire (en attente seulement, ou aussi celles de l'année écoulée).</summary>
+    public List<PriereDto> Prieres(bool enAttente = false) => Serveur.Religions.Prieres(service, enAttente);
+
+    /// <summary>Religions, avec leurs préceptes, leurs fidèles et ceux qui les portent.</summary>
+    public List<ReligionDto> Religions() => Serveur.Religions.Toutes(service);
+
+    /// <summary>Lieux sacrés, pour la carte.</summary>
+    public List<LieuSacreDto> LieuxSacres() => Serveur.Religions.Lieux(service);
+
+    /// <summary>L'Entité exauce une prière en attente. Renvoie, en mots, ce qui s'est passé.</summary>
+    public async Task<string> Exaucer(int priere)
+    {
+        if (priere < 1) throw new HubException("Prière inconnue.");
+        var texte = service.Monde.Exaucer(priere);
+        service.Sauvegarder();
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde));
+        return texte;
+    }
+
     /// <summary>Paroles, manières de se manifester, directions, plantes et communautés que l'Entité peut choisir.</summary>
     public ChoixParolesDto ChoixParoles() => ParolesEntite.Choix(service);
 

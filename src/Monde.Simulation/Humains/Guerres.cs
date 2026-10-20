@@ -226,6 +226,38 @@ public sealed partial class VieSociale
     /// <summary>Le tempérament guerrier d'un groupe se forge avec ce qu'il vit.</summary>
     private static void Aguerrir(Communaute c, double ecart) => c.Bellicisme = Math.Clamp(c.Bellicisme + ecart, 0, 1);
 
+    /// <summary>Croyances partagées et religions (fourni par le monde) : une guerre peut être sainte.</summary>
+    public Cultes? Cultes { get; set; }
+
+    /// <summary>Communauté voisine (à portée de raid) avec qui <paramref name="a"/> est rivale, hostile ou en guerre, la plus proche ; null s'il n'y en a pas.</summary>
+    internal Communaute? Rivale(int a)
+    {
+        var ca = Communautes[a - 1];
+        return Communautes.Where(b => b.Active && b.Id != a && RelationEntre(a, b.Id) is EtatRelation.Hostiles or EtatRelation.EnGuerre or EtatRelation.Rivales
+                                      && Math.Max(Math.Abs(ca.CentreX - b.CentreX), Math.Abs(ca.CentreY - b.CentreY)) <= DistanceRaidMax)
+            .MinBy(b => Math.Max(Math.Abs(ca.CentreX - b.CentreX), Math.Abs(ca.CentreY - b.CentreY)));
+    }
+
+    /// <summary>
+    /// Ce que la foi ajoute à l'envie de frapper <paramref name="b"/> : les fidèles d'une religion qui appelle à combattre ce
+    /// groupe (ou ceux qui ne croient pas de même) y poussent, à proportion de leur ferveur ; ceux d'une religion de paix
+    /// retiennent.
+    /// </summary>
+    private double Croisade(List<Humain> adultesA, List<Humain> adultesB)
+    {
+        if (Cultes is null || adultesA.Count == 0) return 0;
+        var majB = adultesB.Where(h => h.ReligionId != 0).GroupBy(h => h.ReligionId).MaxBy(g => g.Count()) is { } g && g.Count() * 2 > adultesB.Count ? g.Key : 0;
+        var idB = adultesB.Count > 0 ? adultesB[0].CommunauteId : 0;
+        double sainte = 0, paix = 0;
+        foreach (var h in adultesA)
+        {
+            if (Cultes.Get(h.ReligionId) is not { } r) continue;
+            if (r.Dogmes.Exists(d => d.Precepte == Precepte.GuerreSainte && (d.Parametre == idB || d.Parametre == 0 && majB != r.Id))) sainte += h.Ferveur;
+            if (r.Enseigne(Precepte.Paix)) paix += h.Ferveur;
+        }
+        return (0.6 * sainte - 0.4 * paix) / adultesA.Count;
+    }
+
     /// <summary>
     /// Une fois par semaine, après les relations : pactes, défaites et paix, tributs, puis raids.
     /// </summary>
@@ -263,7 +295,7 @@ public sealed partial class VieSociale
                 // et le goût du groupe pour la violence.
                 var vengeance = Vengeance(adultes[a.Id], b.Id, humains);
                 var faim = a.Disette && distance <= a.Rayon + b.Rayon + 8 ? 0.5 : 0;
-                var motivation = vengeance + faim + 0.4 * a.Bellicisme + (relation == EtatRelation.EnGuerre ? 0.2 : 0);
+                var motivation = vengeance + faim + 0.4 * a.Bellicisme + (relation == EtatRelation.EnGuerre ? 0.2 : 0) + Croisade(adultes[a.Id], adultes[b.Id]);
                 // De simples rivaux ne se battent que poussés par la faim ou la vengeance.
                 if (relation == EtatRelation.Rivales) motivation -= 0.4;
                 if (motivation <= 0) continue;

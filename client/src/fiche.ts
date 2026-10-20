@@ -1,3 +1,4 @@
+import { lignePriere, type Priere } from "./cultes";
 import { connexion } from "./connexion";
 import type { HumainVue } from "./carte";
 import { FormulaireEntite } from "./entite";
@@ -112,6 +113,8 @@ interface Fiche {
   };
   /** Parole : stade, nom dans sa langue, mots les plus sûrs, ordre des mots, autres langues comprises. */
   langage: Langage | null;
+  /** Sa religion, sa ferveur (0 à 100), son rôle, et ses prières récentes. */
+  foi: { religion: number; nomReligion: string | null; ferveur: number; role: string | null; source: string | null; miracles: number; prieres: Priere[] } | null;
 }
 
 /** Un mot et sa traduction. */
@@ -415,6 +418,7 @@ export class PanneauFiche {
     regard.title = "Invisible aux humains. Les actes qui ont changé son karma sont marqués ☯ dans son histoire.";
     corps.append(regard);
     this.medecine(corps, f.medecine);
+    this.foi(corps, f.foi);
     this.langage(corps, f.langage);
     if (h.vivant) corps.append(this.formulaireSouffle());
     this.communaute = f.communaute?.id ?? 0;
@@ -606,6 +610,22 @@ export class PanneauFiche {
     });
     p.title = "Les guérisons comptées sont celles que les siens lui attribuent, méritées ou non.";
     corps.append(p);
+  }
+
+  /** Section « Foi » : sa religion, sa ferveur, son rôle (et d'où vient sa parole, que seule l'Entité sait), ses prières. */
+  private foi(corps: HTMLElement, f: Fiche["foi"]): void {
+    if (!f || f.religion === 0 && f.prieres.length === 0) return;
+    corps.append(el("h3", undefined, "Foi"));
+    const p = el("p", "foi");
+    if (f.nomReligion) p.append(`Religion : ${f.nomReligion}, ferveur ${f.ferveur}/100`);
+    else p.append("Aucune religion");
+    if (f.role) p.append(el("br"), `Rôle : ${f.role}${f.source ? ` (${f.source})` : ""}${f.miracles > 0 ? ` ; miracles attribués : ${f.miracles}` : ""}`);
+    corps.append(p);
+    if (f.prieres.length > 0) {
+      const ul = el("ul", "liste prieres");
+      for (const x of f.prieres) ul.append(lignePriere(x, (id) => void this.ouvrir(id)));
+      corps.append(ul);
+    }
   }
 
   /** Section « Langage » : son nom dans sa langue, sa parole, ses mots (avec leur traduction) et les langues qu'il comprend. */

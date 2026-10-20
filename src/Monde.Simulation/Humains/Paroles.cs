@@ -40,6 +40,8 @@ public enum Parole : byte
     // Nuire.
     Frappe = 21,
     Tue = 22,
+    // Désigner (suite).
+    PorteMaParole = 23,
 }
 
 /// <summary>Comment l'Entité se fait entendre.</summary>
@@ -153,6 +155,7 @@ public static class Paroles
         Parole.JeSuisCelleQuiVousAFaits => "Je suis celle qui vous a faits.",
         Parole.Frappe => $"Frappe {cible}.",
         Parole.Tue => $"Tue {cible}.",
+        Parole.PorteMaParole => "Porte Ma parole aux tiens.",
         _ => "",
     };
 
@@ -181,6 +184,7 @@ public static class Paroles
         Parole.JeSuisCelleQuiVousAFaits => "Je suis celle qui vous a faits",
         Parole.Frappe => "Frappe…",
         Parole.Tue => "Tue…",
+        Parole.PorteMaParole => "Porte Ma parole (prophète)",
         _ => "",
     };
 
@@ -193,7 +197,7 @@ public static class Paroles
         Parole.Pardonne or Parole.NeTeVengePas or Parole.NeVaPasALaGuerre => "Apaiser",
         Parole.PartsVers or Parole.ResteIci or Parole.DefendsLesTiens => "Agir",
         Parole.CatastropheArrive or Parole.PlanteDangereuse => "Avertir",
-        Parole.TuGuideras or Parole.Ecoute => "Désigner",
+        Parole.TuGuideras or Parole.Ecoute or Parole.PorteMaParole => "Désigner",
         Parole.JeSuisCelleQuiVousAFaits => "Se révéler",
         _ => "Nuire",
     };

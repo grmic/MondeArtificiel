@@ -21,6 +21,7 @@ const TYPES: [string, string][] = [
   ["entraide", "Soins et consolation"],
   ["parole", "Paroles de l'Entité"],
   ["croyance", "Croyance en l'invisible"],
+  ["religion", "Prières, prophètes et religions"],
   ["medecine", "Médecine et transes"],
   ["art", "Arts, chants et fêtes"],
   ["langage", "Langage et récits"],
@@ -75,7 +76,7 @@ export class PanneauJournal {
    */
   suivreCommunaute(id: number, nom: string): void {
     this.communaute = { id, nom };
-    this.types = new Set(["communaute", "guerre", "naissance", "mort", "conflit", "union", "catastrophe", "exclusion", "vol", "entraide", "decouverte", "parole", "medecine", "art", "langage"]);
+    this.types = new Set(["communaute", "guerre", "naissance", "mort", "conflit", "union", "catastrophe", "exclusion", "vol", "entraide", "decouverte", "parole", "medecine", "art", "langage", "religion"]);
     this.racine.querySelectorAll<HTMLInputElement>(".filtres input").forEach((c) => (c.checked = this.types.has(c.dataset.cle ?? "")));
     this.racine.hidden = false;
     void this.recharger();

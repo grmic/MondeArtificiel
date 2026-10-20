@@ -58,7 +58,9 @@ public static class Maladies
     /// Quelle maladie : selon la saison et le froid (poumons), la faim et l'âge (ventre), le pays (paludisme en terre
     /// chaude et humide), une santé entamée par une blessure (plaie), et la taille de la population.
     /// </summary>
-    public static Maladie Choisir(Humain h, Biome biome, Saison saison, int population, long maintenant, Alea alea)
+    /// <param name="fumee">Il vit dans la fumée d'un feu sous un abri fermé : chez l'enfant, la fumée intérieure multiplie
+    /// par près de deux le risque d'infection des poumons (Dherani et al., 2008).</param>
+    public static Maladie Choisir(Humain h, Biome biome, Saison saison, int population, long maintenant, Alea alea, bool fumee = false)
     {
         var enfant = h.AgeEnAnnees(maintenant) < 5;
         var humide = biome is Biome.Marais or Biome.ForetTropicale or Biome.PlaineDeFougeres;
@@ -69,7 +71,7 @@ public static class Maladies
             if (population < f.PopulationMin) continue;
             poids[i] = f.Maladie switch
             {
-                Maladie.Pneumonie => 1 + 2 * h.Froid / 100 + (saison == Saison.Hiver ? 1 : 0) + (enfant ? 0.5 : 0),
+                Maladie.Pneumonie => (1 + 2 * h.Froid / 100 + (saison == Saison.Hiver ? 1 : 0) + (enfant ? 0.5 : 0)) * (fumee && enfant ? 1.8 : 1),
                 Maladie.Diarrhee => 1 + h.Faim / 100 + (enfant ? 1.5 : 0) + (saison == Saison.Ete ? 0.5 : 0),
                 Maladie.Dysenterie => 0.4 + (saison == Saison.Ete ? 0.3 : 0) + (enfant ? 0.3 : 0),
                 Maladie.Paludisme => humide && saison != Saison.Hiver ? 1.5 : 0,
@@ -95,6 +97,25 @@ public static class Maladies
             if ((tirage -= poids[i]) < 0 && poids[i] > 0) return Liste[i].Maladie;
         }
         return Maladie.Diarrhee;
+    }
+
+    /// <summary>
+    /// Gravité selon l'âge. Le nourrisson se déshydrate vite : une diarrhée ou une dysenterie le tue bien plus qu'un adulte.
+    /// Sans soins modernes, la diarrhée tuait presque autant de jeunes enfants que la pneumonie (18 % des morts d'enfants
+    /// par pneumonie, 15 % par diarrhée : Black et al., 2010) ; les gravités des tout-petits sont réglées pour retrouver cet
+    /// ordre de grandeur (estimation).
+    /// </summary>
+    public static double Gravite(Maladie m, double age)
+    {
+        var g = Fiche(m).Gravite;
+        if (age >= 5) return g;
+        var petit = age < 2;
+        return m switch
+        {
+            Maladie.Diarrhee or Maladie.Dysenterie => g * (petit ? 1.4 : 1.15),
+            Maladie.Pneumonie => g * (petit ? 0.8 : 0.9),
+            _ => g,
+        };
     }
 
     /// <summary>Durée d'une maladie pour cet humain : autour de sa médiane, plus longue chez les moins endurants.</summary>

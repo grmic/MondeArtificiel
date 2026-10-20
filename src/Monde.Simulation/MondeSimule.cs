@@ -64,6 +64,15 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Images peintes sur la roche.</summary>
     public IReadOnlyList<Oeuvre>? Oeuvres { get; init; }
+
+    /// <summary>Religions, prières en mémoire, lieux sacrés et malheurs annoncés (null : aucun).</summary>
+    public IReadOnlyList<Religion>? Religions { get; init; }
+    public IReadOnlyList<Priere>? Prieres { get; init; }
+    public IReadOnlyList<LieuSacre>? LieuxSacres { get; init; }
+    public IReadOnlyList<Prophetie>? Propheties { get; init; }
+
+    /// <summary>Numéro de la prochaine prière (0 : d'après les prières connues).</summary>
+    public int ProchainePriere { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -98,6 +107,7 @@ public sealed class MondeSimule
     private bool _pauseExtinction;
     private readonly VieSociale _social;
     private readonly Installations _installations;
+    private readonly Cultes _cultes;
     // Effets que des vivants savent obtenir : quand le dernier qui savait meurt ou oublie, le savoir est perdu.
     /// <summary>Effets que quelqu'un sait encore obtenir, avec un savoir qui le dit (pour le raconter s'il se perd).</summary>
     private Dictionary<Effet, Savoir> _effetsConnus;
@@ -161,6 +171,9 @@ public sealed class MondeSimule
             Numeros = _numeros, Comportement = _comportement, Communautes = _communautes,
         };
         _comportement.Catastrophes = _catastrophes;
+        _cultes = new Cultes(etat.Religions, etat.Prieres, etat.LieuxSacres, etat.Propheties);
+        if (etat.ProchainePriere > _cultes.ProchainePriere) _cultes.ProchainePriere = etat.ProchainePriere;
+        _comportement.Cultes = _social.Cultes = _cultes;
         _noms = _humains.Select(x => x.Nom).ToHashSet();
         _eteint = !_humains.Vivants().Any(x => x.EstVivant);
         _effetsConnus = EffetsConnus();
@@ -235,6 +248,11 @@ public sealed class MondeSimule
                     Huttes = _installations.Huttes.ToList(),
                     Decouvertes = _installations.Decouvertes.ToList(),
                     Oeuvres = _installations.Oeuvres.ToList(),
+                    Religions = _cultes.Religions.Select(r => r.Copier()).ToList(),
+                    Prieres = _cultes.Prieres.Select(p => p.Copier()).ToList(),
+                    LieuxSacres = _cultes.Lieux.ToList(),
+                    Propheties = _cultes.Propheties.ToList(),
+                    ProchainePriere = _cultes.ProchainePriere,
                 };
             }
         }
@@ -677,6 +695,7 @@ public sealed class MondeSimule
             Savoirs();
             _social.Humeurs(_humains, _secondes);
             _comportement.Croire(_humains, _secondes);
+            _comportement.Religions(_humains, _secondes);
             _comportement.Soins(_humains, _secondes);
             _comportement.Arts(_humains, _secondes);
             _social.Parler(_humains, _communautes, Carte, _secondes);
@@ -1039,6 +1058,31 @@ public sealed class MondeSimule
     public (List<Foyer> Foyers, List<Hutte> Huttes, List<Decouverte> Decouvertes) Installations()
     {
         lock (_verrou) return (_installations.Foyers.ToList(), _installations.Huttes.ToList(), _installations.Decouvertes.ToList());
+    }
+
+    /// <summary>
+    /// L'Entité exauce une prière en attente. Renvoie, en mots, ce qui s'est passé, ou pourquoi elle ne peut l'être.
+    /// </summary>
+    public string Exaucer(int priereId)
+    {
+        lock (_verrou)
+        {
+            var texte = _comportement.Exaucer(priereId, _humains, _secondes);
+            VerserJournal();
+            return texte;
+        }
+    }
+
+    /// <summary>Prières en mémoire : en attente, et celles de l'année écoulée (copies).</summary>
+    public List<Priere> Prieres()
+    {
+        lock (_verrou) return _cultes.Prieres.Select(p => p.Copier()).ToList();
+    }
+
+    /// <summary>Religions, lieux sacrés et malheurs annoncés (copies).</summary>
+    public (List<Religion> Religions, List<LieuSacre> Lieux, List<Prophetie> Propheties) Religions()
+    {
+        lock (_verrou) return (_cultes.Religions.Select(r => r.Copier()).ToList(), _cultes.Lieux.ToList(), _cultes.Propheties.ToList());
     }
 
     /// <summary>Images peintes sur la roche (copie).</summary>

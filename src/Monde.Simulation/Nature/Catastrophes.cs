@@ -339,6 +339,21 @@ public sealed partial class Catastrophes
         }
     }
 
+    /// <summary>La catastrophe de ce numéro, si elle est encore en mémoire.</summary>
+    public Catastrophe? Trouver(long id) => _liste.Find(c => c.Id == id);
+
+    /// <summary>Catastrophes commencées depuis <paramref name="depuis"/>.</summary>
+    public IEnumerable<Catastrophe> Recentes(long depuis) => _liste.Where(c => c.Debut >= depuis);
+
+    /// <summary>L'Entité arrête une catastrophe en cours. Faux si elle a déjà pris fin.</summary>
+    public bool Apaiser(long id, List<Humain> humains, long maintenant)
+    {
+        if (Trouver(id) is not { Active: true } c) return false;
+        Terminer(c, humains, maintenant);
+        CalculerDangers();
+        return true;
+    }
+
     /// <summary>Une catastrophe prend fin : le journal le note, avec le bilan pour chaque communauté touchée.</summary>
     private void Terminer(Catastrophe c, List<Humain> humains, long maintenant)
     {

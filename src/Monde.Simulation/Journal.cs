@@ -55,6 +55,8 @@ public enum TypeEvenement : byte
     Langage = 29,
     /// <summary>Un mot adopté, déformé, emprunté, remplacé ou oublié par une communauté.</summary>
     Mots = 30,
+    /// <summary>Prières, prophètes, religions, rites, lieux sacrés, sacrifices : ce que les humains croient ensemble.</summary>
+    Religion = 31,
 }
 
 /// <summary>
@@ -144,6 +146,7 @@ public static class Libelles
         Humains.CauseDeMort.Guerre => "au combat",
         Humains.CauseDeMort.Empoisonnement => "empoisonné par une plante",
         Humains.CauseDeMort.Envoutement => "rongé par une malédiction",
+        Humains.CauseDeMort.Sacrifice => "offert en sacrifice",
         _ => "",
     };
 

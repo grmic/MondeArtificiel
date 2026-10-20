@@ -596,9 +596,13 @@ public sealed partial class Comportement
         b.Soif = Math.Clamp(b.Soif + 0.6 - 1.6 * lait, 0, 100);
         if (lait > 0)
         {
+            // Une mère mal nourrie économise : son métabolisme ralentit et elle bouge moins, ce qui couvre une bonne part du
+            // coût du lait (Prentice et Prentice, 1988, chez des femmes de Gambie). Jusqu'à la moitié environ quand elle est
+            // épuisée, plus ou moins selon son endurance (estimation).
+            var economie = (0.35 + 0.3 * mere!.Personnalite.Endurance) * (1 - Math.Clamp(mere.Reserves / 40, 0, 1));
             Tour.Changer(mere!, m =>
             {
-                Depenser(m, 0.06 * lait);
+                Depenser(m, 0.06 * lait * (1 - economie));
                 m.Soif = Math.Min(100, m.Soif + 0.08 * lait);
             });
         }
@@ -617,7 +621,8 @@ public sealed partial class Comportement
 
         b.Activite = porte ? (mere!.Activite == Activite.Dormir ? Activite.Dormir : Activite.PorteParSaMere) : Activite.Repos;
         _temperature = Temperature(b.X, b.Y, maintenant);
-        Souffrir(b, maintenant, fragilite: 1.5);
+        // Sans lait de femme (bouchées mâchées, ou personne), le tout-petit est moins protégé des infections.
+        Souffrir(b, maintenant, fragilite: 1.5, sevre: !(allaitante && lait > 0));
     }
 
     /// <summary>Mortalité de fond, tirée une fois par jour du monde.</summary>
@@ -634,7 +639,7 @@ public sealed partial class Comportement
             // Avant 50 ans, ces morts sont surtout des infections, des poumons et du ventre (Gurven et Kaplan, 2007).
             if (age < 50 && !h.EstMalade(maintenant))
             {
-                var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
+                var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea, FumeeInterieure(h));
                 // Les maux de ventre qu'évitent l'hygiène des siens ne tuent pas.
                 if (Hygiene.DuVentre(maladie) && alea.Reel() < ProtectionHygiene(h, maladie, _tous)) return;
                 h.Maladie = maladie;

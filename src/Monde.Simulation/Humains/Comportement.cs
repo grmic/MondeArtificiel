@@ -367,7 +367,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>Nombre de causes de mort (taille du tableau des dégâts) : suit l'énumération quand elle grandit.</summary>
     private static readonly int NombreDeCauses = Enum.GetValues<CauseDeMort>().Max(c => (int)c) + 1;
 
-    private void Souffrir(Humain h, long maintenant, double fragilite)
+    /// <param name="sevre">Un tout-petit qui ne reçoit pas de lait maternel ce pas-ci (voir <see cref="Sevre"/>).</param>
+    private void Souffrir(Humain h, long maintenant, double fragilite, bool sevre = false)
     {
         var p = h.Personnalite;
         Span<double> degats = stackalloc double[NombreDeCauses];
@@ -375,7 +376,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (h.Soif >= 85) degats[(int)CauseDeMort.Soif] = 0.25;
         if (h.Froid >= 70) degats[(int)CauseDeMort.Froid] = 0.05 + 0.15 * (h.Froid - 70) / 30;
         if (h.Fatigue >= 95) degats[(int)CauseDeMort.Epuisement] = 0.05;
-        if (h.EstMalade(maintenant)) degats[(int)CauseDeMort.Maladie] = DegatsMaladie * Maladies.Fiche(h.Maladie).Gravite * (1.3 - 0.6 * p.Endurance);
+        if (h.EstMalade(maintenant))
+            degats[(int)CauseDeMort.Maladie] = DegatsMaladie * Maladies.Gravite(h.Maladie, h.AgeEnAnnees(maintenant)) * (1.3 - 0.6 * p.Endurance)
+                                               * (sevre && Sevre.Concerne(h.Maladie) ? Sevre.Gravite(h.AgeEnAnnees(maintenant)) : 1);
         // Coup de chaleur : au-delà de 36 °C, le corps ne se refroidit plus assez, surtout s'il manque d'eau.
         if (_temperature >= 36) degats[(int)CauseDeMort.Chaleur] = 0.01 * (_temperature - 35) * (h.Soif > 60 ? 2 : 1);
         // Une malédiction crue ronge (voir Medecine) : lentement, d'autant plus que la peur est forte.
@@ -406,9 +409,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // La dénutrition (réserves épuisées) affaiblit l'immunité (Schaible et Kaufmann, 2007).
             var risque = ProbabiliteMaladieDeBase * (1 + (100 - h.Sante) / 25 + h.Faim / 50 + h.Froid / 50) * (1.3 - 0.6 * p.Endurance)
                          * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25);
-            if (alea.Reel() < risque * fragilite * Adouci)
+            var surcroit = sevre ? Sevre.Risque(h.AgeEnAnnees(maintenant)) : 1;
+            if (alea.Reel() < risque * fragilite * Adouci * surcroit)
             {
-                var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea);
+                var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea, FumeeInterieure(h));
+                // Le surcroît du tout-petit sans lait ne porte que sur les poumons et le ventre.
+                if (surcroit > 1 && !Sevre.Concerne(maladie) && alea.Reel() >= 1 / surcroit) return;
                 // Une plaie lavée et couverte pourrit moins ; des mains lavées, des excréments écartés, une eau vive gardent du ventre.
                 if (alea.Reel() < Medecine.Protection(h, maladie, maintenant)) return;
                 if (alea.Reel() < ProtectionFumee(h, maladie)) return;

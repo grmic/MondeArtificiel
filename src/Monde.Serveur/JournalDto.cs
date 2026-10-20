@@ -45,6 +45,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Art] = "art",
         [TypeEvenement.Langage] = "langage",
         [TypeEvenement.Mots] = "mots",
+        [TypeEvenement.Religion] = "religion",
     };
 
 
@@ -156,7 +157,8 @@ public sealed record FicheDto(
     IReadOnlyList<ParoleRecueDto> Paroles,
     RegardDto Regard,
     MedecineDto Medecine,
-    LangageDto? Langage = null)
+    LangageDto? Langage = null,
+    FoiDto? Foi = null)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -252,7 +254,8 @@ public sealed record FicheDto(
             new RegardDto(Math.Round(h.Karma, 1), Simulation.Humains.Regard.Dire(h.Karma), (int)Math.Round(h.Croyance), Croyances.Dire(h.Croyance),
                 h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null),
             Soins(h, humains, maintenant),
-            LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore));
+            LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore),
+            Religions.Foi(service, h, humains));
     }
 
     private static MedecineDto Soins(Humain h, IReadOnlyList<Humain> humains, long maintenant)

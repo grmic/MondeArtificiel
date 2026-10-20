@@ -79,6 +79,7 @@ public sealed partial class Comportement
 
         // Vouloir, puis agir.
         var resultat = Obeir(h, parole, mode, cible, param, phrase, foi, reception, tous, maintenant);
+        if (h.Role == RoleReligieux.Prophete && parole != Parole.PorteMaParole) Reveler(h, parole, param, reception, tous, maintenant);
         Raconter(h, parole, mode, phrase, reception, tous, maintenant);
         return resultat;
     }
@@ -162,6 +163,7 @@ public sealed partial class Comportement
             _ => $"Une forme lumineuse apparaît devant {h.Nom} et lui fait comprendre : « {phrase} »",
         };
         var id = NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, 0, significatif: true);
+        if (mode == ModeParole.Apparition) NouveauLieu(h.X, h.Y, $"là où la Présence est apparue à {h.Nom}", id, maintenant);
         // Quand tout un groupe la voit à la fois, chacun la reçoit pour lui-même : pas de témoins à part.
         if (mode != ModeParole.Apparition || ensemble) return id;
         var temoins = tous.Vivants().Where(o => o.Id != h.Id && o.EstVivant && !o.EstBebe(maintenant) && o.Activite != Activite.Dormir
@@ -328,6 +330,12 @@ public sealed partial class Comportement
                     $"{Il(h)} ne s'en sent pas capable", false);
             case Parole.Ecoute:
                 return (0.8 * Math.Max(0, -aff), 0.2, $"{Il(h)} n'a aucune estime pour {nom}", false);
+            case Parole.PorteMaParole:
+                // La peur d'être moqué retient le timide et l'anxieux ; l'expansif, le sincère porté vers l'invisible, et celui
+                // qui aime le pouvoir, y vont plus volontiers.
+                return (Math.Clamp(0.35 * (1 - p.Extraversion) * (0.5 + p.Nevrosisme) + 0.15 * (1 - h.Croyance / 100), 0, 1),
+                    0.3 * p.Transcendance + 0.3 * p.Extraversion + 0.2 * (1 - m.Honnetete) - 0.15,
+                    p.Extraversion < 0.4 ? $"{Il(h)} craint qu'on se moque de {Soi(h)}" : $"{Il(h)} ne se sent pas digne de porter cette parole", false);
             case Parole.Frappe:
                 return psychopathe
                     ? (0.1, 0.2 + Math.Max(0, -aff), "", true)
@@ -432,7 +440,7 @@ public sealed partial class Comportement
 
     /// <summary>Paroles qui agissent dans la durée (plutôt qu'un acte à faire).</summary>
     private static bool Durable(Parole p) => p is Parole.ResteAvec or Parole.NeTeVengePas or Parole.NeVaPasALaGuerre or Parole.ResteIci
-        or Parole.DefendsLesTiens or Parole.TuGuideras or Parole.Ecoute;
+        or Parole.DefendsLesTiens or Parole.TuGuideras or Parole.Ecoute or Parole.PorteMaParole;
 
     /// <summary>« N'aie pas peur », « Tu n'es pas seul », « Ta peine passera » : la peur, la solitude ou le chagrin reculent.</summary>
     private void Rassurer(Humain h, Parole parole, double force, long reception, long maintenant)
@@ -495,6 +503,9 @@ public sealed partial class Comportement
                 break;
             case Parole.DefendsLesTiens:
                 h.Peur *= 1 - 0.5 * i.Force;
+                break;
+            case Parole.PorteMaParole:
+                DevenirProphete(h, SourceProphete.Entite, i.EvenementId, tous, maintenant);
                 break;
             case Parole.TuGuideras:
                 Confier(h, TypeIntime.ImageDeSoi, 0, p.Moral.Honnetete < 0.4 ? "Je suis au-dessus des autres : c'est moi qu'on a choisi." : "On m'a choisi pour guider les miens. En serai-je digne ?",

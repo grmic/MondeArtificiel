@@ -330,6 +330,9 @@ export class VueCarte {
   private selectionId = 0;
   private readonly halo = new Graphics();
   private surlignes = new Set<number>();
+  /** Lieux sacrés marqués (fenêtre des religions ouverte). */
+  private readonly lieuxSacres = new Graphics();
+  private lieux: { x: number; y: number }[] = [];
   private surClic: (info: InfoTuile) => void = () => {};
   private readonly calqueNature = new Container();
   private nature?: Nature;
@@ -592,7 +595,24 @@ export class VueCarte {
     this.dessinerHalo();
   }
 
+  /** Marque des lieux sacrés sur la carte (liste vide : aucun). */
+  marquerLieuxSacres(lieux: { x: number; y: number }[]): void {
+    this.lieux = lieux;
+    this.dessinerHalo();
+  }
+
   private dessinerHalo(): void {
+    this.lieuxSacres.clear();
+    if (this.lieuxSacres.parent !== this.monde && this.calqueHumains.parent === this.monde) {
+      this.monde.addChildAt(this.lieuxSacres, this.monde.getChildIndex(this.calqueHumains));
+    }
+    for (const l of this.lieux) {
+      const cx = l.x + 0.5;
+      const cy = l.y + 0.5;
+      this.lieuxSacres.poly([cx, cy - 1.6, cx + 0.5, cy - 0.5, cx + 1.6, cy, cx + 0.5, cy + 0.5, cx, cy + 1.6, cx - 0.5, cy + 0.5, cx - 1.6, cy, cx - 0.5, cy - 0.5])
+        .fill({ color: 0xffe08a, alpha: 0.85 })
+        .stroke({ width: 0.25, color: 0x5a3d00 });
+    }
     this.halo.clear();
     // Le halo est en coordonnées de la carte : il est hors du calque des humains, dont les éléments sont mis à l'échelle du zoom.
     if (this.halo.parent !== this.monde && this.calqueHumains.parent === this.monde) {

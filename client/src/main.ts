@@ -5,6 +5,7 @@ import { PanneauCommunautes } from "./communautes";
 import { PanneauDecouvertes } from "./decouvertes";
 import { PanneauDemographie } from "./demographie";
 import { PanneauRemarquables } from "./remarquables";
+import { PanneauPrieres, PanneauReligions } from "./cultes";
 import { PanneauConfiguration, type Reglages } from "./configuration";
 import { definirLiensNoms, PanneauFiche } from "./fiche";
 import { PanneauHorloge } from "./horloge";
@@ -217,6 +218,37 @@ async function demarrer(): Promise<void> {
     demographie.fermer();
     decouvertes.fermer();
     remarquables.basculer();
+  });
+  const prieres = new PanneauPrieres(element("#prieres"), (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id);
+  });
+  const religions = new PanneauReligions(element("#religions"), (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id);
+  }, (lieux) => vue.marquerLieuxSacres(lieux));
+  // Prières et religions occupent la place des autres fenêtres latérales : en ouvrir une autre les ferme.
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
+    if (b.id !== "boutonPrieres") b.addEventListener("click", () => prieres.fermer());
+    if (b.id !== "boutonReligions") b.addEventListener("click", () => religions.fermer());
+  }
+  const fermerAutres = () => {
+    journal.fermer();
+    communautes?.fermer();
+    catastrophes.fermer();
+    panneauMonde.fermer();
+    configuration.fermer();
+    demographie.fermer();
+    decouvertes.fermer();
+    remarquables.fermer();
+  };
+  element("#boutonPrieres").addEventListener("click", () => {
+    fermerAutres();
+    prieres.basculer();
+  });
+  element("#boutonReligions").addEventListener("click", () => {
+    fermerAutres();
+    religions.basculer();
   });
   element("#boutonDecouvertes").addEventListener("click", () => {
     journal.fermer();

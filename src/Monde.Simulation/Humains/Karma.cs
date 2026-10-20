@@ -41,6 +41,10 @@ public static class Regard
     /// <summary>Maudire quelqu'un pour qu'il dépérisse ; s'il en meurt, c'est presque un meurtre.</summary>
     public const double Maudire = -10;
     public const double MortMaudit = -25;
+    /// <summary>Prier pour que l'invisible frappe quelqu'un (à confirmer par zem).</summary>
+    public const double PrierContre = -2;
+    /// <summary>Offrir une vie humaine à l'invisible : un meurtre (voir <see cref="Meurtre"/>).</summary>
+    public const double Sacrifier = Meurtre;
 
     /// <summary>Un petit geste (partager, veiller, consoler, donner un remède) ne compte qu'une fois par saison envers une même personne.</summary>
     public const double PetitGeste = 3;

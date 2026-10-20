@@ -341,7 +341,7 @@ public sealed partial class VieSociale
 
     private static double Age(Humain h, long maintenant) => h.AgeEnAnnees(maintenant);
 
-    private Sons SonsDe(Communaute? c)
+    internal Sons SonsDe(Communaute? c)
     {
         if (c is null) return Sons.Tirer(alea);
         return c.Sons ??= c.Lexique.Count > 0 ? Sons.Depuis(c.Lexique.Values, alea) : Sons.Tirer(alea);

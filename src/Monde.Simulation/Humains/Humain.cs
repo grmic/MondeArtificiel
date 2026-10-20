@@ -83,6 +83,8 @@ public enum CauseDeMort : byte
     Empoisonnement = 17,
     /// <summary>Dépéri sous une malédiction à laquelle il croyait (voir <see cref="Humain.MauditParId"/>).</summary>
     Envoutement = 18,
+    /// <summary>Offert en sacrifice à l'invisible (voir <see cref="Cultes"/>).</summary>
+    Sacrifice = 19,
 }
 
 /// <summary>
@@ -245,6 +247,32 @@ public sealed class Humain
     internal string? CroyanceRaisonBaisse { get; set; }
     internal double CroyanceBaisse { get; set; }
     internal long CroyanceCauseBaisse { get; set; }
+
+    // Religion (voir Cultes) : ce qu'il croit avec d'autres, et le rôle qu'il y tient.
+
+    /// <summary>Religion à laquelle il adhère (0 : aucune).</summary>
+    public int ReligionId { get; set; }
+
+    /// <summary>Ferveur dans sa religion, de 0 à 1 : en dessous de 0,1, il s'en détache.</summary>
+    public double Ferveur { get; set; }
+
+    /// <summary>Depuis quand il adhère à sa religion.</summary>
+    public long ReligionDepuis { get; set; }
+
+    /// <summary>Prophète, prêtre, ou rien.</summary>
+    public RoleReligieux Role { get; set; }
+
+    /// <summary>D'où vient sa parole de prophète : de l'Entité, de ses visions, ou de lui-même (imposteur). Connu de l'Entité seule.</summary>
+    public SourceProphete SourceProphete { get; set; }
+
+    /// <summary>Depuis quand il tient son rôle (0 : aucun).</summary>
+    public long RoleDepuis { get; set; }
+
+    /// <summary>Prophéties réalisées et prières exaucées qu'on lui attribue : son prestige de prophète.</summary>
+    public int Miracles { get; set; }
+
+    /// <summary>Dernière fois qu'il a prié pour demander quelque chose (0 : jamais).</summary>
+    public long PrieLe { get; set; }
 
     // Médecine (voir Medecine) : ce qu'il a fait comme soignant, tel que les siens le voient.
 

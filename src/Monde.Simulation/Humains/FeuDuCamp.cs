@@ -80,6 +80,10 @@ public sealed partial class Comportement
             recit: $"{h.Nom} se réveille près du feu : dans la fumée, les moustiques ne l'ont presque pas piqué{(h.Sexe == Sexe.Femme ? "e" : "")}.");
     }
 
+    /// <summary>Un feu brûle sous la hutte où il se tient : la fumée reste à l'intérieur.</summary>
+    private bool FumeeInterieure(Humain h) =>
+        Installations.FoyerEn(h.X, h.Y) is not null && Installations.HutteEn(h.X, h.Y) is not null;
+
     /// <summary>Part des paludismes qu'évite le sommeil dans la fumée d'un feu (estimation).</summary>
     private double ProtectionFumee(Humain h, Maladie m) =>
         m == Maladie.Paludisme && FoyerProche(h.X, h.Y) ? 0.33 : 0;
