@@ -112,6 +112,8 @@ public sealed partial class Comportement
 
     private void Combattre(Humain h, Humain cible, Grief grief, string motif, IReadOnlyList<Humain> tous, long maintenant)
     {
+        // Toujours présent : Affronter l'a vérifié avant de différer le combat.
+        if (Social is not { } social) return;
         var fh = Force(h, maintenant);
         var fc = Force(cible, maintenant);
         var gagne = alea.Reel() < fh / (fh + fc);
@@ -127,18 +129,18 @@ public sealed partial class Comportement
         vaincu.Sante -= degats;
         Medecine.Blesser(vaincu, degats, maintenant);
         vaincu.Humeur = Math.Max(0, vaincu.Humeur - degats / 3);
-        Social.ChangerAffection(h, cible, -10, maintenant);
+        social.ChangerAffection(h, cible, -10, maintenant);
         VieSociale.AjouterGrief(vaincu, new Grief(vainqueur.Id, MotifGrief.Coups, Math.Min(100, 30 + degats), Math.Min(100, 30 + degats), id));
-        Social.Offenser(h, cible, 3, id, tous, maintenant);
+        social.Offenser(h, cible, 3, id, tous, maintenant);
         // Une jalousie qui tourne aux coups rend le groupe plus sévère envers l'infidélité.
-        if (grief.Motif is MotifGrief.Infidelite or MotifGrief.Rival) Social.Durcir(h, grave ? 0.1 : 0.03, id);
+        if (grief.Motif is MotifGrief.Infidelite or MotifGrief.Rival) social.Durcir(h, grave ? 0.1 : 0.03, id);
 
         if (vaincu.Sante <= 0)
         {
             // Tuer celui qui vous attaque pèse bien moins que tuer celui que l'on attaque.
             Mourir(vaincu, maintenant, CauseDeMort.Meurtre, id, vainqueur, vainqueur == h ? Regard.Meurtre : Regard.LegitimeDefense);
-            Social.Offenser(vainqueur, vaincu, 15, vaincu.MortEvenementId, tous, maintenant);
-            if (grief.Motif is MotifGrief.Infidelite or MotifGrief.Rival) Social.Durcir(h, 0.1, vaincu.MortEvenementId);
+            social.Offenser(vainqueur, vaincu, 15, vaincu.MortEvenementId, tous, maintenant);
+            if (grief.Motif is MotifGrief.Infidelite or MotifGrief.Rival) social.Durcir(h, 0.1, vaincu.MortEvenementId);
         }
     }
 

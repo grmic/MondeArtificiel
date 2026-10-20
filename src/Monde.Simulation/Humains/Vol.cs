@@ -46,6 +46,8 @@ public sealed partial class Comportement
 
     private void VolerA(Humain h, Humain victime, IReadOnlyList<Humain> tous, long maintenant)
     {
+        // Toujours présent : Voler l'a vérifié avant de différer le vol.
+        if (Social is not { } social) return;
         var p = h.Personnalite;
         var froideur = Psyche.Froideur(p);
         var pris = Math.Min(h.Faim - 20, 25 + 10 * alea.Reel());
@@ -100,13 +102,13 @@ public sealed partial class Comportement
         var colere = Math.Min(100, 30 + 40 * (1 - vm.Agreabilite) + 30 * (vm.Moral.Fondements.Equite - 0.5));
         VieSociale.AjouterGrief(victime, new Grief(h.Id, MotifGrief.Vol, colere, colere, vol));
         victime.Colere = Math.Min(100, victime.Colere + colere / 2);
-        Social.ChangerAffection(victime, h, -colere / 4, maintenant);
+        social.ChangerAffection(victime, h, -colere / 4, maintenant);
         if (temoin is not null)
         {
             VieSociale.AjouterGrief(temoin, new Grief(h.Id, MotifGrief.Vol, colere / 2, colere / 2, vol));
-            Social.ChangerAffection(temoin, h, -colere / 8, maintenant);
+            social.ChangerAffection(temoin, h, -colere / 8, maintenant);
         }
-        Social.Offenser(h, victime, 3, vol, tous, maintenant);
+        social.Offenser(h, victime, 3, vol, tous, maintenant);
         // Un psychopathe démasqué : ceux qui l'ont vu le savent désormais (Hare, 1993 : derrière le charme, la manipulation).
         if (psychopathe)
         {
@@ -129,11 +131,11 @@ public sealed partial class Comportement
             var coups = Noter(maintenant, TypeEvenement.Conflit, h, victime, $"{h.Nom} frappe {victime.Nom}, qui proteste, et garde la nourriture.", vol,
                 karma: Regard.Coups);
             VieSociale.AjouterGrief(victime, new Grief(h.Id, MotifGrief.Coups, Math.Min(100, 30 + degats), Math.Min(100, 30 + degats), coups));
-            Social.Offenser(h, victime, 4, coups, tous, maintenant);
+            social.Offenser(h, victime, 4, coups, tous, maintenant);
             if (victime.Sante <= 0)
             {
                 Mourir(victime, maintenant, CauseDeMort.Meurtre, coups, h);
-                Social.Offenser(h, victime, 15, victime.MortEvenementId, tous, maintenant);
+                social.Offenser(h, victime, 15, victime.MortEvenementId, tous, maintenant);
             }
         }
     }
