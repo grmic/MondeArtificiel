@@ -46,6 +46,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Langage] = "langage",
         [TypeEvenement.Mots] = "mots",
         [TypeEvenement.Religion] = "religion",
+        [TypeEvenement.Geste] = "geste",
     };
 
 
@@ -119,7 +120,9 @@ public sealed record AttraitsDto(int Beaute, int Attractivite, string Orientatio
 /// Le regard de l'Entité, que l'humain ignore : son karma et sa croyance en l'invisible (0 à 100), en chiffres et en mots,
 /// et le dernier signe de l'invisible qu'il a reçu (null : aucun).
 /// </summary>
-public sealed record RegardDto(double Karma, string KarmaMots, int Croyance, string CroyanceMots, string? DernierSigne);
+/// <param name="Amour">Regard sur l'invisible (0 à 100) : amour, crainte et révolte, avec leurs mots ; <paramref name="DernierGeste"/> : date du dernier signe vu.</param>
+public sealed record RegardDto(double Karma, string KarmaMots, int Croyance, string CroyanceMots, string? DernierSigne,
+    int Amour = 0, string AmourMots = "", int Crainte = 0, string CrainteMots = "", int Revolte = 0, string RevolteMots = "", string? DernierGeste = null);
 
 /// <summary>
 /// Médecine : ce qu'il a fait comme soignant (soignés, guéris, perdus, accouchements aidés), son rôle et sa renommée
@@ -252,7 +255,11 @@ public sealed record FicheDto(
             SavoirsDto.Depuis(h, humains, monde.Flore),
             ParolesEntite.Recues(h, humains, service, maintenant),
             new RegardDto(Math.Round(h.Karma, 1), Simulation.Humains.Regard.Dire(h.Karma), (int)Math.Round(h.Croyance), Croyances.Dire(h.Croyance),
-                h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null),
+                h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null,
+                (int)Math.Round(h.Amour), Regards.Dire(SentimentInvisible.Amour, h.Amour),
+                (int)Math.Round(h.Crainte), Regards.Dire(SentimentInvisible.Crainte, h.Crainte),
+                (int)Math.Round(h.Revolte), Regards.Dire(SentimentInvisible.Revolte, h.Revolte),
+                h.RegardSigneLe > 0 ? Date(h.RegardSigneLe) : null),
             Soins(h, humains, maintenant),
             LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore),
             Religions.Foi(service, h, humains));

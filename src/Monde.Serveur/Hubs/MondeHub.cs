@@ -315,6 +315,29 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return texte;
     }
 
+    /// <summary>Gestes que l'Entité peut faire, manières, formes de mort et maladies.</summary>
+    public ChoixGestesDto ChoixGestes() => GestesEntite.Choix(service);
+
+    /// <summary>L'Entité fait un geste sur un humain ou une communauté. Renvoie, en mots, ce qui s'est passé.</summary>
+    public async Task<string> Agir(DemandeGeste demande)
+    {
+        if (demande is null) throw new HubException("Demande vide.");
+        var monde = service.Monde;
+        (Simulation.Humains.GesteEntite geste, Simulation.Humains.ManiereGeste maniere, int param) lu;
+        try
+        {
+            lu = GestesEntite.Lire(demande, monde.Pathogenes().Select(p => p.Id).ToHashSet());
+        }
+        catch (ArgumentException e)
+        {
+            throw new HubException(e.Message);
+        }
+        var texte = monde.Agir(lu.geste, demande.Cible, lu.maniere, lu.param, demande.Force, demande.Jours);
+        service.Sauvegarder();
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        return texte;
+    }
+
     /// <summary>Paroles, manières de se manifester, directions, plantes et communautés que l'Entité peut choisir.</summary>
     public ChoixParolesDto ChoixParoles() => ParolesEntite.Choix(service);
 

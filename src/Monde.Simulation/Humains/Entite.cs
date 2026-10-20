@@ -397,10 +397,14 @@ public sealed partial class Comportement
 
         var (cout, envie, raison, moitie) = Peser(h, parole, x, tous, maintenant);
         var psychopathe = Psyche.EstPsychopathe(h, maintenant);
-        var deference = (0.25 + 0.35 * p.Moral.Fondements.Autorite + 0.25 * h.Croyance / 100 + 0.15 * foi) * (psychopathe ? 0.4 : 1);
+        // Regard sur l'invisible : l'amour fait obéir de bon gré, la crainte à contrecœur (en hésitant, ou à moitié), la révolte
+        // fait refuser (voir Regards).
+        var (amour, crainte) = (h.Amour / 100, h.Crainte / 100);
+        var deference = (0.25 + 0.35 * p.Moral.Fondements.Autorite + 0.25 * h.Croyance / 100 + 0.15 * foi + 0.15 * amour + 0.1 * crainte)
+            * (psychopathe ? 0.4 : 1) * (1 - 0.8 * h.Revolte / 100);
         var obeir = Math.Clamp(deference * (1 - cout) + 0.4 * envie, 0.01, 0.97);
         Reponse reponse;
-        if (alea.Reel() < obeir) reponse = moitie && alea.Reel() < 0.6 * cout ? Reponse.AMoitie : Reponse.Acceptee;
+        if (alea.Reel() < obeir) reponse = moitie && alea.Reel() < 0.6 * cout + 0.3 * crainte * (1 - amour) ? Reponse.AMoitie : Reponse.Acceptee;
         else if (alea.Reel() < 0.5 * (1 - p.Conscience) * (1 - cout)) reponse = Reponse.Differee;
         else reponse = Reponse.Refusee;
 
@@ -415,7 +419,7 @@ public sealed partial class Comportement
         }
 
         // Quand agir : tout de suite, ou après avoir hésité (de quelques heures à quelques semaines).
-        var hesite = reponse == Reponse.Differee || alea.Reel() < 0.5 * (1 - p.Conscience) * cout;
+        var hesite = reponse == Reponse.Differee || alea.Reel() < (0.5 * (1 - p.Conscience) * cout + 0.2 * crainte) * (1 - 0.5 * amour);
         var delai = hesite ? Math.Clamp(Math.Exp(Math.Log(1 + 6 * (1 - p.Conscience) + 6 * cout) + 0.6 * Biologie.Normale(alea)), 0.2, 40) : 0;
         var agirLe = maintenant + (long)(delai * Calendrier.SecondesParJour);
         // Une consigne qui dure s'efface avec le temps, plus lentement chez le croyant fidèle.

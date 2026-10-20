@@ -19,7 +19,7 @@ public sealed partial class Comportement
         var tentation = Math.Clamp((0.45 - p.Moral.Honnetete) / 0.25, 0, 1) + froideur;
         // L'équité retient : prendre la part d'un autre, c'est tricher.
         tentation *= 1.3 - 0.6 * p.Moral.Fondements.Equite;
-        if (tentation <= 0 || alea.Reel() >= VolParPas * tentation * (h.Faim - 55) / 45) return;
+        if (tentation <= 0 || alea.Reel() >= VolParPas * tentation * (h.Faim - 55) / 45 * Regards.Retenue(h)) return;
         if (Recent(h, "vol", 3, maintenant)) return;
 
         Humain? victime = null;

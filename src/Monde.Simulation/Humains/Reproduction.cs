@@ -266,7 +266,7 @@ public sealed partial class Comportement
         var reserves = Math.Clamp((femme.Reserves - 10) / 30, 0, 1);
         var nutrition = reserves * Math.Clamp(1 - Math.Max(0, femme.Faim - 50) / 35, 0, 1) * Math.Clamp(femme.Sante / 100, 0, 1);
         return ConceptionParAccouplement * femme.Fecondite(maintenant) * homme.Fecondite(maintenant)
-               * nutrition * Allaitement(femme, tous, maintenant);
+               * nutrition * Allaitement(femme, tous, maintenant) * FeconditeDonnee(femme, homme, maintenant);
     }
 
     /// <summary>
@@ -331,7 +331,7 @@ public sealed partial class Comportement
         var jumeaux = alea.Reel() < 0.004 + 0.008 * (age is >= 30 and < 40 ? 1.5 : 1);
         // Des femmes (ou des proches) qui ont l'expérience des naissances aident : moins de risque pour la mère, un peu pour l'enfant.
         var aide = AiderAccouchement(mere, tous, maintenant);
-        var risqueMortNe = RisqueMortNe * FacteurAgeMere(age) * detresse * (premature ? 2 : 1) * (jumeaux ? 2 : 1) * (1 - aide / 2) * Adouci;
+        var risqueMortNe = RisqueMortNe * FacteurAgeMere(age) * detresse * (premature ? 2 : 1) * (jumeaux ? 2 : 1) * (1 - aide / 2) * AdouciPour(mere, maintenant);
         for (var n = jumeaux ? 2 : 1; n > 0; n--)
         {
             if (alea.Reel() >= risqueMortNe) { var pere = mere.PereEnfantId; Tour.Differer(mere, m => Accouchements.Add((m, pere))); }
@@ -342,7 +342,7 @@ public sealed partial class Comportement
         mere.DernierAccouchement = maintenant;
         mere.Fatigue = 100;
         var risqueMere = RisqueMortAccouchement * FacteurAgeMere(age) * detresse
-                         * (parite == 0 ? 1.5 : parite >= 5 ? 1.3 : 1) * (jumeaux ? 1.5 : 1) * (1 - aide) * Adouci;
+                         * (parite == 0 ? 1.5 : parite >= 5 ? 1.3 : 1) * (jumeaux ? 1.5 : 1) * (1 - aide) * AdouciPour(mere, maintenant);
         if (alea.Reel() < risqueMere) Mourir(mere, maintenant, CauseDeMort.Accouchement);
     }
 
@@ -633,7 +633,7 @@ public sealed partial class Comportement
         var taux = MortaliteParAge.First(t => age < t.AgeMax).TauxAnnuel;
         // Avant 50 ans, ces morts sont des maladies (voir plus bas) et des morts de tout-petits : la clémence du monde les écarte ;
         // l'usure de l'âge, non.
-        if (age < 50) taux *= Adouci;
+        if (age < 50) taux *= AdouciPour(h, maintenant);
         if (alea.Reel() < taux / Calendrier.JoursParAn)
         {
             // Avant 50 ans, ces morts sont surtout des infections, des poumons et du ventre (Gurven et Kaplan, 2007).

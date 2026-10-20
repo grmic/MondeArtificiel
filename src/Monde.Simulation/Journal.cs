@@ -57,6 +57,8 @@ public enum TypeEvenement : byte
     Mots = 30,
     /// <summary>Prières, prophètes, religions, rites, lieux sacrés, sacrifices : ce que les humains croient ensemble.</summary>
     Religion = 31,
+    /// <summary>Geste de l'Entité sur un humain ou une communauté : mort, maladie, guérison, famine, bénédiction…</summary>
+    Geste = 32,
 }
 
 /// <summary>
@@ -147,6 +149,9 @@ public static class Libelles
         Humains.CauseDeMort.Empoisonnement => "empoisonné par une plante",
         Humains.CauseDeMort.Envoutement => "rongé par une malédiction",
         Humains.CauseDeMort.Sacrifice => "offert en sacrifice",
+        Humains.CauseDeMort.Foudre => "frappé par la foudre",
+        Humains.CauseDeMort.MortSubite => "d'un mal soudain",
+        Humains.CauseDeMort.Sommeil => "dans son sommeil",
         _ => "",
     };
 

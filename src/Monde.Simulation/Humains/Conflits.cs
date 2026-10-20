@@ -61,7 +61,7 @@ public sealed partial class Comportement
             if (!autre.EstVivant || autre.EstBebe(maintenant) || Distance(h.X, h.Y, autre.X, autre.Y) > 1) continue;
             if (grief is null || g.Intensite > grief.Intensite) (grief, cible) = (g, autre);
         }
-        if (grief is null || cible is null || alea.Reel() >= AffrontementParPas * h.Colere / 100) return;
+        if (grief is null || cible is null || alea.Reel() >= AffrontementParPas * h.Colere / 100 * Regards.Retenue(h)) return;
         // « Ne te venge pas » : celui qui y croit se retient, plus ou moins.
         if (h.Impulsions.Count > 0 && h.Consigne(Parole.NeTeVengePas, maintenant) is { } retenue && alea.Reel() < retenue.Force)
         {

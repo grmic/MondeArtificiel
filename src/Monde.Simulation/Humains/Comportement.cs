@@ -410,7 +410,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             var risque = ProbabiliteMaladieDeBase * (1 + (100 - h.Sante) / 25 + h.Faim / 50 + h.Froid / 50) * (1.3 - 0.6 * p.Endurance)
                          * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25);
             var surcroit = sevre ? Sevre.Risque(h.AgeEnAnnees(maintenant)) : 1;
-            if (alea.Reel() < risque * fragilite * Adouci * surcroit)
+            if (alea.Reel() < risque * fragilite * AdouciPour(h, maintenant) * surcroit)
             {
                 var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea, FumeeInterieure(h));
                 // Le surcroît du tout-petit sans lait ne porte que sur les poumons et le ventre.

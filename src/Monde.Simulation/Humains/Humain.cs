@@ -85,6 +85,12 @@ public enum CauseDeMort : byte
     Envoutement = 18,
     /// <summary>Offert en sacrifice à l'invisible (voir <see cref="Cultes"/>).</summary>
     Sacrifice = 19,
+    /// <summary>Frappé par la foudre de l'Entité.</summary>
+    Foudre = 20,
+    /// <summary>Emporté d'un mal soudain (l'Entité ; les humains n'y voient qu'une mort subite, sauf signe).</summary>
+    MortSubite = 21,
+    /// <summary>Mort dans son sommeil (l'Entité ; les humains n'y voient qu'une mort paisible).</summary>
+    Sommeil = 22,
 }
 
 /// <summary>
@@ -247,6 +253,34 @@ public sealed class Humain
     internal string? CroyanceRaisonBaisse { get; set; }
     internal double CroyanceBaisse { get; set; }
     internal long CroyanceCauseBaisse { get; set; }
+
+    // Regard sur l'invisible (voir Regards) : ce qu'il éprouve envers lui, en plus de croire qu'il existe.
+
+    /// <summary>Amour de l'invisible (confiance, gratitude), de 0 à 100.</summary>
+    public double Amour { get; set; }
+
+    /// <summary>Crainte de l'invisible, de 0 à 100. On peut aimer et craindre à la fois.</summary>
+    public double Crainte { get; set; }
+
+    /// <summary>Révolte contre l'invisible (colère, ressentiment), de 0 à 100.</summary>
+    public double Revolte { get; set; }
+
+    /// <summary>Dernier bienfait ou châtiment de l'invisible qu'il a vécu ou vu (0 : aucun).</summary>
+    public long RegardSigneLe { get; set; }
+
+    /// <summary>Amour, crainte et révolte au dernier changement noté au journal (NaN : pas encore fixés depuis le chargement).</summary>
+    internal double AmourNote { get; set; } = double.NaN;
+    internal double CrainteNote { get; set; } = double.NaN;
+    internal double RevolteNote { get; set; } = double.NaN;
+
+    /// <summary>Ce qui a le plus fait bouger son regard depuis la dernière note (en mots, sa force, l'événement en cause).</summary>
+    internal string? RegardRaison { get; set; }
+    internal double RegardPoussee { get; set; }
+    internal long RegardCause { get; set; }
+
+    /// <summary>Fécondité accordée par l'Entité : facteur sur ses chances de concevoir (1 : aucun), jusqu'à quand.</summary>
+    public double FeconditeEntite { get; set; } = 1;
+    public long FeconditeJusqua { get; set; }
 
     // Religion (voir Cultes) : ce qu'il croit avec d'autres, et le rôle qu'il y tient.
 

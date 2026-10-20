@@ -17,8 +17,10 @@ public sealed record Prophetie(int ProphetId, int ReligionId, int X, int Y, long
 public sealed class Cultes
 {
     public Cultes(IEnumerable<Religion>? religions = null, IEnumerable<Priere>? prieres = null, IEnumerable<LieuSacre>? lieux = null,
-        IEnumerable<Prophetie>? propheties = null)
+        IEnumerable<Prophetie>? propheties = null, IEnumerable<EffetEntite>? effets = null, IEnumerable<SouvenirEntite>? souvenirs = null)
     {
+        Effets = [.. effets ?? []];
+        Souvenirs = [.. souvenirs ?? []];
         Religions = (religions ?? []).Select(r => r.Copier()).OrderBy(r => r.Id).ToList();
         Prieres = (prieres ?? []).Select(p => p.Copier()).OrderBy(p => p.Id).ToList();
         Lieux = (lieux ?? []).OrderBy(l => l.Id).ToList();
@@ -37,6 +39,27 @@ public sealed class Cultes
     /// <summary>Malheurs annoncés qui ne sont pas encore venus.</summary>
     public List<Prophetie> Propheties { get; }
 
+    /// <summary>Gestes de l'Entité qui durent sur une communauté (famine, fécondité, bénédiction), en cours ou à venir.</summary>
+    public List<EffetEntite> Effets { get; }
+
+    /// <summary>Ce que les communautés se racontent des gestes visibles de l'Entité.</summary>
+    public List<SouvenirEntite> Souvenirs { get; }
+
+    /// <summary>Bénédiction en cours sur la communauté (0 à 1 : part des risques visés que l'Entité écarte ; 0 : aucune).</summary>
+    public double Benediction(int communaute, long maintenant) => EffetEnCours(GesteEntite.Benir, communaute, maintenant, 0);
+
+    /// <summary>Fécondité accordée à la communauté (facteur sur les chances de concevoir ; 1 : aucune).</summary>
+    public double Fecondite(int communaute, long maintenant) => EffetEnCours(GesteEntite.Fecondite, communaute, maintenant, 1);
+
+    private double EffetEnCours(GesteEntite geste, int communaute, long maintenant, double sinon)
+    {
+        if (Effets.Count == 0 || communaute == 0) return sinon;
+        var force = sinon;
+        foreach (var e in Effets)
+            if (e.Geste == geste && e.CommunauteId == communaute && e.Debut <= maintenant && maintenant < e.Fin) force = Math.Max(force, e.Force);
+        return force;
+    }
+
     /// <summary>Numéro de la prochaine prière (au moins le numéro le plus haut déjà donné, plus un).</summary>
     public int ProchainePriere { get; set; }
 
@@ -52,7 +75,7 @@ public sealed class Cultes
     private static readonly Comparer<Priere> ParNumero = Comparer<Priere>.Create((a, b) => a.Id.CompareTo(b.Id));
 
     /// <summary>Copie indépendante.</summary>
-    public Cultes Copier() => new(Religions, Prieres, Lieux, Propheties) { ProchainePriere = ProchainePriere };
+    public Cultes Copier() => new(Religions, Prieres, Lieux, Propheties, Effets, Souvenirs) { ProchainePriere = ProchainePriere };
 
     /// <summary>Le précepte en mots, tel que les fidèles le disent (sans le détail du paramètre).</summary>
     public static string Dire(Precepte p) => p switch

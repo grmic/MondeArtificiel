@@ -80,6 +80,10 @@ public sealed partial class Catastrophes
         return p;
     }
 
+    /// <summary>Part des contagions que l'Entité laisse passer : la clémence du monde, ou la bénédiction de sa communauté.</summary>
+    private double Epargne(Humain h, long maintenant) =>
+        1 - Math.Max(Clemence, Comportement?.Cultes?.Benediction(h.CommunauteId, maintenant) ?? 0);
+
     private static bool EstImmunise(Humain h, Pathogene p, long maintenant) =>
         h.Immunites.Any(i => i.PathogeneId == p.Id && (i.Jusqua is null || i.Jusqua > maintenant));
 
@@ -131,10 +135,10 @@ public sealed partial class Catastrophes
                     int nx = m.X + dx, ny = m.Y + dy;
                     if (nx < 0 || ny < 0 || nx >= _carte.Largeur || ny >= _carte.Hauteur) continue;
                     if (!parCase.TryGetValue(_carte.Indice(nx, ny), out var voisins)) continue;
-                    var risque = p.Transmission * (dx == 0 && dy == 0 ? 1 : 0.3) * (1 - Clemence);
+                    var risque = p.Transmission * (dx == 0 && dy == 0 ? 1 : 0.3);
                     foreach (var v in voisins)
                     {
-                        if (v.Id == m.Id || v.InfectionId != 0 || EstImmunise(v, p, maintenant) || _alea.Reel() >= risque) continue;
+                        if (v.Id == m.Id || v.InfectionId != 0 || EstImmunise(v, p, maintenant) || _alea.Reel() >= risque * Epargne(v, maintenant)) continue;
                         var id = Noter(maintenant, v, $"{v.Nom} attrape {p.Nom} auprès de {m.Nom}.", m.InfectionEvenementId,
                             type: TypeEvenement.Maladie);
                         Infecter(v, p, maintenant, id);

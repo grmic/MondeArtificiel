@@ -68,7 +68,7 @@ export interface Alerte {
 }
 
 /** Ce que l'Entité peut provoquer, avec l'intensité proposée et ce qu'elle mesure. */
-const PROVOQUABLES: [string, string, number, string][] = [
+export const PROVOQUABLES: [string, string, number, string][] = [
   ["seisme", "Séisme", 6.5, "magnitude (3 à 9,5)"],
   ["eruption", "Éruption du volcan le plus proche", 3, "indice d'explosivité (1 à 7)"],
   ["tsunami", "Vague géante", 8, "hauteur en mètres"],

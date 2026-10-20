@@ -727,7 +727,10 @@ public sealed partial class Comportement
         var cultes = Cultes!;
         var recentes = Catastrophes?.Recentes(maintenant - 30 * Calendrier.SecondesParJour).Where(c => c.Morts >= 2).ToList() ?? [];
         var morts = tous.Where(h => h.MortLe is { } m && m >= maintenant - Semaine
-            && h.CauseDeMort is CauseDeMort.Maladie or CauseDeMort.Accident or CauseDeMort.Noyade or CauseDeMort.Eboulement or CauseDeMort.Brulure).ToList();
+            && h.CauseDeMort is CauseDeMort.Maladie or CauseDeMort.Accident or CauseDeMort.Noyade or CauseDeMort.Eboulement or CauseDeMort.Brulure
+                or CauseDeMort.Foudre or CauseDeMort.MortSubite or CauseDeMort.Sommeil).ToList();
+        // Les châtiments visibles de l'Entité de la semaine, tels que les communautés se les racontent.
+        var chatiments = cultes.Souvenirs.Where(s => !s.Bienfait && s.Le >= maintenant - Semaine).ToList();
         foreach (var r in cultes.Religions)
         {
             if (r.EteinteLe != 0) continue;
@@ -737,14 +740,24 @@ public sealed partial class Comportement
                          ?? fideles.MaxBy(h => h.Ferveur)!;
             var communautes = fideles.Where(h => h.CommunauteId != 0).Select(h => h.CommunauteId).Distinct().ToList();
             var croyance = fideles.Average(h => h.Croyance) / 100;
+            // La crainte de l'invisible pousse aux offrandes et à voir sa colère partout (voir Regards).
+            var crainte = fideles.Average(h => h.Crainte) / 100;
             var pm = meneur.Personnalite;
 
             if (!r.Enseigne(Precepte.Colere) && recentes.FirstOrDefault(c => communautes.Any(id => c.PertesParCommunaute.GetValueOrDefault(id) >= 2)) is { } cat
-                && alea.Reel() < 0.4 * croyance)
+                && alea.Reel() < 0.4 * croyance * (1 + crainte))
                 AjouterDogme(r, Precepte.Colere, 0, OrigineDogme.Catastrophe, meneur, r.EvenementId, maintenant);
+            // Un châtiment vu de leurs yeux : la faute que le groupe s'est trouvée devient un précepte ; sans faute, l'invisible est en colère.
+            foreach (var souvenir in chatiments)
+            {
+                if (!communautes.Contains(souvenir.CommunauteId) || alea.Reel() >= 0.5 * croyance) continue;
+                if (souvenir.Faute is Gestes.FauteVol or Gestes.FauteMeurtre)
+                    AjouterDogme(r, Precepte.Chatiment, souvenir.Faute == Gestes.FauteMeurtre ? 1 : 0, OrigineDogme.Entite, meneur, souvenir.EvenementId, maintenant);
+                else if (!r.Enseigne(Precepte.Colere)) AjouterDogme(r, Precepte.Colere, 0, OrigineDogme.Entite, meneur, souvenir.EvenementId, maintenant);
+            }
 
             var crise = communautes.Any(id => Social!.Communautes[id - 1].Disette) || recentes.Count > 0;
-            if (crise && !r.Enseigne(Precepte.SacrificeAnimal) && (r.Enseigne(Precepte.Colere) || r.Enseigne(Precepte.Offrandes)) && alea.Reel() < 0.02)
+            if (crise && !r.Enseigne(Precepte.SacrificeAnimal) && (r.Enseigne(Precepte.Colere) || r.Enseigne(Precepte.Offrandes)) && alea.Reel() < 0.02 * (1 + 2 * crainte))
                 AjouterDogme(r, Precepte.SacrificeAnimal, 0, OrigineDogme.Inventee, meneur, r.EvenementId, maintenant);
 
             foreach (var m in morts)

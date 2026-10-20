@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 29;
+    public const int VersionSchema = 30;
 
     private readonly string _connexion;
 
@@ -570,6 +570,8 @@ public sealed partial class DepotMonde
         // Version 28 : prières, prophètes et religions.
         if (actuelle < 28) MigrerVersion28(connexion, transaction);
         if (actuelle < 29) MigrerVersion29(connexion, transaction);
+        // Version 30 : gestes de l'Entité, regard sur l'invisible.
+        if (actuelle < 30) MigrerVersion30(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -631,7 +633,8 @@ public sealed partial class DepotMonde
                    symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
                    honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le,
                    karma, croyance, croyance_signe, croyance_notee,
-                   soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement, ancienne_communaute, religion, ferveur, religion_depuis, role, source_prophete, role_depuis, miracles, prie_le, communaute_naissance
+                   soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement, ancienne_communaute, religion, ferveur, religion_depuis, role, source_prophete, role_depuis, miracles, prie_le, communaute_naissance,
+                   amour, crainte, revolte, regard_signe, fecondite_entite, fecondite_jusqua
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -728,6 +731,12 @@ public sealed partial class DepotMonde
                     Miracles = lecteur.GetInt32(lecteur.GetOrdinal("miracles")),
                     PrieLe = lecteur.GetInt64(lecteur.GetOrdinal("prie_le")),
                     CommunauteNaissance = lecteur.GetInt32(lecteur.GetOrdinal("communaute_naissance")),
+                    Amour = lecteur.GetDouble(lecteur.GetOrdinal("amour")),
+                    Crainte = lecteur.GetDouble(lecteur.GetOrdinal("crainte")),
+                    Revolte = lecteur.GetDouble(lecteur.GetOrdinal("revolte")),
+                    RegardSigneLe = lecteur.GetInt64(lecteur.GetOrdinal("regard_signe")),
+                    FeconditeEntite = lecteur.GetDouble(lecteur.GetOrdinal("fecondite_entite")),
+                    FeconditeJusqua = lecteur.GetInt64(lecteur.GetOrdinal("fecondite_jusqua")),
                 });
                 var h = humains[^1];
                 var croyance = lecteur.GetOrdinal("croyance");
@@ -761,6 +770,7 @@ public sealed partial class DepotMonde
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };
         if (decouvertes.Count > 0) etat = etat with { Decouvertes = decouvertes };
         etat = LireCultes(commande, etat);
+        etat = LireGestes(commande, etat);
         var catastrophes = LireCatastrophesEnCours(commande);
         if (catastrophes.Count > 0) etat = etat with { Catastrophes = catastrophes };
         var pathogenes = LirePathogenes(commande);
@@ -968,7 +978,7 @@ public sealed partial class DepotMonde
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
-                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions; " + EffacerSavoirs + EffacerLangage + EffacerCultes);
+                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions; " + EffacerSavoirs + EffacerLangage + EffacerCultes + EffacerGestes);
         }
 
         using (var commande = connexion.CreateCommand())
@@ -1046,7 +1056,8 @@ public sealed partial class DepotMonde
                     symetrie, harmonie, taille, teint, allure, vers_hommes, vers_femmes, lucidite, maladie,
                     honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le,
                     karma, croyance, croyance_signe, croyance_notee,
-                    soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement, ancienne_communaute, religion, ferveur, religion_depuis, role, source_prophete, role_depuis, miracles, prie_le, communaute_naissance)
+                    soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement, ancienne_communaute, religion, ferveur, religion_depuis, role, source_prophete, role_depuis, miracles, prie_le, communaute_naissance,
+                    amour, crainte, revolte, regard_signe, fecondite_entite, fecondite_jusqua)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -1061,7 +1072,8 @@ public sealed partial class DepotMonde
                     $symetrie, $harmonie, $taille, $teint, $allure, $vers_hommes, $vers_femmes, $lucidite, $maladie,
                     $honnetete, $empathie_emo, $empathie_cog, $compassion, $psychopathie, $anxiete_aff, $evitement_aff, $soin, $equite, $loyaute, $autorite, $purete, $captif_de, $captif_le,
                     $karma, $croyance, $croyance_signe, $croyance_notee,
-                    $soignes, $gueris, $perdus, $accouchements_aides, $guerisseur_depuis, $chaman_depuis, $transe_le, $charlatan_depuis, $demasque_le, $soigneur, $soigneur_le, $plaie_le, $plaie_soin, $maudit_le, $maudit_par, $maudit_force, $maudit_evenement, $ancienne_communaute, $religion, $ferveur, $religion_depuis, $role, $source_prophete, $role_depuis, $miracles, $prie_le, $communaute_naissance);
+                    $soignes, $gueris, $perdus, $accouchements_aides, $guerisseur_depuis, $chaman_depuis, $transe_le, $charlatan_depuis, $demasque_le, $soigneur, $soigneur_le, $plaie_le, $plaie_soin, $maudit_le, $maudit_par, $maudit_force, $maudit_evenement, $ancienne_communaute, $religion, $ferveur, $religion_depuis, $role, $source_prophete, $role_depuis, $miracles, $prie_le, $communaute_naissance,
+                    $amour, $crainte, $revolte, $regard_signe, $fecondite_entite, $fecondite_jusqua);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -1077,7 +1089,8 @@ public sealed partial class DepotMonde
                 "$symetrie", "$harmonie", "$taille", "$teint", "$allure", "$vers_hommes", "$vers_femmes", "$lucidite", "$maladie",
                 "$honnetete", "$empathie_emo", "$empathie_cog", "$compassion", "$psychopathie", "$anxiete_aff", "$evitement_aff", "$soin", "$equite", "$loyaute", "$autorite", "$purete", "$captif_de", "$captif_le",
                 "$karma", "$croyance", "$croyance_signe", "$croyance_notee",
-                "$soignes", "$gueris", "$perdus", "$accouchements_aides", "$guerisseur_depuis", "$chaman_depuis", "$transe_le", "$charlatan_depuis", "$demasque_le", "$soigneur", "$soigneur_le", "$plaie_le", "$plaie_soin", "$maudit_le", "$maudit_par", "$maudit_force", "$maudit_evenement", "$ancienne_communaute", "$religion", "$ferveur", "$religion_depuis", "$role", "$source_prophete", "$role_depuis", "$miracles", "$prie_le", "$communaute_naissance"];
+                "$soignes", "$gueris", "$perdus", "$accouchements_aides", "$guerisseur_depuis", "$chaman_depuis", "$transe_le", "$charlatan_depuis", "$demasque_le", "$soigneur", "$soigneur_le", "$plaie_le", "$plaie_soin", "$maudit_le", "$maudit_par", "$maudit_force", "$maudit_evenement", "$ancienne_communaute", "$religion", "$ferveur", "$religion_depuis", "$role", "$source_prophete", "$role_depuis", "$miracles", "$prie_le", "$communaute_naissance",
+                "$amour", "$crainte", "$revolte", "$regard_signe", "$fecondite_entite", "$fecondite_jusqua"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -1113,6 +1126,7 @@ public sealed partial class DepotMonde
                     h.Karma, h.Croyance, h.CroyanceSigneLe, double.IsNaN(h.CroyanceNotee) ? h.Croyance : h.CroyanceNotee,
                     h.Soignes, h.Gueris, h.Perdus, h.AccouchementsAides, h.GuerisseurDepuis, h.ChamanDepuis, h.TranseLe, h.CharlatanDepuis, h.DemasqueLe, h.SoigneurId, h.SoigneurLe, h.PlaieLe, h.PlaieSoin, h.MauditLe, h.MauditParId, h.MauditForce, h.MauditEvenementId, h.AncienneCommunauteId,
                     h.ReligionId, h.Ferveur, h.ReligionDepuis, (int)h.Role, (int)h.SourceProphete, h.RoleDepuis, h.Miracles, h.PrieLe, h.CommunauteNaissance,
+                    h.Amour, h.Crainte, h.Revolte, h.RegardSigneLe, h.FeconditeEntite, h.FeconditeJusqua,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
@@ -1129,6 +1143,7 @@ public sealed partial class DepotMonde
         if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Religions is not null || etat.Prieres is not null || etat.LieuxSacres is not null || etat.Propheties is not null)
             EnregistrerCultes(connexion, transaction, etat);
+        if (etat.EffetsEntite is not null || etat.SouvenirsEntite is not null) EnregistrerGestes(connexion, transaction, etat);
         if (etat.Catastrophes is { Count: > 0 } catastrophes) EnregistrerCatastrophes(connexion, transaction, catastrophes);
         if (etat.Pathogenes is { Count: > 0 } pathogenes) EnregistrerPathogenes(connexion, transaction, pathogenes);
         if (etat.Communautes is { } communautes)

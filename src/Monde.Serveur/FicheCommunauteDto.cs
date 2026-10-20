@@ -53,8 +53,14 @@ public sealed record VieCommunauteDto(int Huttes, int Foyers, IReadOnlyList<Pers
     IReadOnlyList<PersonneDto> Captifs);
 
 /// <summary>Foi : religions présentes, croyance, porteurs, lieux sacrés proches et prières récentes.</summary>
+/// <param name="Amour">Moyennes des adultes du regard sur l'invisible : amour, crainte, révolte (0 à 100).</param>
+/// <param name="Effets">Gestes de l'Entité qui pèsent encore sur elle.</param>
+/// <param name="Souvenirs">Ce qu'elle se raconte des gestes visibles de l'Entité.</param>
 public sealed record FoiCommunauteDto(int? Croyance, IReadOnlyList<string> Religions, IReadOnlyList<PorteurDto> Porteurs, IReadOnlyList<string> Lieux,
-    IReadOnlyList<PriereDto> Prieres);
+    IReadOnlyList<PriereDto> Prieres, int? Amour, int? Crainte, int? Revolte, IReadOnlyList<string> Effets, IReadOnlyList<SouvenirDto> Souvenirs);
+
+/// <summary>Un geste visible de l'Entité dont la communauté se souvient (force 0 à 100 : il s'efface au fil des générations).</summary>
+public sealed record SouvenirDto(string Date, string Texte, bool Bienfait, int Force, string? Faute, long Evenement);
 
 /// <summary>
 /// Fiche d'une communauté : ce que montre déjà la fenêtre Communautés (<see cref="Base"/>), et le reste rangé par thème.
@@ -370,6 +376,25 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             : [];
         var ids = membres.Select(h => h.Id).ToHashSet();
         var prieres = Serveur.Religions.Prieres(service, enAttente: false, limite: 1000).Where(p => ids.Contains(p.Humain)).Take(12).ToList();
-        return new FoiCommunauteDto(adultes.Count == 0 ? null : (int)Math.Round(adultes.Average(h => h.Croyance)), parts, porteurs, proches, prieres);
+        int? Moyenne(Func<Humain, double> f) => adultes.Count == 0 ? null : (int)Math.Round(adultes.Average(f));
+        var (gestes, souvenirs) = monde.GestesEnCours();
+        var effets = gestes.Where(e => e.CommunauteId == id).Select(e => e.Geste switch
+        {
+            GesteEntite.Famine => $"Famine envoyée : {Math.Round(100 * e.Force)} % du gibier et des plantes perdus",
+            GesteEntite.Fecondite => $"Fécondité accordée : chances de concevoir × {e.Force:0.0}",
+            GesteEntite.Benir => $"Bénédiction : {Math.Round(100 * e.Force)} sur 100",
+            _ => Gestes.Nom(e.Geste),
+        } + $" (fin : {Calendrier.Decomposer(e.Fin)})").ToList();
+        var recits = souvenirs.Where(s => s.CommunauteId == id).OrderByDescending(s => s.Le).Take(20)
+            .Select(s => new SouvenirDto(Calendrier.Decomposer(s.Le).ToString(), s.Texte, s.Bienfait, (int)Math.Round(s.Force), s.Faute switch
+            {
+                Gestes.FauteVol => "ils se disent punis pour leurs vols",
+                Gestes.FauteMeurtre => "ils se disent punis pour leurs meurtres",
+                Gestes.FauteGuerre => "ils se disent punis pour leur guerre",
+                _ when !s.Bienfait => "ils ne savent pas ce qu'ils ont fait",
+                _ => null,
+            }, s.EvenementId)).ToList();
+        return new FoiCommunauteDto(Moyenne(h => h.Croyance), parts, porteurs, proches, prieres,
+            Moyenne(h => h.Amour), Moyenne(h => h.Crainte), Moyenne(h => h.Revolte), effets, recits);
     }
 }

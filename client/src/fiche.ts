@@ -2,6 +2,7 @@ import { lignePriere, type Priere } from "./cultes";
 import { connexion } from "./connexion";
 import type { HumainVue } from "./carte";
 import { FormulaireEntite } from "./entite";
+import { FormulaireGeste } from "./gestes";
 
 interface Evenement {
   id: number;
@@ -104,7 +105,11 @@ interface Fiche {
   /** Paroles et penchants reçus de l'Entité, du plus récent au plus ancien. */
   paroles: { date: string; mode: string; texte: string; reponse: string; cible: number; evenement: number }[];
   /** Regard de l'Entité, invisible aux humains : karma et croyance en l'invisible (0 à 100). */
-  regard: { karma: number; karmaMots: string; croyance: number; croyanceMots: string; dernierSigne: string | null };
+  regard: {
+    karma: number; karmaMots: string; croyance: number; croyanceMots: string; dernierSigne: string | null;
+    /** Regard sur l'invisible (0 à 100) : amour, crainte, révolte, et le dernier signe vu. */
+    amour: number; amourMots: string; crainte: number; crainteMots: string; revolte: number; revolteMots: string; dernierGeste: string | null;
+  };
   /** Médecine : soins donnés, rôle de soignant, plaie, malédiction. */
   medecine: {
     soignes: number; gueris: number; perdus: number; accouchementsAides: number; role: string | null; renommee: number;
@@ -216,6 +221,8 @@ export class PanneauFiche {
   private readonly resultatSouffle = el("p", "discret");
   /** Parler ou inspirer un amour : construit une fois, comme le formulaire du souffle. */
   private entite: FormulaireEntite | null = null;
+  /** Gestes de l'Entité sur cet humain : construit une fois, comme les autres formulaires. */
+  private geste: FormulaireGeste | null = null;
   private communaute = 0;
   private nomCourant = "";
   /** Fiche d'où l'on vient (une communauté), pour le bouton « retour » : fourni par la page, oublié à la fermeture. */
@@ -237,6 +244,7 @@ export class PanneauFiche {
       replierCauses();
       this.resultatSouffle.textContent = "";
       this.entite?.oublier();
+      this.geste?.oublier();
     }
     const autre = id !== this.id;
     this.id = id;
@@ -427,6 +435,15 @@ export class PanneauFiche {
     if (f.regard.dernierSigne) regard.append(el("br"), `Dernier signe de l'invisible : ${f.regard.dernierSigne}`);
     regard.title = "Invisible aux humains. Les actes qui ont changé son karma sont marqués ☯ dans son histoire.";
     corps.append(regard);
+    corps.append(el("h3", undefined, "Regard sur l'invisible"));
+    const invisible = el("p", "regard");
+    invisible.append(`Croyance : ${f.regard.croyance}/100 (${f.regard.croyanceMots})`, el("br"),
+      `Amour : ${f.regard.amour}/100 (${f.regard.amourMots})`, el("br"),
+      `Crainte : ${f.regard.crainte}/100 (${f.regard.crainteMots})`, el("br"),
+      `Révolte : ${f.regard.revolte}/100 (${f.regard.revolteMots})`);
+    if (f.regard.dernierGeste) invisible.append(el("br"), `Dernier signe vu : ${f.regard.dernierGeste}`);
+    invisible.title = "Ce qu'il éprouve envers l'invisible : l'amour fait obéir de bon gré, la crainte à contrecœur et rend un peu plus honnête, la révolte fait refuser et cesser de prier.";
+    corps.append(invisible);
     this.medecine(corps, f.medecine);
     this.foi(corps, f.foi);
     this.langage(corps, f.langage);
@@ -449,6 +466,10 @@ export class PanneauFiche {
         humains: [this.id], communautes: [], pres: this.id, communaute: this.communaute, libelle: this.nomCourant,
       }));
       corps.append(this.entite.bloc);
+    }
+    if (h.vivant) {
+      this.geste ??= new FormulaireGeste(true, () => ({ id: this.id, nom: this.nomCourant }));
+      corps.append(this.geste.bloc);
     }
 
     corps.append(el("h3", undefined, "Liens"));
@@ -757,7 +778,7 @@ export class PanneauFiche {
 
   /** Vrai si l'utilisateur est en train de remplir le formulaire de l'Entité (un menu ouvert ne doit pas être redessiné). */
   private saisieEnCours(): boolean {
-    return !!this.souffle && (this.souffle.contains(document.activeElement) || this.souffle.matches(":hover")) || !!this.entite?.enCours;
+    return !!this.souffle && (this.souffle.contains(document.activeElement) || this.souffle.matches(":hover")) || !!this.entite?.enCours || !!this.geste?.enCours;
   }
 
   private traits(titre: string, traits: Trait[], max: number): HTMLElement {

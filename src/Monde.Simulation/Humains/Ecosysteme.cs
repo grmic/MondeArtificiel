@@ -124,10 +124,18 @@ public sealed class Ecosysteme
 
     /// <summary>Niveau des plantes vers lequel la tuile repousse aujourd'hui (centièmes).</summary>
     public double NiveauPlantes(int i, double saison) =>
-        _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i)) * (1 - Degats[i] / 10_000.0) * FacteurClimat;
+        _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i)) * (1 - Degats[i] / 10_000.0) * FacteurClimat * Epargne(i);
 
     /// <summary>Capacité d'accueil du gibier sur la tuile cette année (centièmes) : il dépend moins des pluies que les plantes.</summary>
-    public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i))) * (1 - Degats[i] / 20_000.0);
+    public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i))) * (1 - Degats[i] / 20_000.0) * Epargne(i);
+
+    /// <summary>
+    /// Famine envoyée par l'Entité : part des plantes et du gibier perdue sur chaque tuile (null : aucune). Fixé chaque jour
+    /// par le monde d'après les famines en cours.
+    /// </summary>
+    public double[]? Fleau { get; set; }
+
+    private double Epargne(int i) => Fleau is null ? 1 : 1 - Fleau[i];
 
     /// <summary>Saison des plantes (0,45 à 1), interpolée pour éviter les à-coups entre saisons.</summary>
     public static double FacteurSaison(long secondes)

@@ -1,5 +1,6 @@
 using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
+using Monde.Simulation.Temps;
 
 namespace Monde.Simulation.Nature;
 
@@ -54,5 +55,39 @@ public sealed partial class Catastrophes
         _pathogenes[^1] = p with { EvenementId = id };
         Infecter(h, _pathogenes[^1], maintenant, id);
         return id;
+    }
+
+    /// <summary>
+    /// L'Entité rend <paramref name="h"/> malade d'une maladie contagieuse déjà apparue (<paramref name="pathogeneId"/>) ou
+    /// nouvelle (0). Elle passe outre l'immunité ; la maladie suit ensuite son cours (incubation, contagion, guérison ou mort).
+    /// Renvoie le numéro de l'événement, ou 0 s'il est déjà malade d'un mal contagieux.
+    /// </summary>
+    public long Infecter(Humain h, int pathogeneId, long maintenant, long cause)
+    {
+        if (!h.EstVivant || h.InfectionId != 0 || pathogeneId < 0 || pathogeneId > _pathogenes.Count) return 0;
+        long id;
+        if (pathogeneId == 0)
+        {
+            var nouveau = NouveauPathogene(h, maintenant);
+            id = Noter(maintenant, h, $"{h.Nom} tombe malade d'un mal inconnu : {nouveau.Nom} vient d'apparaître.", cause, type: TypeEvenement.Maladie,
+                origine: Origine.Entite);
+            _pathogenes[^1] = nouveau with { EvenementId = id };
+            pathogeneId = nouveau.Id;
+        }
+        else id = Noter(maintenant, h, $"{h.Nom} attrape {_pathogenes[pathogeneId - 1].Nom}.", cause, type: TypeEvenement.Maladie, origine: Origine.Entite);
+        var p = _pathogenes[pathogeneId - 1];
+        h.Immunites.RemoveAll(i => i.PathogeneId == p.Id);
+        Infecter(h, p, maintenant, id);
+        return id;
+    }
+
+    /// <summary>L'Entité guérit <paramref name="h"/> de son mal contagieux : il en reste protégé pendant <paramref name="jours"/>.</summary>
+    public void Delivrer(Humain h, long maintenant, double jours)
+    {
+        if (h.InfectionId == 0) return;
+        var id = h.InfectionId;
+        h.Immunites.RemoveAll(i => i.PathogeneId == id);
+        h.Immunites.Add(new Immunite(id, maintenant + (long)(jours * Calendrier.SecondesParJour)));
+        (h.InfectionId, h.InfectionEvenementId) = (0, 0);
     }
 }

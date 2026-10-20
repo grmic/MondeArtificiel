@@ -3,6 +3,7 @@ import { distanceDeCases, surfaceDeCases } from "./carte";
 import { blocLangue, courbe, type Communaute, type Taille } from "./communautes";
 import { lignePriere, type Priere } from "./cultes";
 import { FormulaireEntite } from "./entite";
+import { FormulaireGeste } from "./gestes";
 import { boutonCause, el, ligneEvenement, replierCauses, signe, type Evenement } from "./fiche";
 
 interface Nomme { id: number; nom: string; valeur: number }
@@ -32,6 +33,11 @@ interface FicheCommunaute {
   foi: {
     croyance: number | null; religions: string[]; porteurs: { id: number; nom: string; role: string; source: string | null; miracles: number }[];
     lieux: string[]; prieres: Priere[];
+    /** Moyennes des adultes du regard sur l'invisible (0 à 100). */
+    amour: number | null; crainte: number | null; revolte: number | null;
+    /** Gestes de l'Entité qui pèsent encore sur elle, et ce qu'elle se raconte de ses gestes visibles. */
+    effets: string[];
+    souvenirs: { date: string; texte: string; bienfait: boolean; force: number; faute: string | null; evenement: number }[];
   };
   marquants: Evenement[];
   entite: Evenement[];
@@ -81,6 +87,7 @@ export class PanneauFicheCommunaute {
   private id = 0;
   private minuteur?: number;
   private entite: FormulaireEntite | null = null;
+  private geste: FormulaireGeste | null = null;
   /** Tri de la liste des membres. */
   private tri: keyof Membre = "age";
   private triDescendant = true;
@@ -113,6 +120,7 @@ export class PanneauFicheCommunaute {
       replierCauses();
       this.entite?.oublier();
       this.entite = null;
+      this.geste = null;
     }
     this.id = id;
     await this.rafraichir();
@@ -138,7 +146,7 @@ export class PanneauFicheCommunaute {
       return;
     }
     // Redessiner pendant que l'on compose une parole de l'Entité fermerait les menus.
-    if (this.entite?.enCours) return;
+    if (this.entite?.enCours || this.geste?.enCours) return;
     this.dessiner(fiche);
   }
 
@@ -242,7 +250,7 @@ export class PanneauFicheCommunaute {
     }
     corps.prepend(outils);
     corps.append(...sections);
-    if (!c.disperseeLe) corps.append(this.agir(c));
+    if (!c.disperseeLe) corps.append(...this.agir(c));
     r.append(corps);
     corps.scrollTop = defilement;
   }
@@ -539,7 +547,22 @@ export class PanneauFicheCommunaute {
   private foi(f: FicheCommunaute): HTMLDetailsElement {
     const s = this.section("Foi et regard sur l'Entité");
     const x = f.foi;
-    if (x.croyance !== null) s.append(el("p", undefined, `Croyance moyenne des adultes en l'invisible : ${x.croyance}/100.`));
+    if (x.croyance !== null) {
+      s.append(el("p", undefined, `Croyance moyenne des adultes en l'invisible : ${x.croyance}/100.`),
+        el("p", undefined, `Regard sur l'invisible (moyennes des adultes) : amour ${x.amour ?? 0}/100, crainte ${x.crainte ?? 0}/100, révolte ${x.revolte ?? 0}/100.`));
+    }
+    if (x.effets.length > 0) {
+      const ul = el("ul", "liste");
+      for (const e of x.effets) ul.append(el("li", "entite", `✦ ${e}`));
+      s.append(el("h4", undefined, "Gestes de l'Entité en cours"), ul);
+    }
+    if (x.souvenirs.length > 0) {
+      const ul = el("ul", "liste");
+      for (const r of x.souvenirs) {
+        ul.append(el("li", undefined, `${r.date} · ${r.texte}${r.faute ? ` (${r.faute})` : ""} : ${r.bienfait ? "un bienfait" : "un châtiment"}, souvenir ${r.force}/100`));
+      }
+      s.append(el("h4", undefined, "Ce qu'on se raconte des gestes de l'Entité"), ul);
+    }
     if (x.religions.length > 0) {
       const ul = el("ul", "liste");
       for (const r of x.religions) ul.append(el("li", undefined, r));
@@ -629,13 +652,14 @@ export class PanneauFicheCommunaute {
     return s;
   }
 
-  /** L'Entité parle ou inspire chaque membre (les gestes sur le groupe viendront en 0.27.1). */
-  private agir(c: Communaute): HTMLElement {
+  /** L'Entité parle ou inspire chaque membre, ou agit sur le groupe. */
+  private agir(c: Communaute): HTMLElement[] {
     if (!this.entite) {
       this.entite = new FormulaireEntite(() => ({
         humains: [], communautes: [c.id], pres: c.figure, communaute: c.id, libelle: `Chaque membre de la ${minuscule(c.nom)}`,
       }));
     }
-    return this.entite.bloc;
+    this.geste ??= new FormulaireGeste(false, () => ({ id: this.id, nom: this.nom }));
+    return [this.entite.bloc, this.geste.bloc];
   }
 }

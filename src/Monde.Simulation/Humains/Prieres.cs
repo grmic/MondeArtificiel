@@ -110,7 +110,8 @@ public sealed partial class Comportement
             var religion = cultes.Get(h.ReligionId);
             var regle = religion?.Enseigne(Precepte.Priere) == true ? 2.0 : 1;
             // Tirage préalable : la plupart des jours, on ne prie pas (et l'on n'évalue pas ses besoins).
-            if (alea.Reel() >= 0.25 * c * regle * (0.6 + 0.8 * h.Ferveur)) continue;
+            // Le révolté cesse de prier (Exline et al., 2011).
+            if (alea.Reel() >= 0.25 * c * regle * (0.6 + 0.8 * h.Ferveur) * (1 - h.Revolte / 100)) continue;
             if (BesoinDePrier(h, tous, maintenant) is not { } b || alea.Reel() >= Math.Min(1, b.Detresse)) continue;
             var ferveur = Math.Clamp(0.5 * c + 0.4 * Math.Min(1, b.Detresse) + 0.2 * h.Ferveur, 0, 1);
             var forte = ferveur >= 0.6 && (b.Vital || b.Detresse >= 1);
@@ -238,6 +239,10 @@ public sealed partial class Comportement
             id = Noter(maintenant, TypeEvenement.Religion, h, x, texte, p.EvenementId != 0 ? p.EvenementId : cause);
         }
         Croyances.Ajouter(h, gain, $"{Il(h)} croit que sa prière a été entendue", id, maintenant, signe: true);
+        // Être entendu fait aimer l'invisible (moins pour une vengeance), un peu plus chez les esprits agréables.
+        if (p.Sujet != SujetPriere.Vengeance)
+            Regards.Ajouter(h, SentimentInvisible.Amour, 0.8 * gain * (0.6 + 0.8 * pe.Agreabilite) * (0.4 + 0.6 * h.Croyance / 100),
+                $"{Il(h)} croit que sa prière a été entendue", id, maintenant, signe: true);
         h.Ferveur = Math.Min(1, h.Ferveur + 0.1 * (1 - h.Ferveur));
         Confier(h, TypeIntime.Croyance, p.CibleId, p.Sujet == SujetPriere.Vengeance ? $"L'invisible a frappé {x?.Nom} pour moi." : "On m'a entendu, quand j'ai prié.",
             30 + 50 * p.Ferveur, id, maintenant, "croyance:priere");

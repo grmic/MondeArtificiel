@@ -71,6 +71,10 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     public IReadOnlyList<LieuSacre>? LieuxSacres { get; init; }
     public IReadOnlyList<Prophetie>? Propheties { get; init; }
 
+    /// <summary>Gestes de l'Entité qui durent encore, et ce que les communautés se racontent de ses gestes visibles (null : aucun).</summary>
+    public IReadOnlyList<EffetEntite>? EffetsEntite { get; init; }
+    public IReadOnlyList<SouvenirEntite>? SouvenirsEntite { get; init; }
+
     /// <summary>Numéro de la prochaine prière (0 : d'après les prières connues).</summary>
     public int ProchainePriere { get; init; }
 }
@@ -171,9 +175,11 @@ public sealed class MondeSimule
             Numeros = _numeros, Comportement = _comportement, Communautes = _communautes,
         };
         _comportement.Catastrophes = _catastrophes;
-        _cultes = new Cultes(etat.Religions, etat.Prieres, etat.LieuxSacres, etat.Propheties);
+        _cultes = new Cultes(etat.Religions, etat.Prieres, etat.LieuxSacres, etat.Propheties, etat.EffetsEntite, etat.SouvenirsEntite);
         if (etat.ProchainePriere > _cultes.ProchainePriere) _cultes.ProchainePriere = etat.ProchainePriere;
         _comportement.Cultes = _social.Cultes = _cultes;
+        // Une famine envoyée par l'Entité pèse encore sur les terres.
+        _comportement.EffetsDuJour(etat.Secondes);
         _noms = _humains.Select(x => x.Nom).ToHashSet();
         _eteint = !_humains.Vivants().Any(x => x.EstVivant);
         _effetsConnus = EffetsConnus();
@@ -252,6 +258,8 @@ public sealed class MondeSimule
                     Prieres = _cultes.Prieres.Select(p => p.Copier()).ToList(),
                     LieuxSacres = _cultes.Lieux.ToList(),
                     Propheties = _cultes.Propheties.ToList(),
+                    EffetsEntite = _cultes.Effets.ToList(),
+                    SouvenirsEntite = _cultes.Souvenirs.ToList(),
                     ProchainePriere = _cultes.ProchainePriere,
                 };
             }
@@ -695,6 +703,8 @@ public sealed class MondeSimule
             Savoirs();
             _social.Humeurs(_humains, _secondes);
             _comportement.Croire(_humains, _secondes);
+            _comportement.Regarder(_humains, _secondes);
+            _comportement.EffetsDuJour(_secondes);
             _comportement.Religions(_humains, _secondes);
             _comportement.Soins(_humains, _secondes);
             _comportement.Arts(_humains, _secondes);
@@ -1071,6 +1081,37 @@ public sealed class MondeSimule
             VerserJournal();
             return texte;
         }
+    }
+
+    /// <summary>
+    /// L'Entité fait un geste sur un humain (<see cref="Gestes.SurHumain"/>) ou sur une communauté. Les bornes de durée et de
+    /// force sont imposées. Renvoie, en mots, ce qui s'est passé, ou pourquoi le geste ne peut avoir lieu.
+    /// </summary>
+    public string Agir(GesteEntite geste, int cibleId, ManiereGeste maniere, int param, double force, double jours)
+    {
+        if (!Enum.IsDefined(geste) || !Enum.IsDefined(maniere)) return "Geste inconnu.";
+        lock (_verrou)
+        {
+            string texte;
+            if (Gestes.SurHumain(geste))
+            {
+                if (cibleId < 1 || cibleId > _humains.Count) return "Cet humain n'existe pas.";
+                texte = _comportement.AgirSur(_humains[cibleId - 1], geste, maniere, param, force, jours, _humains, _secondes);
+            }
+            else
+            {
+                if (cibleId < 1 || cibleId > _communautes.Count) return "Cette communauté n'existe pas.";
+                texte = _comportement.AgirSur(_communautes[cibleId - 1], geste, maniere, param, force, jours, _humains, _secondes);
+            }
+            VerserJournal();
+            return texte;
+        }
+    }
+
+    /// <summary>Gestes de l'Entité qui durent encore, et souvenirs des communautés (copies).</summary>
+    public (List<EffetEntite> Effets, List<SouvenirEntite> Souvenirs) GestesEnCours()
+    {
+        lock (_verrou) return (_cultes.Effets.Where(e => e.Fin > _secondes).ToList(), _cultes.Souvenirs.ToList());
     }
 
     /// <summary>Prières en mémoire : en attente, et celles de l'année écoulée (copies).</summary>
