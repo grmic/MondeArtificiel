@@ -15,6 +15,7 @@ interface Remarquable {
   sexe: string;
   age: number;
   communaute: string | null;
+  communauteId: number;
   vivant: boolean;
   valeur: string;
   detail: string | null;
@@ -40,6 +41,7 @@ export class PanneauRemarquables {
     private readonly ouvrirHumain: (id: number) => void,
     /** Entoure ces humains sur la carte (liste vide : plus personne). */
     private readonly entourer: (ids: number[]) => void,
+    private readonly ouvrirCommunaute: (id: number) => void = () => {},
   ) {
     const tete = el("div", "tete");
     tete.append(el("h2", undefined, "Remarquables"));
@@ -128,9 +130,17 @@ export class PanneauRemarquables {
       const qui = el("button", "lien", r.nom);
       qui.type = "button";
       qui.addEventListener("click", () => this.ouvrirHumain(r.id));
-      const qualite = [`${r.sexe === "femme" ? "femme" : "homme"}, ${r.age} ans`, r.vivant ? null : "mort" + (r.sexe === "femme" ? "e" : ""), r.communaute]
+      const qualite = [`${r.sexe === "femme" ? "femme" : "homme"}, ${r.age} ans`, r.vivant ? null : "mort" + (r.sexe === "femme" ? "e" : "")]
         .filter((x) => x).join(" · ");
-      li.append(qui, ` (${qualite}) : `, el("strong", undefined, r.valeur));
+      li.append(qui, ` (${qualite}`);
+      if (r.communaute && r.communauteId > 0) {
+        const groupe = el("button", "lien", r.communaute);
+        groupe.type = "button";
+        groupe.title = "Ouvrir la fiche de sa communauté";
+        groupe.addEventListener("click", () => this.ouvrirCommunaute(r.communauteId));
+        li.append(" · ", groupe);
+      }
+      li.append(") : ", el("strong", undefined, r.valeur));
       if (r.detail) li.append(` · ${r.detail}`);
       return li;
     }));

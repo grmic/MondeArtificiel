@@ -358,7 +358,7 @@ public sealed partial class Comportement
         if (premier)
         {
             // Deux qui trouvent la même chose dans le même pas : la première au monde est celle du premier dans l'ordre.
-            var decouverte = new Decouverte(e, h.Id, _maintenant, id, origine, pieces);
+            var decouverte = new Decouverte(e, h.Id, _maintenant, id, origine, pieces, h.CommunauteId);
             Tour.Differer(() =>
             {
                 if (!Installations.Decouvertes.Exists(d => d.Effet == decouverte.Effet && Lois.Structure(d.Pieces) == structure)) Installations.Decouvertes.Add(decouverte);

@@ -76,6 +76,29 @@ public sealed partial class DepotMonde
             """);
     }
 
+    /// <summary>
+    /// Migration vers la version 29 (fiche Communauté) : communauté de naissance de chaque humain et communauté de l'inventeur
+    /// de chaque découverte, retrouvées dans le journal (la naissance et la découverte y sont notées avec la communauté du moment).
+    /// </summary>
+    private static void MigrerVersion29(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        if (!Colonnes(connexion, transaction, "humains").Contains("communaute_naissance"))
+        {
+            Executer(connexion, transaction, """
+                ALTER TABLE humains ADD COLUMN communaute_naissance INTEGER NOT NULL DEFAULT 0;
+                UPDATE humains SET communaute_naissance = COALESCE(
+                    (SELECT j.communaute FROM journal j WHERE j.humain = humains.id AND j.type = 0 ORDER BY j.id LIMIT 1), 0);
+                """);
+        }
+        if (!Colonnes(connexion, transaction, "decouvertes").Contains("communaute"))
+        {
+            Executer(connexion, transaction, """
+                ALTER TABLE decouvertes ADD COLUMN communaute INTEGER NOT NULL DEFAULT 0;
+                UPDATE decouvertes SET communaute = COALESCE((SELECT j.communaute FROM journal j WHERE j.id = decouvertes.evenement), 0);
+                """);
+        }
+    }
+
     /// <summary>Migration vers la version 20 : objets faits de plusieurs pièces.</summary>
     private static void MigrerVersion20(SqliteConnection connexion, SqliteTransaction transaction)
     {
@@ -251,12 +274,12 @@ public sealed partial class DepotMonde
             while (l.Read()) huttes.Add(new Hutte(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetDouble(3), l.GetInt64(4), l.GetInt32(5), l.GetInt64(6)));
         }
         var decouvertes = new List<Decouverte>();
-        commande.CommandText = "SELECT effet, humain, le, evenement, origine, pieces FROM decouvertes ORDER BY rang;";
+        commande.CommandText = "SELECT effet, humain, le, evenement, origine, pieces, communaute FROM decouvertes ORDER BY rang;";
         using (var l = commande.ExecuteReader())
         {
             while (l.Read())
             {
-                decouvertes.Add(new Decouverte((Effet)l.GetInt32(0), l.GetInt32(1), l.GetInt64(2), l.GetInt64(3), (OrigineSavoir)l.GetInt32(4), l.GetString(5)));
+                decouvertes.Add(new Decouverte((Effet)l.GetInt32(0), l.GetInt32(1), l.GetInt64(2), l.GetInt64(3), (OrigineSavoir)l.GetInt32(4), l.GetString(5), l.GetInt32(6)));
             }
         }
         var oeuvres = new List<Oeuvre>();
@@ -284,13 +307,13 @@ public sealed partial class DepotMonde
             "$i", "$x", "$y", "$s", "$b", "$p", "$e");
         foreach (var h in etat.Huttes ?? []) Lancer(huttes, h.Id, h.X, h.Y, h.Solidite, h.BatieLe, h.BatisseurId, h.EvenementId);
         using var decouvertes = Preparer(connexion, transaction,
-            "INSERT INTO decouvertes (rang, effet, humain, le, evenement, origine, pieces) VALUES ($r, $e, $h, $l, $ev, $o, $p);",
-            "$r", "$e", "$h", "$l", "$ev", "$o", "$p");
+            "INSERT INTO decouvertes (rang, effet, humain, le, evenement, origine, pieces, communaute) VALUES ($r, $e, $h, $l, $ev, $o, $p, $c);",
+            "$r", "$e", "$h", "$l", "$ev", "$o", "$p", "$c");
         var liste = etat.Decouvertes ?? [];
         for (var r = 0; r < liste.Count; r++)
         {
             var d = liste[r];
-            Lancer(decouvertes, r, (int)d.Effet, d.HumainId, d.Le, d.EvenementId, (int)d.Origine, d.Pieces);
+            Lancer(decouvertes, r, (int)d.Effet, d.HumainId, d.Le, d.EvenementId, (int)d.Origine, d.Pieces, d.CommunauteId);
         }
         using var oeuvres = Preparer(connexion, transaction,
             "INSERT INTO oeuvres (id, x, y, auteur, le, motif, description, evenement, communaute) VALUES ($i, $x, $y, $a, $l, $m, $d, $e, $c);",

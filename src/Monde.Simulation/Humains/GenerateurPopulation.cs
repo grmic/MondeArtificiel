@@ -80,6 +80,7 @@ public static class GenerateurPopulation
             Sexe = sexe,
             PartenaireId = 0,
             MereId = mere.Id,
+            CommunauteNaissance = mere.CommunauteId,
             PereId = pere?.Id ?? 0,
             Emplacement = mere.Emplacement,
             Naissance = maintenant,

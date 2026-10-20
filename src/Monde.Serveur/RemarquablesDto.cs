@@ -6,7 +6,7 @@ namespace Monde.Serveur;
 public sealed record CritereRemarquableDto(string Cle, string Libelle, bool Bas);
 
 /// <summary>Un humain remarquable selon un critère : son rang, sa valeur en mots, et un détail éventuel.</summary>
-public sealed record RemarquableDto(int Rang, int Id, string Nom, string Sexe, int Age, string? Communaute, bool Vivant, string Valeur, string? Detail);
+public sealed record RemarquableDto(int Rang, int Id, string Nom, string Sexe, int Age, string? Communaute, bool Vivant, string Valeur, string? Detail, int CommunauteId = 0);
 
 /// <summary>
 /// Les humains hors du commun, selon un critère : intelligence et aptitudes (échelle des QI), karma, croyance, découvertes,
@@ -104,7 +104,7 @@ public static class Remarquables
         return tries.ThenBy(x => x.H.Id).Take(Nombre)
             .Select((x, i) => new RemarquableDto(i + 1, x.H.Id, x.H.Nom, x.H.Sexe == Sexe.Femme ? "femme" : "homme", (int)comptes.Age(x.H),
                 x.H.CommunauteId != 0 ? noms.GetValueOrDefault(x.H.CommunauteId) : null, x.H.EstVivant,
-                critere.Texte(x.H, comptes, x.V), critere.Detail?.Invoke(x.H, comptes) is { Length: > 0 } d ? d : null))
+                critere.Texte(x.H, comptes, x.V), critere.Detail?.Invoke(x.H, comptes) is { Length: > 0 } d ? d : null, x.H.CommunauteId))
             .ToList();
     }
 }

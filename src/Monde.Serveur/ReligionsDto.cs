@@ -5,13 +5,14 @@ namespace Monde.Serveur;
 
 /// <summary>Une prière, telle que l'Entité la voit ; <see cref="Exaucable"/> : en attente, elle peut l'exaucer.</summary>
 public sealed record PriereDto(int Id, string Date, int Humain, string Nom, string? Communaute, string Sujet, int Cible, string? NomCible,
-    int Ferveur, bool Forte, string? Religion, string Texte, string Issue, string? IssueDate, string? Conclusion, long Evenement, bool Exaucable);
+    int Ferveur, bool Forte, string? Religion, string Texte, string Issue, string? IssueDate, string? Conclusion, long Evenement, bool Exaucable,
+    int CommunauteId = 0);
 
 /// <summary>Un précepte d'une religion : ce que disent les fidèles, et d'où il vient (connu de l'Entité seule).</summary>
 public sealed record DogmeDto(string Texte, string Origine, bool DeLEntite, string Date, long Evenement);
 
 /// <summary>Un fidèle qui porte un rôle : prophète ou prêtre.</summary>
-public sealed record PorteurDto(int Id, string Nom, string Role, string? Source, int Miracles, string? Communaute, bool Vivant);
+public sealed record PorteurDto(int Id, string Nom, string Role, string? Source, int Miracles, string? Communaute, bool Vivant, int CommunauteId = 0);
 
 /// <summary>Une religion, ses préceptes, ses fidèles et ceux qui la portent.</summary>
 public sealed record ReligionDto(int Id, string Nom, string Sens, string Naissance, int Fondateur, string NomFondateur, string FondeeLe,
@@ -69,7 +70,7 @@ public static class Religions
         };
         return new PriereDto(p.Id, Date(p.Le), h.Id, h.Nom, communautes.GetValueOrDefault(h.CommunauteId), Cultes.Dire(p.Sujet), p.CibleId, x?.Nom,
             (int)Math.Round(100 * p.Ferveur), p.Forte, r is null ? null : r.Nom, texte, Cultes.Dire(p.Issue), p.IssueLe > 0 ? Date(p.IssueLe) : null,
-            p.Conclusion, p.EvenementId, p.Issue == IssuePriere.EnAttente && h.EstVivant && p.Sujet != SujetPriere.Remerciement);
+            p.Conclusion, p.EvenementId, p.Issue == IssuePriere.EnAttente && h.EstVivant && p.Sujet != SujetPriere.Remerciement, h.CommunauteId);
     }
 
     /// <summary>Toutes les religions, les vivantes d'abord (les plus suivies en tête).</summary>
@@ -86,7 +87,7 @@ public static class Religions
             var f = fideles.GetValueOrDefault(r.Id) ?? [];
             var porteurs = humains.Where(h => h.ReligionId == r.Id && h.Role != RoleReligieux.Aucun)
                 .Select(h => new PorteurDto(h.Id, h.Nom, Role(h)!, h.Role == RoleReligieux.Prophete ? Cultes.Dire(h.SourceProphete) : null, h.Miracles,
-                    communautes.GetValueOrDefault(h.CommunauteId), h.EstVivant)).ToList();
+                    communautes.GetValueOrDefault(h.CommunauteId), h.EstVivant, h.CommunauteId)).ToList();
             var parCommunaute = f.Where(h => h.CommunauteId != 0).GroupBy(h => h.CommunauteId).OrderByDescending(g => g.Count())
                 .Select(g => $"{communautes.GetValueOrDefault(g.Key, "?")} ({g.Count()})").ToList();
             var sansGroupe = f.Count(h => h.CommunauteId == 0);

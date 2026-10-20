@@ -218,6 +218,8 @@ export class PanneauFiche {
   private entite: FormulaireEntite | null = null;
   private communaute = 0;
   private nomCourant = "";
+  /** Fiche d'où l'on vient (une communauté), pour le bouton « retour » : fourni par la page, oublié à la fermeture. */
+  retour: { libelle: string; aller: () => void } | null = null;
 
   constructor(
     private readonly racine: HTMLElement,
@@ -250,6 +252,7 @@ export class PanneauFiche {
   fermer(): void {
     window.clearInterval(this.minuteur);
     this.id = 0;
+    this.retour = null;
     this.racine.hidden = true;
     this.surChoix(0);
   }
@@ -323,6 +326,13 @@ export class PanneauFiche {
     r.append(tete);
 
     const corps = el("div", "corps");
+    if (this.retour) {
+      const retour = this.retour;
+      const b = el("button", "lien retour", `← ${retour.libelle}`);
+      b.type = "button";
+      b.addEventListener("click", () => retour.aller());
+      corps.append(b);
+    }
     const age = h.age < 2 ? `${Math.round(h.age * 12)} mois` : `${Math.floor(h.age)} ans`;
     const etat = h.vivant ? `${h.activite}${h.malade ? " · malade" : ""}${h.enceinte ? " · enceinte" : ""}` : `mort ${h.causeDeMort ?? ""}`;
     corps.append(el("p", "resume", `${h.sexe === "femme" ? "Femme" : "Homme"}, ${age} · ${etat}`));

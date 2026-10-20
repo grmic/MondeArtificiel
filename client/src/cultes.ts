@@ -20,10 +20,13 @@ export interface Priere {
   conclusion: string | null;
   evenement: number;
   exaucable: boolean;
+  communauteId: number;
 }
 
 interface Dogme { texte: string; origine: string; deLEntite: boolean; date: string; evenement: number }
-interface Porteur { id: number; nom: string; role: string; source: string | null; miracles: number; communaute: string | null; vivant: boolean }
+interface Porteur {
+  id: number; nom: string; role: string; source: string | null; miracles: number; communaute: string | null; vivant: boolean; communauteId: number;
+}
 interface Religion {
   id: number; nom: string; sens: string; naissance: string; fondateur: number; nomFondateur: string; fondeeLe: string; parent: string | null;
   communaute: string | null; fideles: number; fidelesMax: number; ferveur: number; eteinteLe: string | null; gestes: string | null;
@@ -32,6 +35,23 @@ interface Religion {
 export interface LieuSacre { id: number; x: number; y: number; raison: string; religion: string | null }
 
 const ACTUALISATION_MS = 10000;
+
+/** Ouvre la fiche d'une communauté : fourni par la page au démarrage. */
+let ouvrirCommunaute: (id: number) => void = () => {};
+
+export function definirOuvrirCommunaute(ouvrir: (id: number) => void): void {
+  ouvrirCommunaute = ouvrir;
+}
+
+/** Nom de communauté cliquable (sa fiche), ou simple texte sans identifiant. */
+function lienCommunaute(nom: string, id: number): HTMLElement | string {
+  if (id <= 0) return nom;
+  const b = el("button", "lien", nom);
+  b.type = "button";
+  b.title = "Ouvrir la fiche de la communauté";
+  b.addEventListener("click", () => ouvrirCommunaute(id));
+  return b;
+}
 
 /** Tête d'une fenêtre latérale : titre et bouton de fermeture. */
 function tete(titre: string, fermer: () => void): HTMLElement {
@@ -51,7 +71,9 @@ export function lignePriere(p: Priere, ouvrirHumain: (id: number) => void, exauc
   const qui = el("button", "lien", p.nom);
   qui.type = "button";
   qui.addEventListener("click", () => ouvrirHumain(p.humain));
-  li.append(`${p.date} · `, qui, p.communaute ? ` (${p.communaute})` : "", ` prie pour ${p.texte}`);
+  li.append(`${p.date} · `, qui);
+  if (p.communaute) li.append(" (", lienCommunaute(p.communaute, p.communauteId), ")");
+  li.append(` prie pour ${p.texte}`);
   li.append(el("span", "discret", ` · ferveur ${p.ferveur}/100${p.forte ? " · forte" : ""}${p.religion ? ` · ${p.religion}` : ""}`));
   const issue = el("span", p.issue === "en attente" ? "issue attente" : "issue", ` · ${p.issue}${p.issueDate ? ` le ${p.issueDate}` : ""}`);
   li.append(issue);
@@ -231,7 +253,9 @@ export class PanneauReligions {
         const ul = el("ul", "liste");
         for (const x of r.porteurs) {
           const li = el("li", x.vivant ? undefined : "discret");
-          li.append(this.lien(x.id, x.nom), ` : ${x.role}${x.source ? ` (${x.source})` : ""}${x.miracles > 0 ? `, ${x.miracles} miracle${x.miracles > 1 ? "s" : ""} attribué${x.miracles > 1 ? "s" : ""}` : ""}${x.communaute ? ` · ${x.communaute}` : ""}${x.vivant ? "" : " · mort"}`);
+          li.append(this.lien(x.id, x.nom), ` : ${x.role}${x.source ? ` (${x.source})` : ""}${x.miracles > 0 ? `, ${x.miracles} miracle${x.miracles > 1 ? "s" : ""} attribué${x.miracles > 1 ? "s" : ""}` : ""}`);
+          if (x.communaute) li.append(" · ", lienCommunaute(x.communaute, x.communauteId));
+          if (!x.vivant) li.append(" · mort");
           ul.append(li);
         }
         d.append(el("h4", undefined, "Ceux qui la portent"), ul);

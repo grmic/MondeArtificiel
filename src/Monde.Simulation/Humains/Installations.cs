@@ -12,7 +12,8 @@ public sealed record Hutte(int Id, int X, int Y, double Solidite, long BatieLe, 
 
 /// <summary>Première fois qu'un effet a été obtenu dans le monde : par qui, quand, comment.</summary>
 /// <param name="Pieces">Pour un objet assemblé : ses pièces (voir <see cref="Assemblage"/>).</param>
-public sealed record Decouverte(Effet Effet, int HumainId, long Le, long EvenementId, OrigineSavoir Origine, string Pieces = "");
+/// <param name="CommunauteId">Communauté de l'inventeur au moment de la découverte (0 : aucune).</param>
+public sealed record Decouverte(Effet Effet, int HumainId, long Le, long EvenementId, OrigineSavoir Origine, string Pieces = "", int CommunauteId = 0);
 
 /// <summary>Ce que les humains ont bâti et allumé dans le monde, et la chronologie de leurs découvertes.</summary>
 public sealed class Installations

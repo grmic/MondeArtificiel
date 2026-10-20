@@ -528,16 +528,22 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
         _ => "indifférente",
     };
 
-    public static List<CommunauteDto> Toutes(ServiceMonde service)
+    public static List<CommunauteDto> Toutes(ServiceMonde service) => Lister(service, null);
+
+    /// <summary>Une seule communauté (null si elle n'existe pas).</summary>
+    public static CommunauteDto? Une(ServiceMonde service, int id, (long, List<Humain>)? instantane = null) =>
+        Lister(service, id, instantane).FirstOrDefault();
+
+    private static List<CommunauteDto> Lister(ServiceMonde service, int? seule, (long, List<Humain>)? instantane = null)
     {
         var monde = service.Monde;
-        var (maintenant, humains) = monde.InstantaneHumains();
+        var (maintenant, humains) = instantane ?? monde.InstantaneHumains();
         var parCommunaute = humains.Where(h => h.EstVivant && h.CommunauteId != 0).ToLookup(h => h.CommunauteId);
         var toutes = monde.Communautes();
         var relations = monde.Relations();
         var guerres = monde.Guerres();
         var oeuvres = monde.Oeuvres().ToLookup(o => o.CommunauteId);
-        return toutes
+        return toutes.Where(c => seule is null || c.Id == seule)
             .OrderBy(c => c.DisperseeLe is null ? 0 : 1).ThenByDescending(c => parCommunaute[c.Id].Count()).ThenBy(c => c.Id)
             .Select(c =>
             {

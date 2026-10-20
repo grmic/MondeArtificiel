@@ -5,9 +5,10 @@ import { PanneauCommunautes } from "./communautes";
 import { PanneauDecouvertes } from "./decouvertes";
 import { PanneauDemographie } from "./demographie";
 import { PanneauRemarquables } from "./remarquables";
-import { PanneauPrieres, PanneauReligions } from "./cultes";
+import { PanneauPrieres, PanneauReligions, definirOuvrirCommunaute } from "./cultes";
 import { PanneauConfiguration, type Reglages } from "./configuration";
 import { definirLiensNoms, PanneauFiche } from "./fiche";
+import { PanneauFicheCommunaute } from "./fichecommunaute";
 import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
 import { OutilMesure, PanneauMonde } from "./monde";
@@ -138,31 +139,44 @@ async function demarrer(): Promise<void> {
 
   // Clic sur un humain : sa fiche. Le journal s'ouvre depuis la barre du haut.
   let communautes: PanneauCommunautes | undefined = undefined;
-  const fiche = new PanneauFiche(element("#fiche"), (id) => nomsParId.get(id) ?? "?", (id) => vue.selectionner(id),
-    (id) => {
-      journal.fermer();
-      void communautes?.ouvrir(id);
-    });
-  const territoires = new PanneauTerritoires(element("#panneauTerritoires"), vue, (id) => {
-    journal.fermer();
-    void communautes?.ouvrir(id);
-  });
+  let ficheCommunaute: PanneauFicheCommunaute | undefined = undefined;
+  /** La fiche d'une communauté prend la place de celle de l'humain ; un bouton « retour » ramène à celle d'où l'on vient. */
+  const ouvrirCommunaute = (id: number) => {
+    const humain = fiche.courant;
+    fiche.fermer();
+    if (ficheCommunaute) {
+      ficheCommunaute.retour = humain ? { libelle: `fiche de ${nomsParId.get(humain) ?? "?"}`, aller: () => void fiche.ouvrir(humain) } : null;
+      void ficheCommunaute.ouvrir(id);
+    }
+  };
+  const fiche = new PanneauFiche(element("#fiche"), (id) => nomsParId.get(id) ?? "?", (id) => {
+    vue.selectionner(id);
+    // Une fiche d'humain qui s'ouvre ferme celle de la communauté (elles occupent la même place).
+    if (id) ficheCommunaute?.fermer();
+  }, (id) => ouvrirCommunaute(id));
+  const territoires = new PanneauTerritoires(element("#panneauTerritoires"), vue, (id) => ouvrirCommunaute(id));
+  const suivreCommunaute = (id: number, nom: string) => {
+    communautes?.fermer();
+    journal.suivreCommunaute(id, nom);
+  };
+  const montrerTerres = (id: number) => {
+    territoires.choisir(id);
+    if (!territoires.ouvert) void territoires.ouvrir();
+  };
+  ficheCommunaute = new PanneauFicheCommunaute(element("#ficheCommunaute"), (id) => {
+    const c = ficheCommunaute?.courant ?? 0;
+    const nom = ficheCommunaute?.nom ?? "";
+    fiche.retour = c ? { libelle: `fiche de la ${nom.charAt(0).toLowerCase()}${nom.slice(1)}`, aller: () => ouvrirCommunaute(c) } : null;
+    void fiche.ouvrir(id);
+  }, (ids) => vue.surligner(ids), suivreCommunaute, montrerTerres, (x, y) => vue.montrer(x, y));
   communautes = new PanneauCommunautes(element("#communautes"), (ids) => vue.surligner(ids), (id) => void fiche.ouvrir(id),
-    (id, nom) => {
-      communautes?.fermer();
-      journal.suivreCommunaute(id, nom);
-    },
-    (id) => {
-      territoires.choisir(id);
-      if (!territoires.ouvert) void territoires.ouvrir();
-    });
+    suivreCommunaute, montrerTerres, (id) => ouvrirCommunaute(id));
   communautes.surChoix = (id) => territoires.choisir(id);
   element("#boutonTerritoires").addEventListener("click", () => territoires.basculer());
 
   const catastrophes = new PanneauCatastrophes(element("#catastrophes"), vue, (id) => {
     catastrophes.fermer();
-    journal.fermer();
-    void communautes?.ouvrir(id);
+    ouvrirCommunaute(id);
   }, (message) => (infos.textContent = message));
   new BandeauAlertes(element("#alerte"), (id) => {
     journal.fermer();
@@ -200,15 +214,16 @@ async function demarrer(): Promise<void> {
     void catastrophes.ouvrir(id);
   }, (id) => {
     demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
-    void communautes?.ouvrir(id);
+    ouvrirCommunaute(id);
   });
   const decouvertes = new PanneauDecouvertes(element("#decouvertes"), (id) => void fiche.ouvrir(id));
   const remarquables = new PanneauRemarquables(element("#remarquables"), (id) => {
     vue.selectionner(id);
     void fiche.ouvrir(id);
-  }, (ids) => vue.surligner(ids));
+  }, (ids) => vue.surligner(ids), (id) => {
+    remarquables.fermer();
+    ouvrirCommunaute(id);
+  });
   element("#boutonRemarquables").addEventListener("click", () => {
     journal.fermer();
     communautes?.fermer();
@@ -227,6 +242,11 @@ async function demarrer(): Promise<void> {
     vue.selectionner(id);
     void fiche.ouvrir(id);
   }, (lieux) => vue.marquerLieuxSacres(lieux));
+  definirOuvrirCommunaute((id) => {
+    prieres.fermer();
+    religions.fermer();
+    ouvrirCommunaute(id);
+  });
   // Prières et religions occupent la place des autres fenêtres latérales : en ouvrir une autre les ferme.
   for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
     if (b.id !== "boutonPrieres") b.addEventListener("click", () => prieres.fermer());
@@ -363,6 +383,7 @@ async function demarrer(): Promise<void> {
   // Nouveau monde : demandé depuis la configuration, annoncé par le serveur à tous les navigateurs ouverts.
   connexion.on("MondeReinitialise", (graine: number) => {
     fiche.fermer();
+    ficheCommunaute?.fermer();
     territoires.fermer();
     communautes?.fermer();
     catastrophes.fermer();

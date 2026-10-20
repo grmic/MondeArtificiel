@@ -398,6 +398,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Communautés actives puis dispersées, avec leurs membres.</summary>
     public List<CommunauteDto> Communautes() => CommunauteDto.Toutes(service);
 
+    /// <summary>Fiche d'une communauté, rangée par thème (null si elle n'existe pas).</summary>
+    public FicheCommunauteDto? FicheCommunaute(int id) => FicheCommunauteDto.Depuis(service, id);
+
     /// <summary>Terres des communautés : maintenant (secondes absentes) ou à une date archivée (début de saison).</summary>
     public TerritoiresDto? Territoires(long? secondes) =>
         secondes is { } s ? (s < 0 ? null : Serveur.Territoires.Archives(service, s)) : Serveur.Territoires.Actuels(service);
