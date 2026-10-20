@@ -86,8 +86,8 @@ const PROVOQUABLES: [string, string, number, string][] = [
 ];
 
 /**
- * Catastrophes et phénomènes du monde : en cours d'abord, puis l'histoire ; un clic montre les terres touchées sur la carte.
- * En bas : la géologie du continent (failles, volcans), les maladies apparues, et ce que l'Entité peut provoquer.
+ * Catastrophes et phénomènes du monde. En tête, ce que l'Entité peut provoquer ; puis ce qui est en cours, l'histoire
+ * (un clic montre les terres touchées sur la carte), les maladies apparues et la géologie du continent (failles, volcans).
  */
 export class PanneauCatastrophes {
   private liste: CatastropheVue[] = [];
@@ -118,7 +118,7 @@ export class PanneauCatastrophes {
     tete.append(fermer);
     racine.append(tete, this.corps);
     [this.entite, this.boutonLieu, this.boutonProvoquer] = this.formulaireEntite();
-    this.corps.append(this.contenu, this.entite);
+    this.corps.append(this.entite, this.contenu);
   }
 
   get ouvert(): boolean {
