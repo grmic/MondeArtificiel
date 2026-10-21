@@ -57,7 +57,8 @@ public sealed record VieCommunauteDto(int Huttes, int Foyers, IReadOnlyList<Pers
 /// <param name="Effets">Gestes de l'Entité qui pèsent encore sur elle.</param>
 /// <param name="Souvenirs">Ce qu'elle se raconte des gestes visibles de l'Entité.</param>
 public sealed record FoiCommunauteDto(int? Croyance, IReadOnlyList<string> Religions, IReadOnlyList<PorteurDto> Porteurs, IReadOnlyList<string> Lieux,
-    IReadOnlyList<PriereDto> Prieres, int? Amour, int? Crainte, int? Revolte, IReadOnlyList<string> Effets, IReadOnlyList<SouvenirDto> Souvenirs);
+    IReadOnlyList<PriereDto> Prieres, int? Amour, int? Crainte, int? Revolte, IReadOnlyList<string> Effets, IReadOnlyList<SouvenirDto> Souvenirs,
+    BilanPrieresDto? Bilan = null);
 
 /// <summary>Un geste visible de l'Entité dont la communauté se souvient (force 0 à 100 : il s'efface au fil des générations).</summary>
 public sealed record SouvenirDto(string Date, string Texte, bool Bienfait, int Force, string? Faute, long Evenement);
@@ -375,7 +376,8 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
                 .Select(l => $"{l.Raison}{(l.ReligionId >= 1 && l.ReligionId <= religions.Count ? $" ({religions[l.ReligionId - 1].Nom})" : "")}").ToList()
             : [];
         var ids = membres.Select(h => h.Id).ToHashSet();
-        var prieres = Serveur.Religions.Prieres(service, enAttente: false, limite: 1000).Where(p => ids.Contains(p.Humain)).Take(12).ToList();
+        var prieres = Serveur.Religions.Prieres(service, enAttente: false, limite: 1000)
+            .Where(p => p.CollectiveId == id || (p.CollectiveId == 0 && ids.Contains(p.Humain))).Take(12).ToList();
         int? Moyenne(Func<Humain, double> f) => adultes.Count == 0 ? null : (int)Math.Round(adultes.Average(f));
         var (gestes, souvenirs) = monde.GestesEnCours();
         var effets = gestes.Where(e => e.CommunauteId == id).Select(e => e.Geste switch
@@ -395,6 +397,6 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
                 _ => null,
             }, s.EvenementId)).ToList();
         return new FoiCommunauteDto(Moyenne(h => h.Croyance), parts, porteurs, proches, prieres,
-            Moyenne(h => h.Amour), Moyenne(h => h.Crainte), Moyenne(h => h.Revolte), effets, recits);
+            Moyenne(h => h.Amour), Moyenne(h => h.Crainte), Moyenne(h => h.Revolte), effets, recits, Serveur.Religions.Bilan(service, ids, id));
     }
 }

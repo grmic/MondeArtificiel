@@ -1084,6 +1084,19 @@ public sealed class MondeSimule
     }
 
     /// <summary>
+    /// L'Entité refuse une prière en attente, en secret ou par un signe. Renvoie, en mots, ce qui s'est passé.
+    /// </summary>
+    public string Refuser(int priereId, bool signe)
+    {
+        lock (_verrou)
+        {
+            var texte = _comportement.Refuser(priereId, signe, _humains, _secondes);
+            VerserJournal();
+            return texte;
+        }
+    }
+
+    /// <summary>
     /// L'Entité fait un geste sur un humain (<see cref="Gestes.SurHumain"/>) ou sur une communauté. Les bornes de durée et de
     /// force sont imposées. Renvoie, en mots, ce qui s'est passé, ou pourquoi le geste ne peut avoir lieu.
     /// </summary>

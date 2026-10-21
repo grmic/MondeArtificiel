@@ -47,6 +47,7 @@ public sealed partial class Comportement
         _tous = tous;
         var vivants = tous.Vivants().Where(h => h.EstVivant && !h.EstBebe(maintenant)).ToList();
         Prier(vivants, tous, maintenant);
+        PrierEnsemble(vivants, maintenant);
         Resoudre(tous, maintenant);
         Ferveurs(vivants, maintenant);
         ProphetesSpontanes(vivants, tous, maintenant);

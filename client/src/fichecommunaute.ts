@@ -2,7 +2,7 @@ import { boutonSuivre } from "./suivis";
 import { connexion } from "./connexion";
 import { distanceDeCases, surfaceDeCases } from "./carte";
 import { blocLangue, courbe, type Communaute, type Taille } from "./communautes";
-import { lignePriere, type Priere } from "./cultes";
+import { ligneBilan, lignePriere, type BilanPrieres, type Priere } from "./cultes";
 import { FormulaireEntite } from "./entite";
 import { FormulaireGeste } from "./gestes";
 import { boutonCause, el, ligneEvenement, replierCauses, signe, type Evenement } from "./fiche";
@@ -39,6 +39,8 @@ interface FicheCommunaute {
     /** Gestes de l'Entité qui pèsent encore sur elle, et ce qu'elle se raconte de ses gestes visibles. */
     effets: string[];
     souvenirs: { date: string; texte: string; bienfait: boolean; force: number; faute: string | null; evenement: number }[];
+    /** Prières de ses membres actuels et prières collectives, depuis le début du monde. */
+    bilan: BilanPrieres | null;
   };
   marquants: Evenement[];
   entite: Evenement[];
@@ -578,6 +580,8 @@ export class PanneauFicheCommunaute {
       s.append(p);
     }
     if (x.lieux.length > 0) s.append(el("p", undefined, `Lieux sacrés proches : ${x.lieux.join(" ; ")}.`));
+    const bilan = ligneBilan(x.bilan, true);
+    if (bilan) s.append(el("h4", undefined, "Prières"), bilan);
     if (x.prieres.length > 0) {
       const ul = el("ul", "liste prieres");
       for (const p of x.prieres) ul.append(lignePriere(p, this.ouvrirHumain));

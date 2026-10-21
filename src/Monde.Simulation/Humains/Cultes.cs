@@ -131,7 +131,8 @@ public sealed class Cultes
         IssuePriere.EnAttente => "en attente",
         IssuePriere.ExauceeParEntite => "exaucée par l'Entité",
         IssuePriere.ExauceeParHasard => "arrivée d'elle-même",
-        IssuePriere.SansReponse => "sans réponse",
+        IssuePriere.SansReponse => "pas entendue",
+        IssuePriere.Refusee => "refusée",
         _ => "rendue",
     };
 

@@ -1,5 +1,5 @@
 import { boutonSuivre } from "./suivis";
-import { lignePriere, type Priere } from "./cultes";
+import { ligneBilan, lignePriere, type BilanPrieres, type Priere } from "./cultes";
 import { connexion } from "./connexion";
 import type { HumainVue } from "./carte";
 import { FormulaireEntite } from "./entite";
@@ -120,7 +120,9 @@ interface Fiche {
   /** Parole : stade, nom dans sa langue, mots les plus sûrs, ordre des mots, autres langues comprises. */
   langage: Langage | null;
   /** Sa religion, sa ferveur (0 à 100), son rôle, et ses prières récentes. */
-  foi: { religion: number; nomReligion: string | null; ferveur: number; role: string | null; source: string | null; miracles: number; prieres: Priere[] } | null;
+  foi: { religion: number; nomReligion: string | null; ferveur: number; role: string | null; source: string | null; miracles: number; prieres: Priere[];
+    bilan: BilanPrieres | null;
+  } | null;
 }
 
 /** Un mot et sa traduction. */
@@ -653,6 +655,8 @@ export class PanneauFiche {
     else p.append("Aucune religion");
     if (f.role) p.append(el("br"), `Rôle : ${f.role}${f.source ? ` (${f.source})` : ""}${f.miracles > 0 ? ` ; miracles attribués : ${f.miracles}` : ""}`);
     corps.append(p);
+    const bilan = ligneBilan(f.bilan, false);
+    if (bilan) corps.append(bilan);
     if (f.prieres.length > 0) {
       const ul = el("ul", "liste prieres");
       for (const x of f.prieres) ul.append(lignePriere(x, (id) => void this.ouvrir(id)));

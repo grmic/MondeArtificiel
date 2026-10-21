@@ -62,7 +62,9 @@ public sealed partial class DepotMonde
                 jusqua     INTEGER NOT NULL,
                 issue      INTEGER NOT NULL,
                 issue_le   INTEGER NOT NULL,
-                conclusion TEXT
+                conclusion TEXT,
+                communaute INTEGER NOT NULL DEFAULT 0,
+                refus      INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS prieres_humain ON prieres (humain);
             CREATE TABLE IF NOT EXISTS lieux_sacres (
@@ -119,7 +121,7 @@ public sealed partial class DepotMonde
         }
         var prieres = new List<Priere>();
         commande.CommandText = """
-            SELECT id, humain, le, sujet, cible, parametre, ferveur, forte, religion, evenement, jusqua, issue, issue_le, conclusion
+            SELECT id, humain, le, sujet, cible, parametre, ferveur, forte, religion, evenement, jusqua, issue, issue_le, conclusion, communaute, refus
             FROM prieres WHERE issue = 0 OR issue_le >= $depuis ORDER BY id;
             """;
         commande.Parameters.Clear();
@@ -133,6 +135,7 @@ public sealed partial class DepotMonde
                     Id = l.GetInt32(0), HumainId = l.GetInt32(1), Le = l.GetInt64(2), Sujet = (SujetPriere)l.GetInt32(3), CibleId = l.GetInt32(4),
                     Parametre = l.GetInt64(5), Ferveur = l.GetDouble(6), Forte = l.GetInt32(7) != 0, ReligionId = l.GetInt32(8), EvenementId = l.GetInt64(9),
                     Jusqua = l.GetInt64(10), Issue = (IssuePriere)l.GetInt32(11), IssueLe = l.GetInt64(12), Conclusion = l.IsDBNull(13) ? null : l.GetString(13),
+                    CommunauteId = l.GetInt32(14), Refus = (RefusPriere)l.GetInt32(15),
                 });
             }
         }
@@ -164,6 +167,35 @@ public sealed partial class DepotMonde
     }
 
     /// <summary>
+    /// Issue de toutes les prières enregistrées d'un humain (<paramref name="humain"/>), ou de membres d'une communauté et de ses
+    /// prières collectives (<paramref name="membres"/>, <paramref name="communaute"/>), pour les bilans des fiches.
+    /// Les prières encore en mémoire, plus récentes, les remplacent par leur numéro.
+    /// </summary>
+    public List<(int Id, bool Collective, IssuePriere Issue, RefusPriere Refus, SujetPriere Sujet)> IssuesPrieres(IReadOnlyCollection<int> membres, int communaute)
+    {
+        var resultat = new List<(int, bool, IssuePriere, RefusPriere, SujetPriere)>();
+        if (membres.Count == 0 && communaute == 0) return resultat;
+        using var connexion = Ouvrir();
+        using var commande = connexion.CreateCommand();
+        // Les numéros viennent du monde (entiers), jamais d'une saisie : ils sont tout de même passés en paramètres.
+        var noms = new List<string>();
+        var k = 0;
+        foreach (var m in membres)
+        {
+            var nom = "$m" + k++;
+            noms.Add(nom);
+            commande.Parameters.AddWithValue(nom, m);
+        }
+        commande.Parameters.AddWithValue("$c", communaute);
+        var dansMembres = noms.Count == 0 ? "0" : $"(communaute = 0 AND humain IN ({string.Join(", ", noms)}))";
+        commande.CommandText = $"SELECT id, communaute, issue, refus, sujet FROM prieres WHERE {dansMembres} OR ($c <> 0 AND communaute = $c);";
+        using var l = commande.ExecuteReader();
+        while (l.Read())
+            resultat.Add((l.GetInt32(0), l.GetInt32(1) != 0, (IssuePriere)l.GetInt32(2), (RefusPriere)l.GetInt32(3), (SujetPriere)l.GetInt32(4)));
+        return resultat;
+    }
+
+    /// <summary>
     /// Enregistre les religions, lieux sacrés et malheurs annoncés (remplacés), et les prières en mémoire (ajoutées ou mises
     /// à jour : les plus anciennes restent en base).
     /// </summary>
@@ -188,13 +220,13 @@ public sealed partial class DepotMonde
             }
         }
         using var prieres = Preparer(connexion, transaction, """
-            INSERT OR REPLACE INTO prieres (id, humain, le, sujet, cible, parametre, ferveur, forte, religion, evenement, jusqua, issue, issue_le, conclusion)
-            VALUES ($i, $h, $l, $s, $c, $p, $f, $fo, $r, $e, $j, $is, $il, $co);
-            """, "$i", "$h", "$l", "$s", "$c", "$p", "$f", "$fo", "$r", "$e", "$j", "$is", "$il", "$co");
+            INSERT OR REPLACE INTO prieres (id, humain, le, sujet, cible, parametre, ferveur, forte, religion, evenement, jusqua, issue, issue_le, conclusion, communaute, refus)
+            VALUES ($i, $h, $l, $s, $c, $p, $f, $fo, $r, $e, $j, $is, $il, $co, $cm, $rf);
+            """, "$i", "$h", "$l", "$s", "$c", "$p", "$f", "$fo", "$r", "$e", "$j", "$is", "$il", "$co", "$cm", "$rf");
         foreach (var p in etat.Prieres ?? [])
         {
             Lancer(prieres, p.Id, p.HumainId, p.Le, (int)p.Sujet, p.CibleId, p.Parametre, p.Ferveur, p.Forte ? 1 : 0, p.ReligionId, p.EvenementId,
-                p.Jusqua, (int)p.Issue, p.IssueLe, p.Conclusion is { } c ? c : DBNull.Value);
+                p.Jusqua, (int)p.Issue, p.IssueLe, p.Conclusion is { } c ? c : DBNull.Value, p.CommunauteId, (int)p.Refus);
         }
         using var lieux = Preparer(connexion, transaction,
             "INSERT INTO lieux_sacres (id, x, y, le, raison, evenement, religion) VALUES ($i, $x, $y, $l, $r, $e, $re);",

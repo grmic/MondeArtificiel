@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 30;
+    public const int VersionSchema = 31;
 
     private readonly string _connexion;
 
@@ -572,6 +572,13 @@ public sealed partial class DepotMonde
         if (actuelle < 29) MigrerVersion29(connexion, transaction);
         // Version 30 : gestes de l'Entité, regard sur l'invisible.
         if (actuelle < 30) MigrerVersion30(connexion, transaction);
+        // Version 31 : prières collectives et prières refusées.
+        if (actuelle < 31)
+        {
+            var prieres = Colonnes(connexion, transaction, "prieres");
+            if (!prieres.Contains("communaute")) Executer(connexion, transaction, "ALTER TABLE prieres ADD COLUMN communaute INTEGER NOT NULL DEFAULT 0;");
+            if (!prieres.Contains("refus")) Executer(connexion, transaction, "ALTER TABLE prieres ADD COLUMN refus INTEGER NOT NULL DEFAULT 0;");
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }

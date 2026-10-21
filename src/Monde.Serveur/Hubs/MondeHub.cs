@@ -315,6 +315,16 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return texte;
     }
 
+    /// <summary>L'Entité refuse une prière en attente, en secret (par défaut) ou par un signe. Renvoie, en mots, ce qui s'est passé.</summary>
+    public async Task<string> Refuser(int priere, bool signe = false)
+    {
+        if (priere < 1) throw new HubException("Prière inconnue.");
+        var texte = service.Monde.Refuser(priere, signe);
+        service.Sauvegarder();
+        await Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde));
+        return texte;
+    }
+
     /// <summary>Gestes que l'Entité peut faire, manières, formes de mort et maladies.</summary>
     public ChoixGestesDto ChoixGestes() => GestesEntite.Choix(service);
 

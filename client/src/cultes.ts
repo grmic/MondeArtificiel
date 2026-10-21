@@ -21,6 +21,35 @@ export interface Priere {
   evenement: number;
   exaucable: boolean;
   communauteId: number;
+  /** Prière collective : nom et numéro de la communauté qui prie (le nom en tête est celui qui la guide). */
+  collective: string | null;
+  collectiveId: number;
+  /** « refusée en secret » ou « refusée par un signe ». */
+  refus: string | null;
+}
+
+/** Bilan de toutes les prières, depuis le début du monde. */
+export interface BilanPrieres {
+  total: number; exauceesEntite: number; exauceesHasard: number; refusees: number; refuseesEnSecret: number; pasEntendues: number;
+  enAttente: number; remerciements: number; collectives: number;
+}
+
+/** Bilan en une ligne : combien de prières, et ce qu'il en est advenu. */
+export function ligneBilan(b: BilanPrieres | null | undefined, collectives: boolean): HTMLElement | null {
+  if (!b || b.total + b.remerciements === 0) return null;
+  const parts = [
+    `${b.total} prière${b.total > 1 ? "s" : ""}`,
+    `exaucées par l'Entité : ${b.exauceesEntite}`,
+    `arrivées d'elles-mêmes : ${b.exauceesHasard}`,
+    `refusées : ${b.refusees}${b.refuseesEnSecret > 0 ? ` (dont ${b.refuseesEnSecret} en secret)` : ""}`,
+    `pas entendues : ${b.pasEntendues}`,
+    `en attente : ${b.enAttente}`,
+  ];
+  if (b.remerciements > 0) parts.push(`remerciements : ${b.remerciements}`);
+  if (collectives && b.collectives > 0) parts.push(`dont prières collectives : ${b.collectives}`);
+  const p = el("p", "bilan-prieres", parts.join(" · "));
+  p.title = "Toutes les prières depuis le début du monde. « Pas entendues » : trop anciennes, ou rien n'est venu.";
+  return p;
 }
 
 interface Dogme { texte: string; origine: string; deLEntite: boolean; date: string; evenement: number }
@@ -66,17 +95,23 @@ function tete(titre: string, fermer: () => void): HTMLElement {
 }
 
 /** Une prière en une ligne : qui, quoi, avec quelle ferveur, ce qu'il en est advenu. */
-export function lignePriere(p: Priere, ouvrirHumain: (id: number) => void, exaucer?: (p: Priere, li: HTMLElement) => void): HTMLLIElement {
+export function lignePriere(p: Priere, ouvrirHumain: (id: number) => void, exaucer?: (p: Priere, li: HTMLElement) => void,
+  refuser?: (p: Priere, li: HTMLElement) => void): HTMLLIElement {
   const li = el("li", p.forte ? "priere forte" : "priere");
   const qui = el("button", "lien", p.nom);
   qui.type = "button";
   qui.addEventListener("click", () => ouvrirHumain(p.humain));
-  li.append(`${p.date} · `, qui);
-  if (p.communaute) li.append(" (", lienCommunaute(p.communaute, p.communauteId), ")");
-  li.append(` prie pour ${p.texte}`);
+  if (p.collective) {
+    li.append(`${p.date} · `, lienCommunaute(p.collective, p.collectiveId), " prie ensemble, guidée par ", qui, `, pour ${p.texte}`);
+  } else {
+    li.append(`${p.date} · `, qui);
+    if (p.communaute) li.append(" (", lienCommunaute(p.communaute, p.communauteId), ")");
+    li.append(` prie pour ${p.texte}`);
+  }
   li.append(el("span", "discret", ` · ferveur ${p.ferveur}/100${p.forte ? " · forte" : ""}${p.religion ? ` · ${p.religion}` : ""}`));
   const issue = el("span", p.issue === "en attente" ? "issue attente" : "issue", ` · ${p.issue}${p.issueDate ? ` le ${p.issueDate}` : ""}`);
   li.append(issue);
+  if (p.refus) li.append(el("span", "issue refus", ` · ${p.refus}`));
   if (p.conclusion) li.append(el("span", "discret", ` (${p.conclusion})`));
   if (p.evenement > 0) li.append(" ", boutonCause(li, p.evenement, "au journal"));
   if (p.exaucable && exaucer) {
@@ -84,6 +119,13 @@ export function lignePriere(p: Priere, ouvrirHumain: (id: number) => void, exauc
     b.type = "button";
     b.title = "L'Entité exauce cette prière : ce qui était demandé arrive.";
     b.addEventListener("click", () => exaucer(p, li));
+    li.append(" ", b);
+  }
+  if (p.exaucable && refuser) {
+    const b = el("button", "refuser", "✕ Refuser");
+    b.type = "button";
+    b.title = "L'Entité refuse cette prière (en secret, ou par un signe si la case « Refuser par un signe » est cochée).";
+    b.addEventListener("click", () => refuser(p, li));
     li.append(" ", b);
   }
   return li;
@@ -95,6 +137,8 @@ export function lignePriere(p: Priere, ouvrirHumain: (id: number) => void, exauc
  */
 export class PanneauPrieres {
   private readonly attente = el("input");
+  /** Refuser par un signe (un rêve, une voix) ; sinon en secret, par défaut. */
+  private readonly signe = el("input");
   private readonly liste = el("ul", "liste prieres");
   private readonly resultat = el("p", "resultat-exaucer");
   private minuteur?: number;
@@ -105,10 +149,15 @@ export class PanneauPrieres {
     const etiquette = el("label", "case-config");
     etiquette.append(this.attente, " En attente seulement");
     this.attente.addEventListener("change", () => void this.charger());
+    this.signe.type = "checkbox";
+    this.signe.checked = false;
+    const etiquetteSigne = el("label", "case-config");
+    etiquetteSigne.append(this.signe, " Refuser par un signe");
+    etiquetteSigne.title = "Coché : celui qui prie (ou toute la communauté) comprend que l'invisible a dit non. Décoché : le refus reste secret, il attend en vain.";
     const corps = el("div", "corps");
     corps.append(
-      el("p", "discret", "Ce que les humains demandent à l'invisible. Seules les prières fortes vont au journal. Personne ne répond, sauf si l'Entité exauce ; ce qui arrive de soi-même, le croyant le prend pour une réponse."),
-      etiquette, this.resultat, this.liste,
+      el("p", "discret", "Ce que les humains demandent à l'invisible. Seules les prières fortes vont au journal. Personne ne répond, sauf si l'Entité exauce ; ce qui arrive de soi-même, le croyant le prend pour une réponse. Une prière trop ancienne n'est plus entendue."),
+      etiquette, etiquetteSigne, this.resultat, this.liste,
     );
     racine.append(tete("Prières", () => this.fermer()), corps);
   }
@@ -137,9 +186,16 @@ export class PanneauPrieres {
   }
 
   private async exaucer(p: Priere, li: HTMLElement): Promise<void> {
-    li.querySelector<HTMLButtonElement>("button.exaucer")?.setAttribute("disabled", "");
+    li.querySelectorAll<HTMLButtonElement>("button.exaucer, button.refuser").forEach((b) => b.setAttribute("disabled", ""));
     const texte = await connexion.invoke<string>("Exaucer", p.id).catch(() => "Le serveur n'a pas répondu.");
-    this.resultat.textContent = `${p.nom} : ${texte}`;
+    this.resultat.textContent = `${p.collective ?? p.nom} : ${texte}`;
+    await this.charger();
+  }
+
+  private async refuser(p: Priere, li: HTMLElement): Promise<void> {
+    li.querySelectorAll<HTMLButtonElement>("button.exaucer, button.refuser").forEach((b) => b.setAttribute("disabled", ""));
+    const texte = await connexion.invoke<string>("Refuser", p.id, this.signe.checked).catch(() => "Le serveur n'a pas répondu.");
+    this.resultat.textContent = `${p.collective ?? p.nom} : ${texte}`;
     await this.charger();
   }
 
@@ -154,7 +210,7 @@ export class PanneauPrieres {
       this.liste.replaceChildren(el("li", "discret", this.attente.checked ? "Aucune prière n'attend de réponse." : "Personne n'a encore prié."));
       return;
     }
-    this.liste.replaceChildren(...liste.map((p) => lignePriere(p, this.ouvrirHumain, (x, li) => void this.exaucer(x, li))));
+    this.liste.replaceChildren(...liste.map((p) => lignePriere(p, this.ouvrirHumain, (x, li) => void this.exaucer(x, li), (x, li) => void this.refuser(x, li))));
   }
 }
 

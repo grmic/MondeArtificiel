@@ -6,7 +6,14 @@ namespace Monde.Serveur;
 /// <summary>Une prière, telle que l'Entité la voit ; <see cref="Exaucable"/> : en attente, elle peut l'exaucer.</summary>
 public sealed record PriereDto(int Id, string Date, int Humain, string Nom, string? Communaute, string Sujet, int Cible, string? NomCible,
     int Ferveur, bool Forte, string? Religion, string Texte, string Issue, string? IssueDate, string? Conclusion, long Evenement, bool Exaucable,
-    int CommunauteId = 0);
+    int CommunauteId = 0, string? Collective = null, int CollectiveId = 0, string? Refus = null);
+
+/// <summary>
+/// Bilan des prières (toutes, depuis le début du monde) : exaucées par l'Entité, arrivées d'elles-mêmes, refusées (en secret ou
+/// par un signe), pas entendues, en attente ; les remerciements à part.
+/// </summary>
+public sealed record BilanPrieresDto(int Total, int ExauceesEntite, int ExauceesHasard, int Refusees, int RefuseesEnSecret, int PasEntendues,
+    int EnAttente, int Remerciements, int Collectives);
 
 /// <summary>Un précepte d'une religion : ce que disent les fidèles, et d'où il vient (connu de l'Entité seule).</summary>
 public sealed record DogmeDto(string Texte, string Origine, bool DeLEntite, string Date, long Evenement);
@@ -23,7 +30,8 @@ public sealed record ReligionDto(int Id, string Nom, string Sens, string Naissan
 public sealed record LieuSacreDto(int Id, int X, int Y, string Raison, string? Religion);
 
 /// <summary>La foi d'un humain, pour sa fiche : sa religion, sa ferveur, son rôle, ses prières récentes.</summary>
-public sealed record FoiDto(int Religion, string? NomReligion, int Ferveur, string? Role, string? Source, int Miracles, IReadOnlyList<PriereDto> Prieres);
+public sealed record FoiDto(int Religion, string? NomReligion, int Ferveur, string? Role, string? Source, int Miracles, IReadOnlyList<PriereDto> Prieres,
+    BilanPrieresDto? Bilan = null);
 
 public static class Religions
 {
@@ -68,9 +76,13 @@ public static class Religions
             SujetPriere.Amour => $"que {x?.Nom} l'aime",
             _ => "rendre grâce",
         };
+        var collective = p.CommunauteId != 0;
         return new PriereDto(p.Id, Date(p.Le), h.Id, h.Nom, communautes.GetValueOrDefault(h.CommunauteId), Cultes.Dire(p.Sujet), p.CibleId, x?.Nom,
-            (int)Math.Round(100 * p.Ferveur), p.Forte, r is null ? null : r.Nom, texte, Cultes.Dire(p.Issue), p.IssueLe > 0 ? Date(p.IssueLe) : null,
-            p.Conclusion, p.EvenementId, p.Issue == IssuePriere.EnAttente && h.EstVivant && p.Sujet != SujetPriere.Remerciement, h.CommunauteId);
+            (int)Math.Round(100 * p.Ferveur), p.Forte, r is null ? null : r.Nom, texte,
+            p.Refus == RefusPriere.Signe ? "refusée par un signe" : Cultes.Dire(p.Issue), p.IssueLe > 0 ? Date(p.IssueLe) : null,
+            p.Conclusion, p.EvenementId,
+            p.Issue == IssuePriere.EnAttente && p.Refus == RefusPriere.Aucun && (collective || h.EstVivant) && p.Sujet != SujetPriere.Remerciement,
+            h.CommunauteId, collective ? communautes.GetValueOrDefault(p.CommunauteId, "?") : null, p.CommunauteId, p.Refus == RefusPriere.Cache ? "refusée en secret" : null);
     }
 
     /// <summary>Toutes les religions, les vivantes d'abord (les plus suivies en tête).</summary>
@@ -120,6 +132,43 @@ public static class Religions
         var prieres = monde.Prieres().Where(p => p.HumainId == h.Id).OrderByDescending(p => p.Id).Take(12)
             .Select(p => Depuis(p, humains, religions, communautes)).ToList();
         return new FoiDto(h.ReligionId, r is null ? null : Titre(r), (int)Math.Round(100 * h.Ferveur), Role(h),
-            h.Role == RoleReligieux.Prophete ? Cultes.Dire(h.SourceProphete) : null, h.Miracles, prieres);
+            h.Role == RoleReligieux.Prophete ? Cultes.Dire(h.SourceProphete) : null, h.Miracles, prieres, Bilan(service, [h.Id], 0));
+    }
+
+    /// <summary>
+    /// Bilan des prières d'humains (prières seuls) et, si <paramref name="communaute"/> n'est pas 0, des prières collectives de
+    /// cette communauté : tout ce qui est en base, remplacé par ce qui est en mémoire (plus récent).
+    /// </summary>
+    public static BilanPrieresDto Bilan(ServiceMonde service, IReadOnlyCollection<int> humains, int communaute)
+    {
+        var issues = new Dictionary<int, (bool Collective, IssuePriere Issue, RefusPriere Refus, SujetPriere Sujet)>();
+        foreach (var (id, collective, issue, refus, sujet) in service.Depot.IssuesPrieres(humains, communaute))
+            issues[id] = (collective, issue, refus, sujet);
+        var ensemble = humains as IReadOnlySet<int> ?? humains.ToHashSet();
+        foreach (var p in service.Monde.Prieres())
+        {
+            if (p.CommunauteId != 0 ? communaute != 0 && p.CommunauteId == communaute : ensemble.Contains(p.HumainId))
+                issues[p.Id] = (p.CommunauteId != 0, p.Issue, p.Refus, p.Sujet);
+        }
+        int exEntite = 0, exHasard = 0, refusees = 0, enSecret = 0, pasEntendues = 0, enAttente = 0, merci = 0, collectives = 0;
+        foreach (var (collective, issue, refus, sujet) in issues.Values)
+        {
+            if (collective) collectives++;
+            if (sujet == SujetPriere.Remerciement) { merci++; continue; }
+            if (refus != RefusPriere.Aucun)
+            {
+                refusees++;
+                if (refus == RefusPriere.Cache) enSecret++;
+                continue;
+            }
+            switch (issue)
+            {
+                case IssuePriere.ExauceeParEntite: exEntite++; break;
+                case IssuePriere.ExauceeParHasard: exHasard++; break;
+                case IssuePriere.SansReponse: pasEntendues++; break;
+                case IssuePriere.EnAttente: enAttente++; break;
+            }
+        }
+        return new BilanPrieresDto(issues.Count - merci, exEntite, exHasard, refusees, enSecret, pasEntendues, enAttente, merci, collectives);
     }
 }

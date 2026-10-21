@@ -35,6 +35,18 @@ public enum IssuePriere : byte
     SansReponse = 3,
     /// <summary>Un remerciement : il n'attend rien.</summary>
     Rendue = 4,
+    /// <summary>L'Entité l'a refusée en le faisant savoir (un rêve, une voix) : il n'attend plus.</summary>
+    Refusee = 5,
+}
+
+/// <summary>Comment l'Entité refuse une prière (choix de zem, 21/10 : caché par défaut).</summary>
+public enum RefusPriere : byte
+{
+    Aucun = 0,
+    /// <summary>Il n'en sait rien : il attend, puis conclut comme si rien n'était venu (ou croit avoir été entendu si le hasard s'en mêle).</summary>
+    Cache = 1,
+    /// <summary>Un signe lui fait comprendre que l'invisible a dit non.</summary>
+    Signe = 2,
 }
 
 /// <summary>
@@ -58,6 +70,12 @@ public sealed class Priere
     public double Ferveur { get; init; }
     public bool Forte { get; init; }
     public int ReligionId { get; init; }
+
+    /// <summary>Prière collective : la communauté qui prie ensemble, conduite par <see cref="HumainId"/> (0 : prière d'un seul).</summary>
+    public int CommunauteId { get; init; }
+
+    /// <summary>Le refus de l'Entité, s'il y en a un.</summary>
+    public RefusPriere Refus { get; set; }
 
     /// <summary>Événement du journal qui la note (0 : prière discrète).</summary>
     public long EvenementId { get; set; }

@@ -272,7 +272,9 @@ h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
 .liste.prieres li { margin: 0.25rem 0; }
 .priere.forte { border-left: 3px solid #e0b84a; padding-left: 4px; }
 .issue.attente { color: #e0b84a; }
-button.exaucer { font-size: 0.85em; padding: 0 6px; }
+button.exaucer, button.refuser { font-size: 0.85em; padding: 0 6px; }
+.issue.refus { color: var(--danger, #b44); }
+p.bilan-prieres { font-size: 0.9em; }
 .resultat-exaucer { font-style: italic; min-height: 1.2em; }
 .religion { margin: 0.4rem 0; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.3rem; }
 .religion.eteinte summary { opacity: 0.6; }

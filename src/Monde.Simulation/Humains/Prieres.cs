@@ -37,6 +37,15 @@ public sealed partial class Comportement
         _ => 0,
     };
 
+    /// <summary>
+    /// Combien de temps on attend, rapporté à la durée ordinaire pour ce qu'on demande (choix de zem, 21/10 : une prière n'est
+    /// pas entendue indéfiniment, et ce qui est vital se garde plus longtemps). On persévère plus quand une vie est en jeu, et
+    /// selon son caractère : les consciencieux tiennent plus longtemps à ce qu'ils ont entrepris (Roberts et al., 2005), les
+    /// fervents espèrent plus longtemps. De 0,6 à 1,4 fois la durée ordinaire, et moitié plus quand c'est vital.
+    /// </summary>
+    internal static double Patience(Humain h, bool vital) =>
+        (0.6 + 0.4 * h.Personnalite.Conscience + 0.4 * h.Ferveur) * (vital ? 1.5 : 1);
+
     /// <summary>Celui que le croyant prie, selon ce que lui ont appris les siens.</summary>
     private string Invisible(Humain h)
     {
@@ -120,7 +129,7 @@ public sealed partial class Comportement
             {
                 Id = cultes.ProchainePriere++, HumainId = h.Id, Le = maintenant, Sujet = b.Sujet, CibleId = b.Cible, Parametre = b.Param,
                 Ferveur = Math.Round(ferveur, 2), Forte = forte, ReligionId = h.ReligionId,
-                Jusqua = maintenant + (long)(JoursDAttente(b.Sujet) * Calendrier.SecondesParJour),
+                Jusqua = maintenant + (long)(JoursDAttente(b.Sujet) * Patience(h, b.Vital) * Calendrier.SecondesParJour),
             };
             h.PrieLe = maintenant;
             var x = b.Cible > 0 ? tous[b.Cible - 1] : null;
@@ -210,6 +219,11 @@ public sealed partial class Comportement
         {
             var p = cultes.Prieres[k];
             if (p.Issue != IssuePriere.EnAttente) continue;
+            if (p.CommunauteId != 0)
+            {
+                ResoudreEnsemble(p, tous, maintenant);
+                continue;
+            }
             var h = tous[p.HumainId - 1];
             if (!h.EstVivant)
             {
@@ -357,6 +371,8 @@ public sealed partial class Comportement
         _tous = tous;
         if (Cultes?.Priere(priereId) is not { } p) return "Cette prière n'existe pas (ou plus).";
         if (p.Issue != IssuePriere.EnAttente) return "Cette prière n'attend plus de réponse.";
+        if (p.Refus != RefusPriere.Aucun) return "Tu as refusé cette prière.";
+        if (p.CommunauteId != 0) return ExaucerEnsemble(p, tous, maintenant);
         var h = tous[p.HumainId - 1];
         if (!h.EstVivant) return $"{h.Nom} est mort{E(h)}.";
         var x = p.CibleId > 0 ? tous[p.CibleId - 1] : null;
