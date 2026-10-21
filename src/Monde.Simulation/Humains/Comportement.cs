@@ -116,6 +116,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         _nageur = PeutNager(h) || h.Nage >= 0.4 && h.Soif >= 60 && h.Froid < 50 || Radeau(h) is not null;
         Ramasser(h);
         ObserverLeFeu(h, tous);
+        DecouvrirLaBraise(h, tous);
         SentirLaFumee(h, tous);
         if (h.EstEnfant(maintenant))
         {
@@ -134,10 +135,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (!h.EstVivant) return;
         if (h.Impulsions.Count > 0) Ressentir(h, tous, maintenant);
         var avant = h.Activite;
+        var (x0, y0) = (h.X, h.Y);
         (_motif, _autre) = (Motif.Aucun, null);
         Decider(h, partenaire, tous, maintenant);
         _nageur = false;
         if (!h.EstVivant) return;
+        EteindreEnPartant(h, x0, y0, tous);
         if (h.Activite != avant && Penseur.Penser(h, _motif, _autre, maintenant) is { } pensee)
         {
             var routine = EstRoutine(h.Activite, _motif);
@@ -574,7 +577,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (!h.EstPetitEnfant(maintenant) && UtiliserSavoirs(h, besoin, valeur, seuil, tous)) return;
 
         // Au calme, le soir : fumer la viande qu'on porte, allumer le feu du camp.
-        if (valeur < seuil && (FumerLaViande(h, tous) || FeuDuSoir(h, tous))) return;
+        if (valeur < seuil && (FumerLaViande(h, tous) || GarderLeFeu(h, tous) || FeuDuSoir(h, tous) || FaireDesReserves(h, tous))) return;
 
         if (valeur >= seuil)
         {
@@ -800,7 +803,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (EauDouceAPortee(h.X, h.Y)) Remplir(h, _tous);
             return;
         }
-        if (BoireALaCalebasse(h)) return;
+        if (BoireALaCache(h, _tous) || BoireALaCalebasse(h)) return;
+        PenserALaCacheDEau(h, _tous);
         var cible = DistanceEau(h.X, h.Y) > RayonPerception(h) ? null
             : Chercher(h, i => EauDouceAPortee(i % carte.Largeur, i / carte.Largeur), _ => 0, scoreMax: 0);
         if (cible is { } c)
@@ -808,7 +812,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             _motif = Motif.Vu;
             Avancer(h, c.X, c.Y, Activite.ChercherEau);
         }
-        else if (!AllerAuSouvenir(h, TypeLieu.Eau, Activite.ChercherEau) && !Retourner(h, recours))
+        else if (!AllerALaReserve(h, true, _tous) && !AllerAuSouvenir(h, TypeLieu.Eau, Activite.ChercherEau) && !Retourner(h, recours))
         {
             _motif = Motif.Inconnu;
             Explorer(h, Activite.ChercherEau);
@@ -884,6 +888,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             }
             return;
         }
+        if (MangerDansLaReserve(h, _tous)) return;
+        PenserAuxProvisions(h, _tous);
         if (Incendier(h, _tous)) return;
         var cible = Chercher(h,
             j => ecosysteme.Plantes[j] >= 1000 || ecosysteme.Gibier[j] >= 2000,
@@ -893,7 +899,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             _motif = Motif.Vu;
             Avancer(h, c.X, c.Y, Activite.ChercherNourriture);
         }
-        else if (!AllerAuSouvenir(h, TypeLieu.Nourriture, Activite.ChercherNourriture) && !Retourner(h, recours))
+        else if (!AllerALaReserve(h, false, _tous) && !AllerAuSouvenir(h, TypeLieu.Nourriture, Activite.ChercherNourriture) && !Retourner(h, recours))
         {
             _motif = Motif.Inconnu;
             Explorer(h, Activite.ChercherNourriture);

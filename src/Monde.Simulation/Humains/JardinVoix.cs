@@ -124,6 +124,16 @@ public static partial class Jardin
                     new($"La prochaine fois que {x} touche à ma part, {il} s'en souviendra.", 0.05 + 2 * Bas(p.Agreabilite)),
                 ];
             }
+            else if (grief is { Motif: MotifGrief.Incendie, VictimeId: > 0 } gi)
+            {
+                var v = humains[gi.VictimeId - 1].Nom;
+                options =
+                [
+                    new($"Le feu de {x} a gagné les herbes, et {v} en a souffert. {Majuscule(il)} aurait dû le garder.", 0.5),
+                    new($"{x} n'a pas voulu ce qui est arrivé à {v}. Mais c'est son feu.", 0.05 + 2 * S(p.Agreabilite)),
+                    new($"Je ne laisserai plus {x} allumer de feu près de nous.", 0.05 + 2 * Bas(p.Agreabilite) + S(p.Nevrosisme)),
+                ];
+            }
             else if (grief is { Motif: MotifGrief.Trahison })
             {
                 options =
@@ -651,6 +661,7 @@ public static partial class Jardin
             MotifGrief.Vol => $"J'ai pris la part de {x}",
             MotifGrief.Meurtre => $"J'ai tué l'un des proches de {x}",
             MotifGrief.Rival => $"J'ai pris à {x} ce qui lui tenait à cœur",
+            MotifGrief.Incendie => $"Mon feu a gagné les herbes et fait du mal aux proches de {x}",
             _ => $"J'ai fait du mal à {x}",
         };
         var cas = culpabilite >= honte && culpabilite > 1.2 ? 1 : honte > 1 ? 2 : 3;

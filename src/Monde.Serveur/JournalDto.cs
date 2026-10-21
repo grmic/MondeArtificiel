@@ -131,6 +131,12 @@ public sealed record RegardDto(double Karma, string KarmaMots, int Croyance, str
 public sealed record MedecineDto(int Soignes, int Gueris, int Perdus, int AccouchementsAides, string? Role, int Renommee,
     string? GuerisseurDepuis, string? ChamanDepuis, string? CharlatanDepuis, string? DesavoueLe, string? Plaie, string? Malediction);
 
+/// <summary>
+/// Le feu et les réserves d'un humain : le feu qu'il porte (null : aucun), depuis quand il est le porteur du feu de son groupe et
+/// combien de fois il l'a porté, ses caches d'eau et de nourriture, et ce qu'il sait du feu.
+/// </summary>
+public sealed record FeuDto(string? Porte, string? PorteurDepuis, int FeuxPortes, IReadOnlyList<string> Caches, IReadOnlyList<string> Lecons);
+
 /// <summary>Un soignant d'une communauté : guérisseur, chaman ou charlatan.</summary>
 public sealed record SoignantDto(int Id, string Nom, string Role, int Gueris, int Perdus);
 
@@ -161,7 +167,8 @@ public sealed record FicheDto(
     RegardDto Regard,
     MedecineDto Medecine,
     LangageDto? Langage = null,
-    FoiDto? Foi = null)
+    FoiDto? Foi = null,
+    FeuDto? Feu = null)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -262,7 +269,23 @@ public sealed record FicheDto(
                 h.RegardSigneLe > 0 ? Date(h.RegardSigneLe) : null),
             Soins(h, humains, maintenant),
             LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore),
-            Religions.Foi(service, h, humains));
+            Religions.Foi(service, h, humains),
+            LireFeu(monde, h));
+    }
+
+    private static readonly Effet[] LeconsDuFeu =
+        [Effet.Braises, Effet.PorteFeu, Effet.FoyerDegage, Effet.PasDansLeVent, Effet.EteindreEnPartant, Effet.BrulisProtecteur];
+
+    private static FeuDto LireFeu(MondeSimule monde, Humain h)
+    {
+        var porte = h.Objets.Find(o => o.Matiere is Matiere.Brandon or Matiere.PorteFeu);
+        var (_, reserves) = monde.BraisesEtReserves();
+        var caches = reserves.Where(r => r.AuteurId == h.Id && r.Kg > 0)
+            .Select(r => $"{Comportement.DecrireReserve(r.Sorte, r.Kg)} en ({r.X}, {r.Y}), {(r.Etat >= 0.8 ? "intacte" : r.Etat >= 0.4 ? "entamée par le temps" : "presque gâtée")}")
+            .ToList();
+        var lecons = LeconsDuFeu.Where(e => h.Savoirs.Exists(s => s.Effet == e && s.Confiance >= 0.4)).Select(Physique.NomEffet).ToList();
+        return new FeuDto(porte is null ? null : Physique.Nom(porte.Matiere), h.PorteurDuFeuDepuis > 0 ? Date(h.PorteurDuFeuDepuis) : null,
+            h.FeuxPortes, caches, lecons);
     }
 
     private static MedecineDto Soins(Humain h, IReadOnlyList<Humain> humains, long maintenant)

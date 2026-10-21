@@ -123,6 +123,8 @@ interface Fiche {
   foi: { religion: number; nomReligion: string | null; ferveur: number; role: string | null; source: string | null; miracles: number; prieres: Priere[];
     bilan: BilanPrieres | null;
   } | null;
+  /** Le feu qu'il porte, s'il est le porteur du feu, ses caches et ses leçons du feu (absent d'un serveur plus ancien). */
+  feu?: { porte: string | null; porteurDepuis: string | null; feuxPortes: number; caches: string[]; lecons: string[] } | null;
 }
 
 /** Un mot et sa traduction. */
@@ -448,6 +450,7 @@ export class PanneauFiche {
     invisible.title = "Ce qu'il éprouve envers l'invisible : l'amour fait obéir de bon gré, la crainte à contrecœur et rend un peu plus honnête, la révolte fait refuser et cesser de prier.";
     corps.append(invisible);
     this.medecine(corps, f.medecine);
+    this.feu(corps, f.feu ?? null);
     this.foi(corps, f.foi);
     this.langage(corps, f.langage);
     if (h.vivant) corps.append(this.formulaireSouffle());
@@ -644,6 +647,28 @@ export class PanneauFiche {
     });
     p.title = "Les guérisons comptées sont celles que les siens lui attribuent, méritées ou non.";
     corps.append(p);
+  }
+
+  /** Section « Feu et réserves » : le feu qu'il porte, s'il est le porteur du feu des siens, ses caches, ce qu'il sait du feu. */
+  private feu(corps: HTMLElement, x: Fiche["feu"] | null): void {
+    if (!x || !x.porte && !x.porteurDepuis && x.feuxPortes === 0 && x.caches.length === 0 && x.lecons.length === 0) return;
+    corps.append(el("h3", undefined, "Feu et réserves"));
+    const p = el("p", "medecine");
+    const lignes: string[] = [];
+    if (x.porte) lignes.push(`Porte le feu : ${x.porte}`);
+    if (x.porteurDepuis) lignes.push(`Porteur du feu des siens depuis le ${x.porteurDepuis}`);
+    if (x.feuxPortes > 0) lignes.push(`A porté le feu ${x.feuxPortes} fois jusqu'à un nouveau foyer`);
+    if (x.lecons.length > 0) lignes.push(`Ce qu'il sait du feu : ${x.lecons.join(", ")}`);
+    lignes.forEach((l, i) => {
+      if (i > 0) p.append(el("br"));
+      p.append(l);
+    });
+    corps.append(p);
+    if (x.caches.length > 0) {
+      const ul = el("ul", "liste");
+      for (const c of x.caches) ul.append(el("li", undefined, c));
+      corps.append(el("h4", undefined, "Ses caches"), ul);
+    }
   }
 
   /** Section « Foi » : sa religion, sa ferveur, son rôle (et d'où vient sa parole, que seule l'Entité sait), ses prières. */

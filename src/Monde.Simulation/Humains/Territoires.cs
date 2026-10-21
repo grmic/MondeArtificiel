@@ -120,7 +120,9 @@ public sealed partial class VieSociale
     private void Disette(Communaute c, List<Humain> groupe, double reserves, Ecosysteme nature, Carte carte, long maintenant)
     {
         var figure = groupe.FirstOrDefault(h => h.Id == c.FigureId) ?? groupe[0];
-        if (!c.Disette && (reserves < ReservesDisette || c.Abondance < AbondanceDisette))
+        // Une communauté qui a mis de côté de quoi nourrir tous les siens un mois tient bon, sans partir ni désespérer.
+        var vivres = Installations is null ? 0 : Comportement.JoursDeVivres(Installations.Reserves, c.Id, groupe.Count);
+        if (!c.Disette && vivres < 30 && (reserves < ReservesDisette || c.Abondance < AbondanceDisette))
         {
             c.Disette = true;
             c.DisetteEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null, c.Abondance < AbondanceDisette

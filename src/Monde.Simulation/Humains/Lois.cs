@@ -139,6 +139,7 @@ public static class Lois
         Matiere.Corde => new(Forme.Long, 0.05, 0.3, 0.9, Lien: 0.85),
         Matiere.Peau => new(Forme.Plat, 0.05, 3, 1.0, Lien: 0.3),
         Matiere.Brandon => new(Forme.Long, 0.2, 1.5, 0.6),
+        Matiere.PorteFeu => new(Forme.Long, 0.05, 0.3, 0.9),
         Matiere.Rondelle => new(Forme.Rond | Forme.Plat, 0.3, 9, 0.6, Resistance: 80),
         Matiere.RondellePercee => new(Forme.Rond | Forme.Plat | Forme.Perce, 0.3, 8.5, 0.6, Resistance: 70),
         _ => new(Forme.Aucune, 0, 0, 1),

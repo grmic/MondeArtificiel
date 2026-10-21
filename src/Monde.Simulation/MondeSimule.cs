@@ -59,6 +59,12 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Huttes bâties par les humains.</summary>
     public IReadOnlyList<Hutte>? Huttes { get; init; }
 
+    /// <summary>Braises des feux consumés, qui couvent encore.</summary>
+    public IReadOnlyList<Braise>? Braises { get; init; }
+
+    /// <summary>Réserves d'eau et de nourriture.</summary>
+    public IReadOnlyList<Reserve>? Reserves { get; init; }
+
     /// <summary>Première fois que chaque effet a été obtenu dans le monde.</summary>
     public IReadOnlyList<Decouverte>? Decouvertes { get; init; }
 
@@ -165,7 +171,8 @@ public sealed class MondeSimule
         _social.ChargerOffenses(etat.Offenses ?? []);
         Flore = new Flore(etat.Graine);
         _social.Flore = Flore;
-        _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes, etat.Oeuvres);
+        _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes, etat.Oeuvres, etat.Braises, etat.Reserves);
+        _social.Installations = _installations;
         _comportement = new Comportement(carte, _ecosysteme, _alea)
         {
             Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations,
@@ -252,6 +259,8 @@ public sealed class MondeSimule
                     Guerres = _social.Guerres.Select(g => g.Copier()).ToList(),
                     Foyers = _installations.Foyers.ToList(),
                     Huttes = _installations.Huttes.ToList(),
+                    Braises = _installations.Braises.ToList(),
+                    Reserves = _installations.Reserves.ToList(),
                     Decouvertes = _installations.Decouvertes.ToList(),
                     Oeuvres = _installations.Oeuvres.ToList(),
                     Religions = _cultes.Religions.Select(r => r.Copier()).ToList(),
@@ -640,6 +649,7 @@ public sealed class MondeSimule
         if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0)
         {
             _catastrophes.Heure(_humains, _secondes);
+            _catastrophes.FeuxDeCamp(_installations, _humains, _secondes);
             _comportement.Raids(_humains, _secondes);
         }
 
@@ -708,6 +718,9 @@ public sealed class MondeSimule
             _comportement.Religions(_humains, _secondes);
             _comportement.Soins(_humains, _secondes);
             _comportement.Arts(_humains, _secondes);
+            _catastrophes.BrulisProtecteurs(_communautes, _humains, _secondes);
+            _comportement.GaterLesReserves(_humains, _secondes);
+            _comportement.IdeesDesReserves(_humains, _secondes);
             _social.Parler(_humains, _communautes, Carte, _secondes);
             if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
             {
@@ -964,11 +977,16 @@ public sealed class MondeSimule
     private void Savoirs()
     {
         _installations.Affaisser(1, id => 1 / (90 + id * 7919 % 91.0));
-        // La pluie éteint un feu qu'aucune hutte ne protège.
+        // La pluie éteint un feu qu'aucune hutte ne protège, et noie la braise ; sous une épaisse couche de cendre, elle résiste mieux.
         foreach (var f in _installations.Foyers.ToList())
         {
             if (_installations.HutteEn(f.X, f.Y) is not null) continue;
             if (_alea.Reel() < 0.12 * _ecosysteme.PluieEn(Carte.Indice(f.X, f.Y))) _installations.Eteindre(f.X, f.Y);
+        }
+        foreach (var b in _installations.Braises.ToList())
+        {
+            if (_installations.HutteEn(b.X, b.Y) is not null) continue;
+            if (_alea.Reel() < (b.Couvert ? 0.06 : 0.12) * _ecosysteme.PluieEn(Carte.Indice(b.X, b.Y))) _installations.EteindreBraise(b.X, b.Y);
         }
         _comportement.BilanDesRemedes(_humains, _secondes);
         _comportement.Hygienes(_humains, _secondes);
@@ -1068,6 +1086,12 @@ public sealed class MondeSimule
     public (List<Foyer> Foyers, List<Hutte> Huttes, List<Decouverte> Decouvertes) Installations()
     {
         lock (_verrou) return (_installations.Foyers.ToList(), _installations.Huttes.ToList(), _installations.Decouvertes.ToList());
+    }
+
+    /// <summary>Braises qui couvent et réserves d'eau et de nourriture (copies).</summary>
+    public (List<Braise> Braises, List<Reserve> Reserves) BraisesEtReserves()
+    {
+        lock (_verrou) return (_installations.Braises.ToList(), _installations.Reserves.ToList());
     }
 
     /// <summary>

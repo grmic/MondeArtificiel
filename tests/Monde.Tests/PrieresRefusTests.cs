@@ -33,7 +33,17 @@ public sealed class PrieresRefusTests : IDisposable
         var monde = new MondeSimule(GenerateurContinent.Generer(etat.Configuration!), etat);
         for (var j = 0; j < jours; j++)
         {
-            monde.AvancerDe(Jour);
+            if (groupes)
+            {
+                // Un groupe affamé le reste jusqu'au soir, quand il décide de prier ensemble : sinon une chasse heureuse, de la
+                // viande gardée ou une réserve l'apaisent avant.
+                monde.AvancerDe(Jour - 2 * MondeSimule.SecondesParPas);
+                var suite = monde.Etat;
+                foreach (var h in suite.Humains!) if (h.EstVivant) h.Faim = Math.Max(h.Faim, 95);
+                monde = new MondeSimule(GenerateurContinent.Generer(suite.Configuration!), suite);
+                monde.AvancerDe(2 * MondeSimule.SecondesParPas);
+            }
+            else monde.AvancerDe(Jour);
             if (monde.Prieres().FirstOrDefault(p => p.Issue == IssuePriere.EnAttente && p.Sujet != SujetPriere.Remerciement && trouver(p)) is { } p)
                 return (monde, p);
         }

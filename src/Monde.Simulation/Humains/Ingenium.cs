@@ -36,7 +36,8 @@ public sealed partial class Comportement
         Math.Clamp(0.8 * h.Personnalite.Adresse + Math.Min(0.25, 0.025 * (s?.Succes ?? 0)), 0, 1);
 
     private bool FeuIci(Humain h) =>
-        Installations.FoyerEn(h.X, h.Y) is not null || h.Porte(Matiere.Brandon) || Catastrophes?.BruleAutour(h.X, h.Y) == true;
+        Installations.FoyerEn(h.X, h.Y) is not null || Installations.BraiseEn(h.X, h.Y) is not null || PorteLeFeu(h)
+        || Catastrophes?.BruleAutour(h.X, h.Y) == true;
 
     /// <summary>Sécheresse de l'herbe et du bois, de 0 à 1 : la saison, les pluies de l'année, le terrain.</summary>
     private double Sec(Humain h)
@@ -187,6 +188,8 @@ public sealed partial class Comportement
     /// <summary>L'effet répond-il à ce que l'humain ressent en ce moment (froid, faim, soif) ?</summary>
     private bool Pertinent(Humain h, Effet e) => e switch
     {
+        // Qui sait emporter le feu sur un brandon voit tout de suite ce que vaut une braise qui dure.
+        Effet.PorteFeu => h.Sait(Effet.Brandon),
         Effet.Couvert or Effet.Abri or Effet.Chaleur or Effet.Flamme or Effet.Foyer => h.Froid > 15 || _temperature < 14,
         Effet.Tubercules or Effet.Decoupe or Effet.Chasse or Effet.Cuisson => h.Faim > 30,
         Effet.EauPortee => h.Soif > 30,
@@ -198,10 +201,11 @@ public sealed partial class Comportement
     {
         switch (r.Effet)
         {
-            case Effet.Eclat or Effet.Pointe or Effet.Durci or Effet.Corde or Effet.Brandon:
+            case Effet.Eclat or Effet.Pointe or Effet.Durci or Effet.Corde or Effet.Brandon or Effet.PorteFeu:
                 if (r.Effet == Effet.Durci) h.Objets.RemoveAll(o => o.Matiere == Matiere.BatonPointu);
                 if (r.Effet == Effet.Pointe) User(h, b, 0.1);
                 if (r.Effet == Effet.Brandon) h.Objets.RemoveAll(o => o.Matiere == Matiere.Branche || o.Matiere == Matiere.BoisSec);
+                if (r.Effet == Effet.PorteFeu && h.Objets.FindIndex(o => o.Matiere == a) is var corde and >= 0) h.Objets.RemoveAt(corde);
                 Prendre(h, new Objet(r.Produit, r.Qualite, 1));
                 break;
             case Effet.Decoupe:
@@ -211,18 +215,24 @@ public sealed partial class Comportement
             case Effet.Flamme:
             {
                 // Pendant un pas simultané, le feu prend sur la case après le pas.
-                var (x, y, id, le) = (h.X, h.Y, h.Id, _maintenant);
-                Tour.Differer(() => Installations.Allumer(x, y, 1, le, id, evenement));
+                var (x, y, id, le, degage) = (h.X, h.Y, h.Id, _maintenant, DegagerLeFoyer(h));
+                Tour.Differer(() => Installations.Allumer(x, y, 1, le, id, evenement, degage));
                 break;
             }
             case Effet.Foyer:
-                // Le brandon posé sous le bois devient un foyer ; le bois ajouté nourrit le feu quelques heures.
-                h.Objets.RemoveAll(o => o.Matiere == Matiere.Brandon);
+            {
+                // Le feu porté (brandon ou mèche qui couve) posé sous le bois devient un foyer ; le bois ajouté nourrit le feu
+                // quelques heures.
+                var porte = b is Matiere.Brandon or Matiere.PorteFeu;
+                var ailleurs = porte && Installations.FoyerEn(h.X, h.Y) is null && Installations.BraiseEn(h.X, h.Y) is null;
+                if (porte && h.Objets.FindIndex(o => o.Matiere == b) is var ip and >= 0) h.Objets.RemoveAt(ip);
                 // Avec une hache, on fend de grosses bûches qui brûlent bien plus longtemps que des branches cassées à la main.
                 var bois = (4 + 4 * alea.Reel()) * (1 + (h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe)));
-                var (fx, fy, fid, fle) = (h.X, h.Y, h.Id, _maintenant);
-                Tour.Differer(() => Installations.Nourrir(fx, fy, bois, fle, fid, evenement));
+                var (fx, fy, fid, fle, degage) = (h.X, h.Y, h.Id, _maintenant, DegagerLeFoyer(h));
+                Tour.Differer(() => Installations.Nourrir(fx, fy, bois, fle, fid, evenement, degage));
+                if (ailleurs) AvoirPorteLeFeu(h);
                 break;
+            }
             case Effet.Couvert:
                 if (a == Matiere.Peau)
                 {
@@ -389,6 +399,7 @@ public sealed partial class Comportement
             Effet.Nage => $"{h.Nom} s'avance dans l'eau profonde, se débat, et flotte.",
             Effet.Durci => $"{h.Nom} approche son bâton pointu du feu : la pointe noircit et durcit.",
             Effet.Brandon => $"{h.Nom} approche une branche du feu : elle s'embrase et {Il(h)} l'emporte.",
+            Effet.PorteFeu => $"{h.Nom} approche {Physique.Nom(s.A)} du feu : {(s.A == Matiere.Corde ? "elle ne flambe pas, elle couve" : "elles ne flambent pas, elles couvent")}, et longtemps après, le bout rougit encore.",
             Effet.Cuisson => $"{h.Nom} approche la bête du feu : la chair grillée est tendre et sent bon.",
             Effet.Decoupe => $"{h.Nom} entaille la bête avec un éclat : la peau se détache.",
             Effet.Foyer => $"{h.Nom} pose du bois sur les flammes : le feu grandit et dure.",
@@ -446,6 +457,11 @@ public sealed partial class Comportement
         Effet.Fumage => "Pourquoi la fumée empêche-t-elle la viande de pourrir ?",
         Effet.Fumee => "Pourquoi les moustiques fuient-ils la fumée ?",
         Effet.Brulis => "Le feu chasse les bêtes. Pourrait-on le mener où l'on veut ?",
+        Effet.Braises => "Le feu dort sous la cendre. Est-il vivant ?",
+        Effet.PorteFeu => "Le feu peut voyager avec moi. Jusqu'où pourrais-je le porter ?",
+        Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant => "Le feu nous sert, et il peut tout dévorer. Comment le tenir ?",
+        Effet.BrulisProtecteur => "Le feu arrête le feu. Comment est-ce possible ?",
+        Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide => "Si je garde aujourd'hui, j'aurai demain. Que faut-il garder encore ?",
         _ => "Que pourrais-je faire d'autre avec cela ?",
     };
 
@@ -489,7 +505,7 @@ public sealed partial class Comportement
     /// </summary>
     private bool UtiliserSavoirs(Humain h, Activite besoin, double valeur, double seuil, IReadOnlyList<Humain> tous)
     {
-        if (h.Savoirs.Count == 0 && !h.Porte(Matiere.Brandon)) return false;
+        if (h.Savoirs.Count == 0 && !PorteLeFeu(h)) return false;
         var nuit = !Calendrier.Decomposer(_maintenant).EstJour;
         // La nuit, le froid fait rester près du feu, mais pas au point d'y mourir de soif ou de faim : un besoin pressant
         // l'emporte sur la chaleur.
@@ -522,10 +538,12 @@ public sealed partial class Comportement
             h.CibleX = h.CibleY = -1;
             return true;
         }
-        // Un brandon à la main : on en fait un foyer.
-        if (h.Porte(Matiere.Brandon) && (h.Sait(Effet.Foyer) || h.Sait(Effet.Brandon)) && APortee(h, Matiere.BoisSec))
+        // Une braise qui couve : un peu de bois la ranime.
+        if (RanimerLaBraise(h, tous)) return true;
+        // Un brandon à la main, ou une mèche qui couve : on en fait un foyer.
+        if (FeuPorte(h) is { } porte && (h.Sait(Effet.Foyer) || h.Sait(Effet.Brandon) || h.Sait(Effet.PorteFeu)) && APortee(h, Matiere.BoisSec))
         {
-            Faire(h, Geste.Entasser, Matiere.BoisSec, Matiere.Brandon, OrigineSavoir.Essai, tous);
+            Faire(h, Geste.Entasser, Matiere.BoisSec, porte, OrigineSavoir.Essai, tous);
             h.Activite = Activite.Fabriquer;
             h.CibleX = h.CibleY = -1;
             return true;
@@ -658,9 +676,17 @@ public sealed partial class Comportement
         for (var i = h.Objets.Count - 1; i >= 0; i--)
         {
             var o = h.Objets[i];
-            if (o.Matiere != Matiere.Brandon) continue;
-            if (o.Usure <= 0.12) h.Objets.RemoveAt(i);
-            else h.Objets[i] = o with { Usure = o.Usure - 0.11 };
+            // Un brandon se consume en une heure et demie environ ; une mèche qui couve tient de quatre heures (fibres lâches)
+            // à une journée (corde bien serrée).
+            var usure = o.Matiere switch
+            {
+                Matiere.Brandon => 0.11,
+                Matiere.PorteFeu => 1 / ((4 + 20 * o.Qualite) * (Calendrier.SecondesParHeure / (double)MondeSimule.SecondesParPas)),
+                _ => 0,
+            };
+            if (usure == 0) continue;
+            if (o.Usure <= usure) h.Objets.RemoveAt(i);
+            else h.Objets[i] = o with { Usure = o.Usure - usure };
         }
         if (h.Savoirs.Count == 0 || h.Objets.Count >= ObjetsMax) return;
         foreach (var s in h.Savoirs)

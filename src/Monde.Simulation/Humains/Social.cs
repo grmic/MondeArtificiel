@@ -18,6 +18,17 @@ public sealed record Lien(int Id, double Familiarite, double Affection, long Der
 /// Un groupe d'humains liés entre eux qui vivent ensemble. Il n'est pas décrété : il est constaté
 /// chaque semaine à partir des liens (voir <see cref="VieSociale.Regrouper"/>).
 /// </summary>
+/// <summary>Ce qu'une communauté pense des réserves.</summary>
+public enum IdeeReserve : byte
+{
+    /// <summary>Pas d'idée établie : chacun puise dans la sienne et partage comme il partage le reste.</summary>
+    Aucune = 0,
+    /// <summary>La réserve est à tous : chacun y puise selon sa faim.</summary>
+    Commune = 1,
+    /// <summary>La réserve est à celui qui l'a faite : y toucher sans lui demander, c'est voler.</summary>
+    ASoi = 2,
+}
+
 public sealed class Communaute
 {
     public required int Id { get; init; }
@@ -185,9 +196,28 @@ public sealed class Communaute
     /// </summary>
     public int HeritiereId { get; set; }
 
+    /// <summary>Incendies partis d'un camp qui ont tué des siens : le groupe s'en souvient, et craint le feu près des herbes.</summary>
+    public List<long> IncendiesSouvenus { get; set; } = [];
+
+    /// <summary>
+    /// Ce que le groupe pense des réserves, s'il en a une idée : à tous, ou à celui qui les a faites. Rien n'est décrété : l'idée
+    /// naît de ce que le groupe vit (une disette surmontée en partageant, des vols), et peut changer.
+    /// </summary>
+    public IdeeReserve IdeeReserve { get; set; }
+    public long IdeeReserveLe { get; set; }
+    public long IdeeReserveEvenementId { get; set; }
+
+    /// <summary>Repas pris dans la réserve d'un autre, sans vol, et réserves volées, depuis le début de la saison (ils s'estompent).</summary>
+    public double PartagesReserve { get; set; }
+    public double VolsReserve { get; set; }
+
+    /// <summary>Dernier vol dans une réserve (événement du journal), cause possible de l'idée de la réserve à soi.</summary>
+    public long VolReserveEvenementId { get; set; }
+
     public Communaute Copier()
     {
         var copie = (Communaute)MemberwiseClone();
+        copie.IncendiesSouvenus = [.. IncendiesSouvenus];
         copie.Lexique = new Dictionary<string, string>(Lexique);
         copie.Signes = new Dictionary<string, string>(Signes);
         copie.HistoireLangue = [.. HistoireLangue];

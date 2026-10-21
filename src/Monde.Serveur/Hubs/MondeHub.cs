@@ -450,6 +450,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Nature : abondance des terres, pluies des régions et indicateurs du monde.</summary>
     public NatureDto Nature() => NatureDto.Depuis(service.Monde);
 
+    /// <summary>Feux qui flambent ou couvent, et réserves, pour la carte.</summary>
+    public FeuxDto Feux() => FeuxDto.Depuis(service.Monde);
+
     /// <summary>Journal filtré, du plus récent au plus ancien (500 événements au plus par demande).</summary>
     public List<EvenementDto> Journal(FiltreJournal filtre)
     {

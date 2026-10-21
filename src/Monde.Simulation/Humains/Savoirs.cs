@@ -57,6 +57,8 @@ public enum Matiere : byte
     RondellePercee = 27,
     /// <summary>Objet fait de plusieurs pièces tenues ensemble (voir <see cref="Assemblage"/>).</summary>
     Assemblage = 28,
+    /// <summary>Porte-feu : corde ou mèche de fibres qui couve sans flamber, et garde le feu des heures durant.</summary>
+    PorteFeu = 29,
 }
 
 /// <summary>Gestes à la portée de tout humain. Ce qu'ils produisent dépend de la matière, pas d'une découverte programmée.</summary>
@@ -110,6 +112,20 @@ public enum Geste : byte
     Fumer = 24,
     /// <summary>Mettre le feu aux herbes sèches.</summary>
     Incendier = 25,
+    /// <summary>Couvrir le feu de cendre pour la nuit.</summary>
+    Couvrir = 26,
+    /// <summary>Écarter l'herbe autour du foyer et l'entourer de pierres.</summary>
+    Degager = 27,
+    /// <summary>Éteindre le feu avec de l'eau ou de la terre.</summary>
+    Eteindre = 28,
+    /// <summary>Attendre que le vent tombe avant d'allumer.</summary>
+    Patienter = 29,
+    /// <summary>Cacher une réserve dans la terre ou sous des pierres.</summary>
+    Cacher = 30,
+    /// <summary>Mettre à sécher au soleil.</summary>
+    Secher = 31,
+    /// <summary>Amasser plus qu'on ne mange, pour plus tard.</summary>
+    Amasser = 32,
 }
 
 /// <summary>Ce que l'humain constate après un geste.</summary>
@@ -201,6 +217,26 @@ public enum Effet : byte
     Fumee = 43,
     /// <summary>Devant le feu, les bêtes fuient et se découvrent : on les chasse mieux là où l'herbe brûle.</summary>
     Brulis = 44,
+    /// <summary>Le feu couvert de cendre garde sa braise jusqu'au matin.</summary>
+    Braises = 45,
+    /// <summary>Une corde approchée du feu couve sans flamber : on emporte le feu pour la journée.</summary>
+    PorteFeu = 46,
+    /// <summary>Un foyer dégagé et entouré de pierres ne gagne pas les herbes.</summary>
+    FoyerDegage = 47,
+    /// <summary>Le feu allumé dans le vent, sur l'herbe sèche, s'échappe.</summary>
+    PasDansLeVent = 48,
+    /// <summary>Un feu qu'on laisse vif en partant peut gagner les herbes : on l'éteint.</summary>
+    EteindreEnPartant = 49,
+    /// <summary>Brûler un peu autour du camp à la saison humide arrête les grands feux de la saison sèche.</summary>
+    BrulisProtecteur = 50,
+    /// <summary>Une calebasse ou une outre bouchée, enterrée pleine, garde l'eau pour la saison sèche.</summary>
+    CacheDEau = 51,
+    /// <summary>La viande en lanières et les fruits séchés au soleil se gardent des mois.</summary>
+    Sechage = 52,
+    /// <summary>Les noix et les graines amassées en automne se mangent encore en hiver.</summary>
+    Provisions = 53,
+    /// <summary>Dans le froid, sous des pierres ou dans une fosse, la viande ne pourrit pas.</summary>
+    CacheFroide = 54,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -299,9 +335,9 @@ public static class Physique
             [Matiere.Eclat, Matiere.Obsidienne, Matiere.Silex, Matiere.Galet]),
         new(Geste.Tordre, "tordre", null, [Matiere.Fibres, Matiere.HerbeSeche, Matiere.GrandesFeuilles, Matiere.Branche, Matiere.Peau], []),
         new(Geste.Entasser, "entasser", "sur", [Matiere.BoisSec, Matiere.Branche, Matiere.GrandesFeuilles, Matiere.HerbeSeche],
-            [Matiere.Feu, Matiere.Brandon, Matiere.Branche, Matiere.Galet]),
-        new(Geste.Approcher, "approcher", "de", [Matiere.Aucune, Matiere.BoisSec, Matiere.Branche, Matiere.BatonPointu, Matiere.Carcasse, Matiere.Argile],
-            [Matiere.Feu]),
+            [Matiere.Feu, Matiere.Brandon, Matiere.PorteFeu, Matiere.Branche, Matiere.Galet]),
+        new(Geste.Approcher, "approcher", "de", [Matiere.Aucune, Matiere.BoisSec, Matiere.Branche, Matiere.BatonPointu, Matiere.Carcasse, Matiere.Argile,
+            Matiere.Fibres, Matiere.Corde], [Matiere.Feu]),
         new(Geste.SeCouvrir, "se couvrir de", null, [Matiere.Peau, Matiere.GrandesFeuilles, Matiere.HerbeSeche, Matiere.Fibres, Matiere.Ocre], []),
         new(Geste.Remplir, "remplir", "de", [Matiere.Calebasse, Matiere.Peau, Matiere.Argile], [Matiere.Eau]),
         new(Geste.Fouir, "fouir la terre avec", null, [Matiere.Branche, Matiere.BoisSec, Matiere.BatonPointu, Matiere.Epieu, Matiere.Galet, Matiere.Eclat], []),
@@ -397,7 +433,7 @@ public static class Physique
 
             case Geste.Entasser:
                 // Du bois sur le feu : le feu dure.
-                if (EstBois(a) && b is Matiere.Feu or Matiere.Brandon && c.FeuProche)
+                if (EstBois(a) && b is Matiere.Feu or Matiere.Brandon or Matiere.PorteFeu && c.FeuProche)
                     return Chance(0.6 + 0.3 * h) ? new(Effet.Foyer, Matiere.Feu, 1) : default;
                 // Des feuilles sur des branches dressées : un abri.
                 if (a == Matiere.GrandesFeuilles && b == Matiere.Branche)
@@ -410,6 +446,10 @@ public static class Physique
                 {
                     Matiere.BoisSec or Matiere.Branche => new(Effet.Brandon, Matiere.Brandon, 1),
                     Matiere.BatonPointu => Chance(0.4 + 0.4 * h) ? new(Effet.Durci, Matiere.Epieu, Math.Clamp(0.5 + 0.4 * h, 0, 1)) : default,
+                    // Une corde serrée ou des fibres tordues ne flambent pas : leur bout rougit et couve, des heures durant
+                    // (mèches à feu des Andamanais et des Aborigènes ; les plus serrées tiennent une journée).
+                    Matiere.Corde or Matiere.Fibres => Chance(0.3 + 0.5 * h)
+                        ? new(Effet.PorteFeu, Matiere.PorteFeu, Math.Clamp((a == Matiere.Corde ? 0.4 : 0.15) + 0.5 * h * alea.Reel(), 0, 1)) : default,
                     Matiere.Carcasse => new(Effet.Cuisson, Matiere.Aucune, 1),
                     // On sent la chaleur du feu dès qu'on s'en approche.
                     Matiere.Aucune => new(Effet.Chaleur, Matiere.Aucune, 1),
@@ -487,6 +527,7 @@ public static class Physique
         (Effet.Eclat, Effet.Pointe) or (Effet.Eclat, Effet.Decoupe) => true,
         (Effet.Pointe, Effet.Chasse) or (Effet.Durci, Effet.Chasse) => true,
         (Effet.Chaleur, Effet.Foyer) or (Effet.Brandon, Effet.Foyer) => true,
+        (Effet.Brandon, Effet.PorteFeu) or (Effet.Fumage, Effet.Sechage) => true,
         _ => false,
     };
 
@@ -537,6 +578,16 @@ public static class Physique
         Effet.Fumage => "fumer la viande pour la garder",
         Effet.Fumee => "chasser les moustiques par la fumée",
         Effet.Brulis => "chasser au feu",
+        Effet.Braises => "couvrir le feu pour garder la braise",
+        Effet.PorteFeu => "porter le feu dans une mèche qui couve",
+        Effet.FoyerDegage => "dégager le foyer et l'entourer de pierres",
+        Effet.PasDansLeVent => "ne pas allumer dans le vent",
+        Effet.EteindreEnPartant => "éteindre le feu en partant",
+        Effet.BrulisProtecteur => "brûler autour du camp pour arrêter les grands feux",
+        Effet.CacheDEau => "enterrer de l'eau pour la saison sèche",
+        Effet.Sechage => "sécher la viande et les fruits au soleil",
+        Effet.Provisions => "amasser des noix et des graines pour l'hiver",
+        Effet.CacheFroide => "garder la viande dans le froid",
         _ => "rien",
     };
 
@@ -589,6 +640,13 @@ public static class Physique
         Geste.Flairer => "flairer",
         Geste.Fumer => "fumer",
         Geste.Incendier => "mettre le feu à",
+        Geste.Couvrir => "couvrir de cendre",
+        Geste.Degager => "dégager le sol autour de",
+        Geste.Eteindre => "éteindre",
+        Geste.Patienter => "attendre que le vent tombe pour allumer",
+        Geste.Cacher => "cacher",
+        Geste.Secher => "sécher au soleil",
+        Geste.Amasser => "amasser",
         _ => "nager",
     };
 
@@ -621,6 +679,7 @@ public static class Physique
         Matiere.Rondelle => "une rondelle de tronc",
         Matiere.RondellePercee => "une rondelle percée",
         Matiere.Assemblage => "un objet assemblé",
+        Matiere.PorteFeu => "une mèche qui couve",
         _ => "rien",
     };
 
@@ -671,6 +730,17 @@ public static class Physique
         Effet.Fumage => "La viande suspendue longtemps dans la fumée ne pourrit pas : elle se garde des semaines.",
         Effet.Fumee => "La fumée du feu chasse les moustiques.",
         Effet.Brulis => "Devant le feu, les bêtes fuient et se découvrent : là où l'herbe brûle, la chasse est bonne.",
+        Effet.Braises => "Le feu couvert de cendre pour la nuit garde sa braise : au matin, un peu de bois le ranime.",
+        Effet.PorteFeu => s.A == Matiere.Corde ? "Une corde serrée approchée du feu couve sans flamber : on emporte le feu avec soi."
+            : "Des fibres tordues approchées du feu couvent sans flamber : on emporte le feu avec soi.",
+        Effet.FoyerDegage => "Un feu dont on a écarté l'herbe et qu'on entoure de pierres ne s'échappe pas.",
+        Effet.PasDansLeVent => "Dans le vent, sur l'herbe sèche, le feu s'échappe : on attend que le vent tombe.",
+        Effet.EteindreEnPartant => "Un feu qu'on laisse vif derrière soi peut gagner les herbes : on l'éteint en partant.",
+        Effet.BrulisProtecteur => "Le feu s'arrête au bord des terres déjà brûlées : brûler un peu autour du camp à la saison humide le protège des grands feux.",
+        Effet.CacheDEau => "Une calebasse bouchée, enterrée pleine, garde l'eau jusqu'à la saison sèche.",
+        Effet.Sechage => "La viande coupée en lanières et les fruits séchés au soleil se gardent des mois, si l'air est sec.",
+        Effet.Provisions => "Les noix et les graines amassées en automne se mangent encore en hiver.",
+        Effet.CacheFroide => "Dans le grand froid, la viande cachée sous des pierres ne pourrit pas.",
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => "Rien.",
     };

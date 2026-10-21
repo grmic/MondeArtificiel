@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 31;
+    public const int VersionSchema = 32;
 
     private readonly string _connexion;
 
@@ -579,6 +579,8 @@ public sealed partial class DepotMonde
             if (!prieres.Contains("communaute")) Executer(connexion, transaction, "ALTER TABLE prieres ADD COLUMN communaute INTEGER NOT NULL DEFAULT 0;");
             if (!prieres.Contains("refus")) Executer(connexion, transaction, "ALTER TABLE prieres ADD COLUMN refus INTEGER NOT NULL DEFAULT 0;");
         }
+        // Version 32 : garder le feu, feux de camp, réserves d'eau et de nourriture.
+        if (actuelle < 32) MigrerVersion32(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -641,7 +643,8 @@ public sealed partial class DepotMonde
                    honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le,
                    karma, croyance, croyance_signe, croyance_notee,
                    soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement, ancienne_communaute, religion, ferveur, religion_depuis, role, source_prophete, role_depuis, miracles, prie_le, communaute_naissance,
-                   amour, crainte, revolte, regard_signe, fecondite_entite, fecondite_jusqua
+                   amour, crainte, revolte, regard_signe, fecondite_entite, fecondite_jusqua,
+                   feux_portes, porteur_du_feu_depuis, feu_demande_le
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -743,6 +746,9 @@ public sealed partial class DepotMonde
                     Revolte = lecteur.GetDouble(lecteur.GetOrdinal("revolte")),
                     RegardSigneLe = lecteur.GetInt64(lecteur.GetOrdinal("regard_signe")),
                     FeconditeEntite = lecteur.GetDouble(lecteur.GetOrdinal("fecondite_entite")),
+                    FeuxPortes = lecteur.GetInt32(lecteur.GetOrdinal("feux_portes")),
+                    PorteurDuFeuDepuis = lecteur.GetInt64(lecteur.GetOrdinal("porteur_du_feu_depuis")),
+                    FeuDemandeLe = lecteur.GetInt64(lecteur.GetOrdinal("feu_demande_le")),
                     FeconditeJusqua = lecteur.GetInt64(lecteur.GetOrdinal("fecondite_jusqua")),
                 });
                 var h = humains[^1];
@@ -772,6 +778,9 @@ public sealed partial class DepotMonde
             LireLangage(commande, humains);
         }
         var (foyers, huttes, decouvertes, oeuvres) = LireInstallations(commande);
+        var (braises, reserves) = LireFeuxEtReserves(commande);
+        if (braises.Count > 0) etat = etat with { Braises = braises };
+        if (reserves.Count > 0) etat = etat with { Reserves = reserves };
         if (oeuvres.Count > 0) etat = etat with { Oeuvres = oeuvres };
         if (foyers.Count > 0) etat = etat with { Foyers = foyers };
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };
@@ -789,7 +798,8 @@ public sealed partial class DepotMonde
                    fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations, disettes_surmontees,
                    installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
                    soumission_evenement, paix_evenement, heritiere, projet,
-                   ideal_taille, ideal_teint, ideal_corpulence, ideal_note, tolerance_moeurs, usage_moeurs, affaire_moeurs
+                   ideal_taille, ideal_teint, ideal_corpulence, ideal_note, tolerance_moeurs, usage_moeurs, affaire_moeurs,
+                   incendies_souvenus, idee_reserve, idee_reserve_le, idee_reserve_evenement, partages_reserve, vols_reserve, vol_reserve_evenement
             FROM communautes ORDER BY id;
             """;
         var communautes = new List<Communaute>();
@@ -821,6 +831,9 @@ public sealed partial class DepotMonde
                     ToleranceMoeurs = l.IsDBNull(44) ? -1 : l.GetDouble(44),
                     UsageMoeurs = (UsageMoeurs)l.GetInt32(45),
                     AffaireMoeursId = l.GetInt64(46),
+                    IncendiesSouvenus = LireNumeros(l.GetString(47)),
+                    IdeeReserve = (IdeeReserve)l.GetInt32(48), IdeeReserveLe = l.GetInt64(49), IdeeReserveEvenementId = l.GetInt64(50),
+                    PartagesReserve = l.GetDouble(51), VolsReserve = l.GetDouble(52), VolReserveEvenementId = l.GetInt64(53),
                 });
             }
         }
@@ -1064,7 +1077,8 @@ public sealed partial class DepotMonde
                     honnetete, empathie_emo, empathie_cog, compassion, psychopathie, anxiete_aff, evitement_aff, soin, equite, loyaute, autorite, purete, captif_de, captif_le,
                     karma, croyance, croyance_signe, croyance_notee,
                     soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement, ancienne_communaute, religion, ferveur, religion_depuis, role, source_prophete, role_depuis, miracles, prie_le, communaute_naissance,
-                    amour, crainte, revolte, regard_signe, fecondite_entite, fecondite_jusqua)
+                    amour, crainte, revolte, regard_signe, fecondite_entite, fecondite_jusqua,
+                    feux_portes, porteur_du_feu_depuis, feu_demande_le)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -1080,7 +1094,8 @@ public sealed partial class DepotMonde
                     $honnetete, $empathie_emo, $empathie_cog, $compassion, $psychopathie, $anxiete_aff, $evitement_aff, $soin, $equite, $loyaute, $autorite, $purete, $captif_de, $captif_le,
                     $karma, $croyance, $croyance_signe, $croyance_notee,
                     $soignes, $gueris, $perdus, $accouchements_aides, $guerisseur_depuis, $chaman_depuis, $transe_le, $charlatan_depuis, $demasque_le, $soigneur, $soigneur_le, $plaie_le, $plaie_soin, $maudit_le, $maudit_par, $maudit_force, $maudit_evenement, $ancienne_communaute, $religion, $ferveur, $religion_depuis, $role, $source_prophete, $role_depuis, $miracles, $prie_le, $communaute_naissance,
-                    $amour, $crainte, $revolte, $regard_signe, $fecondite_entite, $fecondite_jusqua);
+                    $amour, $crainte, $revolte, $regard_signe, $fecondite_entite, $fecondite_jusqua,
+                    $feux_portes, $porteur_du_feu_depuis, $feu_demande_le);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -1097,7 +1112,8 @@ public sealed partial class DepotMonde
                 "$honnetete", "$empathie_emo", "$empathie_cog", "$compassion", "$psychopathie", "$anxiete_aff", "$evitement_aff", "$soin", "$equite", "$loyaute", "$autorite", "$purete", "$captif_de", "$captif_le",
                 "$karma", "$croyance", "$croyance_signe", "$croyance_notee",
                 "$soignes", "$gueris", "$perdus", "$accouchements_aides", "$guerisseur_depuis", "$chaman_depuis", "$transe_le", "$charlatan_depuis", "$demasque_le", "$soigneur", "$soigneur_le", "$plaie_le", "$plaie_soin", "$maudit_le", "$maudit_par", "$maudit_force", "$maudit_evenement", "$ancienne_communaute", "$religion", "$ferveur", "$religion_depuis", "$role", "$source_prophete", "$role_depuis", "$miracles", "$prie_le", "$communaute_naissance",
-                "$amour", "$crainte", "$revolte", "$regard_signe", "$fecondite_entite", "$fecondite_jusqua"];
+                "$amour", "$crainte", "$revolte", "$regard_signe", "$fecondite_entite", "$fecondite_jusqua",
+                "$feux_portes", "$porteur_du_feu_depuis", "$feu_demande_le"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -1134,6 +1150,7 @@ public sealed partial class DepotMonde
                     h.Soignes, h.Gueris, h.Perdus, h.AccouchementsAides, h.GuerisseurDepuis, h.ChamanDepuis, h.TranseLe, h.CharlatanDepuis, h.DemasqueLe, h.SoigneurId, h.SoigneurLe, h.PlaieLe, h.PlaieSoin, h.MauditLe, h.MauditParId, h.MauditForce, h.MauditEvenementId, h.AncienneCommunauteId,
                     h.ReligionId, h.Ferveur, h.ReligionDepuis, (int)h.Role, (int)h.SourceProphete, h.RoleDepuis, h.Miracles, h.PrieLe, h.CommunauteNaissance,
                     h.Amour, h.Crainte, h.Revolte, h.RegardSigneLe, h.FeconditeEntite, h.FeconditeJusqua,
+                    h.FeuxPortes, h.PorteurDuFeuDepuis, h.FeuDemandeLe,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
@@ -1148,6 +1165,7 @@ public sealed partial class DepotMonde
             EnregistrerLangage(connexion, transaction, tous);
         }
         if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
+        if (etat.Braises is not null || etat.Reserves is not null) EnregistrerFeuxEtReserves(connexion, transaction, etat);
         if (etat.Religions is not null || etat.Prieres is not null || etat.LieuxSacres is not null || etat.Propheties is not null)
             EnregistrerCultes(connexion, transaction, etat);
         if (etat.EffetsEntite is not null || etat.SouvenirsEntite is not null) EnregistrerGestes(connexion, transaction, etat);
@@ -1238,12 +1256,14 @@ public sealed partial class DepotMonde
                 lexique, origine, fusion_vers, fusion_decidee_le, fusion_evenement, fusionnee_dans, accueil_le, migrations,
                 disettes_surmontees, installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
                 soumission_evenement, paix_evenement, heritiere, projet,
-                ideal_taille, ideal_teint, ideal_corpulence, ideal_note, tolerance_moeurs, usage_moeurs, affaire_moeurs)
+                ideal_taille, ideal_teint, ideal_corpulence, ideal_note, tolerance_moeurs, usage_moeurs, affaire_moeurs,
+                incendies_souvenus, idee_reserve, idee_reserve_le, idee_reserve_evenement, partages_reserve, vols_reserve, vol_reserve_evenement)
             VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy, $to, $u, $da, $de, $np, $s, $sc, $ep, $lx, $o, $fv, $fd, $fe,
-                $fi, $al, $mi, $ds, $ie, $te, $be, $ra, $dr, $sa, $sl, $se, $pe, $he, $pr, $it, $iq, $ic, $in, $tm, $um, $am);
+                $fi, $al, $mi, $ds, $ie, $te, $be, $ra, $dr, $sa, $sl, $se, $pe, $he, $pr, $it, $iq, $ic, $in, $tm, $um, $am,
+                $is, $ir, $irl, $ire, $pres, $vres, $vre);
             """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy", "$to", "$u", "$da", "$de", "$np", "$s",
             "$sc", "$ep", "$lx", "$o", "$fv", "$fd", "$fe", "$fi", "$al", "$mi", "$ds", "$ie", "$te", "$be", "$ra", "$dr", "$sa", "$sl",
-            "$se", "$pe", "$he", "$pr", "$it", "$iq", "$ic", "$in", "$tm", "$um", "$am");
+            "$se", "$pe", "$he", "$pr", "$it", "$iq", "$ic", "$in", "$tm", "$um", "$am", "$is", "$ir", "$irl", "$ire", "$pres", "$vres", "$vre");
         foreach (var c in communautes)
         {
             Lancer(commande, c.Id, c.Nom, c.FondeeLe, c.DisperseeLe is { } d ? d : DBNull.Value, c.FigureId,
@@ -1257,7 +1277,9 @@ public sealed partial class DepotMonde
                 c.SoumiseLe, c.SoumissionEvenementId, c.PaixEvenementId, c.HeritiereId,
                 c.Projet is { } projet ? JsonSerializer.Serialize(projet) : DBNull.Value,
                 c.Ideal.Taille, c.Ideal.Teint, c.Ideal.Corpulence, c.IdealNote,
-                c.ToleranceMoeurs < 0 ? DBNull.Value : c.ToleranceMoeurs, (int)c.UsageMoeurs, c.AffaireMoeursId);
+                c.ToleranceMoeurs < 0 ? DBNull.Value : c.ToleranceMoeurs, (int)c.UsageMoeurs, c.AffaireMoeursId,
+                string.Join(',', c.IncendiesSouvenus), (int)c.IdeeReserve, c.IdeeReserveLe, c.IdeeReserveEvenementId,
+                c.PartagesReserve, c.VolsReserve, c.VolReserveEvenementId);
         }
         EnregistrerNoms(connexion, transaction, communautes);
     }

@@ -23,6 +23,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .statut.erreur { color: var(--erreur); }
 .graine { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
 .graine input { width: 9rem; }
+.graine .case-barre { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--discret); }
+.graine .case-barre input { width: auto; margin: 0; }
 .infos {
   position: fixed; left: 12px; bottom: 12px; max-width: min(420px, calc(100vw - 24px));
   padding: 8px 14px; border-radius: 10px; background: var(--panneau);

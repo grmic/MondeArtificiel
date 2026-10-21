@@ -19,6 +19,8 @@ public enum MotifGrief : byte
     Vol = 5,
     /// <summary>Il a quitté les siens pour un groupe ennemi.</summary>
     Trahison = 6,
+    /// <summary>Son feu, mal gardé, a gagné les herbes et blessé ou tué un de ses proches (<see cref="Grief.VictimeId"/>).</summary>
+    Incendie = 7,
 }
 
 /// <summary>
@@ -248,6 +250,7 @@ public sealed partial class VieSociale
                     MotifGrief.Moeurs => $"{h.Nom} cesse de reprocher ses amours à {autre.Nom}.",
                     MotifGrief.Vol => $"{h.Nom} pardonne à {autre.Nom} de l'avoir volé{E(h)}.",
                     MotifGrief.Trahison => $"{h.Nom} ne tient plus {autre.Nom} pour un traître.",
+                    MotifGrief.Incendie => $"{h.Nom} ne reproche plus à {autre.Nom} le feu qui s'est échappé de son camp.",
                     _ => $"{h.Nom} renonce à se venger de {autre.Nom}.",
                 }, g.EvenementId, karma: g.Motif == MotifGrief.Moeurs ? Regard.Pardonner / 2 : Regard.Pardonner);
                 continue;

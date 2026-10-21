@@ -336,6 +336,9 @@ public sealed partial class VieSociale
     /// <summary>La flore du monde (pour nommer les plantes au journal) ; fournie par le monde.</summary>
     public Flore? Flore { get; set; }
 
+    /// <summary>Foyers, huttes et réserves du monde : une communauté qui a de quoi tenir n'entre pas en disette.</summary>
+    public Installations? Installations { get; set; }
+
     /// <summary>Part de mots communs entre deux langues (calculée chaque semaine), par paire de communautés (plus petit numéro d'abord).</summary>
     public Dictionary<(int, int), double> Comprehension { get; } = [];
 

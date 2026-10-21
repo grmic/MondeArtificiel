@@ -376,6 +376,7 @@ public sealed partial class Catastrophes
         };
         if (texte is not null) Noter(maintenant, null, texte + Bilan(c), c.Id);
         Pertes(c, maintenant);
+        if (c.Type == TypeCatastrophe.Incendie) ApresLIncendie(c, humains, maintenant);
         c.SuitesJusqua = DureeDesSuites(c, maintenant);
     }
 
@@ -514,6 +515,7 @@ public sealed partial class Catastrophes
         if (Comportement is null) return;
         Comportement.Tuer(h, maintenant, cause, $"{h.Nom} {comment}, à {Comportement.AgeEnMots(h, maintenant)}.", c.Id);
         c.Morts++;
+        c.Victimes.Add(h.Id);
         if (h.CommunauteId > 0) c.PertesParCommunaute[h.CommunauteId] = c.PertesParCommunaute.GetValueOrDefault(h.CommunauteId) + 1;
         Toucher(c, h);
     }
@@ -537,6 +539,7 @@ public sealed partial class Catastrophes
             return;
         }
         c.Blesses++;
+        c.Victimes.Add(h.Id);
         var e = h.Sexe == Sexe.Femme ? "e" : "";
         var comment = c.Type switch
         {

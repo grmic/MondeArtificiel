@@ -91,6 +91,7 @@ public static class Penseur
             Activite.Experimenter => Choix("Que se passe-t-il si je fais ceci ?", "Je tourne cette chose dans mes mains."),
             Activite.Fabriquer => Choix("Je fais comme je sais faire.", "Mes mains savent ce qu'il faut faire."),
             Activite.Veiller => Choix("Je garde le feu vivant.", "Je nourris le feu."),
+            Activite.ChercherLeFeu => Choix("Nous n'avons plus de feu. Je vais en demander là-bas, où monte la fumée.", "Il nous faut du feu. Ils en ont, eux."),
             Activite.Nager => Choix("L'eau me porte.", "Je nage."),
             Activite.Soigner => Choix("J'ai mal. Peut-être que cette plante m'aidera.", "Je prends cette plante contre mon mal."),
             Activite.Repos when h.Reserves < 10 && h.Faim > 50 => Choix("Mes os percent ma peau.", "Je n'ai plus de forces."),

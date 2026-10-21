@@ -45,15 +45,20 @@ public sealed partial class Comportement
         }
         var heure = Calendrier.Decomposer(_maintenant).Heure;
         if (heure < 17 || heure > 22) return false;
-        var brandon = h.Porte(Matiere.Brandon);
+        var porte = FeuPorte(h);
         var flamme = h.Savoirs.Find(s => s.Effet == Effet.Flamme && s.Confiance >= 0.3);
-        if (!brandon && flamme is null || FoyerProche(h.X, h.Y)) return false;
+        if (FoyerProche(h.X, h.Y)) return false;
+        // Une braise couve encore au camp : on la ranime plutôt que d'allumer un autre feu.
+        if (RanimerLaBraise(h, tous)) return true;
+        if (porte is null && flamme is null) return false;
+        // Qui a appris ce que fait le vent sur l'herbe sèche attend qu'il tombe, s'il n'a pas froid.
+        if (AttendreLeCalme(h, tous)) return false;
         var moustiques = Moustiques(carte.BiomeEn(h.X, h.Y)) && _temperature >= 18;
         var motif = 1 + (moustiques && h.Sait(Effet.Fumee) ? 2 : 0) + (h.Porte(Matiere.Carcasse) ? 1 : 0) + (h.CommunauteId != 0 ? 0.5 : 0);
         if (alea.Reel() >= 0.02 * (0.5 + h.Personnalite.Conscience) * motif) return false;
         h.Activite = Activite.Fabriquer;
         h.CibleX = h.CibleY = -1;
-        if (brandon && h.Sait(Effet.Foyer)) Faire(h, Geste.Entasser, Matiere.BoisSec, Matiere.Brandon, OrigineSavoir.Essai, tous);
+        if (porte is { } p && h.Sait(Effet.Foyer)) Faire(h, Geste.Entasser, Matiere.BoisSec, p, OrigineSavoir.Essai, tous);
         else if (flamme is not null && APortee(h, flamme.A) && APortee(h, flamme.B) && (flamme.Geste != Geste.Frapper || APortee(h, Matiere.HerbeSeche)))
         {
             // La flamme née, qui sait faire durer un feu y met aussitôt du bois pour la soirée.
@@ -114,7 +119,7 @@ public sealed partial class Comportement
     /// </summary>
     private void GarderDeLaViande(Humain h, double mange)
     {
-        if (h.Porte(Matiere.Carcasse) || !h.Savoirs.Exists(s => s.Effet == Effet.Fumage && s.Confiance >= 0.5)) return;
+        if (h.Porte(Matiere.Carcasse) || !h.Savoirs.Exists(s => s.Effet is Effet.Fumage or Effet.Sechage or Effet.CacheFroide && s.Confiance >= 0.5)) return;
         // Une bête de taille moyenne pour ce gibier (de 25 à 75 kg) ; la moitié environ se mange.
         var viande = Math.Max(0, 0.5 * (25 + 50 * alea.Reel()) - mange);
         var garde = Math.Min(viande, Lois.PorterABras(Force(h, _maintenant)));
@@ -148,7 +153,8 @@ public sealed partial class Comportement
         if (carte.BiomeEn(h.X, h.Y) is not (Biome.PlaineDeFougeres or Biome.ForetDeConiferes) || Sec(h) < 0.6) return false;
         if (ecosysteme.Gibier[carte.Indice(h.X, h.Y)] >= 2000) return false;
         var flamme = h.Savoirs.Find(s => s.Effet == Effet.Flamme && s.Confiance >= 0.3 && APortee(h, s.A) && APortee(h, s.B));
-        if (!h.Porte(Matiere.Brandon) && flamme is null) return false;
+        if (!PorteLeFeu(h) && flamme is null) return false;
+        if (AttendreLeCalme(h, tous)) return false;
         // La prudence retient : le feu peut se retourner contre les siens.
         if (alea.Reel() >= 0.05 * (1.2 - h.Personnalite.Prudence)) return false;
         h.Activite = Activite.Chasser;

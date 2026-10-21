@@ -18,7 +18,7 @@ public sealed partial class DepotMonde
 
     private const string ColonnesCatastrophe =
         "id, type, origine, debut, fin, x, y, rayon, intensite, nom, morts, blesses, cases, front, direction, parametre, " +
-        "prochaine, phase, duree, signalee, pertes, communautes, temoins, suites_jusqua, morts_suites";
+        "prochaine, phase, duree, signalee, pertes, communautes, temoins, suites_jusqua, morts_suites, responsable, negligence, lecon, victimes";
 
     /// <summary>Migration vers la version 11 : catastrophes naturelles et maladies.</summary>
     private static void MigrerVersion11(SqliteConnection connexion, SqliteTransaction transaction)
@@ -168,15 +168,16 @@ public sealed partial class DepotMonde
         // Une catastrophe en cours est réécrite à chaque sauvegarde ; une fois terminée, elle reste dans l'histoire du monde.
         using var commande = Preparer(connexion, transaction,
             $"INSERT OR REPLACE INTO catastrophes ({ColonnesCatastrophe}) VALUES " +
-            "($i, $t, $o, $d, $f, $x, $y, $r, $in, $n, $m, $b, $c, $fr, $di, $p, $pr, $ph, $du, $s, $pe, $co, $te, $sj, $ms);",
+            "($i, $t, $o, $d, $f, $x, $y, $r, $in, $n, $m, $b, $c, $fr, $di, $p, $pr, $ph, $du, $s, $pe, $co, $te, $sj, $ms, $re, $ne, $le, $vi);",
             "$i", "$t", "$o", "$d", "$f", "$x", "$y", "$r", "$in", "$n", "$m", "$b", "$c", "$fr", "$di", "$p", "$pr", "$ph", "$du",
-            "$s", "$pe", "$co", "$te", "$sj", "$ms");
+            "$s", "$pe", "$co", "$te", "$sj", "$ms", "$re", "$ne", "$le", "$vi");
         foreach (var c in catastrophes)
         {
             Lancer(commande, c.Id, (int)c.Type, (int)c.Origine, c.Debut, c.Fin is { } f ? f : DBNull.Value, c.X, c.Y, c.Rayon, c.Intensite,
                 c.Nom, c.Morts, c.Blesses, EncoderCases([.. c.Cases.Order()]), EcrireTerritoire(c.Front), c.Direction, c.Parametre,
                 c.Prochaine, c.Phase, c.Duree, c.Signalee, EcrirePertes(c.PertesParCommunaute), string.Join(',', c.Communautes),
-                EcrireEntiers(c.Temoins.Order()), c.SuitesJusqua, c.MortsSuites);
+                EcrireEntiers(c.Temoins.Order()), c.SuitesJusqua, c.MortsSuites,
+                c.ResponsableId, c.Negligence, (int)c.Lecon, EcrireEntiers(c.Victimes.Order()));
         }
     }
 
@@ -276,6 +277,7 @@ public sealed partial class DepotMonde
                 Signalee = l.GetBoolean(19), PertesParCommunaute = LirePertes(l.GetString(20)),
                 Communautes = [.. LireListe(l.GetString(21))], Temoins = [.. LireEntiers((byte[])l[22])],
                 SuitesJusqua = l.GetInt64(23), MortsSuites = l.GetInt32(24),
+                ResponsableId = l.GetInt32(25), Negligence = l.GetDouble(26), Lecon = (Effet)l.GetInt32(27), Victimes = [.. LireEntiers((byte[])l[28])],
             });
         }
         return resultat;

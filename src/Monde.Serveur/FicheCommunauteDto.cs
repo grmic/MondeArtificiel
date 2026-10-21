@@ -50,7 +50,14 @@ public sealed record PersonneDto(int Id, string Nom, string Detail);
 
 /// <summary>Territoire, nourriture et santé.</summary>
 public sealed record VieCommunauteDto(int Huttes, int Foyers, IReadOnlyList<PersonneDto> Malades, int MortsDeMaladie, IReadOnlyList<CatastropheDto> Catastrophes,
-    IReadOnlyList<PersonneDto> Captifs);
+    IReadOnlyList<PersonneDto> Captifs, FeuReservesDto? Feu = null);
+
+/// <summary>
+/// Le feu et les réserves d'une communauté : braises qui couvent, combien savent allumer, son porteur du feu, ses réserves
+/// (en jours de vivres pour tous), l'idée qu'elle se fait des réserves et les incendies dont elle se souvient.
+/// </summary>
+public sealed record FeuReservesDto(int Braises, int SaventAllumer, int Adultes, NommeDto? Porteur, double JoursDeVivres, IReadOnlyList<string> Reserves,
+    string? Idee, IReadOnlyList<CatastropheDto> Incendies);
 
 /// <summary>Foi : religions présentes, croyance, porteurs, lieux sacrés proches et prières récentes.</summary>
 /// <param name="Amour">Moyennes des adultes du regard sur l'invisible : amour, crainte, révolte (0 à 100).</param>
@@ -350,7 +357,30 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var catastrophes = CatastropheDto.Liste(service, c.Id, 40).Where(x => !x.Phenomene || x.Morts > 0).ToList();
         var captifs = membres.Where(h => h.CaptifDe != 0)
             .Select(h => new PersonneDto(h.Id, h.Nom, h.CaptifDe <= humains.Count ? $"{Enleve(h)} par {humains[h.CaptifDe - 1].Nom}" : Enleve(h))).ToList();
-        return new VieCommunauteDto(huttes.Count(h => Proche(h.X, h.Y)), foyers.Count(f => Proche(f.X, f.Y)), malades, mortsMaladie, catastrophes, captifs);
+        return new VieCommunauteDto(huttes.Count(h => Proche(h.X, h.Y)), foyers.Count(f => Proche(f.X, f.Y)), malades, mortsMaladie, catastrophes, captifs,
+            CalculerFeu(service, c, membres, maintenant, Proche));
+    }
+
+    private static FeuReservesDto CalculerFeu(ServiceMonde service, Communaute c, List<Humain> membres, long maintenant, Func<int, int, bool> proche)
+    {
+        var (braises, reserves) = service.Monde.BraisesEtReserves();
+        var adultes = membres.Where(h => !h.EstEnfant(maintenant)).ToList();
+        var saventAllumer = adultes.Count(h => h.Savoirs.Exists(s => s.Effet == Effet.Flamme && s.Confiance >= 0.4));
+        var porteur = adultes.Where(h => h.PorteurDuFeuDepuis > 0).MaxBy(h => h.FeuxPortes);
+        var siennes = reserves.Where(r => r.CommunauteId == c.Id && r.Kg > 0).ToList();
+        var lignes = siennes.GroupBy(r => r.Sorte).OrderBy(g => g.Key)
+            .Select(g => Comportement.DecrireReserve(g.Key, g.Sum(r => r.Kg)) + (g.Count() > 1 ? $" ({g.Count()} caches)" : "")).ToList();
+        var idee = c.IdeeReserve switch
+        {
+            IdeeReserve.Commune => "La réserve est à tous : chacun y puise quand il a faim.",
+            IdeeReserve.ASoi => "La réserve est à celui qui l'a faite : y puiser sans lui, c'est voler.",
+            _ => null,
+        };
+        var incendies = c.IncendiesSouvenus.Select(id => CatastropheDto.Trouver(service, id)).OfType<Catastrophe>()
+            .Select(x => CatastropheDto.Depuis(x, service.Monde.Communautes(), maintenant)).ToList();
+        return new FeuReservesDto(braises.Count(b => proche(b.X, b.Y)), saventAllumer, adultes.Count,
+            porteur is null ? null : new NommeDto(porteur.Id, porteur.Nom, porteur.FeuxPortes),
+            Math.Round(Comportement.JoursDeVivres(siennes, c.Id, membres.Count), 1), lignes, idee, incendies);
     }
 
     // ───────────── Foi ─────────────

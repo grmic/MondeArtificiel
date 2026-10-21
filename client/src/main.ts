@@ -1,5 +1,5 @@
 import { oublierSuivis, PanneauSuivis } from "./suivis";
-import { chargerCarte, distanceEnMots, VueCarte, type HumainVue, type InfoTuile, type Nature } from "./carte";
+import { chargerCarte, distanceEnMots, VueCarte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
@@ -43,6 +43,7 @@ function decrireHumain(h: HumainVue): string {
 let natureEn: (x: number, y: number) => { abondance: number; pluie: number } | null = () => null;
 let territoireEn: (x: number, y: number) => { nom: string } | null = () => null;
 let catastrophesEn: (x: number, y: number) => { nom: string; intensite: string }[] = () => [];
+let feuxEn: (x: number, y: number) => string[] = () => [];
 
 function decrire(info: InfoTuile): void {
   if (!info) return;
@@ -60,6 +61,7 @@ function decrire(info: InfoTuile): void {
   }
   const terres = territoireEn(x, y);
   if (terres) lignes.push(`Terres de la ${terres.nom.charAt(0).toLowerCase()}${terres.nom.slice(1)}`);
+  lignes.push(...feuxEn(x, y));
   for (const c of catastrophesEn(x, y)) lignes.push(`⚠ ${c.nom}${c.intensite ? ` (${c.intensite})` : ""}`);
   if (emplacement) lignes.unshift(`Emplacement de départ n° ${emplacement.numero}`);
   if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 5).map(decrireHumain));
@@ -71,6 +73,31 @@ async function demarrer(): Promise<void> {
   natureEn = (x, y) => vue.natureEn(x, y);
   territoireEn = (x, y) => vue.territoireEn(x, y);
   catastrophesEn = (x, y) => vue.catastrophesEn(x, y);
+  feuxEn = (x, y) => vue.feuxEn(x, y);
+
+  // Feux et réserves : relus toutes les 5 secondes ; les réserves peuvent être masquées (choix retenu par le navigateur).
+  const caseReserves = element<HTMLInputElement>("#voirReserves");
+  try {
+    caseReserves.checked = localStorage.getItem("monde.reserves") !== "non";
+  } catch {
+    caseReserves.checked = true;
+  }
+  let derniersFeux: Feux | null = null;
+  const lireFeux = async () => {
+    const feux = await connexion.invoke<Feux>("Feux").catch(() => null);
+    if (feux) derniersFeux = feux;
+    vue.afficherFeux(derniersFeux, caseReserves.checked);
+  };
+  caseReserves.addEventListener("change", () => {
+    try {
+      localStorage.setItem("monde.reserves", caseReserves.checked ? "oui" : "non");
+    } catch {
+      // Stockage indisponible : le choix vaut pour cette page seulement.
+    }
+    vue.afficherFeux(derniersFeux, caseReserves.checked);
+  });
+  window.setInterval(() => void lireFeux(), 5000);
+  void lireFeux();
 
   // Couche des ressources : relue toutes les 5 secondes tant qu'elle est affichée.
   const boutonRessources = element<HTMLButtonElement>("#boutonRessources");

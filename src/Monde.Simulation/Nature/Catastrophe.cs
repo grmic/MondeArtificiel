@@ -145,6 +145,18 @@ public sealed class Catastrophe
     /// <summary>Humains qui l'ont vécue (témoins, victimes), pour ne compter chacun qu'une fois.</summary>
     public HashSet<int> Temoins { get; set; } = [];
 
+    /// <summary>Pour un incendie parti d'un camp : celui qui avait la garde du feu (0 : la nature, ou personne).</summary>
+    public int ResponsableId { get; set; }
+
+    /// <summary>Négligence de ce gardien, de 0 à 1 : feu laissé sans personne, allumé dans le vent, leçons connues et pas suivies.</summary>
+    public double Negligence { get; set; }
+
+    /// <summary>Ce qui a fait partir le feu du camp, et donc la leçon qu'on peut en tirer (<see cref="Humains.Effet.Rien"/> : sans objet).</summary>
+    public Humains.Effet Lecon { get; set; }
+
+    /// <summary>Humains tués ou blessés.</summary>
+    public HashSet<int> Victimes { get; set; } = [];
+
     public bool Active => Fin is null;
 
     public Catastrophe Copier()
@@ -155,6 +167,7 @@ public sealed class Catastrophe
         copie.Ravages = new Dictionary<int, ushort>(Ravages);
         copie.Communautes = [.. Communautes];
         copie.Temoins = [.. Temoins];
+        copie.Victimes = [.. Victimes];
         copie.PertesParCommunaute = new SortedDictionary<int, int>(PertesParCommunaute);
         return copie;
     }

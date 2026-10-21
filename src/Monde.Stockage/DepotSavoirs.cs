@@ -132,7 +132,7 @@ public sealed partial class DepotMonde
             """);
     }
 
-    private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM impulsions; DELETE FROM oeuvres;";
+    private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM impulsions; DELETE FROM oeuvres; DELETE FROM braises; DELETE FROM reserves;";
 
     /// <summary>Nage, remède en cours, vêtement, savoirs et objets de chaque humain.</summary>
     private static void LireSavoirs(SqliteCommand commande, List<Humain> humains)
@@ -262,10 +262,14 @@ public sealed partial class DepotMonde
     private static (List<Foyer>, List<Hutte>, List<Decouverte>, List<Oeuvre>) LireInstallations(SqliteCommand commande)
     {
         var foyers = new List<Foyer>();
-        commande.CommandText = "SELECT id, x, y, heures, allume_le, allumeur, evenement FROM foyers ORDER BY id;";
+        commande.CommandText = "SELECT id, x, y, heures, allume_le, allumeur, evenement, couvert, degage, entretenu FROM foyers ORDER BY id;";
         using (var l = commande.ExecuteReader())
         {
-            while (l.Read()) foyers.Add(new Foyer(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetDouble(3), l.GetInt64(4), l.GetInt32(5), l.GetInt64(6)));
+            while (l.Read())
+            {
+                foyers.Add(new Foyer(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetDouble(3), l.GetInt64(4), l.GetInt32(5), l.GetInt64(6),
+                    l.GetInt32(7) != 0, l.GetInt32(8) != 0, l.GetInt32(9)));
+            }
         }
         var huttes = new List<Hutte>();
         commande.CommandText = "SELECT id, x, y, solidite, batie_le, batisseur, evenement FROM huttes ORDER BY id;";
@@ -299,9 +303,10 @@ public sealed partial class DepotMonde
     {
         Executer(connexion, transaction, "DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM oeuvres;");
         using var foyers = Preparer(connexion, transaction,
-            "INSERT INTO foyers (id, x, y, heures, allume_le, allumeur, evenement) VALUES ($i, $x, $y, $h, $a, $p, $e);",
-            "$i", "$x", "$y", "$h", "$a", "$p", "$e");
-        foreach (var f in etat.Foyers ?? []) Lancer(foyers, f.Id, f.X, f.Y, f.Heures, f.AllumeLe, f.AllumeurId, f.EvenementId);
+            "INSERT INTO foyers (id, x, y, heures, allume_le, allumeur, evenement, couvert, degage, entretenu) VALUES ($i, $x, $y, $h, $a, $p, $e, $c, $d, $n);",
+            "$i", "$x", "$y", "$h", "$a", "$p", "$e", "$c", "$d", "$n");
+        foreach (var f in etat.Foyers ?? [])
+            Lancer(foyers, f.Id, f.X, f.Y, f.Heures, f.AllumeLe, f.AllumeurId, f.EvenementId, f.Couvert ? 1 : 0, f.Degage ? 1 : 0, f.EntretenuParId);
         using var huttes = Preparer(connexion, transaction,
             "INSERT INTO huttes (id, x, y, solidite, batie_le, batisseur, evenement) VALUES ($i, $x, $y, $s, $b, $p, $e);",
             "$i", "$x", "$y", "$s", "$b", "$p", "$e");

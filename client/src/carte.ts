@@ -310,6 +310,12 @@ function dessinerCases(detail: DetailCatastrophe, largeur: number, hauteur: numb
   return canvas;
 }
 
+/** Feux et réserves du monde (voir FeuxDto côté serveur). */
+export interface Feux {
+  feux: { x: number; y: number; couve: boolean }[];
+  reserves: { x: number; y: number; eau: boolean; texte: string }[];
+}
+
 export type InfoTuile = { x: number; y: number; carte: Carte; emplacement?: Emplacement; humains: HumainVue[] } | null;
 
 const COULEUR_FEMME = 0xffb347;
@@ -340,6 +346,9 @@ export class VueCarte {
   private territoires?: { donnees: Territoires; proprietaires: Int32Array };
   private readonly calqueCatastrophes = new Container();
   private readonly calqueTrajet = new Container();
+  private readonly calqueFeux = new Graphics();
+  private feux: Feux = { feux: [], reserves: [] };
+  private reservesVisibles = true;
   private barreEchelle?: HTMLElement;
   private catastrophes: { actives: CatastropheVue[]; detail: DetailCatastrophe | null; cases: Set<number> } = { actives: [], detail: null, cases: new Set() };
 
@@ -431,8 +440,34 @@ export class VueCarte {
     }
     this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
     this.afficherTrajet(null);
-    this.monde.addChild(this.nuit, this.calqueTerritoires, this.calqueNature, this.calqueCatastrophes, this.calqueTrajet, this.marqueurs, this.calqueHumains);
+    this.monde.addChild(this.nuit, this.calqueTerritoires, this.calqueNature, this.calqueCatastrophes, this.calqueFeux, this.calqueTrajet, this.marqueurs, this.calqueHumains);
     this.cadrer();
+  }
+
+  /**
+   * Dessine les feux (orange quand ils flambent, rouge sombre quand ils couvent sous la cendre ou ne sont plus que braises) et,
+   * si elles ne sont pas masquées, les réserves (un petit carré discret : brun pour la nourriture, bleu pour l'eau).
+   */
+  afficherFeux(feux: Feux | null, reservesVisibles = this.reservesVisibles): void {
+    this.feux = feux ?? { feux: [], reserves: [] };
+    this.reservesVisibles = reservesVisibles;
+    const g = this.calqueFeux.clear();
+    if (this.reservesVisibles) {
+      for (const r of this.feux.reserves) {
+        g.rect(r.x + 0.62, r.y + 0.62, 0.3, 0.3).fill({ color: r.eau ? 0x4f86b8 : 0x8a6236, alpha: 0.9 });
+      }
+    }
+    for (const f of this.feux.feux) {
+      g.circle(f.x + 0.5, f.y + 0.5, f.couve ? 0.3 : 0.38).fill({ color: f.couve ? 0x6e1e0c : 0xff8a1e, alpha: f.couve ? 0.85 : 0.95 });
+    }
+  }
+
+  /** Feux et réserves d'une tuile, en mots. */
+  feuxEn(x: number, y: number): string[] {
+    const lignes: string[] = [];
+    for (const f of this.feux.feux) if (f.x === x && f.y === y) lignes.push(f.couve ? "Un feu couve sous la cendre" : "Un feu flambe");
+    if (this.reservesVisibles) for (const r of this.feux.reserves) if (r.x === x && r.y === y) lignes.push(`Réserve : ${r.texte}`);
+    return lignes;
   }
 
   /** Montre (ou cache, avec null) les ressources des terres et les régions touchées par la sécheresse ou très arrosées. */

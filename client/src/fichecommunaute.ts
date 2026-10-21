@@ -30,7 +30,13 @@ interface FicheCommunaute {
     decouvertes: { date: string; savoir: string; humain: number; nom: string; origine: string; evenement: number; estimee: boolean }[];
     connus: string[]; appris: string[]; perdus: string[];
   };
-  vie: { huttes: number; foyers: number; malades: Personne[]; mortsDeMaladie: number; catastrophes: CatastropheResume[]; captifs: Personne[] };
+  vie: { huttes: number; foyers: number; malades: Personne[]; mortsDeMaladie: number; catastrophes: CatastropheResume[]; captifs: Personne[];
+    /** Le feu et les réserves (absent d'un serveur plus ancien). */
+    feu?: {
+      braises: number; saventAllumer: number; adultes: number; porteur: { id: number; nom: string; valeur: number } | null; joursDeVivres: number;
+      reserves: string[]; idee: string | null; incendies: CatastropheResume[];
+    } | null;
+  };
   foi: {
     croyance: number | null; religions: string[]; porteurs: { id: number; nom: string; role: string; source: string | null; miracles: number }[];
     lieux: string[]; prieres: Priere[];
@@ -510,6 +516,26 @@ export class PanneauFicheCommunaute {
     return s;
   }
 
+  /** Le feu (qui sait l'allumer, qui le porte) et les réserves (en jours de vivres pour tous), l'idée qu'on s'en fait, les incendies. */
+  private feu(s: HTMLElement, x: NonNullable<FicheCommunaute["vie"]["feu"]>): void {
+    const p = el("p", undefined, x.adultes > 0
+      ? `Savent allumer un feu : ${x.saventAllumer} adulte${x.saventAllumer > 1 ? "s" : ""} sur ${x.adultes}.`
+      : "Aucun adulte.");
+    if (x.porteur) {
+      p.append(" Porteur du feu : ", this.lienHumain(x.porteur.id, x.porteur.nom), ` (a porté le feu ${x.porteur.valeur} fois).`);
+    }
+    s.append(p);
+    if (x.reserves.length > 0) {
+      s.append(el("p", undefined, `Réserves : ${x.reserves.join(", ")} · de quoi nourrir tous les siens ${x.joursDeVivres.toLocaleString("fr-FR")} jour${x.joursDeVivres >= 2 ? "s" : ""}.`));
+    } else s.append(el("p", "discret", "Aucune réserve."));
+    if (x.idee) s.append(el("p", "usage", x.idee));
+    if (x.incendies.length > 0) {
+      const ul = el("ul", "liste");
+      for (const i of x.incendies) ul.append(el("li", undefined, `${i.debut} · ${i.nom}${i.morts > 0 ? ` (${i.morts} morts)` : ""}`));
+      s.append(el("h4", undefined, "Incendies dont elle se souvient"), ul);
+    }
+  }
+
   private vie(f: FicheCommunaute): HTMLDetailsElement {
     const s = this.section("Terres, nourriture et santé");
     const c = f.base;
@@ -518,8 +544,9 @@ export class PanneauFicheCommunaute {
       s.append(el("p", c.abondance < 40 ? "alerte" : undefined,
         `Terres alentour : ${c.abondance} % de ce qu'elles donnent d'ordinaire · terres parcourues : ${surfaceDeCases(c.terres)} · faim moyenne ${c.faim} · réserves moyennes ${c.reserves}${c.disette ? " · disette en cours" : ""}.`));
       if (c.destination) s.append(el("p", "alerte", `En route vers ${c.destination}, à la recherche de terres plus riches.`));
-      s.append(el("p", undefined, `Abris : ${v.huttes} hutte${v.huttes > 1 ? "s" : ""} · ${v.foyers} feu${v.foyers > 1 ? "x" : ""} allumé${v.foyers > 1 ? "s" : ""} sur ses terres.`));
+      s.append(el("p", undefined, `Abris : ${v.huttes} hutte${v.huttes > 1 ? "s" : ""} · ${v.foyers} feu${v.foyers > 1 ? "x" : ""} allumé${v.foyers > 1 ? "s" : ""} sur ses terres${v.feu && v.feu.braises > 0 ? ` · ${v.feu.braises} braise${v.feu.braises > 1 ? "s" : ""} qui couve${v.feu.braises > 1 ? "nt" : ""}` : ""}.`));
     }
+    if (v.feu) this.feu(s, v.feu);
     if (v.malades.length > 0) {
       const p = el("p", undefined, "Malades : ");
       v.malades.forEach((x, i) => {

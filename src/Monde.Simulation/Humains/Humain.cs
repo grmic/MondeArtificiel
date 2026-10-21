@@ -49,6 +49,8 @@ public enum Activite : byte
     Nager = 27,
     /// <summary>Enlevée lors d'un raid, elle suit celui qui l'a prise.</summary>
     SuivreRavisseur = 28,
+    /// <summary>Les siens n'ont plus de feu : il va en demander à des voisins.</summary>
+    ChercherLeFeu = 29,
 }
 
 public enum CauseDeMort : byte
@@ -396,6 +398,15 @@ public sealed class Humain
 
     /// <summary>Communauté de sa mère quand il est né (0 : aucune, ou fondateur du monde).</summary>
     public int CommunauteNaissance { get; set; }
+
+    /// <summary>Feux qu'il a rallumés ailleurs avec le feu qu'il portait (brandon ou mèche qui couve).</summary>
+    public int FeuxPortes { get; set; }
+
+    /// <summary>Depuis quand les siens voient en lui celui qui porte leur feu (0 : jamais, ou plus maintenant).</summary>
+    public long PorteurDuFeuDepuis { get; set; }
+
+    /// <summary>Dernière fois qu'il est allé demander le feu à des voisins (0 : jamais).</summary>
+    public long FeuDemandeLe { get; set; }
 
     /// <summary>Inconfort cumulé depuis le début de la journée (faim, soif, froid, maladie), pour l'humeur.</summary>
     public double InconfortDuJour { get; set; }
