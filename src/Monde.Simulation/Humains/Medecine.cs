@@ -393,8 +393,9 @@ public sealed partial class Comportement
         var suite = f < 0.05
             ? $" {t.Nom}, qui ne croit guère aux esprits, hausse les épaules."
             : $" {t.Nom}, qui croit aux esprits, en est saisi{e} d'effroi.";
+        // Maudire, c'est souhaiter qu'il dépérisse : presque un souhait de mort (gravité 0,7), mais déjà un acte.
         var id = Noter(_maintenant, TypeEvenement.Medecine, s, t, $"{s.Nom} maudit {t.Nom} : {Il(s)} appelle sur {lui} les esprits et le mal.{suite}",
-            karma: Regard.Maudire);
+            karma: Regard.Intention(s, t, 0.7, 0, malediction: true, _maintenant));
         Jardin.Confier(s, TypeIntime.Intention, t.Id, $"Que les esprits rongent {t.Nom}.", 30 + 40 * (1 - s.Personnalite.Moral.Compassion), id, _maintenant, $"maudire:{t.Id}");
         Social?.ChangerAffection(t, s, -15, _maintenant);
         if (f < 0.05) return;

@@ -237,6 +237,51 @@ public sealed class AttiranceTests
         }
     }
 
+    [Fact]
+    public void Exil_UnePersonneLumineusePlaide_EtPeutFaireRenoncerLeGroupe()
+    {
+        var plaidoyers = 0;
+        var abandons = 0;
+        for (ulong graine = 1; graine <= 30; graine++)
+        {
+            var social = new VieSociale(new Alea(graine));
+            var c = new Communaute { Id = 1, Nom = "Communauté de H1", FondeeLe = 0, FigureId = 1 };
+            social.Communautes = [c];
+            var membres = Enumerable.Range(1, 7).Select(i => Humain(i, i % 2 == 0 ? Sexe.Homme : Sexe.Femme, agreabilite: 0.7)).ToList();
+            var voleur = membres[5];
+            var juste = membres[6];
+            juste.Karma = 120;
+            juste.Personnalite = juste.Personnalite with { Extraversion = 0.8, Moral = TraitsMoraux.Moyens with { Compassion = 0.9 } };
+            foreach (var m in membres) m.CommunauteId = 1;
+            foreach (var m in membres.Take(5))
+            {
+                m.Griefs.Add(new Grief(voleur.Id, MotifGrief.Vol, 90, 90, 55));
+                Lier(m, voleur, -60);
+                Lier(m, juste, 60);
+            }
+            Lier(juste, voleur, 30);
+            var groupes = new Dictionary<int, List<Humain>> { [1] = membres };
+            for (var semaine = 0; semaine < 100 && voleur.Exclusions.Count == 0; semaine++)
+            {
+                social.Exiler(membres, [c], groupes, Maintenant + semaine * 7 * Jour);
+                if (social.Journal.Any(j => j.Texte.Contains("l'exil est abandonné"))) break;
+            }
+            var plaidoyer = social.Journal.Where(j => j.Texte.Contains("H7 plaide pour")).ToList();
+            plaidoyers += plaidoyer.Count > 0 ? 1 : 0;
+            if (plaidoyer.Any(j => j.Texte.Contains("l'exil est abandonné")))
+            {
+                abandons++;
+                Assert.Empty(voleur.Exclusions);
+                Assert.True(plaidoyer.Last().Significatif);
+                Assert.Contains(voleur.Memoire.Jardin, x => x.Type == TypeIntime.Joie && x.Texte.Contains("H7 m'a défendu"));
+            }
+            // Plaider fait monter le karma, une fois par saison envers une même personne.
+            if (plaidoyer.Count > 0) Assert.Equal(Regard.Plaider, plaidoyer[0].Karma);
+        }
+        Assert.True(plaidoyers >= 15, $"{plaidoyers} plaidoyers sur 30");
+        Assert.InRange(abandons, 1, plaidoyers - 1);
+    }
+
     // ───────────── Maladies et débat ─────────────
 
     [Fact]

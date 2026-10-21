@@ -170,12 +170,38 @@ public sealed class MedecineTests
         Assert.True(croyant.Peur >= 40);
         Assert.Equal(0, incroyant.MauditLe);
         Assert.Contains(c.Journal, e => e.Texte.Contains("hausse les épaules"));
-        Assert.All(c.Journal.Where(e => e.Type == TypeEvenement.Medecine), e => Assert.Equal(Regard.Maudire, e.Karma));
+        Assert.All(c.Journal.Where(e => e.Type == TypeEvenement.Medecine), e => Assert.InRange(e.Karma, -10, -3));
         Assert.True(Medecine.Souffrant(croyant, Maintenant));
 
         for (var j = 1; j <= 2000 && croyant.MauditLe != 0; j++) c.Soins(tous, Maintenant + j * Jour);
         Assert.Equal(0, croyant.MauditLe);
         Assert.Contains(c.Journal, e => e.Texte.Contains("La peur de H2 reflue"));
+    }
+
+    [Fact]
+    public void MauvaiseIntention_JugeeSelonLOffenseLaDetresseEtLeCaractere_JamaisAuDelaDeDix()
+    {
+        // Une mère dont l'enfant a été tué, en deuil, sensible et compatissante, prie pour la mort du meurtrier.
+        var mere = Humain(1, compassion: 0.8);
+        mere.Personnalite = mere.Personnalite with { Nevrosisme = 0.8 };
+        mere.Chagrin = 80;
+        var meurtrier = Humain(2, sexe: Sexe.Homme);
+        mere.Griefs.Add(new Grief(2, MotifGrief.Meurtre, 90, 90, 0, 3));
+        var douleur = Regard.Intention(mere, meurtrier, 0.7, 0, malediction: false, Maintenant);
+        // Un cœur froid, sans offense réelle (un rival), prie pour la même mort.
+        var froid = Humain(3, compassion: 0.05);
+        froid.Personnalite = froid.Personnalite with { Nevrosisme = 0.1 };
+        froid.Griefs.Add(new Grief(2, MotifGrief.Rival, 70, 70, 0));
+        var haine = Regard.Intention(froid, meurtrier, 0.7, 0, malediction: false, Maintenant);
+        Assert.InRange(douleur, -3, -1);
+        Assert.True(haine < douleur - 3, $"{haine} contre {douleur}");
+        // Demander moins coûte moins ; la haine entretenue coûte plus ; jamais au-delà de −10.
+        Assert.True(Regard.Intention(froid, meurtrier, 0.4, 0, false, Maintenant) > haine);
+        Assert.True(Regard.Intention(froid, meurtrier, 0.7, 3, false, Maintenant) < haine);
+        Assert.Equal(-10, Regard.Intention(froid, meurtrier, 1, 4, false, Maintenant));
+        // Une malédiction est déjà un acte : de −3 à −10.
+        Assert.InRange(Regard.Intention(mere, meurtrier, 0.7, 0, malediction: true, Maintenant), -5, -3);
+        Assert.InRange(Regard.Intention(froid, meurtrier, 1, 4, malediction: true, Maintenant), -10, -10);
     }
 
     [Fact]

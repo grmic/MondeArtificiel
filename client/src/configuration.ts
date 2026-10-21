@@ -1,3 +1,4 @@
+import { afficherAlertes, alertesAffichees } from "./catastrophes";
 import { connexion } from "./connexion";
 import { el } from "./fiche";
 
@@ -181,6 +182,9 @@ export class PanneauConfiguration {
       etiquetteQuotidien,
       el("p", "discret", "Boire, manger, dormir, se reposer, chercher un abri, aller et venir : décoché, ces gestes ne sont plus notés (ni résumé de la journée, ni pensées qui s'y rapportent). Ce qui touche aux autres reste toujours noté : veiller sur quelqu'un, partager, soigner, consoler, se disputer… Les entrées déjà écrites sont gardées."),
       this.messageJournal,
+      el("h3", undefined, "Alertes"),
+      this.caseAlertes(),
+      el("p", "discret", "Les catastrophes qui menacent des humains et les phénomènes du ciel s'annoncent en bas de l'écran. Décoché, elles ne s'affichent plus ; la pastille du bouton « Catastrophes » compte toujours les alertes graves, et la pause sur alerte se règle dans le panneau « Temps ». Ce réglage vaut pour ce navigateur."),
       el("h3", undefined, "Calcul"),
       this.coeurs.ligne,
       el("p", "discret", "Un cœur : les humains vivent chaque pas l'un après l'autre, comme jusqu'à la version 0.22.0. Plusieurs cœurs : ils vivent chaque pas en même temps, répartis sur les cœurs ; l'histoire n'est pas la même qu'avec un cœur, mais la même graine redonne le même monde quel que soit leur nombre. Le plus rapide dépend de la machine et du nombre d'humains : comparez la vitesse atteinte. Le changement s'applique au pas suivant."),
@@ -312,6 +316,17 @@ export class PanneauConfiguration {
     this.config = c;
     this.remplirCoeurs(c);
     this.messageCoeurs.textContent = c.coeurs === 1 ? "Le calcul se fait maintenant sur un cœur." : "Le calcul se fait maintenant sur plusieurs cœurs.";
+  }
+
+  private caseAlertes(): HTMLLabelElement {
+    const etiquette = el("label", "case-config");
+    const c = el("input");
+    c.type = "checkbox";
+    c.id = "configAlertes";
+    c.checked = alertesAffichees();
+    c.addEventListener("change", () => afficherAlertes(c.checked));
+    etiquette.append(c, " Afficher les alertes de catastrophe");
+    return etiquette;
   }
 
   private remplirClemence(clemence: number): void {

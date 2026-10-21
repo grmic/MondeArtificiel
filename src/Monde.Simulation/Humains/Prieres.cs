@@ -82,7 +82,8 @@ public sealed partial class Comportement
         if (h.Griefs.Count > 0 && h.Griefs.MaxBy(g => g.Intensite) is { Intensite: >= 60 } grief && Vivant(tous, grief.ContreId) is not null)
         {
             var p = h.Personnalite;
-            Garder(SujetPriere.Vengeance, grief.ContreId, 0, grief.Intensite / 100 * (1.2 - p.Agreabilite) * (1 - 0.5 * p.Moral.Compassion), false);
+            Garder(SujetPriere.Vengeance, grief.ContreId, DemandeVengeance(h, grief, maintenant),
+                grief.Intensite / 100 * (1.2 - p.Agreabilite) * (1 - 0.5 * p.Moral.Compassion), false);
         }
         if (h.PartenaireId == 0 && !h.EstEnfant(maintenant))
         {
@@ -123,22 +124,53 @@ public sealed partial class Comportement
             };
             h.PrieLe = maintenant;
             var x = b.Cible > 0 ? tous[b.Cible - 1] : null;
-            if (forte)
+            var karma = 0.0;
+            if (b.Sujet == SujetPriere.Vengeance)
             {
-                priere.EvenementId = Noter(maintenant, TypeEvenement.Religion, h, x, TextePriere(h, priere, x), significatif: true,
-                    karma: b.Sujet == SujetPriere.Vengeance ? Regard.PrierContre : 0);
+                var deja = cultes.Prieres.Count(o => o.HumainId == h.Id && o.Sujet == SujetPriere.Vengeance && o.CibleId == b.Cible);
+                karma = Regard.Intention(h, x, GraviteVengeance(b.Param), deja, malediction: false, maintenant);
             }
-            else if (b.Sujet == SujetPriere.Vengeance) Regard.Juger(h, Regard.PrierContre, maintenant, x);
+            if (forte) priere.EvenementId = Noter(maintenant, TypeEvenement.Religion, h, x, TextePriere(h, priere, x), significatif: true, karma: karma);
+            else if (karma != 0) Regard.Juger(h, karma, maintenant, x);
             cultes.Prieres.Add(priere);
             Confier(h, TypeIntime.Espoir, b.Cible, b.Sujet switch
             {
                 SujetPriere.Guerison when x is not null => $"Pourvu que {x.Nom} guérisse.",
-                SujetPriere.Vengeance when x is not null => $"Que {x.Nom} paie pour ce qu'il m'a fait.",
+                SujetPriere.Vengeance when x is not null => b.Param switch
+                {
+                    VengeanceMort => $"Que {x.Nom} meure pour ce qu'{Il(x)} m'a fait.",
+                    VengeanceLesSiens => $"Que {x.Nom} et les siens paient pour ce qu'{Il(x)} m'a fait.",
+                    _ => $"Que {x.Nom} souffre pour ce qu'{Il(x)} m'a fait.",
+                },
                 SujetPriere.Amour when x is not null => $"Pourvu que {x.Nom} m'aime un jour.",
                 _ => $"J'ai prié {Invisible(h)}. M'entendra-t-on ?",
             }, 20 + 50 * ferveur, priere.EvenementId, maintenant, "priere");
         }
     }
+
+    /// <summary>Ce que demande une prière de vengeance (<see cref="Priere.Parametre"/>) : qu'il souffre, qu'il meure, lui et les siens.</summary>
+    internal const int VengeanceSouffrir = 0, VengeanceMort = 1, VengeanceLesSiens = 2;
+
+    /// <summary>
+    /// Ce qu'on demande contre celui qui nous a offensé : la mort pour celui qui a tué un proche ou chez qui la haine est forte et
+    /// la compassion faible ; le malheur des siens aussi, seulement chez les cœurs les plus durs, au plus fort de la haine.
+    /// </summary>
+    private static int DemandeVengeance(Humain h, Grief grief, long maintenant)
+    {
+        var compassion = h.Personnalite.Moral.Compassion;
+        var dur = Psyche.EstPsychopathe(h, maintenant) || compassion < 0.2;
+        if (dur && grief.Intensite >= 85) return VengeanceLesSiens;
+        if (grief.Motif == MotifGrief.Meurtre || grief.Intensite >= 80 && compassion < 0.5) return VengeanceMort;
+        return VengeanceSouffrir;
+    }
+
+    /// <summary>Gravité de ce qui est demandé, pour le karma (voir <see cref="Regard.Intention"/>).</summary>
+    private static double GraviteVengeance(long demande) => demande switch
+    {
+        VengeanceLesSiens => 1,
+        VengeanceMort => 0.7,
+        _ => 0.4,
+    };
 
     private string TextePriere(Humain h, Priere p, Humain? x)
     {
@@ -154,7 +186,12 @@ public sealed partial class Comportement
             SujetPriere.Accalmie => $"{h.Nom} supplie {qui} d'arrêter {malheur}{maniere}.",
             SujetPriere.Enfant => $"{h.Nom} prie {qui} de lui donner un enfant{maniere}.",
             SujetPriere.Protection => $"{h.Nom} prie {qui} de protéger les siens de la guerre{maniere}.",
-            SujetPriere.Vengeance => $"{h.Nom} prie {qui} de frapper {x?.Nom}{maniere}.",
+            SujetPriere.Vengeance => p.Parametre switch
+            {
+                VengeanceMort => $"{h.Nom} prie {qui} de faire mourir {x?.Nom}{maniere}.",
+                VengeanceLesSiens => $"{h.Nom} prie {qui} de frapper {x?.Nom} et les siens{maniere}.",
+                _ => $"{h.Nom} prie {qui} de faire souffrir {x?.Nom}{maniere}.",
+            },
             SujetPriere.Amour => $"{h.Nom} prie {qui} que {x?.Nom} l'aime{maniere}.",
             _ => $"{h.Nom} remercie {qui}{maniere}.",
         };

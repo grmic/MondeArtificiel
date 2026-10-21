@@ -1,3 +1,4 @@
+import { oublierSuivis, PanneauSuivis } from "./suivis";
 import { chargerCarte, distanceEnMots, VueCarte, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { connexion, demarrerConnexion } from "./connexion";
@@ -178,12 +179,14 @@ async function demarrer(): Promise<void> {
     catastrophes.fermer();
     ouvrirCommunaute(id);
   }, (message) => (infos.textContent = message));
-  new BandeauAlertes(element("#alerte"), (id) => {
+  const alertes = new BandeauAlertes(element("#alerte"), element("#boutonCatastrophes"), (id) => {
     journal.fermer();
     communautes?.fermer();
+    alertes.vues();
     void catastrophes.ouvrir(id);
   });
   element("#boutonCatastrophes").addEventListener("click", () => {
+    alertes.vues();
     journal.fermer();
     communautes?.fermer();
     panneauMonde?.fermer();
@@ -262,6 +265,19 @@ async function demarrer(): Promise<void> {
     decouvertes.fermer();
     remarquables.fermer();
   };
+  const suivis = new PanneauSuivis(element("#suivis"), (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id);
+  }, (id) => ouvrirCommunaute(id), (ids) => vue.surligner(ids));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
+    if (b.id !== "boutonSuivis") b.addEventListener("click", () => suivis.fermer());
+  }
+  element("#boutonSuivis").addEventListener("click", () => {
+    fermerAutres();
+    prieres.fermer();
+    religions.fermer();
+    suivis.basculer();
+  });
   element("#boutonPrieres").addEventListener("click", () => {
     fermerAutres();
     prieres.basculer();
@@ -389,7 +405,9 @@ async function demarrer(): Promise<void> {
     catastrophes.fermer();
     panneauMonde.fermer();
     if (mesure.enCours) mesure.arreter();
-    element("#alerte").hidden = true;
+    alertes.vider();
+    alertes.vues();
+    oublierSuivis();
     void journal.recharger();
     void charger().then(() => {
       configuration.mondeRecree();

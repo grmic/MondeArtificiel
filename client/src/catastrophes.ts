@@ -340,34 +340,93 @@ function minuscule(nom: string): string {
   return nom.charAt(0).toLowerCase() + nom.slice(1);
 }
 
+/** Clé du réglage « Afficher les alertes de catastrophe » (propre à ce navigateur). */
+const CLE_ALERTES = "monde.alertesCatastrophes";
+
+/** Vrai si les alertes de catastrophe s'affichent (par défaut). */
+export function alertesAffichees(): boolean {
+  try {
+    return localStorage.getItem(CLE_ALERTES) !== "non";
+  } catch {
+    return true;
+  }
+}
+
+export function afficherAlertes(oui: boolean): void {
+  try {
+    localStorage.setItem(CLE_ALERTES, oui ? "oui" : "non");
+  } catch {
+    // Stockage refusé : le réglage vaut pour cette page seulement.
+  }
+  window.dispatchEvent(new CustomEvent("alertes-catastrophes", { detail: oui }));
+}
+
+/** Alertes empilées au plus. */
+const ALERTES_MAX = 3;
+
 /**
- * Bandeau d'alerte : une catastrophe qui menace des humains (rouge, le monde est peut-être en pause), ou un phénomène
- * du ciel (discret, s'efface seul). Un clic ouvre la catastrophe.
+ * Alertes : une catastrophe qui menace des humains (rouge, le monde est peut-être en pause), ou un phénomène du ciel
+ * (discret, s'efface seul). Elles s'empilent en bas de l'écran, au-dessus de la barre d'échelle, loin des menus ; un clic
+ * ouvre la catastrophe. Le bouton « Catastrophes » porte une pastille : les alertes graves arrivées depuis qu'on a ouvert la
+ * fenêtre pour la dernière fois. Le réglage de la Configuration cache les alertes, pas la pastille.
  */
 export class BandeauAlertes {
-  private minuteur?: number;
+  private nonVues = 0;
 
-  constructor(private readonly racine: HTMLElement, private readonly ouvrir: (id: number) => void) {
+  constructor(private readonly racine: HTMLElement, private readonly bouton: HTMLElement, private readonly ouvrir: (id: number) => void) {
     connexion.on("Alertes", (alertes: Alerte[]) => this.montrer(alertes));
+    window.addEventListener("alertes-catastrophes", (e) => {
+      if (!(e as CustomEvent<boolean>).detail) this.vider();
+    });
+  }
+
+  /** La fenêtre Catastrophes vient d'être ouverte : tout est vu. */
+  vues(): void {
+    this.nonVues = 0;
+    this.pastille();
+  }
+
+  vider(): void {
+    this.racine.replaceChildren();
+    this.racine.hidden = true;
   }
 
   private montrer(alertes: Alerte[]): void {
     const graves = alertes.filter((a) => a.grave);
     const a = graves.at(-1) ?? alertes.at(-1);
     if (!a) return;
-    window.clearTimeout(this.minuteur);
-    this.racine.className = `alerte-catastrophe${a.grave ? " grave" : ""}`;
-    this.racine.replaceChildren();
+    if (graves.length > 0) {
+      this.nonVues += graves.length;
+      this.pastille();
+    }
+    if (!alertesAffichees()) return;
+    const carte = el("div", `alerte-carte${a.grave ? " grave" : ""}`);
     const texte = el("button", "lien", a.texte + (alertes.length > 1 ? ` (+${alertes.length - 1})` : ""));
     texte.type = "button";
     texte.title = "Voir sur la carte";
     texte.addEventListener("click", () => this.ouvrir(a.catastrophe));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
-    fermer.addEventListener("click", () => (this.racine.hidden = true));
-    this.racine.append(el("span", "icone", a.grave ? "⚠" : "✦"), texte, fermer);
+    fermer.title = "Fermer";
+    fermer.addEventListener("click", () => this.retirer(carte));
+    carte.append(el("span", "icone", a.grave ? "⚠" : "✦"), texte, fermer);
+    // La plus récente en haut ; au-delà de trois, la plus ancienne s'en va.
+    this.racine.prepend(carte);
+    while (this.racine.children.length > ALERTES_MAX) this.racine.lastElementChild?.remove();
     this.racine.hidden = false;
     // Une alerte grave reste jusqu'à ce qu'on la ferme ; un phénomène s'efface seul.
-    if (!a.grave) this.minuteur = window.setTimeout(() => (this.racine.hidden = true), 10_000);
+    if (!a.grave) window.setTimeout(() => this.retirer(carte), 10_000);
+  }
+
+  private retirer(carte: HTMLElement): void {
+    carte.remove();
+    if (this.racine.children.length === 0) this.racine.hidden = true;
+  }
+
+  private pastille(): void {
+    this.bouton.dataset.pastille = this.nonVues > 0 ? String(Math.min(this.nonVues, 99)) : "";
+    this.bouton.classList.toggle("avec-pastille", this.nonVues > 0);
+    this.bouton.title = this.bouton.title.replace(/ · \d+ alertes? non vues?$/, "")
+      + (this.nonVues > 0 ? ` · ${this.nonVues} alerte${this.nonVues > 1 ? "s" : ""} non vue${this.nonVues > 1 ? "s" : ""}` : "");
   }
 }

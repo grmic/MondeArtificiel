@@ -1,3 +1,4 @@
+import { boutonSuivre } from "./suivis";
 import { lignePriere, type Priere } from "./cultes";
 import { connexion } from "./connexion";
 import type { HumainVue } from "./carte";
@@ -325,7 +326,7 @@ export class PanneauFiche {
       nom.title = `Son nom dans la langue des siens${f.langage.sens ? ` : « ${f.langage.sens} »` : ""}`;
       titre.append(nom);
     }
-    tete.append(titre);
+    tete.append(titre, boutonSuivre("humain", this.id, h.nom));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.title = "Fermer la fiche";

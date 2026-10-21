@@ -22,6 +22,8 @@ public static class Regard
     public const double Veiller = 1;
     public const double NourrirLesAffames = 1;
     public const double Pardonner = 2;
+    /// <summary>Plaider pour qu'on ne chasse pas quelqu'un (comme pardonner).</summary>
+    public const double Plaider = 2;
     public const double NourrirSansLait = 4;
     public const double Allaiter = 5;
     public const double Recueillir = 5;
@@ -38,11 +40,8 @@ public static class Regard
     public const double Meurtre = -50;
     /// <summary>Se faire nourrir en prétendant guérir.</summary>
     public const double Tromper = -2;
-    /// <summary>Maudire quelqu'un pour qu'il dépérisse ; s'il en meurt, c'est presque un meurtre.</summary>
-    public const double Maudire = -10;
+    /// <summary>Si un maudit en meurt, c'est presque un meurtre.</summary>
     public const double MortMaudit = -25;
-    /// <summary>Prier pour que l'invisible frappe quelqu'un (à confirmer par zem).</summary>
-    public const double PrierContre = -2;
     /// <summary>Offrir une vie humaine à l'invisible : un meurtre (voir <see cref="Meurtre"/>).</summary>
     public const double Sacrifier = Meurtre;
 
@@ -98,6 +97,50 @@ public static class Regard
         if (h.PartenaireId > tous.Count || !tous[h.PartenaireId - 1].EstVivant) return 0;
         return Infidelite * Math.Clamp(1 - tolerance, 0, 1);
     }
+
+    /// <summary>
+    /// Points d'une mauvaise intention envers <paramref name="cible"/> : prier pour que l'invisible la frappe, ou la maudire.
+    /// Choix de zem (21/10) : pas de valeur fixe, de −1 à −10 pour une prière (une intention ne coûte jamais plus de 10),
+    /// de −3 à −10 pour une malédiction, qui est déjà un acte. L'Entité juge :
+    /// <list type="bullet">
+    /// <item>ce qui est demandé (<paramref name="gravite"/>, 0 à 1 : qu'il souffre, qu'il meure, lui et les siens) ;</item>
+    /// <item>l'offense subie : un proche tué, des coups, une trahison rendent la colère compréhensible, une simple jalousie non ;</item>
+    /// <item>la détresse du moment (chagrin, faim, maladie) : on prie mal quand on souffre ;</item>
+    /// <item>le caractère : une colère brûlante chez un sensible pèse moins qu'un souhait froid chez un cœur dur ou un
+    /// psychopathe. Les intentions sont jugées moins sévèrement que les actes, et la colère provoquée moins que la
+    /// malveillance froide (Cushman, 2008 ; Malle, Guglielmo et Monroe, 2014) ;</item>
+    /// <item>la haine entretenue : chaque souhait déjà formé contre la même personne (<paramref name="deja"/>) pèse un peu plus.</item>
+    /// </list>
+    /// Les nuances d'âge s'appliquent ensuite, dans <see cref="Juger"/>.
+    /// </summary>
+    public static double Intention(Humain h, Humain? cible, double gravite, int deja, bool malediction, long maintenant)
+    {
+        var offense = 0.0;
+        if (cible is not null)
+        {
+            foreach (var g in h.Griefs)
+            {
+                if (g.ContreId != cible.Id) continue;
+                offense = Math.Max(offense, Offense(g.Motif) * Math.Clamp(g.Initiale / 100, 0.3, 1));
+            }
+        }
+        var p = h.Personnalite;
+        var detresse = Math.Clamp(Math.Max(h.Chagrin / 100, Math.Max((h.Faim - 50) / 50, (60 - h.Sante) / 60)), 0, 1);
+        var froideur = Psyche.EstPsychopathe(h, maintenant) ? 1 : Math.Clamp((1 - p.Moral.Compassion) * (1 - 0.5 * p.Nevrosisme), 0, 1);
+        var haine = 1 + 0.25 * Math.Min(deja, 4);
+        var poids = Math.Clamp(gravite * (1 - 0.6 * offense) * (1 - 0.4 * detresse) * (0.4 + 0.6 * froideur) * haine, 0, 1);
+        return malediction ? -(3 + 7 * poids) : -(1 + 9 * poids);
+    }
+
+    /// <summary>Combien une offense rend compréhensible le désir de voir l'offenseur souffrir (0 : aucune faute de sa part).</summary>
+    private static double Offense(MotifGrief motif) => motif switch
+    {
+        MotifGrief.Meurtre => 0.8,
+        MotifGrief.Coups or MotifGrief.Trahison => 0.5,
+        MotifGrief.Vol or MotifGrief.Infidelite => 0.4,
+        // Le rival n'a trahi personne, et aimer quelqu'un de son sexe ne fait de tort à personne.
+        _ => 0.1,
+    };
 
     /// <summary>Le karma en mots, pour l'observateur.</summary>
     public static string Dire(double karma) => karma switch

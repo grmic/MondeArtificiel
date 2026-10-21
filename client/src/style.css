@@ -178,6 +178,23 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .alerte-catastrophe .lien { color: var(--texte); text-align: left; }
 .extinction { flex-wrap: wrap; top: 100px; z-index: 6; }
 .extinction button:not(.fermer) { font-size: 0.85rem; padding: 3px 10px; border-radius: 6px; border: 1px solid #ff9b9b; background: #3a1616; color: var(--texte); cursor: pointer; }
+.alertes {
+  position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100vw - 24px));
+  display: flex; flex-direction: column; gap: 6px; z-index: 5;
+}
+.alertes[hidden] { display: none; }
+.alerte-carte {
+  display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 10px;
+  background: rgba(40, 30, 60, 0.92); border: 1px solid #8a6cc0; font-size: 0.85rem;
+}
+.alerte-carte.grave { background: rgba(90, 20, 20, 0.94); border-color: #ff6b6b; }
+.alerte-carte .lien { flex: 1; background: none; border: none; color: var(--texte); text-align: left; cursor: pointer; padding: 0; font: inherit; }
+.alerte-carte .fermer { background: none; border: none; color: var(--discret); font-size: 1.1rem; cursor: pointer; }
+#boutonCatastrophes.avec-pastille { position: relative; }
+#boutonCatastrophes.avec-pastille::after {
+  content: attr(data-pastille); position: absolute; top: -7px; right: -7px; min-width: 16px; height: 16px; padding: 0 3px;
+  border-radius: 8px; background: #d93a3a; color: #fff; font-size: 0.7rem; line-height: 16px; text-align: center;
+}
 .alerte-catastrophe .fermer { background: none; border: none; color: var(--discret); font-size: 1.2rem; cursor: pointer; }
 .monde-panneau { right: 12px; top: 290px; bottom: 12px; width: min(440px, calc(100vw - 24px)); }
 .monde-panneau table.mesures { width: 100%; border-collapse: collapse; }
@@ -276,3 +293,11 @@ button.exaucer { font-size: 0.85em; padding: 0 6px; }
 .fiche .ligne-pyramide .tranche { text-align: center; color: var(--discret); }
 .fiche .ligne-pyramide .nombre:first-child { text-align: right; padding-right: 3px; }
 .fiche .ligne-pyramide .nombre:last-child { padding-left: 3px; }
+
+/* Suivis : bouton des fiches et fenêtre. */
+.tete button.suivre { margin-left: auto; margin-right: 6px; font-size: 0.75rem; padding: 2px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; white-space: nowrap; }
+.tete button.suivre.actif { border-color: #e8c25a; color: #ffe08a; }
+.liste.suivis li { display: flex; align-items: center; gap: 4px; }
+.liste.suivis .fermer { background: none; border: none; color: var(--discret); cursor: pointer; }
+.liste.nouvelles li { padding: 2px 0; border-bottom: 1px solid #1f2a3c; }
+.liste.nouvelles li.significatif { color: #ffe08a; }

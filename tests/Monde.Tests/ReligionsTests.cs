@@ -168,9 +168,8 @@ public sealed class ReligionsTests : IDisposable
     }
 
     [Fact]
-    public void PrierPourQuOnSoitFrappe_PeseUnPeuSurLeKarma()
+    public void SacrifierEstUnMeurtre()
     {
-        Assert.True(Regard.PrierContre < 0 && Regard.PrierContre > Regard.Vol);
         Assert.Equal(Regard.Meurtre, Regard.Sacrifier);
     }
 }

@@ -94,8 +94,12 @@ public sealed partial class VieSociale
         _ => $"parce que plus personne ne {(x.Sexe == Sexe.Femme ? "la" : "le")} supporte",
     };
 
-    /// <summary>Durée d'un exil selon la faute : quelques mois pour la discorde, des années pour un meurtre ; parfois pour toujours.</summary>
-    private long DureeExil(Grief? g, double colere)
+    /// <summary>
+    /// Durée d'un exil selon la faute : quelques mois pour la discorde, des années pour un meurtre ; parfois pour toujours.
+    /// <paramref name="clemence"/> (0 à 1) : part des accusateurs qu'un plaidoyer a fait revenir sur leur colère ; l'exil en
+    /// est raccourci, et moins souvent sans terme.
+    /// </summary>
+    private long DureeExil(Grief? g, double colere, double clemence = 0)
     {
         var (mediane, toujours) = g?.Motif switch
         {
@@ -106,8 +110,9 @@ public sealed partial class VieSociale
             MotifGrief.Infidelite or MotifGrief.Rival => (0.4, 0.05),
             _ => (0.8, 0.1),
         };
-        if (alea.Reel() < toujours * (0.5 + colere)) return 0;
-        return (long)(mediane * (0.6 + colere) * Math.Exp(0.6 * Biologie.Normale(alea)) * Calendrier.SecondesParAn);
+        var adouci = 1 - 0.5 * clemence;
+        if (alea.Reel() < toujours * (0.5 + colere) * adouci) return 0;
+        return (long)(mediane * (0.6 + colere) * adouci * Math.Exp(0.6 * Biologie.Normale(alea)) * Calendrier.SecondesParAn);
     }
 
     /// <summary>
@@ -167,7 +172,14 @@ public sealed partial class VieSociale
             var bienveillance = hostiles.Average(m => (m.Personnalite.Agreabilite + m.Personnalite.Moral.Compassion) / 2);
             var severite = hostiles.Average(m => m.Personnalite.Moral.Fondements.Liants);
             if (alea.Reel() >= 0.3 * (1.2 - bienveillance) * (0.7 + 0.6 * severite)) continue;
-            Chasser(exile, c, motif, hostiles, humains, maintenant);
+            var clemence = 0.0;
+            if (Plaideur(exile, c, adultes, hostiles, motif, maintenant) is { } plaideur)
+            {
+                var avant = hostiles.Count;
+                if (Plaider(plaideur, exile, c, adultes, hostiles, motif, humains, maintenant)) continue;
+                clemence = 1 - hostiles.Count / (double)avant;
+            }
+            Chasser(exile, c, motif, hostiles, humains, maintenant, clemence);
         }
 
         // Un parent qui en veut profondément à son enfant adulte peut le renier, d'autant plus qu'il est peu bienveillant et peu attaché.
@@ -186,10 +198,90 @@ public sealed partial class VieSociale
         }
     }
 
-    private void Chasser(Humain x, Communaute c, Grief? motif, List<Humain> hostiles, IReadOnlyList<Humain> humains, long maintenant)
+    /// <summary>
+    /// Celui qui peut plaider pour <paramref name="x"/> : un membre que les siens tiennent pour bon. Les humains ne voient pas le
+    /// karma, mais ils voient ce qui le fait monter (soigner, partager, consoler, recueillir, pardonner) : le plaideur est celui
+    /// dont le karma est le plus lumineux du groupe (50 ou plus, voir <see cref="Regard.Dire"/>), compatissant, qui n'en veut
+    /// pas lui-même à l'accusé. Il plaide d'autant plus volontiers qu'il l'aime, qu'il ose parler devant tous (extraversion)
+    /// et que la faute est légère.
+    /// </summary>
+    private Humain? Plaideur(Humain x, Communaute c, List<Humain> adultes, List<Humain> hostiles, Grief? motif, long maintenant)
+    {
+        Humain? p = null;
+        foreach (var m in adultes)
+        {
+            if (m.Id == x.Id || p is not null && m.Karma <= p.Karma) continue;
+            p = m;
+        }
+        if (p is null || p.Karma < 50 || p.Personnalite.Moral.Compassion < 0.5 || Psyche.EstPsychopathe(p, maintenant)) return null;
+        if (hostiles.Any(m => m.Id == p.Id) || Reproche(p, x).Score >= 0.2) return null;
+        var faute = motif?.Motif switch
+        {
+            MotifGrief.Meurtre => 0.4,
+            MotifGrief.Coups or MotifGrief.Trahison => 0.7,
+            _ => 1.0,
+        };
+        var envie = (0.3 + 0.4 * p.Personnalite.Moral.Compassion) * (0.6 + 0.4 * p.Personnalite.Extraversion)
+            * (1 + Math.Max(0, p.AffectionPour(x.Id)) / 100) * faute;
+        return alea.Reel() < Math.Min(0.9, envie) ? p : null;
+    }
+
+    /// <summary>
+    /// Le plaidoyer : chaque accusateur reconsidère selon l'estime qu'il porte au plaideur et sa propre bienveillance ; pour un
+    /// meurtre, rarement. Si la majorité n'y est plus, ou si la figure du groupe s'est laissé fléchir, l'exil est abandonné
+    /// (renvoie vrai). Chez les peuples sans chef, les figures respectées apaisent les conflits par la parole et non par
+    /// l'ordre (Boehm, 1999 ; Wiessner, 2014). Plaider pour un humain très détesté coûte un peu d'estime au plaideur.
+    /// </summary>
+    private bool Plaider(Humain p, Humain x, Communaute c, List<Humain> adultes, List<Humain> hostiles, Grief? motif, IReadOnlyList<Humain> humains,
+        long maintenant)
+    {
+        var faute = motif?.Motif == MotifGrief.Meurtre ? 0.3 : 1;
+        var flechis = new List<Humain>();
+        foreach (var m in hostiles)
+        {
+            var estime = Math.Clamp((m.AffectionPour(p.Id) + 50) / 100, 0, 1);
+            var colere = Math.Min(1, Reproche(m, x).Score / 2);
+            if (alea.Reel() < 0.6 * estime * (0.4 + 0.6 * m.Personnalite.Agreabilite) * (1 - 0.5 * colere) * faute) flechis.Add(m);
+        }
+        foreach (var m in flechis) hostiles.Remove(m);
+        var renonce = hostiles.Count * 2 <= adultes.Count - 1 || hostiles.All(m => m.Id != c.FigureId);
+        var raison = Raison(motif, x, humains);
+        var (le, lui, e) = x.Sexe == Sexe.Femme ? ("la", "elle", "e") : ("le", "lui", "");
+        var suite = renonce
+            ? flechis.Count == 1 ? $" {flechis[0].Nom} renonce à {le} chasser, et l'exil est abandonné." : $" {flechis.Count} des siens renoncent à {le} chasser, et l'exil est abandonné."
+            : flechis.Count == 0 ? " Personne ne se laisse fléchir."
+            : flechis.Count == 1 ? $" {flechis[0].Nom} se laisse fléchir, pas assez pour l'empêcher." : $" {flechis.Count} des siens se laissent fléchir, pas assez pour l'empêcher.";
+        var id = Noter(maintenant, TypeEvenement.Exclusion, p, x, $"La {Minuscule(c.Nom)} veut chasser {x.Nom} {raison} ; {p.Nom} plaide pour {lui}.{suite}",
+            motif?.EvenementId ?? 0, communaute: c.Id, significatif: renonce, karma: Regard.Plaider);
+        foreach (var m in flechis)
+        {
+            Jardin.Confier(m, TypeIntime.Opinion, x.Id, $"{p.Nom} m'a convaincu{E(m)} d'épargner {x.Nom}.", 35, id, maintenant, $"opinion:{x.Id}");
+            // Convaincu d'épargner, on lui laisse une chance : la rancune baisse et l'aversion retombe (il faudra de nouveaux
+            // torts pour qu'on veuille de nouveau le chasser), sinon le groupe remettrait l'exil en question chaque semaine.
+            for (var i = 0; i < m.Griefs.Count; i++)
+                if (m.Griefs[i].ContreId == x.Id) m.Griefs[i] = m.Griefs[i] with { Intensite = Math.Round(m.Griefs[i].Intensite * 0.7, 1) };
+            ChangerAffection(m, x, Math.Max(10, -30 - m.AffectionPour(x.Id)), maintenant);
+        }
+        // Défendre celui que presque tous détestent fait douter de soi ceux qui ne se sont pas laissé fléchir.
+        foreach (var m in hostiles)
+        {
+            var colere = Reproche(m, x).Score;
+            if (colere >= 1) ChangerAffection(m, p, -5 * Math.Min(2, colere), maintenant);
+        }
+        if (renonce)
+        {
+            ChangerAffection(x, p, 20, maintenant);
+            Jardin.Confier(x, TypeIntime.Joie, p.Id, $"{p.Nom} m'a défendu{e} quand les miens voulaient me chasser.", 60, id, maintenant, $"plaidoyer:{p.Id}");
+        }
+        Jardin.Confier(p, TypeIntime.Intention, x.Id, renonce ? $"J'ai obtenu qu'on garde {x.Nom} parmi nous." : $"J'ai plaidé pour {x.Nom}, en vain.",
+            40, id, maintenant, $"plaider:{x.Id}");
+        return renonce;
+    }
+
+    private void Chasser(Humain x, Communaute c, Grief? motif, List<Humain> hostiles, IReadOnlyList<Humain> humains, long maintenant, double clemence = 0)
     {
         var colere = hostiles.Average(m => Reproche(m, x).Score);
-        var duree = DureeExil(motif, Math.Min(1, colere / 2));
+        var duree = DureeExil(motif, Math.Min(1, colere / 2), clemence);
         var raison = Raison(motif, x, humains);
         var il = x.Sexe == Sexe.Femme ? "elle" : "il";
         var pour = duree == 0 ? "pour toujours" : $"pour {DireDuree(duree)}";

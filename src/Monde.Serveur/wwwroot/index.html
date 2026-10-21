@@ -5,13 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-bcAo6vit.js"></script>
+    <script type="module" crossorigin src="/assets/index-DgmfB5I2.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/CanvasPool-CT7OQSgs.js">
     <link rel="modulepreload" crossorigin href="/assets/canvasUtils-vHj9HkKG.js">
     <link rel="modulepreload" crossorigin href="/assets/RenderTargetSystem-FtcCc_-0.js">
     <link rel="modulepreload" crossorigin href="/assets/getTextureBatchBindGroup-DWZkPDHl.js">
     <link rel="modulepreload" crossorigin href="/assets/getTexelRangeRects-Dz82KJmA.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-CXjIzl0O.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-ONCrrT_m.css">
   </head>
   <body>
     <div id="scene"></div>
@@ -31,6 +31,7 @@
         <button type="button" id="boutonRemarquables" title="Les humains hors du commun : intelligence, aptitudes, karma, croyance, découvertes, soins, œuvres, descendance, longévité">Remarquables</button>
         <button type="button" id="boutonPrieres" title="Ce que les humains demandent à l'invisible ; l'Entité peut exaucer">Prières</button>
         <button type="button" id="boutonReligions" title="Croyances partagées : religions, préceptes, prophètes, prêtres, lieux sacrés">Religions</button>
+        <button type="button" id="boutonSuivis" title="Les humains et les communautés que vous suivez, et leurs dernières nouvelles">Suivis</button>
         <button type="button" id="boutonJournal" title="Naissances, morts, couples… filtrables par humain">Journal</button>
         <button type="button" id="boutonMonde" title="Surface et dimensions du continent, relief, eaux, terrains, climat, population, marche">Monde</button>
         <button type="button" id="boutonMesure" title="Mesurer une distance et le temps de marche entre deux points de la carte">📏 Mesurer</button>
@@ -92,11 +93,12 @@
     <aside id="configuration" class="monde-panneau config-panneau panneau-lateral" aria-label="Configuration" hidden></aside>
     <aside id="demographie" class="demographie-panneau panneau-lateral" aria-label="Démographie" hidden></aside>
     <aside id="decouvertes" class="demographie-panneau panneau-lateral" aria-label="Découvertes" hidden></aside>
+    <aside id="suivis" class="journal-panneau panneau-lateral" aria-label="Suivis" hidden></aside>
     <aside id="remarquables" class="demographie-panneau panneau-lateral" aria-label="Remarquables" hidden></aside>
     <aside id="prieres" class="demographie-panneau panneau-lateral" aria-label="Prières" hidden></aside>
     <aside id="religions" class="demographie-panneau panneau-lateral" aria-label="Religions" hidden></aside>
     <aside id="caracteristiques" class="monde-panneau panneau-lateral" aria-label="Caractéristiques du Monde" hidden></aside>
-    <div id="alerte" class="alerte-catastrophe" role="alert" hidden></div>
+    <div id="alerte" class="alertes" role="alert" aria-live="assertive" hidden></div>
     <div id="extinction" class="alerte-catastrophe grave extinction" role="alert" hidden>
       <span id="texteExtinction"></span>
       <button type="button" id="extinctionRestaurer">Restaurer une sauvegarde</button>

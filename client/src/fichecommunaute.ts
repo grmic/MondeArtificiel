@@ -1,3 +1,4 @@
+import { boutonSuivre } from "./suivis";
 import { connexion } from "./connexion";
 import { distanceDeCases, surfaceDeCases } from "./carte";
 import { blocLangue, courbe, type Communaute, type Taille } from "./communautes";
@@ -195,7 +196,7 @@ export class PanneauFicheCommunaute {
       if (c.sens) nom.title = `Le nom qu'ils se donnent : « ${c.sens} »`;
       titre.append(nom);
     }
-    tete.append(titre);
+    tete.append(titre, boutonSuivre("communaute", c.id, c.nom));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.title = "Fermer la fiche";
