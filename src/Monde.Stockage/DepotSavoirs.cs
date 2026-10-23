@@ -132,7 +132,7 @@ public sealed partial class DepotMonde
             """);
     }
 
-    private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM impulsions; DELETE FROM oeuvres; DELETE FROM braises; DELETE FROM reserves;";
+    private const string EffacerSavoirs = "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM foyers; DELETE FROM huttes; DELETE FROM decouvertes; DELETE FROM impulsions; DELETE FROM oeuvres; DELETE FROM braises; DELETE FROM reserves; DELETE FROM progres;";
 
     /// <summary>Nage, remède en cours, vêtement, savoirs et objets de chaque humain.</summary>
     private static void LireSavoirs(SqliteCommand commande, List<Humain> humains)

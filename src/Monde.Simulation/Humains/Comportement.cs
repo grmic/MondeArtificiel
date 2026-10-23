@@ -611,7 +611,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             var parent = partenaire;
             _autre = parent;
             if (parent is not null && Distance(h.X, h.Y, parent.X, parent.Y) > 1) Avancer(h, parent.X, parent.Y, Activite.SuivreParent);
-            else if (!Experimenter(h, tous))
+            else if (!Enseigner(h, tous) && !Experimenter(h, tous))
             {
                 h.Activite = Activite.Repos;
                 h.CibleX = h.CibleY = -1;
@@ -676,6 +676,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (Outiller(h, tous)) return;
         if (Assembler(h, tous)) return;
         if (AvoirUneIdee(h, tous)) return;
+        if (Enseigner(h, tous)) return;
         if (Experimenter(h, tous)) return;
         if (alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
         {

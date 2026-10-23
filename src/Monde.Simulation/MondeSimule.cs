@@ -68,6 +68,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Première fois que chaque effet a été obtenu dans le monde.</summary>
     public IReadOnlyList<Decouverte>? Decouvertes { get; init; }
 
+    /// <summary>Savoirs vivants au début de chaque année, dans le monde et dans chaque communauté.</summary>
+    public IReadOnlyList<MesureSavoirs>? Progres { get; init; }
+
     /// <summary>Images peintes sur la roche.</summary>
     public IReadOnlyList<Oeuvre>? Oeuvres { get; init; }
 
@@ -120,7 +123,10 @@ public sealed class MondeSimule
     private readonly Cultes _cultes;
     // Effets que des vivants savent obtenir : quand le dernier qui savait meurt ou oublie, le savoir est perdu.
     /// <summary>Effets que quelqu'un sait encore obtenir, avec un savoir qui le dit (pour le raconter s'il se perd).</summary>
-    private Dictionary<Effet, Savoir> _effetsConnus;
+    private Dictionary<Effet, (Savoir Savoir, List<int> Detenteurs)> _effetsConnus;
+
+    /// <summary>Savoirs vivants au début de chaque année (voir <see cref="MesurerSavoirs"/>).</summary>
+    private readonly List<MesureSavoirs> _progres = [];
     private readonly List<Communaute> _communautes;
     private readonly HashSet<string> _noms;
     private long _secondes;
@@ -190,6 +196,7 @@ public sealed class MondeSimule
         _noms = _humains.Select(x => x.Nom).ToHashSet();
         _eteint = !_humains.Vivants().Any(x => x.EstVivant);
         _effetsConnus = EffetsConnus();
+        _progres.AddRange(etat.Progres ?? []);
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
         _archivesNonEnregistrees.AddRange(etat.ArchivesNonEnregistrees ?? []);
 
@@ -262,6 +269,7 @@ public sealed class MondeSimule
                     Braises = _installations.Braises.ToList(),
                     Reserves = _installations.Reserves.ToList(),
                     Decouvertes = _installations.Decouvertes.ToList(),
+                    Progres = _progres.ToList(),
                     Oeuvres = _installations.Oeuvres.ToList(),
                     Religions = _cultes.Religions.Select(r => r.Copier()).ToList(),
                     Prieres = _cultes.Prieres.Select(p => p.Copier()).ToList(),
@@ -955,18 +963,104 @@ public sealed class MondeSimule
 
     private static string Pronom(Humain h) => h.Sexe == Sexe.Femme ? "elle" : "il";
 
-    private Dictionary<Effet, Savoir> EffetsConnus()
+    /// <summary>Effets que des vivants savent obtenir : le savoir le plus sûr de chacun, et tous ceux qui le détiennent.</summary>
+    private Dictionary<Effet, (Savoir Savoir, List<int> Detenteurs)> EffetsConnus()
     {
-        var connus = new Dictionary<Effet, Savoir>();
+        var connus = new Dictionary<Effet, (Savoir Savoir, List<int> Detenteurs)>();
         foreach (var h in _humains.Vivants())
         {
             if (!h.EstVivant) continue;
             foreach (var s in h.Savoirs)
             {
-                if (s.Espece == 0 && s.Effet != Effet.Rien && (!connus.TryGetValue(s.Effet, out var x) || s.Confiance > x.Confiance)) connus[s.Effet] = s;
+                if (s.Espece != 0 || s.Effet == Effet.Rien) continue;
+                if (!connus.TryGetValue(s.Effet, out var x)) connus[s.Effet] = (s, [h.Id]);
+                else
+                {
+                    if (x.Detenteurs[^1] != h.Id) x.Detenteurs.Add(h.Id);
+                    if (s.Confiance > x.Savoir.Confiance) connus[s.Effet] = (s, x.Detenteurs);
+                }
             }
         }
         return connus;
+    }
+
+    /// <summary>
+    /// Une fois l'an, au premier jour : combien de savoirs sont vivants (sus d'au moins un vivant) dans le monde et dans
+    /// chaque communauté. C'est la courbe du progrès de la fenêtre « Découvertes ».
+    /// </summary>
+    private void MesurerSavoirs(Dictionary<Effet, (Savoir Savoir, List<int> Detenteurs)> connus)
+    {
+        var annee = (int)(_secondes / Calendrier.SecondesParAn + 1);
+        if (_progres.Count > 0 && _progres[^1].Annee >= annee) return;
+        foreach (var (communaute, n) in SavoirsVivants(connus)) _progres.Add(new MesureSavoirs(annee, communaute, n));
+    }
+
+    /// <summary>Savoirs vivants (effets distincts) du monde (communauté 0) puis de chaque communauté qui a des membres.</summary>
+    private List<(int Communaute, int Savoirs)> SavoirsVivants(Dictionary<Effet, (Savoir Savoir, List<int> Detenteurs)> connus)
+    {
+        var resultat = new List<(int, int)> { (0, connus.Count) };
+        var parCommunaute = new SortedDictionary<int, HashSet<Effet>>();
+        foreach (var (effet, (_, detenteurs)) in connus)
+        {
+            foreach (var id in detenteurs)
+            {
+                var c = _humains[id - 1].CommunauteId;
+                if (c <= 0) continue;
+                if (!parCommunaute.TryGetValue(c, out var effets)) parCommunaute[c] = effets = [];
+                effets.Add(effet);
+            }
+        }
+        foreach (var (c, effets) in parCommunaute) resultat.Add((c, effets.Count));
+        return resultat;
+    }
+
+    /// <summary>Savoirs vivants en ce moment, pour le dernier point de la courbe (communauté 0 : le monde entier).</summary>
+    public int SavoirsVivantsMaintenant(int communaute)
+    {
+        lock (_verrou)
+        {
+            foreach (var (c, n) in SavoirsVivants(EffetsConnus())) if (c == communaute) return n;
+            return 0;
+        }
+    }
+
+    /// <summary>Mesures annuelles des savoirs vivants (copie).</summary>
+    public List<MesureSavoirs> Progres()
+    {
+        lock (_verrou) return _progres.ToList();
+    }
+
+    /// <summary>
+    /// Pourquoi un savoir s'est perdu : ce qui est arrivé aux derniers qui le détenaient (morts, ou oublié faute de s'en
+    /// servir). Renvoie la phrase et l'événement à citer comme cause (la mort ou l'oubli du dernier).
+    /// </summary>
+    private (string Texte, long Cause) PourquoiPerdu(Effet effet, List<int> detenteurs, Dictionary<(int, Effet), long> oublis)
+    {
+        var faits = new List<(Humain Humain, string Sort)>();
+        long cause = 0;
+        foreach (var id in detenteurs.Take(3))
+        {
+            var h = _humains[id - 1];
+            var e = h.Sexe == Sexe.Femme ? "e" : "";
+            if (!h.EstVivant)
+            {
+                var comment = Libelles.Cause(h.CauseDeMort);
+                faits.Add((h, $"est mort{e}{(comment.Length > 0 ? " " + comment : "")}"));
+                if (h.MortEvenementId > 0) cause = h.MortEvenementId;
+            }
+            else
+            {
+                faits.Add((h, "l'a oublié faute de s'en servir"));
+                if (oublis.TryGetValue((id, effet), out var o) && o > 0) cause = o;
+            }
+        }
+        if (faits.Count == 0) return ("", 0);
+        if (detenteurs.Count == 1)
+        {
+            var (h, sort) = faits[0];
+            return ($" {h.Nom}, {(h.Sexe == Sexe.Femme ? "la dernière" : "le dernier")} qui savait, {sort}.", cause);
+        }
+        return ($" Les derniers qui savaient : {string.Join(" ; ", faits.Select(f => $"{f.Humain.Nom} {f.Sort}"))}{(detenteurs.Count > 3 ? "…" : "")}.", cause);
     }
 
     /// <summary>
@@ -990,24 +1084,29 @@ public sealed class MondeSimule
         }
         _comportement.BilanDesRemedes(_humains, _secondes);
         _comportement.Hygienes(_humains, _secondes);
+        var oublis = new Dictionary<(int, Effet), long>();
         foreach (var (h, s) in _comportement.UserEtOublier(_humains, _secondes))
         {
             if (s.Effet is Effet.Chaleur or Effet.Tiedeur || s.Confiance < 0.5) continue;
             var plante = s.Espece > 0 ? Flore.Get(s.Espece).Nom : null;
-            _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Souvenir, h.Id, 0,
-                $"{h.Nom} ne se souvient plus de ce qu'{Pronom(h)} savait : « {Physique.Decrire(s, plante)} »") { Id = _numeros.Suivant(), CauseId = s.EvenementId });
+            var oubli = new EvenementJournal(_secondes, TypeEvenement.Souvenir, h.Id, 0,
+                $"{h.Nom} ne se souvient plus de ce qu'{Pronom(h)} savait : « {Physique.Decrire(s, plante)} »") { Id = _numeros.Suivant(), CauseId = s.EvenementId };
+            _comportement.Journal.Add(oubli);
+            if (s.Espece == 0) oublis[(h.Id, s.Effet)] = oubli.Id;
         }
         var connus = EffetsConnus();
-        foreach (var (perdu, dernier) in _effetsConnus.Where(p => !connus.ContainsKey(p.Key)).OrderBy(p => p.Key))
+        foreach (var (perdu, (dernier, detenteurs)) in _effetsConnus.Where(p => !connus.ContainsKey(p.Key)).OrderBy(p => p.Key))
         {
             var premier = _installations.Decouvertes.Find(d => d.Effet == perdu);
+            var (pourquoi, cause) = PourquoiPerdu(perdu, detenteurs, oublis);
             _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Decouverte, 0, 0,
-                $"Plus personne ne sait : « {Physique.Decrire(dernier)} » Ce savoir est perdu.")
+                $"Plus personne ne sait : « {Physique.Decrire(dernier)} » Ce savoir est perdu.{pourquoi}")
             {
-                Id = _numeros.Suivant(), CauseId = premier?.EvenementId ?? 0, Significatif = true,
+                Id = _numeros.Suivant(), CauseId = cause > 0 ? cause : premier?.EvenementId ?? 0, Significatif = true,
             });
         }
         _effetsConnus = connus;
+        MesurerSavoirs(connus);
     }
 
     /// <summary>

@@ -41,9 +41,12 @@ public sealed record AptitudeDto(string Nom, double Moyenne, double MoyenneMonde
 public sealed record CaractereDto(IReadOnlyList<AptitudeDto> Traits, IReadOnlyList<string> Distinctifs, double? KarmaMoyen, NommeDto? MeilleurKarma,
     NommeDto? PireKarma);
 
-/// <summary>Savoirs : découvertes de ses membres, appris d'autres groupes, perdus.</summary>
+/// <summary>Savoirs : découvertes de ses membres, appris d'autres groupes, perdus, et ceux que seuls un ou deux membres détiennent.</summary>
 public sealed record SavoirsCommunauteDto(IReadOnlyList<DecouverteMembreDto> Decouvertes, IReadOnlyList<string> Connus, IReadOnlyList<string> Appris,
-    IReadOnlyList<string> Perdus);
+    IReadOnlyList<string> Perdus, IReadOnlyList<FragileDto>? Fragiles = null);
+
+/// <summary>Un savoir que seuls un ou deux membres détiennent : s'ils meurent ou l'oublient sans l'avoir appris à d'autres, il se perd.</summary>
+public sealed record FragileDto(string Savoir, IReadOnlyList<NommeDto> Detenteurs);
 
 /// <summary>Un malade ou un captif, avec ce qu'il a ou d'où il vient.</summary>
 public sealed record PersonneDto(int Id, string Nom, string Detail);
@@ -340,7 +343,10 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var perdus = humains.Where(h => !h.EstVivant && h.CommunauteId == c.Id)
             .SelectMany(h => h.Savoirs.Where(Utile).Select(s => s.Effet)).Distinct().Where(e => !connus.Contains(e))
             .Order().Select(Physique.NomEffet).ToList();
-        return new SavoirsCommunauteDto(siennes, Decouvertes.DeCommunaute(membres), appris, perdus);
+        var fragiles = membres.SelectMany(m => m.Savoirs.Where(s => Utile(s) && s.Espece == 0).Select(s => (s.Effet, Membre: m)))
+            .DistinctBy(x => (x.Effet, x.Membre.Id)).GroupBy(x => x.Effet).Where(g => g.Count() <= 2 && membres.Count >= 4).OrderBy(g => g.Key)
+            .Select(g => new FragileDto(Physique.NomEffet(g.Key), g.Select(x => new NommeDto(x.Membre.Id, x.Membre.Nom, 0)).ToList())).ToList();
+        return new SavoirsCommunauteDto(siennes, Decouvertes.DeCommunaute(membres), appris, perdus, fragiles);
     }
 
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];

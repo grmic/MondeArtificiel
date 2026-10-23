@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 32;
+    public const int VersionSchema = 33;
 
     private readonly string _connexion;
 
@@ -581,6 +581,7 @@ public sealed partial class DepotMonde
         }
         // Version 32 : garder le feu, feux de camp, réserves d'eau et de nourriture.
         if (actuelle < 32) MigrerVersion32(connexion, transaction);
+        if (actuelle < 33) MigrerVersion33(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -781,6 +782,8 @@ public sealed partial class DepotMonde
         var (braises, reserves) = LireFeuxEtReserves(commande);
         if (braises.Count > 0) etat = etat with { Braises = braises };
         if (reserves.Count > 0) etat = etat with { Reserves = reserves };
+        var progres = LireProgres(commande);
+        if (progres.Count > 0) etat = etat with { Progres = progres };
         if (oeuvres.Count > 0) etat = etat with { Oeuvres = oeuvres };
         if (foyers.Count > 0) etat = etat with { Foyers = foyers };
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };
@@ -1166,6 +1169,7 @@ public sealed partial class DepotMonde
         }
         if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Braises is not null || etat.Reserves is not null) EnregistrerFeuxEtReserves(connexion, transaction, etat);
+        if (etat.Progres is not null) EnregistrerProgres(connexion, transaction, etat.Progres);
         if (etat.Religions is not null || etat.Prieres is not null || etat.LieuxSacres is not null || etat.Propheties is not null)
             EnregistrerCultes(connexion, transaction, etat);
         if (etat.EffetsEntite is not null || etat.SouvenirsEntite is not null) EnregistrerGestes(connexion, transaction, etat);

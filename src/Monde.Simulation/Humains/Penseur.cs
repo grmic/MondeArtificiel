@@ -89,6 +89,7 @@ public static class Penseur
             Activite.PartirEnExil => Choix($"Les miens m'ont chassé{e}. Je pars{vers}.", "Je ne peux plus rester ici."),
             Activite.RentrerDuRaid => Choix($"Je rentre auprès des miens{vers}.", "C'est fini. Je retourne au camp."),
             Activite.Experimenter => Choix("Que se passe-t-il si je fais ceci ?", "Je tourne cette chose dans mes mains."),
+            Activite.Enseigner => Choix($"Regarde, {nom} : comme ceci, doucement.", $"Je montre à {nom} ce que mes mains savent."),
             Activite.Fabriquer => Choix("Je fais comme je sais faire.", "Mes mains savent ce qu'il faut faire."),
             Activite.Veiller => Choix("Je garde le feu vivant.", "Je nourris le feu."),
             Activite.ChercherLeFeu => Choix("Nous n'avons plus de feu. Je vais en demander là-bas, où monte la fumée.", "Il nous faut du feu. Ils en ont, eux."),

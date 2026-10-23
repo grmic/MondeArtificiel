@@ -66,6 +66,9 @@ public sealed record Reserve(int Id, int X, int Y, SorteReserve Sorte, double Kg
 /// <param name="Solidite">De 1 (neuf, bien fait) à 0 (effondré).</param>
 public sealed record Hutte(int Id, int X, int Y, double Solidite, long BatieLe, int BatisseurId, long EvenementId);
 
+/// <summary>Savoirs vivants au début d'une année : effets distincts que savent obtenir les vivants du monde (communauté 0) ou d'une communauté.</summary>
+public sealed record MesureSavoirs(int Annee, int CommunauteId, int Savoirs);
+
 /// <summary>Première fois qu'un effet a été obtenu dans le monde : par qui, quand, comment.</summary>
 /// <param name="Pieces">Pour un objet assemblé : ses pièces (voir <see cref="Assemblage"/>).</param>
 /// <param name="CommunauteId">Communauté de l'inventeur au moment de la découverte (0 : aucune).</param>

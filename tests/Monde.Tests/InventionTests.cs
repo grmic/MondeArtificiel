@@ -159,8 +159,9 @@ public sealed class InventionTests
         Assert.Contains(c.Journal, j => j.Significatif && j.Texte.Contains("Première fois au monde") && j.Texte.Contains("Cela marche"));
         Assert.Contains(c.Installations.Decouvertes, d => d.Effet == Effet.Flottaison && d.Pieces == savoir.Pieces);
 
-        // Il le refait sans avoir à y repenser, et le temoin finit par l'apprendre en le regardant.
-        for (var i = 0; i < 400 && !temoin.Savoirs.Exists(s => s.Effet == Effet.Flottaison); i++)
+        // Il le refait sans avoir à y repenser (au moins une fois), et le temoin finit par l'apprendre en le regardant (parfois dès
+        // la première fois).
+        for (var i = 0; i < 400 && (i == 0 || !temoin.Savoirs.Exists(s => s.Effet == Effet.Flottaison)); i++)
         {
             h.Objets.RemoveAll(o => o.Matiere == Matiere.Assemblage);
             if (!h.Porte(Matiere.Corde)) h.Objets.Add(new Objet(Matiere.Corde, 1, 1));

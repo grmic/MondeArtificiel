@@ -240,6 +240,11 @@ h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
 .demographie-panneau .repere.entite, .demographie-panneau .repere-tete.entite { stroke: #c792ff; fill: #c792ff; }
 .demographie-panneau .repere.guerre, .demographie-panneau .repere-tete.guerre { stroke: #f5a04a; fill: #f5a04a; }
 .demographie-panneau .repere-tete { cursor: pointer; stroke-width: 0; }
+.demographie-panneau .progres { fill: none; stroke: #8fd3a0; stroke-width: 1.6; }
+.demographie-panneau .progres.reconstitue { stroke-dasharray: 3 3; stroke-opacity: 0.7; }
+.demographie-panneau .marque { cursor: pointer; stroke: #0e1520; stroke-width: 1; }
+.demographie-panneau .marque.perdu { fill: #ef6f6c; }
+.demographie-panneau .marque.retrouve { fill: #74c26a; }
 .demographie-panneau .bulle {
   position: absolute; pointer-events: none; padding: 4px 8px; border-radius: 6px; max-width: 200px;
   background: rgba(10, 16, 26, 0.94); border: 1px solid #3a4658; font-size: 0.78rem; line-height: 1.35;

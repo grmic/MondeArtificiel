@@ -139,7 +139,9 @@ interface Langage {
 
 /** Ce qu'il sait faire (et à quel point il y croit), ce qu'il porte, son vêtement, son aisance dans l'eau (0 à 100). */
 interface Savoirs {
-  savoirs: { texte: string; confiance: number; origine: string; maitre: number; nomMaitre: string | null; appriLe: string; essais: number; evenement: number }[];
+  savoirs: { texte: string; confiance: number; origine: string; maitre: number; nomMaitre: string | null; appriLe: string; essais: number; evenement: number;
+    /** Vivants qui le tiennent de lui (absent d'un serveur plus ancien). */
+    eleves?: { id: number; nom: string }[] }[];
   objets: string[];
   vetement: string | null;
   nage: number;
@@ -598,7 +600,7 @@ export class PanneauFiche {
     return d;
   }
 
-  /** Savoirs (texte, confiance, comment il les a appris et de qui), objets portés, vêtement, nage. */
+  /** Savoirs (texte, confiance, comment il les a appris et de qui, à qui il les a appris), objets portés, vêtement, nage. */
   private savoirs(corps: HTMLElement, s: Savoirs, e: string): void {
     corps.append(el("h3", undefined, "Savoirs et objets"));
     const p = el("p", "discret");
@@ -613,6 +615,14 @@ export class PanneauFiche {
       li.append(`${x.texte} `, el("span", "discret", `(confiance ${x.confiance} %, ${x.origine}`));
       if (x.maitre > 0 && x.nomMaitre) li.append(el("span", "discret", " de "), this.lien(x.maitre, x.nomMaitre));
       li.append(el("span", "discret", ")"));
+      if (x.eleves && x.eleves.length > 0) {
+        li.append(el("span", "discret", " · l'a appris à "));
+        x.eleves.slice(0, 6).forEach((o, i) => {
+          if (i > 0) li.append(", ");
+          li.append(this.lien(o.id, o.nom));
+        });
+        if (x.eleves.length > 6) li.append(el("span", "discret", ` et ${x.eleves.length - 6} autres`));
+      }
       if (x.origine.includes("Entité")) li.append(el("span", "entite", " ✦"));
       if (x.evenement > 0) li.append(" ", boutonCause(li, x.evenement, "comment ?"));
       ul.append(li);

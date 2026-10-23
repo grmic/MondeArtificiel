@@ -17,6 +17,8 @@ public static class Regard
 {
     // Barème des actes, en points de karma (avant les nuances d'âge et de caractère).
     public const double Partage = 0.5;
+    /// <summary>Montrer exprès un geste à quelqu'un (comme partager : un don de son temps et de son savoir).</summary>
+    public const double Enseigner = 0.5;
     public const double Remede = 0.5;
     public const double Consoler = 1;
     public const double Veiller = 1;

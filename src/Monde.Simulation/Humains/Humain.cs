@@ -51,6 +51,8 @@ public enum Activite : byte
     SuivreRavisseur = 28,
     /// <summary>Les siens n'ont plus de feu : il va en demander à des voisins.</summary>
     ChercherLeFeu = 29,
+    /// <summary>Montrer exprès un geste à quelqu'un, guider sa main.</summary>
+    Enseigner = 30,
 }
 
 public enum CauseDeMort : byte

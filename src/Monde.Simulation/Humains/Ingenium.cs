@@ -319,22 +319,26 @@ public sealed partial class Comportement
     /// <summary>
     /// Retient (ou renforce) un savoir. Un savoir nouveau est noté au journal ; la toute première fois qu'un effet est obtenu
     /// dans le monde, c'est un tournant (★). Renvoie le numéro de l'événement qui le rapporte (0 s'il était déjà connu).
+    /// <paramref name="heritage"/> : réussites que l'élève tient de l'habileté de son modèle (voir <see cref="Heritage"/>) ;
+    /// <paramref name="karmaMaitre"/> : ce que vaut, pour le maître, de l'avoir enseigné (voir <see cref="Regard.Enseigner"/>).
     /// </summary>
     private long Retenir(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, OrigineSavoir origine, int maitreId,
-        IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", string? recit = null)
+        IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", string? recit = null, int heritage = 0, double karmaMaitre = 0)
     {
         // Ce qu'un autre apprend en regardant celui dont c'est le tour, il le retient après le pas.
         if (Tour.Autrui(h))
         {
             var ih = h.Id;
-            Tour.Differer(tous, t => Retenir(t[ih - 1], g, a, b, e, espece, mal, origine, maitreId, t, succes, pieces, recit));
+            Tour.Differer(tous, t => Retenir(t[ih - 1], g, a, b, e, espece, mal, origine, maitreId, t, succes, pieces, recit, heritage, karmaMaitre));
             return 0;
         }
         var i = h.Savoirs.FindIndex(s => s.Meme(g, a, b, e, espece, mal) && s.Pieces == pieces);
         if (i >= 0)
         {
             var s = h.Savoirs[i];
-            h.Savoirs[i] = s with { Essais = s.Essais + 1, Succes = s.Succes + (succes ? 1 : 0), UtiliseLe = _maintenant };
+            // Un maître corrige le geste de celui qui le savait mal : il en garde ce qu'il a compris de mieux.
+            var gain = Math.Max(0, heritage - s.Succes);
+            h.Savoirs[i] = s with { Essais = s.Essais + 1 + gain, Succes = s.Succes + (succes ? 1 : 0) + gain, UtiliseLe = _maintenant };
             return 0;
         }
         var structure = Lois.Structure(pieces);
@@ -342,10 +346,10 @@ public sealed partial class Comportement
         // Un savoir que tout le monde avait perdu, retrouvé : c'est aussi un tournant.
         var retrouve = !premier && espece == 0 && !tous.Vivants().Any(o => o.EstVivant && o.Savoirs.Exists(s => s.Effet == e && s.Espece == 0));
         var nom = espece > 0 ? Majuscule(Flore.Get(espece).Nom) : null;
-        var nouveau = new Savoir(g, a, b, e, espece, mal, 1, succes ? 1 : 0, _maintenant, _maintenant, origine, maitreId, 0, pieces);
+        var nouveau = new Savoir(g, a, b, e, espece, mal, 1 + heritage, (succes ? 1 : 0) + heritage, _maintenant, _maintenant, origine, maitreId, 0, pieces);
         var maitre = maitreId > 0 && maitreId <= tous.Count ? tous[maitreId - 1] : null;
         var description = Physique.Decrire(nouveau, nom);
-        var comment = recit is not null && origine != OrigineSavoir.Imitation ? recit : origine switch
+        var comment = recit is not null ? recit : origine switch
         {
             OrigineSavoir.Essai => Recit(h, nouveau, espece > 0 ? Flore.Get(espece).Nom : null),
             OrigineSavoir.Observation => Observation(h, nouveau),
@@ -362,7 +366,7 @@ public sealed partial class Comportement
             var texte = premier ? $"Première fois au monde : {comment} {h.Nom} comprend : « {description} »"
                 : retrouve ? $"Savoir retrouvé (plus personne ne le savait) : {comment} {h.Nom} comprend : « {description} »"
                 : $"{comment} {h.Nom} comprend : « {description} »";
-            id = Noter(_maintenant, TypeEvenement.Decouverte, h, maitre, texte, significatif: premier || retrouve);
+            id = Noter(_maintenant, TypeEvenement.Decouverte, h, maitre, texte, significatif: premier || retrouve, karmaAutre: karmaMaitre);
         }
         h.Savoirs.Add(nouveau with { EvenementId = id });
         if (premier)
@@ -468,11 +472,16 @@ public sealed partial class Comportement
     /// <summary>
     /// Ceux qui regardent peuvent imiter : d'autant plus qu'ils sont curieux, qu'ils aiment celui qui fait le geste ou
     /// l'admirent, et que celui-ci montre bien (empathie cognitive). Les enfants imitent bien plus (Csibra et Gergely, 2009).
+    /// On regarde plus volontiers le plus habile (biais de prestige : Henrich et Gil-White, 2001), et l'on ne retient de
+    /// son geste qu'une part de son habileté (voir <see cref="Heritage"/>).
     /// </summary>
     private void Montrer(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, IReadOnlyList<Humain> tous, long cause,
         string pieces = "")
     {
         if (e is Effet.Tiedeur or Effet.Visions) return;
+        var modele = h.Savoirs.Find(s => s.Meme(g, a, b, e, espece, mal) && s.Pieces == pieces);
+        // Le geste sûr d'un habile attire les regards ; le geste hésitant d'un débutant, moins (1 pour un modèle moyen).
+        var prestige = (0.5 + AdressePour(h, modele) / AdresseMoyenne) / 1.5;
         foreach (var o in tous.Vivants())
         {
             if (o.Id == h.Id || !o.EstVivant || o.X != h.X || o.Y != h.Y || o.EstBebe(_maintenant) || o.Activite == Activite.Dormir) continue;
@@ -486,13 +495,39 @@ public sealed partial class Comportement
                             // de ceux qu'on dit savoir soigner : McDade et al., 2007 ; Salali et al., 2016).
                             * (h.GuerisseurDepuis > 0 && e is Effet.Soulagement or Effet.Pansement ? 1.6 : 1)
                             // Un mot commun pour la chose montrée aide à comprendre ce qu'on regarde.
-                            * (Langues.Partagent(h, o, espece > 0 ? Idees.Plante(espece) : Idees.Savoir(e)) ? 1.4 : 1);
+                            * (Langues.Partagent(h, o, espece > 0 ? Idees.Plante(espece) : Idees.Savoir(e)) ? 1.4 : 1)
+                            * prestige;
             // Comprendre un geste compliqué demande de l'intelligence et de l'adresse.
-            var difficile = e is Effet.Flamme or Effet.Durci or Effet.Decoupe or Effet.Percage || pieces.Length > 0 ? 0.5 + 0.5 * Ingeniosite(o) : 1;
+            var difficile = Difficile(e, pieces) ? 0.5 + 0.5 * Ingeniosite(o) : 1;
             if (alea.Reel() >= 0.35 * attention * difficile) continue;
-            Retenir(o, g, a, b, e, espece, mal, OrigineSavoir.Imitation, h.Id, tous, pieces: pieces);
+            Retenir(o, g, a, b, e, espece, mal, OrigineSavoir.Imitation, h.Id, tous, pieces: pieces, heritage: Heritage(o, modele, e, pieces, false));
             VieSociale.Gratitude(o, h, 0.5);
         }
+    }
+
+    /// <summary>Gestes qu'il faut de l'intelligence et de l'adresse pour comprendre : le feu par friction, la pointe durcie, l'éclat qui découpe, le trou percé, l'objet assemblé.</summary>
+    private static bool Difficile(Effet e, string pieces) => e is Effet.Flamme or Effet.Durci or Effet.Decoupe or Effet.Percage || pieces.Length > 0;
+
+    /// <summary>
+    /// Adresse moyenne d'un humain à un geste qu'il connaît à peine (aptitude manuelle 100 ± 15 : environ 0,4 avec la part
+    /// de l'habitude). Sert d'étalon au prestige : un modèle moyen est regardé comme avant.
+    /// </summary>
+    private const double AdresseMoyenne = 0.4;
+
+    /// <summary>
+    /// Ce que l'élève garde de l'habileté de son modèle, en réussites : le plus souvent une part seulement, parfois davantage
+    /// chez un élève adroit et ingénieux. C'est la copie imparfaite du modèle de Henrich (2004) : un geste difficile ne tient
+    /// que si le groupe compte assez de praticiens habiles pour qu'il s'en trouve toujours un bon à copier. Un maître qui
+    /// montre exprès transmet mieux qu'un geste vu par hasard (Morgan et al., 2015).
+    /// </summary>
+    internal int Heritage(Humain eleve, Savoir? modele, Effet e, string pieces, bool enseigne)
+    {
+        if (modele is null || modele.Succes <= 1) return 0;
+        var aptitude = 0.5 * eleve.Personnalite.Adresse + 0.5 * Ingeniosite(eleve);
+        var mediane = (enseigne ? 0.45 : 0.25) + 0.35 * aptitude - (Difficile(e, pieces) ? 0.1 : 0);
+        var part = Math.Min(1.25, mediane * Math.Exp(0.5 * Biologie.Normale(alea)));
+        // La réussite qu'il vient de voir compte déjà comme la sienne (voir Retenir).
+        return Math.Max(0, (int)(part * (modele.Succes - 1)));
     }
 
     private static string Majuscule(string s) => char.ToUpperInvariant(s[0]) + s[1..];

@@ -262,6 +262,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Chronologie des découvertes : la première fois que chaque savoir est apparu dans le monde.</summary>
     public List<DecouverteDto> Decouvertes() => Serveur.Decouvertes.Chronologie(service);
 
+    /// <summary>Courbe des savoirs vivants du monde (0) ou d'une communauté, avec les savoirs perdus et retrouvés.</summary>
+    public ProgresDto Progres(int communaute) => Serveur.Decouvertes.Progres(service, communaute);
+
     /// <summary>Critères de la fenêtre « Remarquables ».</summary>
     public List<CritereRemarquableDto> CriteresRemarquables() => Serveur.Remarquables.ListeCriteres();
 

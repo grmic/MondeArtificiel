@@ -29,6 +29,8 @@ interface FicheCommunaute {
   savoirs: {
     decouvertes: { date: string; savoir: string; humain: number; nom: string; origine: string; evenement: number; estimee: boolean }[];
     connus: string[]; appris: string[]; perdus: string[];
+    /** Savoirs que seuls un ou deux membres détiennent (absent d'un serveur plus ancien). */
+    fragiles?: { savoir: string; detenteurs: Nomme[] }[];
   };
   vie: { huttes: number; foyers: number; malades: Personne[]; mortsDeMaladie: number; catastrophes: CatastropheResume[]; captifs: Personne[];
     /** Le feu et les réserves (absent d'un serveur plus ancien). */
@@ -457,6 +459,21 @@ export class PanneauFicheCommunaute {
       s.append(ul);
     }
     if (x.connus.length > 0) s.append(el("h4", undefined, "Ce qu'ils savent"), el("p", undefined, `${x.connus.join(", ")}.`));
+    if (x.fragiles && x.fragiles.length > 0) {
+      s.append(el("h4", undefined, "Savoirs fragiles"));
+      const ul = el("ul", "liste");
+      for (const f of x.fragiles) {
+        const li = el("li");
+        li.append(`${f.savoir} : `);
+        f.detenteurs.forEach((d, i) => {
+          if (i > 0) li.append(" et ");
+          li.append(this.lienHumain(d.id, d.nom));
+        });
+        li.append(" seulement");
+        ul.append(li);
+      }
+      s.append(ul, el("p", "discret", "S'ils meurent ou l'oublient avant de l'avoir appris à d'autres, le groupe le perd."));
+    }
     if (x.appris.length > 0) s.append(el("h4", undefined, "Appris d'autres groupes"), el("p", undefined, `${x.appris.join(", ")}.`));
     if (x.perdus.length > 0) {
       s.append(el("h4", undefined, "Perdus"), el("p", undefined, `${x.perdus.join(", ")}.`),

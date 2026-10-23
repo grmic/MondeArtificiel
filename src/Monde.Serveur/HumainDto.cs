@@ -66,6 +66,7 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.Soigner] = "soigne",
         [Simulation.Humains.Activite.Nager] = "nage",
         [Simulation.Humains.Activite.ChercherLeFeu] = "va demander le feu",
+        [Simulation.Humains.Activite.Enseigner] = "montre un geste",
     };
 
 

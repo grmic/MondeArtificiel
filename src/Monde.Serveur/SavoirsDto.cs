@@ -4,8 +4,10 @@ using Monde.Simulation.Temps;
 
 namespace Monde.Serveur;
 
-/// <summary>Un savoir d'un humain : ce qu'il croit, à quel point il y croit, d'où il le tient.</summary>
-public sealed record SavoirDto(string Texte, int Confiance, string Origine, int Maitre, string? NomMaitre, string AppriLe, int Essais, long Evenement);
+/// <summary>Un savoir d'un humain : ce qu'il croit, à quel point il y croit, d'où il le tient, et à qui il l'a appris.</summary>
+/// <param name="Eleves">Vivants qui le tiennent de lui (en le regardant faire ou parce qu'il le leur a montré).</param>
+public sealed record SavoirDto(string Texte, int Confiance, string Origine, int Maitre, string? NomMaitre, string AppriLe, int Essais, long Evenement,
+    IReadOnlyList<NommeDto>? Eleves = null);
 
 /// <summary>Savoirs, objets portés, vêtement et aisance dans l'eau d'un humain.</summary>
 public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<string> Objets, string? Vetement, int Nage)
@@ -24,11 +26,14 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
     public static SavoirsDto Depuis(Humain h, IReadOnlyList<Humain> humains, Flore flore)
     {
         string? Nom(int i) => i >= 1 && i <= humains.Count ? humains[i - 1].Nom : null;
+        List<NommeDto> Eleves(Savoir s) => humains
+            .Where(o => o.EstVivant && o.Id != h.Id && o.Savoirs.Exists(x => x.MaitreId == h.Id && x.Meme(s.Geste, s.A, s.B, s.Effet, s.Espece, s.Symptome) && x.Pieces == s.Pieces))
+            .Select(o => new NommeDto(o.Id, o.Nom, 0)).ToList();
         return new SavoirsDto(
             h.Savoirs.OrderByDescending(s => s.Confiance).ThenBy(s => s.AppriLe)
                 .Select(s => new SavoirDto(Physique.Decrire(s, s.Espece > 0 ? Majuscule(flore.Get(s.Espece).Nom) : null),
                     (int)Math.Round(100 * s.Confiance), Origine(s.Origine), s.MaitreId, Nom(s.MaitreId),
-                    Calendrier.Decomposer(s.AppriLe).ToString(), s.Essais, s.EvenementId))
+                    Calendrier.Decomposer(s.AppriLe).ToString(), s.Essais, s.EvenementId, Eleves(s)))
                 .ToList(),
             h.Objets.Select(o => o.Matiere == Matiere.Carcasse
                 ? $"de la viande{(o.Plein ? " fumée" : "")} ({Math.Max(1, Math.Round(100 * o.Qualite))} kg){(o.Usure <= 0.4 ? ", qui commence à se gâter" : "")}"
@@ -43,6 +48,19 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
 
 /// <summary>Une découverte dans la chronologie du monde : la première fois qu'un effet a été obtenu.</summary>
 public sealed record DecouverteDto(string Date, long Secondes, string Savoir, int Humain, string Nom, string Origine, long Evenement, int Detenteurs);
+
+/// <summary>Un point de la courbe du progrès : savoirs vivants au début d'une année (ou maintenant, pour le dernier).</summary>
+/// <param name="Reconstitue">Vrai pour une année d'avant la 0.29.1, reconstituée depuis le journal (monde entier seulement).</param>
+public sealed record PointProgresDto(double Annee, int Savoirs, bool Reconstitue);
+
+/// <summary>Un savoir perdu (ou retrouvé) sur la courbe : l'événement du journal qui le rapporte.</summary>
+public sealed record MarqueProgresDto(double Annee, string Date, long Evenement, bool Perdu, string Texte, long Cause);
+
+/// <summary>Une communauté qu'on peut choisir pour la courbe.</summary>
+public sealed record CommunauteProgresDto(int Id, string Nom, bool Active);
+
+/// <summary>La courbe du progrès d'un monde ou d'une communauté, ses pertes et retrouvailles, et les communautés mesurées.</summary>
+public sealed record ProgresDto(IReadOnlyList<PointProgresDto> Points, IReadOnlyList<MarqueProgresDto> Marques, IReadOnlyList<CommunauteProgresDto> Communautes);
 
 /// <summary>Un choix proposé à l'Entité (geste ou matière) : clé et libellé.</summary>
 public sealed record ChoixDto(string Cle, string Libelle);
@@ -68,6 +86,34 @@ public static class Decouvertes
         return decouvertes.OrderBy(d => d.Le).Select(d => new DecouverteDto(Calendrier.Decomposer(d.Le).ToString(), d.Le,
             Physique.NomDecouverte(d.Effet, d.Pieces), d.HumainId, d.HumainId >= 1 && d.HumainId <= humains.Count ? humains[d.HumainId - 1].Nom : "?",
             SavoirsDto.Origine(d.Origine), d.EvenementId, detenteurs.GetValueOrDefault(d.Effet))).ToList();
+    }
+
+    /// <summary>
+    /// Courbe du progrès : savoirs vivants au début de chaque année pour le monde (communauté 0) ou une communauté, plus le
+    /// point d'aujourd'hui. Pour un monde d'avant la 0.29.1, les années du monde entier qui précèdent la première mesure sont
+    /// reconstituées depuis le journal ; celles des communautés commencent à la première mesure.
+    /// </summary>
+    public static ProgresDto Progres(ServiceMonde service, int communaute)
+    {
+        var monde = service.Monde;
+        var mesures = monde.Progres();
+        var points = mesures.Where(m => m.CommunauteId == communaute).Select(m => new PointProgresDto(m.Annee, m.Savoirs, false)).ToList();
+        var marques = new List<MarqueProgresDto>();
+        if (communaute == 0)
+        {
+            var brutes = service.Depot.MarquesProgres();
+            var premiere = points.Count == 0 ? (int)(monde.Secondes / Calendrier.SecondesParAn + 1) : (int)points[0].Annee;
+            if (premiere > 1)
+                points.InsertRange(0, service.Depot.ReconstituerProgres(premiere, brutes).Select(m => new PointProgresDto(m.Annee, m.Savoirs, true)));
+            marques = brutes.Select(m => new MarqueProgresDto(1 + m.Secondes / (double)Calendrier.SecondesParAn, Calendrier.Decomposer(m.Secondes).ToString(),
+                m.Evenement, m.Perdu, m.Texte, m.Cause)).ToList();
+        }
+        var maintenant = monde.Secondes;
+        points.Add(new PointProgresDto(1 + maintenant / (double)Calendrier.SecondesParAn, monde.SavoirsVivantsMaintenant(communaute), false));
+        var mesurees = mesures.Select(m => m.CommunauteId).ToHashSet();
+        var communautes = monde.Communautes().Where(c => c.Active || mesurees.Contains(c.Id))
+            .OrderByDescending(c => c.Active).ThenBy(c => c.Nom).Select(c => new CommunauteProgresDto(c.Id, c.Nom, c.Active)).ToList();
+        return new ProgresDto(points, marques, communautes);
     }
 
     /// <summary>
