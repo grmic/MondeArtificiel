@@ -53,7 +53,7 @@ public sealed class ServiceMonde
 
         var carte = GenerateurContinent.Generer(etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine));
         _reprendreVitesse = Depot.LireReglage(CleRedemarrage) == "vitesse";
-        _pauseSurCatastrophe = Depot.LireReglage(ClePauseCatastrophe) != "non";
+        _pauseSurCatastrophe = Depot.LireReglage(ClePauseCatastrophe) == "oui";
         _journalQuotidien = Depot.LireReglage(CleJournalQuotidien) == "oui";
         // Un cœur par défaut (le plus rapide mesuré sur une partie de 400 habitants) ; une valeur illisible ou hors limites aussi.
         _coeurs = int.TryParse(Depot.LireReglage(CleCoeurs), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var c)
@@ -85,7 +85,7 @@ public sealed class ServiceMonde
         }
     }
 
-    /// <summary>Mettre le monde en pause quand une catastrophe menace des humains (oui par défaut).</summary>
+    /// <summary>Mettre le monde en pause quand une catastrophe menace des humains (non par défaut depuis la 0.29.3).</summary>
     public bool PauseSurCatastrophe
     {
         get => _pauseSurCatastrophe;
@@ -231,6 +231,32 @@ public sealed class ServiceMonde
             Depot.CopierVers(chemin);
             _journal.LogInformation("Monde sauvegardé dans {Fichier}", chemin);
             return chemin;
+        }
+    }
+
+    /// <summary>
+    /// Met une sauvegarde (nom tiré de la liste) à la corbeille du système, d'où l'on peut encore la reprendre ; rend le nom
+    /// de la corbeille. Le monde en cours n'est jamais dans la liste : il ne peut pas être supprimé.
+    /// </summary>
+    /// <exception cref="ArgumentException">Ce nom n'est pas celui d'une sauvegarde.</exception>
+    /// <exception cref="IOException">Le système a refusé : la sauvegarde est toujours là.</exception>
+    public string MettreALaCorbeille(string nom)
+    {
+        // Seuls les noms de la liste sont acceptés : aucun chemin venu du navigateur n'est utilisé tel quel.
+        if (!FichiersRestaurables().TryGetValue(nom, out var chemin)) throw new ArgumentException("Cette sauvegarde n'existe pas.", nameof(nom));
+        lock (_verrou)
+        {
+            try
+            {
+                var corbeille = Corbeille.Jeter(chemin);
+                _journal.LogInformation("Sauvegarde {Fichier} mise à {Corbeille}", chemin, corbeille);
+                return corbeille;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                _journal.LogWarning(e, "Sauvegarde {Fichier} impossible à mettre à la corbeille", chemin);
+                throw;
+            }
         }
     }
 

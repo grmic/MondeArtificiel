@@ -206,6 +206,29 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return SauvegardeDto.Toutes(service);
     }
 
+    /// <summary>Met une sauvegarde (nom tiré de la liste) à la corbeille du système ; rend la liste à jour.</summary>
+    public List<SauvegardeDto> MettreALaCorbeille(string nom)
+    {
+        try
+        {
+            service.MettreALaCorbeille(nom);
+        }
+        catch (Exception e) when (e is ArgumentException or CorbeilleRefusee)
+        {
+            throw new HubException(e.Message);
+        }
+        catch (FileNotFoundException)
+        {
+            throw new HubException("Cette sauvegarde n'existe plus.");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Le message du système peut contenir des chemins : on ne les montre pas au navigateur.
+            throw new HubException("Le système a refusé de la mettre à la corbeille.");
+        }
+        return SauvegardeDto.Toutes(service);
+    }
+
     /// <summary>
     /// Remplace le monde par une sauvegarde (nom tiré de la liste), en pause ; le monde courant est sauvegardé avant.
     /// Tous les navigateurs connectés rechargent le monde.

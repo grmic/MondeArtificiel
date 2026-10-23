@@ -116,6 +116,8 @@ export class PanneauConfiguration {
   private readonly messageSauvegardes = el("p", "message-config");
   private readonly dialogueRestaurer = el("dialog", "dialogue");
   private aRestaurer: string | null = null;
+  private readonly dialogueCorbeille = el("dialog", "dialogue");
+  private aJeter: string | null = null;
   private readonly titreSauvegardes = el("h3", undefined, "Sauvegardes");
   private readonly titreNouveau = el("h3", undefined, "Nouveau monde");
 
@@ -278,6 +280,24 @@ export class PanneauConfiguration {
     this.dialogueRestaurer.addEventListener("close", () => {
       if (this.dialogueRestaurer.returnValue === "confirmer" && this.aRestaurer) void this.restaurer(this.aRestaurer);
     });
+
+    const formCorbeille = el("form");
+    formCorbeille.method = "dialog";
+    const texteCorbeille = el("p");
+    texteCorbeille.id = "texteCorbeille";
+    const menuCorbeille = el("menu");
+    const garder = el("button", undefined, "Garder");
+    garder.value = "annuler";
+    garder.autofocus = true;
+    const jeter = el("button", "danger", "Mettre à la corbeille");
+    jeter.value = "confirmer";
+    menuCorbeille.append(garder, jeter);
+    formCorbeille.append(el("h2", undefined, "Mettre cette sauvegarde à la corbeille ?"), texteCorbeille, menuCorbeille);
+    this.dialogueCorbeille.append(formCorbeille);
+    document.body.append(this.dialogueCorbeille);
+    this.dialogueCorbeille.addEventListener("close", () => {
+      if (this.dialogueCorbeille.returnValue === "confirmer" && this.aJeter) void this.mettreALaCorbeille(this.aJeter);
+    });
   }
 
   private async choisirJournalQuotidien(oui: boolean): Promise<void> {
@@ -381,6 +401,21 @@ export class PanneauConfiguration {
       } else {
         li.append(el("span", "discret", "(version plus récente ou illisible)"));
       }
+      const j = el("button", "lien", "🗑");
+      j.type = "button";
+      j.title = "Mettre cette sauvegarde à la corbeille (on peut l'y reprendre tant qu'elle n'est pas vidée)";
+      j.setAttribute("aria-label", "Mettre à la corbeille");
+      j.addEventListener("click", () => {
+        this.aJeter = s.nom;
+        const texte = this.dialogueCorbeille.querySelector("#texteCorbeille");
+        if (texte) {
+          texte.textContent = `« ${s.nom} », faite le ${s.faiteLe} (${s.dateMonde}, ${s.vivants} humains vivants, ${s.mo} Mo). `
+            + "Elle part dans la corbeille de l'ordinateur : vous pourrez l'y reprendre tant qu'elle n'est pas vidée. Le monde en cours ne change pas.";
+        }
+        this.dialogueCorbeille.returnValue = "";
+        this.dialogueCorbeille.showModal();
+      });
+      li.append(" ", j);
       li.title = s.nom;
       return li;
     }));
@@ -391,6 +426,19 @@ export class PanneauConfiguration {
     const liste = await connexion.invoke<Sauvegarde[]>("Sauvegarder").catch(() => null);
     this.messageSauvegardes.textContent = liste ? "Monde sauvegardé." : "La sauvegarde a échoué.";
     this.afficherSauvegardes(liste);
+  }
+
+  private async mettreALaCorbeille(nom: string): Promise<void> {
+    this.messageSauvegardes.textContent = "Mise à la corbeille…";
+    try {
+      const liste = await connexion.invoke<Sauvegarde[]>("MettreALaCorbeille", nom);
+      this.messageSauvegardes.textContent = `« ${nom} » est dans la corbeille.`;
+      this.afficherSauvegardes(liste);
+    } catch (e) {
+      const texte = e instanceof Error ? e.message.replace(/^.*HubException: /, "") : "";
+      this.messageSauvegardes.textContent = `Impossible de la mettre à la corbeille${texte ? " : " + texte : "."} Elle est toujours là.`;
+      await this.lireSauvegardes();
+    }
   }
 
   private async restaurer(nom: string): Promise<void> {

@@ -14,10 +14,12 @@ import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
 import { OutilMesure, PanneauMonde } from "./monde";
 import { PanneauTerritoires } from "./territoires";
+import { placerSousLaBarre } from "./placement";
 import "./style.css";
 
 const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
 const infos = element("#infos");
+placerSousLaBarre(element("header.barre"), element("#panneauTemps"), element<HTMLButtonElement>("#reduireTemps"));
 
 const population = element("#population");
 const dialogueReinit = element<HTMLDialogElement>("#dialogueReinit");

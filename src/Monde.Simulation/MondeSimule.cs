@@ -323,7 +323,7 @@ public sealed class MondeSimule
         get { lock (_verrou) return _catastrophes.Anomalie; }
     }
 
-    /// <summary>Si vrai, le monde se met en pause quand une catastrophe menace des humains (le serveur l'active par défaut).</summary>
+    /// <summary>Si vrai, le monde se met en pause quand une catastrophe menace des humains (le serveur la laisse désactivée par défaut, depuis la 0.29.3).</summary>
     public bool PauseSurCatastrophe { get; set; }
 
     /// <summary>Si vrai, la vie quotidienne de chacun est notée au journal (non par défaut ; voir <see cref="Comportement.JournalQuotidien"/>).</summary>

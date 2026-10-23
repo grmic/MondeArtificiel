@@ -21,7 +21,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .statut { font-size: 0.9rem; color: var(--discret); }
 .statut.ok { color: var(--ok); }
 .statut.erreur { color: var(--erreur); }
-.graine { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 0.9rem; }
+.graine { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; font-size: 0.9rem; }
 .graine input { width: 9rem; }
 .graine .case-barre { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; color: var(--discret); }
 .graine .case-barre input { width: auto; margin: 0; }
@@ -44,11 +44,14 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
 .dialogue menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 14px 0 0; }
 .dialogue menu button { padding: 4px 12px; }
 .temps {
-  position: fixed; top: 100px; right: 12px; max-width: min(560px, calc(100vw - 24px));
+  position: fixed; top: var(--sous-barre, 100px); right: 12px; max-width: min(560px, calc(100vw - 24px));
   display: flex; flex-direction: column; gap: 6px;
   padding: 8px 14px; border-radius: 10px; background: var(--panneau); font-size: 0.85rem;
 }
 .temps .ligne { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+/* Fenêtre du temps réduite : seule la vitesse libre reste. */
+.temps.reduit > :not(:first-child) { display: none; }
+.temps button.reduire { margin-left: auto; padding: 0 6px; line-height: 1.2; }
 .temps button, .temps select, .temps input[type=number] { font-size: 0.8rem; padding: 2px 6px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); }
 .temps button { cursor: pointer; }
 .temps input[type=number] { width: 4.2rem; }
@@ -64,8 +67,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
   border-radius: 10px; background: var(--panneau); font-size: 0.85rem; line-height: 1.4;
 }
 .panneau-lateral[hidden] { display: none; }
-.fiche { left: 12px; top: 100px; max-height: calc(100vh - 250px); }
-.journal-panneau { right: 12px; top: 290px; bottom: 12px; }
+.fiche { left: 12px; top: var(--sous-barre, 100px); max-height: calc(100vh - 250px); }
+.journal-panneau { right: 12px; top: var(--sous-temps, 290px); bottom: 12px; }
 .panneau-lateral .tete { display: flex; align-items: center; justify-content: space-between; padding: 8px 14px 4px; }
 .panneau-lateral h2 { font-size: 1rem; margin: 0; }
 .panneau-lateral h3 { font-size: 0.85rem; margin: 10px 0 4px; color: var(--discret); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -105,7 +108,7 @@ button.lien { background: none; border: none; padding: 0; color: #8cc4ff; cursor
 .fiche .ame, .fiche .communaute { margin: 4px 0; }
 .lien-hostile, .lien-méfiance { color: #ffb3b3; }
 .lien-très-proche, .lien-ami { color: #b8f0c4; }
-.communautes-panneau { right: 12px; top: 290px; bottom: 12px; }
+.communautes-panneau { right: 12px; top: var(--sous-temps, 290px); bottom: 12px; }
 .communaute-carte { border: 1px solid #2a3850; border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
 .communaute-carte.choisie { border-color: #d9a8ff; }
 .communaute-carte p { margin: 3px 0; }
@@ -150,7 +153,7 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .journal-panneau .suivi[hidden] { display: none; }
 
 /* Catastrophes */
-.catastrophes-panneau { right: 12px; top: 290px; bottom: 12px; }
+.catastrophes-panneau { right: 12px; top: var(--sous-temps, 290px); bottom: 12px; }
 .catastrophes-panneau .corps { padding-bottom: 14px; }
 .catastrophes-panneau .catastrophe { border-bottom: 1px solid #1f2a3c; padding: 3px 0; }
 .catastrophes-panneau .catastrophe.choisie { background: #23304a; }
@@ -178,7 +181,7 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .alerte-catastrophe[hidden] { display: none; }
 .alerte-catastrophe.grave { background: rgba(90, 20, 20, 0.94); border-color: #ff6b6b; }
 .alerte-catastrophe .lien { color: var(--texte); text-align: left; }
-.extinction { flex-wrap: wrap; top: 100px; z-index: 6; }
+.extinction { flex-wrap: wrap; top: var(--sous-barre, 100px); z-index: 6; }
 .extinction button:not(.fermer) { font-size: 0.85rem; padding: 3px 10px; border-radius: 6px; border: 1px solid #ff9b9b; background: #3a1616; color: var(--texte); cursor: pointer; }
 .alertes {
   position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); width: min(520px, calc(100vw - 24px));
@@ -198,7 +201,7 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
   border-radius: 8px; background: #d93a3a; color: #fff; font-size: 0.7rem; line-height: 16px; text-align: center;
 }
 .alerte-catastrophe .fermer { background: none; border: none; color: var(--discret); font-size: 1.2rem; cursor: pointer; }
-.monde-panneau { right: 12px; top: 290px; bottom: 12px; width: min(440px, calc(100vw - 24px)); }
+.monde-panneau { right: 12px; top: var(--sous-temps, 290px); bottom: 12px; width: min(440px, calc(100vw - 24px)); }
 .monde-panneau table.mesures { width: 100%; border-collapse: collapse; }
 .monde-panneau .mesures th { text-align: left; font-weight: normal; color: var(--discret); vertical-align: top; padding: 2px 8px 2px 0; width: 42%; }
 .monde-panneau .mesures td { padding: 2px 0; font-variant-numeric: tabular-nums; }
@@ -225,7 +228,7 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
 
 /* Démographie */
-.demographie-panneau { right: 12px; top: 290px; bottom: 12px; width: min(760px, calc(100vw - 24px)); }
+.demographie-panneau { right: 12px; top: var(--sous-temps, 290px); bottom: 12px; width: min(760px, calc(100vw - 24px)); }
 .demographie-panneau .outils { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 6px; }
 .demographie-panneau .outils button { font-size: 0.8rem; padding: 2px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; }
 .demographie-panneau .outils button.actif { border-color: #8fd3a0; color: #b8f0c4; }

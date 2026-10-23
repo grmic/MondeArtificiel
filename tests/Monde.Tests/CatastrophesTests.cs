@@ -382,6 +382,9 @@ public sealed class CatastrophesTests
         await connexion.StartAsync();
 
         var horloge = await connexion.InvokeAsync<HorlogeDto>("Horloge");
+        // Pas de pause sur catastrophe tant qu'on ne l'a pas demandée (0.29.3) ; le choix est retenu.
+        Assert.False(horloge.PauseCatastrophe);
+        horloge = await connexion.InvokeAsync<HorlogeDto>("ChoisirPauseCatastrophe", true);
         Assert.True(horloge.PauseCatastrophe);
         horloge = await connexion.InvokeAsync<HorlogeDto>("ChoisirPauseCatastrophe", false);
         Assert.False(horloge.PauseCatastrophe);
