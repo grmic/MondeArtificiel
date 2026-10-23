@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Pourquoi des avances sont repoussées.</summary>
@@ -120,10 +122,10 @@ public sealed partial class Comportement
         var texte = refus switch
         {
             Refus.Fidelite when Vivant(tous, autre.PartenaireId) is { } c =>
-                $"{autre.Nom} repousse les avances de {h.Nom} : {Il(autre)} tient à {VieSociale.Parente(autre, c)}.",
-            Refus.NOsePas => $"{autre.Nom} repousse les avances de {h.Nom}, malgré son trouble.",
-            Refus.Parente => $"{autre.Nom} repousse avec horreur les avances de {h.Nom} : on ne s'unit pas entre parents.",
-            _ => $"{autre.Nom} repousse les avances de {h.Nom}, qui ne lui plaît pas.",
+                new Recit("j.refus.fidelite", ("a", autre), ("h", h), ("p", VieSociale.ParenteR(autre, c))),
+            Refus.NOsePas => new Recit("j.refus.nOsePas", ("a", autre), ("h", h)),
+            Refus.Parente => new Recit("j.refus.parente", ("a", autre), ("h", h)),
+            _ => new Recit("j.refus", ("a", autre), ("h", h)),
         };
         var id = Noter(maintenant, TypeEvenement.Attirance, h, autre, texte);
         var blessure = (4 + 12 * desir) * (0.6 + 0.8 * h.Personnalite.Nevrosisme) * (refus == Refus.NePlaitPas ? 1 : 0.5);
@@ -157,7 +159,8 @@ public sealed partial class Comportement
         if (!meme && desir < 0.7) return;
         var cle = $"refoule:{autre.Id}";
         if (Recent(h, cle, meme ? 60 : 180, maintenant)) return;
-        string raison, pensee;
+        object raison;
+        string pensee;
         var type = TypeIntime.Peine;
         if (meme)
         {
@@ -165,16 +168,16 @@ public sealed partial class Comportement
             var p = h.Personnalite;
             var x = autre.Nom;
             (raison, pensee) = h.Lucidite < 0.3
-                ? ("sans comprendre ce trouble", Jardin.Varier(h, cle, 0, x,
+                ? ((object)new Recit("j.refoule.incompris"), Jardin.Varier(h, cle, 0, x,
                     new Jardin.V($"{x} me trouble. Je ne comprends pas pourquoi.", 0.5),
                     new Jardin.V($"Pourquoi mon cœur bat-il ainsi près de {x} ?", 0.3, 2),
                     new Jardin.V($"{x} me trouble.", 0.3, 0))!)
                 : tolerance < 0.4
-                    ? ("car les siens réprouvent ces amours", Jardin.Varier(h, cle, 1, x,
+                    ? ((object)new Recit("j.refoule.reprouve", ("h", h)), Jardin.Varier(h, cle, 1, x,
                         new Jardin.V($"J'aime {x}, mais personne ne doit le savoir.", 0.5),
                         new Jardin.V($"Ce que je ressens pour {x} doit rester caché.", 0.3),
                         new Jardin.V($"Si les miens savaient ce que j'éprouve pour {x}…", 0.1 + Jardin.S(p.Nevrosisme), 2))!)
-                    : ("sans oser le dire", Jardin.Varier(h, cle, 2, x,
+                    : ((object)new Recit("j.refoule.nOsePas"), Jardin.Varier(h, cle, 2, x,
                         new Jardin.V($"Je n'ose pas dire à {x} ce que je ressens.", 0.4),
                         new Jardin.V($"Un jour, je dirai à {x} ce que je ressens.", 0.1 + Jardin.S(p.Extraversion)),
                         new Jardin.V($"{x} ne sait pas ce que j'éprouve.", 0.3),
@@ -184,8 +187,8 @@ public sealed partial class Comportement
         else
         {
             raison = (Social?.ToleranceDe(h) ?? 0.5) < 0.4
-                ? "car les siens réprouvent qu'on s'unisse hors de son couple"
-                : $"par attachement à {VieSociale.Parente(h, compagnon!)}";
+                ? new Recit("j.refoule.horsCouple", ("h", h))
+                : new Recit("j.refoule.attachement", ("p", VieSociale.ParenteR(h, compagnon!)));
             var p = h.Personnalite;
             pensee = Jardin.Varier(h, cle, 3, autre.Nom,
                 new Jardin.V($"{autre.Nom} me plaît, mais je reste avec {compagnon!.Nom}.", 0.4),
@@ -194,7 +197,7 @@ public sealed partial class Comportement
                 new Jardin.V($"{autre.Nom}… non. Il y a {compagnon.Nom}.", 0.2, 0))!;
             type = TypeIntime.Intention;
         }
-        var id = Noter(maintenant, TypeEvenement.Attirance, h, autre, $"{h.Nom} désire {autre.Nom}, mais refoule ce désir {raison}.");
+        var id = Noter(maintenant, TypeEvenement.Attirance, h, autre, new Recit("j.refoule", ("h", h), ("a", autre), ("raison", raison)));
         Confier(h, type, autre.Id, pensee, 20 + 50 * desir, id, maintenant, cle);
     }
 
@@ -215,13 +218,13 @@ public sealed partial class Comportement
         var autres = Les(h.Sexe);
         if (avant < 0.3 && h.Lucidite >= 0.3)
         {
-            var id = Noter(maintenant, TypeEvenement.Attirance, h, null, $"{h.Nom} se sent troublé{E(h)} par {autres}, sans comprendre pourquoi.");
+            var id = Noter(maintenant, TypeEvenement.Attirance, h, null, new Recit("j.eveil.trouble", ("h", h)));
             Confier(h, TypeIntime.Question, 0, $"Pourquoi {autres} me troublent-{(h.Sexe == Sexe.Femme ? "elles" : "ils")} ?", 40, id, maintenant, "orientation");
         }
         else if (avant < 0.6 && h.Lucidite >= 0.6)
         {
             var aussi = h.Orientation.Vers(h.Sexe == Sexe.Homme ? Sexe.Femme : Sexe.Homme) >= 0.5 ? "aussi " : "";
-            var id = Noter(maintenant, TypeEvenement.Attirance, h, null, $"{h.Nom} comprend que ce sont {aussi}{autres} qui l'attirent.");
+            var id = Noter(maintenant, TypeEvenement.Attirance, h, null, new Recit("j.eveil.comprend", ("h", h), ("aussi", aussi.Length > 0)));
             Confier(h, TypeIntime.ImageDeSoi, 0, $"Ce sont {aussi}{autres} que je désire.", 50, id, maintenant, "orientation");
         }
     }
@@ -235,14 +238,14 @@ public sealed partial class Comportement
         var tolerance = Social?.ToleranceMoeursDe(a) ?? 0.5;
         var secret = tolerance < 0.5;
         var infidele = Vivant(tous, a.PartenaireId) is { } pa && pa.Id != b.Id || Vivant(tous, b.PartenaireId) is { } pb && pb.Id != a.Id;
-        var hors = infidele ? " (hors de leur couple)" : "";
+        object hors = infidele ? new Recit("j.horsCouple") : "";
         // Comme pour les accouplements, on ne note pas chaque fois : la première, puis au plus une fois par saison.
         var nouveau = !Recent(a, $"amour:{b.Id}", Calendrier.JoursParSaison, maintenant);
         var (ka, kb) = (PointsInfidelite(a, b, tous), PointsInfidelite(b, a, tous));
         var id = nouveau
-            ? Noter(maintenant, TypeEvenement.Attirance, a, b, secret ? $"{a.Nom} et {b.Nom} s'aiment en secret{hors}." : $"{a.Nom} et {b.Nom} s'aiment{hors}.",
+            ? Noter(maintenant, TypeEvenement.Attirance, a, b, new Recit(secret ? "j.amour.secret" : "j.amour", ("a", a), ("b", b), ("hors", hors)),
                 karma: ka, karmaAutre: kb)
-            : Noter(maintenant, TypeEvenement.Accouplement, a, b, $"{a.Nom} et {b.Nom} s'aiment{hors}.", karma: ka, karmaAutre: kb);
+            : Noter(maintenant, TypeEvenement.Accouplement, a, b, new Recit("j.amour", ("a", a), ("b", b), ("hors", hors)), karma: ka, karmaAutre: kb);
         foreach (var (x, y) in new[] { (a, b), (b, a) })
         {
             VieSociale.Rejouir(x, 8);
@@ -271,7 +274,7 @@ public sealed partial class Comportement
         {
             a.PartenaireId = b.Id;
             b.PartenaireId = a.Id;
-            Noter(maintenant, TypeEvenement.Union, a, b, $"{a.Nom} et {b.Nom} forment un couple.", id);
+            Noter(maintenant, TypeEvenement.Union, a, b, new Recit("j.couple.memeSexe", ("a", a), ("b", b)), id);
             Social?.CoupleNe(a, b);
             VieSociale.Rejouir(a, 10);
             VieSociale.Rejouir(b, 10);

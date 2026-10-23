@@ -9,7 +9,8 @@ namespace Monde.Serveur;
 /// <param name="Significatif">Un tournant (projet de guerre, renoncement, raid, paix, catastrophe…).</param>
 /// <param name="Karma">Karma gagné ou perdu par l'humain par cet acte (regard de l'Entité) ; <paramref name="KarmaAutre"/> : par l'autre.</param>
 public sealed record EvenementDto(long Id, long Secondes, string Date, string Type, int Humain, int Autre, string Texte, string Origine,
-    long Cause, int Communaute, int AutreCommunaute, bool Significatif, double Karma = 0, double KarmaAutre = 0)
+    long Cause, int Communaute, int AutreCommunaute, bool Significatif, double Karma = 0, double KarmaAutre = 0,
+    bool Ancien = false)
 {
     /// <summary>Clés des types, dans l'ordre de l'énumération (le navigateur filtre avec ces clés).</summary>
     public static readonly IReadOnlyDictionary<TypeEvenement, string> Cles = new Dictionary<TypeEvenement, string>
@@ -51,9 +52,9 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 
 
     public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, L.Date(e.Secondes),
-        Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, e.Texte,
+        Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, L.Ecrire(e),
         e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId, e.Significatif,
-        e.Karma, e.KarmaAutre);
+        e.Karma, e.KarmaAutre, L.Ancien(e.Recit));
 
     /// <summary>Traduit les clés reçues ; une clé inconnue rend la demande invalide (null).</summary>
     public static List<TypeEvenement>? TypesDepuis(IEnumerable<string>? cles)
@@ -77,7 +78,7 @@ public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, l
 
 public sealed record LieuDto(string Type, int X, int Y, string VuLe, int Visites);
 
-public sealed record PenseeDto(string Date, string Texte);
+public sealed record PenseeDto(string Date, string Texte, bool Ancien = false);
 
 /// <summary>
 /// Une chose du jardin secret : sa nature (intention, peur, espoir…), qui elle concerne (0 : personne), ce qu'il se dit,
@@ -235,9 +236,9 @@ public sealed record FicheDto(
                         .ToList(),
                     h.DepressionEvenementId)
                 : null,
-            communaute is null ? null : new CommunauteRefDto(communaute.Id, communaute.Nom),
+            communaute is null ? null : new CommunauteRefDto(communaute.Id, L.Communaute(communaute.Nom)),
             humains.Where(e => e.MereId == id || e.PereId == id).Select(e => e.Id).ToList(),
-            h.Memoire.Pensees.AsEnumerable().Reverse().Select(x => new PenseeDto(Date(x.Secondes), x.Texte)).ToList(),
+            h.Memoire.Pensees.AsEnumerable().Reverse().Select(x => new PenseeDto(Date(x.Secondes), L.Ecrire(x), L.Ancien(x.Recit))).ToList(),
             h.Memoire.Jardin.OrderBy(x => x.Type).ThenByDescending(x => x.Intensite)
                 .Select(x => new IntimeDto(Date(x.Secondes), TypeIntime(x.Type), x.SujetId, x.SujetId > 0 && x.SujetId != id ? Nom(x.SujetId) : null,
                     x.Texte, (int)Math.Round(x.Intensite), x.CauseId)).ToList(),
@@ -285,8 +286,8 @@ public sealed record FicheDto(
     private static RencontresDto? LireRencontres(MondeSimule monde, Humain h, IReadOnlyList<Humain> humains)
     {
         var communautes = monde.Communautes();
-        string Nom(int id) => id >= 1 && id <= communautes.Count ? communautes[id - 1].Nom : "?";
-        string NomMin(int id) => Nom(id) is { Length: > 0 } n ? char.ToLowerInvariant(n[0]) + n[1..] : "?";
+        string Nom(int id) => id >= 1 && id <= communautes.Count ? L.CommunautePhrase(communautes[id - 1].Nom) : "?";
+        string NomMin(int id) => id >= 1 && id <= communautes.Count ? L.CommunauteMin(communautes[id - 1].Nom) : "?";
         string De(int id) => id >= 1 && id <= communautes.Count ? L.T("rencontre.de", ("nom", Nom(id)), ("nomMin", NomMin(id))) : L.T("rencontre.dAilleurs");
         string? visite = null;
         if (h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count)
@@ -383,7 +384,7 @@ public sealed record FicheDto(
             groupe is null ? L.T("ideal.sansCommunaute") : Lib.Ideal(ideal),
             h.Exclusions.AsEnumerable().Reverse().Select(e => new ExclusionDto(
                 e.Type switch { TypeExclusion.Famille => "renié", TypeExclusion.Depart => "parti avec un exilé", _ => "exilé" },
-                e.De, Ref(e), Date(e.Le), e.Jusqua == 0 ? null : Date(e.Jusqua), e.Raison, e.Active(maintenant), e.EvenementId)).ToList(),
+                e.De, Ref(e), Date(e.Le), e.Jusqua == 0 ? null : Date(e.Jusqua), L.Garde(e.Raison), e.Active(maintenant), e.EvenementId)).ToList(),
             h.AgeEnAnnees(instant) < h.Biologie.AgePuberte);
     }
 
@@ -530,7 +531,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     {
         var histoire = new List<string>();
         string Ref(int id) => toutes[id - 1].Nom;
-        string Phrase(string cle, string nom) => L.T($"histoireCommunaute.{cle}", ("nom", nom), ("nomMin", Minuscule(nom)));
+        string Phrase(string cle, string nom) => L.T($"histoireCommunaute.{cle}", ("nom", L.CommunautePhrase(nom)), ("nomMin", L.CommunauteMin(nom)));
         if (c.OrigineId > 0) histoire.Add(Phrase("scission", Ref(c.OrigineId)));
         foreach (var f in toutes.Where(x => x.FusionneeDansId == c.Id)) histoire.Add(Phrase("accueilli", f.Nom));
         if (c.FusionneeDansId > 0) histoire.Add(Phrase("fondue", Ref(c.FusionneeDansId)));
@@ -559,15 +560,15 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
         if (c.Raid is { } raid)
         {
             var n = raid.Guerriers.Count;
-            lignes.Add(L.T(raid.Retour ? "guerreCommunaute.rentrent" : "guerreCommunaute.partis", ("n", n), ("nom", Ref(raid.CibleId)),
-                ("nomMin", Minuscule(Ref(raid.CibleId)))));
+            lignes.Add(L.T(raid.Retour ? "guerreCommunaute.rentrent" : "guerreCommunaute.partis", ("n", n), ("nom", L.CommunautePhrase(Ref(raid.CibleId))),
+                ("nomMin", L.CommunauteMin(Ref(raid.CibleId)))));
         }
         if (c.SoumiseAId > 0)
         {
-            lignes.Add(L.T("guerreCommunaute.soumise", ("nom", Ref(c.SoumiseAId)), ("nomMin", Minuscule(Ref(c.SoumiseAId))), ("date", L.Date(c.SoumiseLe))));
+            lignes.Add(L.T("guerreCommunaute.soumise", ("nom", L.CommunautePhrase(Ref(c.SoumiseAId))), ("nomMin", L.CommunauteMin(Ref(c.SoumiseAId))), ("date", L.Date(c.SoumiseLe))));
         }
         var vassaux = toutes.Where(x => x.Active && x.SoumiseAId == c.Id)
-            .Select(x => L.T("guerreCommunaute.vassal", ("nom", x.Nom), ("nomMin", Minuscule(x.Nom)))).ToList();
+            .Select(x => L.T("guerreCommunaute.vassal", ("nom", L.CommunautePhrase(x.Nom)), ("nomMin", L.CommunauteMin(x.Nom)))).ToList();
         if (vassaux.Count > 0) lignes.Add(L.T("guerreCommunaute.tribut", ("vassaux", string.Join(L.T("commun.virgule"), vassaux))));
         return lignes;
     }
@@ -580,7 +581,6 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
         _ => L.T($"issueGuerre.disperse.{(g.VainqueurId == id ? "victoire" : "defaite")}"),
     };
 
-    private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 
     private static string Etat(EtatRelation e, bool pacte) => e switch
     {
@@ -623,7 +623,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                 var x = membres.Count > 0 ? (int)Math.Round(membres.Average(m => m.X)) : 0;
                 var y = membres.Count > 0 ? (int)Math.Round(membres.Average(m => m.Y)) : 0;
                 var adultes = membres.Where(m => !m.EstEnfant(maintenant)).ToList();
-                return new CommunauteDto(c.Id, c.Nom, L.Date(c.FondeeLe),
+                return new CommunauteDto(c.Id, L.Communaute(c.Nom), L.Date(c.FondeeLe),
                     c.DisperseeLe is { } d ? L.Date(d) : null,
                     c.FigureId, humains[c.FigureId - 1].Nom,
                     membres.Select(m => new MembreDto(m.Id, m.Nom, m.EstBebe(maintenant) ? "bébé" : m.EstEnfant(maintenant) ? "enfant" : "adulte")).ToList(),
@@ -642,8 +642,8 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                         UsageFidelite.Indifferent => L.T("usage.fidelite.indifferent"),
                         _ => L.T("usage.fidelite.aucun"),
                     },
-                    c.NomPropre, c.Sens,
-                    c.Noms.Select(n => new NomDto(n.Nom, n.Sens, L.Date(n.Depuis), n.EvenementId)).ToList(),
+                    c.NomPropre, L.Garde(c.Sens),
+                    c.Noms.Select(n => new NomDto(L.Communaute(n.Nom), L.Garde(n.Sens), L.Date(n.Depuis), n.EvenementId)).ToList(),
                     c.Lexique.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => L.T("mots.ligne", ("sens", Lib.Idee(m.Key, monde.Flore)), ("mot", m.Value))).ToList(),
                     c.Active ? VieSociale.Etendue(VieSociale.Frequentees(c.Territoire), monde.Carte).Length : 0,
                     Raconter(c, toutes),
@@ -672,7 +672,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                     c.ToleranceMoeurs < 0 ? null : Lib.Ideal(c.Ideal),
                     humains.Where(m => m.EstVivant)
                         .SelectMany(m => m.Exclusions.Where(e => e.Type == TypeExclusion.Communaute && e.De == c.Id && e.Active(maintenant))
-                            .Select(e => new ExileDto(m.Id, m.Nom, e.Raison, e.Jusqua == 0 ? null : L.Date(e.Jusqua), e.EvenementId)))
+                            .Select(e => new ExileDto(m.Id, m.Nom, L.Garde(e.Raison), e.Jusqua == 0 ? null : L.Date(e.Jusqua), e.EvenementId)))
                         .ToList(),
                     DireMorale(adultes),
                     Decouvertes.DeCommunaute(membres),

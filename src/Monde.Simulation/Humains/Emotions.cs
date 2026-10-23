@@ -1,3 +1,4 @@
+using Monde.Simulation.Recits;
 using Monde.Simulation.Temps;
 
 namespace Monde.Simulation.Humains;
@@ -122,34 +123,31 @@ public sealed partial class VieSociale
             .OrderBy(l => l.Affection).ThenBy(l => l.Id).Select(l => l.Id).ToList();
     }
 
-    /// <summary>Les raisons de son humeur en mots, de la plus lourde à la plus légère (par exemple « elle pleure sa fille Ana »).</summary>
-    public static List<string> Phrases(Humain h, IReadOnlyList<Humain> humains, long maintenant)
+    /// <summary>Les raisons de son humeur, de la plus lourde à la plus légère (par exemple « elle pleure sa fille Ana »).</summary>
+    public static List<Recit> Raisons(Humain h, IReadOnlyList<Humain> humains, long maintenant)
     {
-        var il = h.Sexe == Sexe.Femme ? "elle" : "il";
-        var le = h.Sexe == Sexe.Femme ? "la" : "le";
-        var e = E(h);
-        string Nom(int id) => id >= 1 && id <= humains.Count ? humains[id - 1].Nom : "?";
-        var phrases = new List<string>();
+        object Nom(int id) => id >= 1 && id <= humains.Count ? humains[id - 1] : "?";
+        var phrases = new List<Recit>();
         foreach (var r in h.Raisons)
         {
-            string? phrase = r.Type switch
+            var phrase = r.Type switch
             {
-                TypeRaison.Deuil when r.AutreId > 0 => $"{il} pleure {Parente(h, humains[r.AutreId - 1])}",
-                TypeRaison.FaimSoif => $"la faim et la soif {le} tenaillent",
-                TypeRaison.Froid => $"le froid {le} transit",
-                TypeRaison.Maladie => "la maladie l'affaiblit",
-                TypeRaison.Solitude => $"{il} se sent seul{e}",
+                TypeRaison.Deuil when r.AutreId > 0 => new Recit("raison.deuil", ("qui", ParenteR(h, humains[r.AutreId - 1])), ("g", h)),
+                TypeRaison.FaimSoif => new Recit("raison.faimSoif", ("g", h)),
+                TypeRaison.Froid => new Recit("raison.froid", ("g", h)),
+                TypeRaison.Maladie => new Recit("raison.maladie", ("g", h)),
+                TypeRaison.Solitude => new Recit("raison.solitude", ("g", h)),
                 TypeRaison.Rejet => Hostiles(h, maintenant) switch
                 {
-                    [var a] => $"{Nom(a)} lui est hostile",
-                    [var a, var b] => $"{Nom(a)} et {Nom(b)} lui sont hostiles",
-                    [var a, var b, ..] => $"{il} se sent rejeté{e} par {Nom(a)}, {Nom(b)} et d'autres",
+                    [var a] => new Recit("raison.hostile", ("a", Nom(a)), ("g", h)),
+                    [var a, var b] => new Recit("raison.hostiles", ("a", Nom(a)), ("b", Nom(b)), ("g", h)),
+                    [var a, var b, ..] => new Recit("raison.rejete", ("a", Nom(a)), ("b", Nom(b)), ("g", h)),
                     _ => null,
                 },
-                TypeRaison.Trahison when r.AutreId > 0 => $"{Parente(h, humains[r.AutreId - 1])} l'a trahi{e}",
-                TypeRaison.Colere => $"la colère {le} ronge",
-                TypeRaison.Temperament => $"{il} est d'un naturel sombre",
-                TypeRaison.Peur => $"la peur {Nature.TypesCatastrophe.De((Nature.TypeCatastrophe)r.AutreId)} {le} hante",
+                TypeRaison.Trahison when r.AutreId > 0 => new Recit("raison.trahison", ("qui", ParenteR(h, humains[r.AutreId - 1])), ("g", h)),
+                TypeRaison.Colere => new Recit("raison.colere", ("g", h)),
+                TypeRaison.Temperament => new Recit("raison.temperament", ("g", h)),
+                TypeRaison.Peur => new Recit("raison.peur", ("de", new Recit($"catastropheDe.{(Nature.TypeCatastrophe)r.AutreId}")), ("g", h)),
                 _ => null,
             };
             if (phrase is not null) phrases.Add(phrase);
@@ -157,12 +155,19 @@ public sealed partial class VieSociale
         return phrases;
     }
 
-    /// <summary>Les trois premières raisons en une phrase : « a, b et c ».</summary>
-    public static string Expliquer(Humain h, IReadOnlyList<Humain> humains, long maintenant)
+    /// <summary>Les raisons en mots français.</summary>
+    public static List<string> Phrases(Humain h, IReadOnlyList<Humain> humains, long maintenant) =>
+        Raisons(h, humains, maintenant).Select(r => r.Texte).ToList();
+
+    /// <summary>Les trois premières raisons en une phrase : « a, b et c » (null s'il n'y en a pas).</summary>
+    public static Liste? ExpliquerR(Humain h, IReadOnlyList<Humain> humains, long maintenant)
     {
-        var phrases = Phrases(h, humains, maintenant).Take(3).ToList();
-        return phrases.Count <= 1 ? string.Concat(phrases) : string.Join(", ", phrases[..^1]) + " et " + phrases[^1];
+        var raisons = Raisons(h, humains, maintenant).Take(3).ToList<object?>();
+        return raisons.Count == 0 ? null : new Liste(raisons);
     }
+
+    public static string Expliquer(Humain h, IReadOnlyList<Humain> humains, long maintenant) =>
+        ExpliquerR(h, humains, maintenant) is { } l ? Catalogues.Fr.Ecrire(l) : "";
 
     /// <summary>Événement du journal à l'origine d'une raison (la mort pleurée, la trahison découverte…), 0 si aucun.</summary>
     private static long CauseDe(Humain h, Raison? raison) => raison?.Type switch
@@ -175,21 +180,23 @@ public sealed partial class VieSociale
     };
 
     /// <summary>Un proche nommé par son lien avec l'humain : « sa fille Ana », « son compagnon Bo », « son amie Lia », sinon son nom.</summary>
-    public static string Parente(Humain h, Humain autre)
+    public static object ParenteR(Humain h, Humain autre)
     {
-        var femme = autre.Sexe == Sexe.Femme;
         var lien = autre switch
         {
-            _ when autre.MereId == h.Id || autre.PereId == h.Id => femme ? "sa fille" : "son fils",
-            _ when h.MereId == autre.Id => "sa mère",
-            _ when h.PereId == autre.Id => "son père",
-            _ when h.PartenaireId == autre.Id || autre.PartenaireId == h.Id => femme ? "sa compagne" : "son compagnon",
-            _ when h.MereId != 0 && h.MereId == autre.MereId => femme ? "sa sœur" : "son frère",
-            _ when h.LienAvec(autre.Id) is { Amis: true } => femme ? "son amie" : "son ami",
+            _ when autre.MereId == h.Id || autre.PereId == h.Id => "enfant",
+            _ when h.MereId == autre.Id => "mere",
+            _ when h.PereId == autre.Id => "pere",
+            _ when h.PartenaireId == autre.Id || autre.PartenaireId == h.Id => "compagnon",
+            _ when h.MereId != 0 && h.MereId == autre.MereId => "fratrie",
+            _ when h.LienAvec(autre.Id) is { Amis: true } => "ami",
             _ => null,
         };
-        return lien is null ? autre.Nom : $"{lien} {autre.Nom}";
+        return lien is null ? new Personne(autre) : new Recit($"parente.{lien}.{(h.Sexe == Sexe.Femme ? "f" : "m")}", ("nom", autre), ("g", autre));
     }
+
+    /// <summary>Le proche nommé en français.</summary>
+    public static string Parente(Humain h, Humain autre) => Catalogues.Fr.Ecrire(ParenteR(h, autre));
 
     // ───────────── Colère et rancunes ─────────────
 
@@ -244,14 +251,14 @@ public sealed partial class VieSociale
                 if (g.Initiale < 30) continue;
                 Noter(maintenant, TypeEvenement.Conflit, h, autre, g.Motif switch
                 {
-                    MotifGrief.Infidelite => $"{h.Nom} pardonne à {autre.Nom} sa trahison.",
-                    MotifGrief.Rival => $"{h.Nom} ne garde plus rancune à {autre.Nom}.",
-                    MotifGrief.Coups => $"{h.Nom} pardonne à {autre.Nom} les coups reçus.",
-                    MotifGrief.Moeurs => $"{h.Nom} cesse de reprocher ses amours à {autre.Nom}.",
-                    MotifGrief.Vol => $"{h.Nom} pardonne à {autre.Nom} de l'avoir volé{E(h)}.",
-                    MotifGrief.Trahison => $"{h.Nom} ne tient plus {autre.Nom} pour un traître.",
-                    MotifGrief.Incendie => $"{h.Nom} ne reproche plus à {autre.Nom} le feu qui s'est échappé de son camp.",
-                    _ => $"{h.Nom} renonce à se venger de {autre.Nom}.",
+                    MotifGrief.Infidelite => new Recit("j.pardon.infidelite", ("h", h), ("a", autre)),
+                    MotifGrief.Rival => new Recit("j.pardon.rival", ("h", h), ("a", autre)),
+                    MotifGrief.Coups => new Recit("j.pardon.coups", ("h", h), ("a", autre)),
+                    MotifGrief.Moeurs => new Recit("j.pardon.moeurs", ("h", h), ("a", autre)),
+                    MotifGrief.Vol => new Recit("j.pardon.vol", ("h", h), ("a", autre)),
+                    MotifGrief.Trahison => new Recit("j.pardon.trahison", ("h", h), ("a", autre)),
+                    MotifGrief.Incendie => new Recit("j.pardon.incendie", ("h", h), ("a", autre)),
+                    _ => new Recit("j.pardon.vengeance", ("h", h), ("a", autre)),
                 }, g.EvenementId, karma: g.Motif == MotifGrief.Moeurs ? Regard.Pardonner / 2 : Regard.Pardonner);
                 continue;
             }
@@ -266,7 +273,7 @@ public sealed partial class VieSociale
                 if (autre.PartenaireId == h.Id) autre.PartenaireId = 0;
                 h.Humeur = Math.Max(0, h.Humeur - 5);
                 autre.Humeur = Math.Max(0, autre.Humeur - 10 * Math.Max(0, autre.AffectionPour(h.Id)) / 100);
-                Noter(maintenant, TypeEvenement.Conflit, h, autre, $"{h.Nom} quitte {autre.Nom}, qui l'a trahi{E(h)}.", g.EvenementId);
+                Noter(maintenant, TypeEvenement.Conflit, h, autre, new Recit("j.quitteTraitre", ("h", h), ("a", autre)), g.EvenementId);
             }
         }
     }
@@ -306,26 +313,25 @@ public sealed partial class VieSociale
         var amour = Math.Clamp(trompe.AffectionPour(infidele.Id) / 100, 0, 1);
         var tolerance = ToleranceDe(trompe);
         var intensite = 100 * Math.Clamp(Jalousie(trompe.Personnalite) * (0.5 + amour) * (1.4 - 0.8 * tolerance), 0, 1);
-        var appris = temoin is null ? "" : $" ({temoin.Nom} les a vus et le lui a dit)";
+        object appris = temoin is null ? "" : new Recit("j.jalousie.temoin", ("t", temoin), ("v", trompe));
         // Une trahison déjà connue blesse moins la seconde fois : la colère est là, mais la surprise est passée.
         var recidive = trompe.Griefs.Any(g => g.ContreId == infidele.Id && g.Motif == MotifGrief.Infidelite);
         if (recidive) intensite *= 0.5;
         var uni = recidive
-            ? $"{Parente(trompe, infidele)} recommence avec {complice.Nom}{appris}"
-            : $"{Parente(trompe, infidele)} s'est uni{E(infidele)} à {complice.Nom}{appris}";
+            ? new Recit("j.jalousie.recommence", ("i", ParenteR(trompe, infidele)), ("c", complice), ("appris", appris))
+            : new Recit("j.jalousie.uni", ("i", ParenteR(trompe, infidele)), ("g", infidele), ("c", complice), ("appris", appris));
 
         var communaute = CommunauteDe(trompe) ?? CommunauteDe(infidele);
         long id;
         if (intensite < 15)
         {
-            id = Noter(maintenant, TypeEvenement.Conflit, trompe, infidele, $"{trompe.Nom} apprend que {uni}, et ne s'en émeut guère.", accouplement);
+            id = Noter(maintenant, TypeEvenement.Conflit, trompe, infidele, new Recit("j.jalousie.indifferent", ("t", trompe), ("uni", uni)), accouplement);
         }
         else
         {
-            var sentiment = intensite >= 60 ? "Une jalousie furieuse l'envahit." : "La jalousie et la colère l'envahissent.";
-            id = Noter(maintenant, TypeEvenement.Conflit, trompe, infidele, recidive
-                ? $"{trompe.Nom} apprend que {uni}. {sentiment}"
-                : $"{trompe.Nom} découvre que {uni}. {sentiment}", accouplement);
+            var sentiment = new Recit(intensite >= 60 ? "j.jalousie.furieuse" : "j.jalousie.colere", ("t", trompe));
+            id = Noter(maintenant, TypeEvenement.Conflit, trompe, infidele,
+                new Recit(recidive ? "j.jalousie.apprend" : "j.jalousie.decouvre", ("t", trompe), ("uni", uni), ("s", sentiment)), accouplement);
             trompe.Colere = Math.Min(100, trompe.Colere + intensite);
             trompe.Humeur = Math.Max(0, trompe.Humeur - intensite / 4);
             AjouterGrief(trompe, new Grief(infidele.Id, MotifGrief.Infidelite, intensite, intensite, id));
@@ -352,7 +358,7 @@ public sealed partial class VieSociale
         if (CommunauteDe(infidele) is not { Tolerance: < 0.4 } c) return;
         var force = (0.4 - c.Tolerance) * 25;
         var id = Noter(maintenant, TypeEvenement.Conflit, infidele, complice,
-            $"La {Minuscule(c.Nom)} réprouve {infidele.Nom}, qui s'est uni{E(infidele)} à {complice.Nom} hors de son couple.", cause);
+            new Recit("j.jalousie.reprouve", ("c", c), ("i", infidele), ("x", complice)), cause);
         foreach (var l in infidele.Liens.ToList())
         {
             var m = humains[l.Id - 1];
@@ -452,14 +458,14 @@ public sealed partial class VieSociale
             c.Tolerance += 0.02 * (temperament - c.Tolerance);
             var usage = Classer(c.Tolerance, c.Usage);
             if (usage == c.Usage) continue;
-            var nom = Minuscule(c.Nom);
-            var texte = (c.Usage, usage) switch
+            var cle = (c.Usage, usage) switch
             {
-                (_, UsageFidelite.MalVu) => $"Dans la {nom}, s'unir hors de son couple devient mal vu.",
-                (_, UsageFidelite.Indifferent) => $"Dans la {nom}, nul ne s'offusque plus qu'on s'unisse hors de son couple.",
-                (UsageFidelite.MalVu, _) => $"Dans la {nom}, on cesse de blâmer ceux qui s'unissent hors de leur couple.",
-                _ => $"Dans la {nom}, on commence à mal supporter qu'on s'unisse hors de son couple.",
+                (_, UsageFidelite.MalVu) => "malVu",
+                (_, UsageFidelite.Indifferent) => "indifferent",
+                (UsageFidelite.MalVu, _) => "finBlame",
+                _ => "debutBlame",
             };
+            var texte = new Recit($"j.usage.{cle}", ("c", c));
             c.Usage = usage;
             Noter(maintenant, TypeEvenement.Communaute, humains[c.FigureId - 1], null, texte, c.DerniereAffaireId);
         }

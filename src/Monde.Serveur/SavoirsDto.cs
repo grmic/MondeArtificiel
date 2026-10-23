@@ -116,7 +116,7 @@ public static class Decouvertes
         points.Add(new PointProgresDto(1 + maintenant / (double)Calendrier.SecondesParAn, monde.SavoirsVivantsMaintenant(communaute), false));
         var mesurees = mesures.Select(m => m.CommunauteId).ToHashSet();
         var communautes = monde.Communautes().Where(c => c.Active || mesurees.Contains(c.Id))
-            .OrderByDescending(c => c.Active).ThenBy(c => c.Nom).Select(c => new CommunauteProgresDto(c.Id, c.Nom, c.Active)).ToList();
+            .OrderByDescending(c => c.Active).ThenBy(c => c.Nom).Select(c => new CommunauteProgresDto(c.Id, L.Communaute(c.Nom), c.Active)).ToList();
         return new ProgresDto(points, marques, communautes);
     }
 

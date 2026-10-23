@@ -3,83 +3,12 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.SignalR;
+using Monde.Simulation;
+using Monde.Simulation.Humains;
+using Monde.Simulation.Recits;
 using Monde.Simulation.Temps;
 
 namespace Monde.Serveur;
-
-/// <summary>
-/// Une langue de l'interface, lue dans <c>langues/xx.json</c>. Chaque clé donne un texte, ou ses formes selon le
-/// pluriel (one, other…, choisies par le paramètre <c>n</c>) ou le genre (m, f, choisies par le paramètre <c>g</c>).
-/// L'entrée <c>_langue</c> donne le code, le nom de la langue dans sa propre langue et l'écriture des nombres.
-/// </summary>
-public sealed partial class Langue
-{
-    public required string Code { get; init; }
-    public required string Nom { get; init; }
-    public required string Locale { get; init; }
-    public required IReadOnlyDictionary<string, JsonElement> Entrees { get; init; }
-    public required NumberFormatInfo Nombres { get; init; }
-
-    /// <summary>Texte brut du fichier, servi tel quel au navigateur.</summary>
-    public required string Json { get; init; }
-
-    [GeneratedRegex(@"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$")]
-    public static partial Regex CodeValide();
-
-    public static Langue Lire(string chemin)
-    {
-        var json = File.ReadAllText(chemin);
-        using var document = JsonDocument.Parse(json);
-        var entrees = new Dictionary<string, JsonElement>();
-        foreach (var p in document.RootElement.EnumerateObject()) entrees[p.Name] = p.Value.Clone();
-        var code = Path.GetFileNameWithoutExtension(chemin);
-        if (!CodeValide().IsMatch(code)) throw new InvalidDataException($"Nom de fichier de langue invalide : {chemin}");
-        var entete = entrees.GetValueOrDefault("_langue");
-        string Champ(string nom, string defaut) =>
-            entete.ValueKind == JsonValueKind.Object && entete.TryGetProperty(nom, out var v) && v.ValueKind == JsonValueKind.String
-                ? v.GetString()! : defaut;
-        return new Langue
-        {
-            Code = code,
-            Nom = Champ("nom", code),
-            Locale = Champ("locale", code),
-            Entrees = entrees,
-            // Écriture des nombres donnée par le fichier : elle ne dépend pas des cultures installées sur la machine.
-            Nombres = new NumberFormatInfo
-            {
-                NumberDecimalSeparator = Champ("decimale", code == "fr" ? "," : "."),
-                NumberGroupSeparator = Champ("milliers", code == "fr" ? " " : ","),
-            },
-            Json = json,
-        };
-    }
-
-    /// <summary>Forme du pluriel (règles CLDR des langues courantes) : en français, 0 et 1 prennent le singulier.</summary>
-    public string FormePluriel(double n)
-    {
-        var langue = Code.Split('-')[0];
-        return langue switch
-        {
-            "fr" or "pt" => n is >= 0 and < 2 ? "one" : "other",
-            "ja" or "zh" or "ko" or "vi" or "th" or "id" => "other",
-            _ => n == 1 ? "one" : "other",
-        };
-    }
-
-    /// <summary>Culture des tris alphabétiques (celle de la locale du fichier, ou la culture neutre si la machine ne la connaît pas).</summary>
-    public CultureInfo Culture => culture ??= TrouverCulture(Locale);
-
-    private CultureInfo? culture;
-
-    private static CultureInfo TrouverCulture(string locale)
-    {
-        try { return CultureInfo.GetCultureInfo(locale); }
-        catch (CultureNotFoundException) { return CultureInfo.InvariantCulture; }
-    }
-
-    public string Nombre(double v, int decimales = 1) =>
-        v.ToString(decimales > 0 ? "#,##0." + new string('#', decimales) : "#,##0", Nombres);
-}
 
 /// <summary>
 /// Textes du serveur dans la langue du navigateur qui les demande. La langue courante suit l'appel en cours
@@ -90,46 +19,13 @@ public static class L
 {
     public const string Francais = "fr";
     private static readonly AsyncLocal<Langue?> Actuelle = new();
-    private static readonly Lock Verrou = new();
-    private static IReadOnlyDictionary<string, Langue>? _langues;
 
     /// <summary>Navigateurs connectés par langue : la diffusion n'écrit que dans les langues lues en ce moment.</summary>
     private static readonly ConcurrentDictionary<string, int> Connectes = new();
 
-    public static IReadOnlyDictionary<string, Langue> Toutes
-    {
-        get
-        {
-            if (_langues is { } l) return l;
-            lock (Verrou) return _langues ??= Charger(TrouverDossier());
-        }
-    }
+    public static IReadOnlyDictionary<string, Langue> Toutes => Catalogues.Toutes;
 
     public static Langue Courante => Actuelle.Value ?? Toutes[Francais];
-
-    /// <summary>Dossier des langues : à côté de l'exécutable, ou, en développement, dans le dépôt.</summary>
-    private static string TrouverDossier()
-    {
-        for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)
-        {
-            var dossier = Path.Combine(d.FullName, "langues");
-            if (File.Exists(Path.Combine(dossier, "fr.json"))) return dossier;
-        }
-        throw new FileNotFoundException("Dossier « langues » introuvable (il doit contenir fr.json).");
-    }
-
-    private static Dictionary<string, Langue> Charger(string dossier)
-    {
-        var langues = new Dictionary<string, Langue>();
-        foreach (var fichier in Directory.EnumerateFiles(dossier, "*.json").Order(StringComparer.Ordinal))
-        {
-            var code = Path.GetFileNameWithoutExtension(fichier);
-            if (!Langue.CodeValide().IsMatch(code)) continue;
-            langues[code] = Langue.Lire(fichier);
-        }
-        if (!langues.ContainsKey(Francais)) throw new FileNotFoundException("Le fichier de langue fr.json manque.", Path.Combine(dossier, "fr.json"));
-        return langues;
-    }
 
     /// <summary>Langue reconnue pour ce code, ou le français.</summary>
     public static string Reconnaitre(string? code) =>
@@ -158,82 +54,36 @@ public static class L
     /// Texte de la clé dans la langue courante, ses accolades remplacées par les paramètres (les nombres sont
     /// écrits selon la langue). <c>n</c> choisit la forme du pluriel, <c>g</c> (« m », « f ») celle du genre.
     /// </summary>
-    public static string T(string cle, params ReadOnlySpan<(string Nom, object? Valeur)> parametres)
-    {
-        var langue = Courante;
-        var modele = Choisir(langue, cle, parametres);
-        if (modele is null && langue.Code != Francais) modele = Choisir(Toutes[Francais], cle, parametres);
-        if (modele is null) return cle;
-        if (parametres.Length == 0 || modele.IndexOf('{') < 0) return modele;
-        var texte = new System.Text.StringBuilder(modele.Length + 16);
-        var i = 0;
-        while (i < modele.Length)
-        {
-            var debut = modele.IndexOf('{', i);
-            var fin = debut < 0 ? -1 : modele.IndexOf('}', debut + 1);
-            if (debut < 0 || fin < 0)
-            {
-                texte.Append(modele, i, modele.Length - i);
-                break;
-            }
-            texte.Append(modele, i, debut - i);
-            var nom = modele.AsSpan(debut + 1, fin - debut - 1);
-            var trouve = false;
-            foreach (var (n, v) in parametres)
-            {
-                if (!nom.SequenceEqual(n)) continue;
-                texte.Append(Ecrire(langue, v));
-                trouve = true;
-                break;
-            }
-            if (!trouve) texte.Append(modele, debut, fin - debut + 1);
-            i = fin + 1;
-        }
-        return texte.ToString();
-    }
+    public static string T(string cle, params ReadOnlySpan<(string Nom, object? Valeur)> parametres) => Courante.Texte(cle, parametres);
 
-    private static string Ecrire(Langue langue, object? v) => v switch
-    {
-        null => "",
-        string s => s,
-        int or long or short or byte => langue.Nombre(Convert.ToDouble(v, CultureInfo.InvariantCulture), 0),
-        double d => langue.Nombre(d, 2),
-        float f => langue.Nombre(f, 2),
-        decimal m => langue.Nombre((double)m, 2),
-        _ => Convert.ToString(v, CultureInfo.InvariantCulture) ?? "",
-    };
+    /// <summary>Le récit écrit dans la langue courante.</summary>
+    public static string Rediger(Recit recit) => Courante.Rediger(recit);
 
-    private static string? Choisir(Langue langue, string cle, ReadOnlySpan<(string Nom, object? Valeur)> parametres)
-    {
-        if (!langue.Entrees.TryGetValue(cle, out var e)) return null;
-        for (var profondeur = 0; profondeur < 3 && e.ValueKind == JsonValueKind.Object; profondeur++)
-        {
-            var pluriel = e.TryGetProperty("other", out _) || e.TryGetProperty("one", out _);
-            string forme;
-            if (pluriel)
-            {
-                var n = 0.0;
-                foreach (var (nom, v) in parametres)
-                    if (nom == "n" && v is not null) n = Convert.ToDouble(v, CultureInfo.InvariantCulture);
-                // « zero », s'il est écrit, vaut pour 0 dans toutes les langues (« Aucun volcan actif. »).
-                forme = n == 0 && e.TryGetProperty("zero", out _) ? "zero" : langue.FormePluriel(n);
-                if (!e.TryGetProperty(forme, out _)) forme = "other";
-            }
-            else
-            {
-                forme = "m";
-                foreach (var (nom, v) in parametres)
-                    if (nom == "g" && v is string g) forme = g;
-                if (!e.TryGetProperty(forme, out _)) forme = "m";
-            }
-            if (!e.TryGetProperty(forme, out var suivante)) return null;
-            e = suivante;
-        }
-        return e.ValueKind == JsonValueKind.String ? e.GetString() : null;
-    }
+    /// <summary>Un événement du journal dans la langue courante ; écrit avant la 0.30.1, il reste tel quel (en français).</summary>
+    public static string Ecrire(EvenementJournal e) => e.Recit is { } r ? Rediger(r) : e.Brut ?? "";
+
+    /// <summary>Une pensée dans la langue courante (une pensée ancienne reste en français).</summary>
+    public static string Ecrire(Pensee p) => p.Recit is { } r ? Rediger(r) : p.Brut ?? "";
+
+    /// <summary>Un texte gardé dans l'état du monde (récit encodé, ou phrase écrite avant la 0.30.1), dans la langue courante.</summary>
+    [return: System.Diagnostics.CodeAnalysis.NotNullIfNotNull(nameof(s))]
+    public static string? Garde(string? s) => s is null ? null : Recit.Decoder(s) is { } r ? Rediger(r) : s;
+
+    /// <summary>Vrai si ce texte, écrit avant la traduction du journal, s'affiche en français dans une autre langue.</summary>
+    public static bool Ancien(Recit? recit) => recit is null && Courante.Code != Catalogues.Francais;
+
+    /// <summary>Nom d'une communauté (d'après son nom français) pour un titre ou une liste : « Communauté d'Ana », « Tako people ».</summary>
+    public static string Communaute(string nomFrancais) => Courante.Communaute(nomFrancais, phrase: false);
+
+    /// <summary>Nom d'une communauté au fil d'une phrase : « la communauté d'Ana », « the Tako people ».</summary>
+    public static string CommunautePhrase(string nomFrancais) => Courante.Communaute(nomFrancais, phrase: true);
+
+    /// <summary>Nom d'une communauté sans majuscule, pour les phrases qui écrivent l'article elles-mêmes (« de la {nomMin} »).</summary>
+    public static string CommunauteMin(string nomFrancais) =>
+        Communaute(nomFrancais) is { Length: > 0 } n ? char.ToLower(n[0], Courante.Culture) + n[1..] : "";
 
     /// <summary>Le texte existe-t-il (dans la langue courante ou en français) ?</summary>
-    public static bool Existe(string cle) => Courante.Entrees.ContainsKey(cle) || Toutes[Francais].Entrees.ContainsKey(cle);
+    public static bool Existe(string cle) => Courante.Existe(cle);
 
     /// <summary>Nombre écrit selon la langue courante.</summary>
     public static string Nombre(double v, int decimales = 1) => Courante.Nombre(v, decimales);

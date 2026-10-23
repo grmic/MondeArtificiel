@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 public enum TypeLieu : byte
@@ -16,8 +18,17 @@ public enum TypeLieu : byte
 /// <param name="DecuLe">Dernière fois qu'il y est allé pour rien (ressource épuisée), ou null.</param>
 public sealed record LieuConnu(TypeLieu Type, int X, int Y, long VuLe, int Rappels = 0, long? DecuLe = null);
 
-/// <summary>Une pensée, datée.</summary>
-public sealed record Pensee(long Secondes, string Texte);
+/// <summary>Une pensée, datée : un récit à écrire dans la langue de l'observateur, ou (avant 0.30.1) sa phrase française.</summary>
+public sealed record Pensee(long Secondes, string? Brut, Recits.Recit? Recit = null)
+{
+    public Pensee(long secondes, Recits.Recit recit) : this(secondes, null, recit) { }
+
+    /// <summary>La pensée en français.</summary>
+    public string Texte => Recit?.Texte ?? Brut ?? "";
+
+    /// <summary>Même pensée (même récit, ou même phrase pour les anciennes).</summary>
+    public bool Meme(Recits.Recit autre) => Recit is { } r ? r.Equals(autre) : Brut == autre.Texte;
+}
 
 /// <summary>
 /// Mémoire d'un humain : lieux utiles et dernières pensées. Elle est propre à chacun :
@@ -131,11 +142,11 @@ public sealed class Memoire
     }
 
     /// <summary>Ajoute une pensée ; renvoie faux si c'est la même que la précédente (pas de répétition immédiate).</summary>
-    public bool Penser(long maintenant, string texte)
+    public bool Penser(long maintenant, Recits.Recit pensee)
     {
-        if (Pensees.Count > 0 && Pensees[^1].Texte == texte) return false;
+        if (Pensees.Count > 0 && Pensees[^1].Meme(pensee)) return false;
         if (Pensees.Count >= PenseesMax) Pensees.RemoveAt(0);
-        Pensees.Add(new Pensee(maintenant, texte));
+        Pensees.Add(new Pensee(maintenant, pensee));
         return true;
     }
 
@@ -143,10 +154,14 @@ public sealed class Memoire
     /// Vrai si une pensée de même sens figure parmi les <paramref name="n"/> dernières. La direction n'entre pas
     /// dans la comparaison : « Je vois de l'eau vers le nord » et « … vers l'est » disent la même chose.
     /// </summary>
-    public bool PenseeRecente(string texte, int n)
+    public bool PenseeRecente(Recits.Recit pensee, int n)
     {
-        var sens = Sens(texte);
-        return Pensees.Skip(Math.Max(0, Pensees.Count - n)).Any(p => Sens(p.Texte) == sens);
+        for (var i = Math.Max(0, Pensees.Count - n); i < Pensees.Count; i++)
+        {
+            var p = Pensees[i];
+            if (p.Recit is { } r ? r.MemeSens(pensee, "vers") : Sens(p.Texte) == Sens(pensee.Texte)) return true;
+        }
+        return false;
     }
 
     private static string Sens(string texte)

@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 34;
+    public const int VersionSchema = 35;
 
     private readonly string _connexion;
 
@@ -584,6 +584,8 @@ public sealed partial class DepotMonde
         if (actuelle < 33) MigrerVersion33(connexion, transaction);
         // Version 34 : visites, rassemblements, savoirs venus d'ailleurs, ouvrages demandés et spécialistes.
         if (actuelle < 34) MigrerVersion34(connexion, transaction);
+        // Version 35 : journal et pensées enregistrés comme récits (clé et paramètres), écrits dans la langue de l'observateur.
+        if (actuelle < 35) MigrerVersion35(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -969,10 +971,11 @@ public sealed partial class DepotMonde
                     l.GetBoolean(5), l.GetBoolean(6), l.GetInt64(7)));
             }
         }
-        commande.CommandText = "SELECT humain, secondes, texte FROM pensees ORDER BY humain, rang;";
+        var formesPensees = FormesRecits.Lire(connexion, null);
+        commande.CommandText = "SELECT humain, secondes, texte, forme, valeurs FROM pensees ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
         {
-            while (l.Read()) Trouver(l.GetInt64(0))?.Memoire.Pensees.Add(new Pensee(l.GetInt64(1), l.GetString(2)));
+            while (l.Read()) Trouver(l.GetInt64(0))?.Memoire.Pensees.Add(formesPensees.Lire(l, 3, 4) is { } r ? new Pensee(l.GetInt64(1), null, r) : new Pensee(l.GetInt64(1), l.GetString(2)));
         }
         commande.CommandText = "SELECT humain, secondes, type, sujet, texte, intensite, cause, cle FROM jardin ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
@@ -1016,6 +1019,7 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var transaction = connexion.BeginTransaction();
+        var formes = FormesRecits.Lire(connexion, transaction);
         if (remplacer)
         {
             Executer(connexion, transaction,
@@ -1188,7 +1192,7 @@ public sealed partial class DepotMonde
 
         if (etat.Humains is { } tous)
         {
-            EnregistrerMemoires(connexion, transaction, tous);
+            EnregistrerMemoires(connexion, transaction, tous, formes);
             EnregistrerSanteNature(connexion, transaction, tous);
             EnregistrerSavoirs(connexion, transaction, tous);
             EnregistrerLangage(connexion, transaction, tous);
@@ -1210,13 +1214,15 @@ public sealed partial class DepotMonde
         if (etat.Relations is { } relations) EnregistrerRelations(connexion, transaction, relations);
         if (etat.Guerres is { Count: > 0 } guerres) EnregistrerGuerres(connexion, transaction, guerres);
         if (etat.Offenses is { } offensesAEnregistrer) EnregistrerOffenses(connexion, transaction, offensesAEnregistrer);
-        if (etat.JournalNonEnregistre is { Count: > 0 } journal) EnregistrerJournal(connexion, transaction, journal);
+        if (etat.JournalNonEnregistre is { Count: > 0 } journal) EnregistrerJournal(connexion, transaction, journal, formes);
         if (etat.ArchivesNonEnregistrees is { Count: > 0 } archives) EnregistrerArchives(connexion, transaction, archives);
+        formes.Enregistrer(connexion, transaction);
 
         transaction.Commit();
     }
 
-    private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
+    private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains,
+        FormesRecits formes)
     {
         Executer(connexion, transaction,
             "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM griefs; DELETE FROM raisons; DELETE FROM jardin; DELETE FROM exclusions;");
@@ -1238,7 +1244,7 @@ public sealed partial class DepotMonde
             "INSERT INTO liens (humain, rang, autre, familiarite, affection, derniere, amis, rivaux, bienfait) VALUES ($h, $r, $a, $f, $af, $d, $am, $ri, $bf);",
             "$h", "$r", "$a", "$f", "$af", "$d", "$am", "$ri", "$bf");
         using var pensees = Preparer(connexion, transaction,
-            "INSERT INTO pensees (humain, rang, secondes, texte) VALUES ($h, $r, $s, $t);", "$h", "$r", "$s", "$t");
+            "INSERT INTO pensees (humain, rang, secondes, texte, forme, valeurs) VALUES ($h, $r, $s, $t, $c, $p);", "$h", "$r", "$s", "$t", "$c", "$p");
         foreach (var h in humains)
         {
             var m = h.Memoire;
@@ -1254,7 +1260,8 @@ public sealed partial class DepotMonde
             }
             for (var r = 0; r < m.Pensees.Count; r++)
             {
-                Lancer(pensees, h.Id, r, m.Pensees[r].Secondes, m.Pensees[r].Texte);
+                var (texte, forme, valeurs) = formes.Colonnes(m.Pensees[r].Recit, m.Pensees[r].Brut);
+                Lancer(pensees, h.Id, r, m.Pensees[r].Secondes, texte, forme, valeurs);
             }
             for (var r = 0; r < m.Jardin.Count; r++)
             {
@@ -1344,19 +1351,21 @@ public sealed partial class DepotMonde
         foreach (var o in offenses) Lancer(commande, o.A, o.B, o.EvenementId);
     }
 
-    private static void EnregistrerJournal(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<EvenementJournal> journal)
+    private static void EnregistrerJournal(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<EvenementJournal> journal,
+        FormesRecits formes)
     {
         // INSERT OR IGNORE : un événement déjà enregistré (même numéro) n'est pas dupliqué.
         using var commande = Preparer(connexion, transaction,
             """
-            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre)
-            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac, $si, $k, $ka);
+            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs)
+            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac, $si, $k, $ka, $cl, $pa);
             """,
-            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac", "$si", "$k", "$ka");
+            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac", "$si", "$k", "$ka", "$cl", "$pa");
         foreach (var e in journal)
         {
-            Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, e.Texte, (int)e.Origine, e.CauseId,
-                e.CommunauteId, e.AutreCommunauteId, e.Significatif, e.Karma, e.KarmaAutre);
+            var (texte, forme, valeurs) = formes.Colonnes(e.Recit, e.Brut);
+            Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, texte, (int)e.Origine, e.CauseId,
+                e.CommunauteId, e.AutreCommunauteId, e.Significatif, e.Karma, e.KarmaAutre, forme, valeurs);
         }
     }
 
@@ -1432,8 +1441,8 @@ public sealed partial class DepotMonde
         }
         commande.Parameters.AddWithValue("$limite", limite);
         var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
-        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre FROM journal {where} ORDER BY id DESC LIMIT $limite;";
-        return LireEvenements(commande);
+        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs FROM journal {where} ORDER BY id DESC LIMIT $limite;";
+        return LireEvenements(commande, FormesRecits.Lire(connexion, null));
     }
 
     /// <summary>Un événement du journal enregistré, par son numéro (null s'il n'existe pas).</summary>
@@ -1441,19 +1450,20 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre FROM journal WHERE id = $id;";
+        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs FROM journal WHERE id = $id;";
         commande.Parameters.AddWithValue("$id", id);
-        return LireEvenements(commande).FirstOrDefault();
+        return LireEvenements(commande, FormesRecits.Lire(connexion, null)).FirstOrDefault();
     }
 
-    private static List<EvenementJournal> LireEvenements(SqliteCommand commande)
+    private static List<EvenementJournal> LireEvenements(SqliteCommand commande, FormesRecits formes)
     {
         var resultat = new List<EvenementJournal>();
         using var l = commande.ExecuteReader();
         while (l.Read())
         {
-            resultat.Add(new EvenementJournal(l.GetInt64(1), (TypeEvenement)l.GetByte(2), l.GetInt32(3), l.GetInt32(4), l.GetString(5),
-                (Origine)l.GetByte(6)) { Id = l.GetInt64(0), CauseId = l.GetInt64(7), CommunauteId = l.GetInt32(8), AutreCommunauteId = l.GetInt32(9), Significatif = l.GetBoolean(10),
+            var recit = formes.Lire(l, 13, 14);
+            resultat.Add(new EvenementJournal(l.GetInt64(1), (TypeEvenement)l.GetByte(2), l.GetInt32(3), l.GetInt32(4), recit is null ? l.GetString(5) : null,
+                (Origine)l.GetByte(6)) { Recit = recit, Id = l.GetInt64(0), CauseId = l.GetInt64(7), CommunauteId = l.GetInt32(8), AutreCommunauteId = l.GetInt32(9), Significatif = l.GetBoolean(10),
                 Karma = l.GetDouble(11), KarmaAutre = l.GetDouble(12) });
         }
         return resultat;

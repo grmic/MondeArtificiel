@@ -95,20 +95,27 @@ public sealed class JournalEtMemoireTests : IDisposable
     public void Memoire_PenseesBornees_SansRepetition()
     {
         var m = new Memoire();
-        m.Penser(0, "J'ai soif.");
-        m.Penser(1, "J'ai soif.");
+        static Recit Eau(string vers) => new("p.eau.vue", ("vers", new Recit($"p.vers.{vers}")));
+        m.Penser(0, new Recit("p.boire.1"));
+        m.Penser(1, new Recit("p.boire.1"));
         Assert.Single(m.Pensees); // pas de répétition immédiate
-        for (var i = 0; i < Memoire.PenseesMax + 3; i++) m.Penser(i, $"pensée {i}");
+        for (var i = 0; i < Memoire.PenseesMax + 3; i++) m.Penser(i, new Recit("j.duree.mois", ("n", i)));
         Assert.Equal(Memoire.PenseesMax, m.Pensees.Count);
-        Assert.Equal($"pensée {Memoire.PenseesMax + 2}", m.Pensees[^1].Texte);
+        Assert.Equal($"{Memoire.PenseesMax + 2} mois", m.Pensees[^1].Texte);
 
-        m.Penser(50, "J'ai soif. Je vois de l'eau vers le nord.");
-        Assert.True(m.PenseeRecente("J'ai soif. Je vois de l'eau vers le sud-est.", 3)); // même sens, autre direction
-        Assert.False(m.PenseeRecente("J'ai faim. Il y a de quoi manger vers le nord.", 3));
+        m.Penser(50, Eau("nord"));
+        Assert.Equal("J'ai soif. Je vois de l'eau vers le nord.", m.Pensees[^1].Texte);
+        Assert.True(m.PenseeRecente(Eau("sud-est"), 3)); // même sens, autre direction
+        Assert.False(m.PenseeRecente(new Recit("p.cueillir.1"), 3));
+
+        // Une pensée d'avant la 0.30.1 (phrase française) se compare encore à son sens.
+        var ancienne = new Memoire();
+        ancienne.Pensees.Add(new Pensee(0, "J'ai soif. Je vois de l'eau vers le nord."));
+        Assert.True(ancienne.PenseeRecente(Eau("sud"), 3));
 
         var copie = m.Copier();
-        copie.Penser(99, "autre");
-        Assert.DoesNotContain(m.Pensees, p => p.Texte == "autre"); // copie indépendante
+        copie.Penser(99, new Recit("p.boire.2"));
+        Assert.DoesNotContain(m.Pensees, p => p.Recit?.Cle == "p.boire.2"); // copie indépendante
     }
 
     [Fact]

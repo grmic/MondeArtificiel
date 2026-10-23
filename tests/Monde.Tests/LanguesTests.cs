@@ -42,15 +42,17 @@ public sealed partial class LanguesTests
         _ => [],
     };
 
-    [GeneratedRegex(@"\{(\w+)\}")]
+    /// <summary>« {x} », « {^x} » (avec majuscule) ou « {x:forme|forme} » (forme choisie selon x : genre, nombre, oui/non).</summary>
+    [GeneratedRegex(@"\{\^?(\w+)(:[^{}]*)?\}")]
     private static partial Regex Accolade();
 
     /// <summary>
-    /// Paramètres d'une entrée. « nomMin » (le nom sans majuscule, après « de la » en français) et « nom » comptent pour un :
-    /// chaque langue prend la forme qui lui convient.
+    /// Paramètres d'une entrée, écrits tels quels (<paramref name="formes"/> : aussi ceux qui ne servent qu'à choisir une
+    /// forme). « nomMin » (le nom sans majuscule, après « de la » en français) et « nom » comptent pour un : chaque langue
+    /// prend la forme qui lui convient.
     /// </summary>
-    private static SortedSet<string> Parametres(JsonElement e) =>
-        new(Textes(e).SelectMany(t => Accolade().Matches(t).Select(m => m.Groups[1].Value))
+    private static SortedSet<string> Parametres(JsonElement e, bool formes = false) =>
+        new(Textes(e).SelectMany(t => Accolade().Matches(t).Where(m => formes || !m.Groups[2].Success).Select(m => m.Groups[1].Value))
             .Select(p => p.EndsWith("Min", StringComparison.Ordinal) ? p[..^3] : p), StringComparer.Ordinal);
 
     [Fact]
@@ -74,7 +76,10 @@ public sealed partial class LanguesTests
         foreach (var code in Langues.Where(c => c != "fr"))
         {
             var autre = Lire(code);
-            var ecarts = fr.Where(p => autre.ContainsKey(p.Key) && !Parametres(p.Value).SetEquals(Parametres(autre[p.Key])))
+            // Un paramètre écrit dans une langue est présent dans l'autre, écrit ou servant à accorder (« {h:him|her} »).
+            var ecarts = fr.Where(p => autre.ContainsKey(p.Key)
+                    && !(Parametres(p.Value).IsSubsetOf(Parametres(autre[p.Key], formes: true))
+                         && Parametres(autre[p.Key]).IsSubsetOf(Parametres(p.Value, formes: true))))
                 .Select(p => $"{code} {p.Key} : {string.Join(",", Parametres(p.Value))} / {string.Join(",", Parametres(autre[p.Key]))}");
             Assert.Empty(ecarts);
         }
@@ -112,15 +117,18 @@ public sealed partial class LanguesTests
         foreach (var f in Directory.EnumerateFiles(Path.Combine(Racine, "client", "src"), "*.ts"))
             yield return (f, File.ReadAllText(f));
         yield return (Path.Combine(Racine, "client", "index.html"), File.ReadAllText(Path.Combine(Racine, "client", "index.html")));
-        var serveur = Path.Combine(Racine, "src", "Monde.Serveur");
-        foreach (var f in Directory.EnumerateFiles(serveur, "*.cs", SearchOption.AllDirectories))
+        foreach (var projet in new[] { "Monde.Serveur", "Monde.Simulation" })
         {
-            var dossier = Path.GetRelativePath(serveur, f).Split(Path.DirectorySeparatorChar)[0];
-            if (dossier is not ("bin" or "obj")) yield return (f, File.ReadAllText(f));
+            var dossier = Path.Combine(Racine, "src", projet);
+            foreach (var f in Directory.EnumerateFiles(dossier, "*.cs", SearchOption.AllDirectories))
+            {
+                var premier = Path.GetRelativePath(dossier, f).Split(Path.DirectorySeparatorChar)[0];
+                if (premier is not ("bin" or "obj")) yield return (f, File.ReadAllText(f));
+            }
         }
     }
 
-    [GeneratedRegex(@"(?<![\w.])(?:t|traduire|L\.T)\(""([A-Za-z][\w.-]*)""")]
+    [GeneratedRegex(@"(?<![\w.])(?:t|traduire|L\.T|new Recit)\(""([A-Za-z][\w.-]*)""")]
     private static partial Regex AppelLitteral();
 
     [GeneratedRegex(@"data-t(?:-[a-z-]+)?=""([A-Za-z][\w.-]*)""")]

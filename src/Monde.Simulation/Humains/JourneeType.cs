@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -8,6 +10,14 @@ namespace Monde.Simulation.Humains;
 public sealed class JourneeType
 {
     private readonly Dictionary<int, Dictionary<Activite, int>> _compteurs = [];
+
+    /// <summary>Gestes résumés, dans l'ordre où le résumé les cite.</summary>
+    private static readonly Activite[] Ordre =
+    [
+        Activite.Boire, Activite.Cueillir, Activite.Chasser, Activite.ChercherEau, Activite.ChercherNourriture, Activite.ChercherAbri,
+        Activite.SAbriter, Activite.Explorer, Activite.Migrer, Activite.RejoindrePartenaire, Activite.RejoindreProche, Activite.SuivreParent,
+        Activite.VeillerEnfant, Activite.Experimenter, Activite.Fabriquer, Activite.Veiller, Activite.Nager, Activite.Repos, Activite.Dormir,
+    ];
 
     public void Compter(int humain, Activite activite)
     {
@@ -23,34 +33,14 @@ public sealed class JourneeType
         {
             var h = humains[id - 1];
             if (!h.EstVivant) continue;
-            var e = h.Sexe == Sexe.Femme ? "e" : "";
-            var parties = new List<string>();
-            void Ajouter(Activite a, string verbe)
+            var parties = new List<object?>();
+            foreach (var a in Ordre)
             {
                 var n = c.GetValueOrDefault(a);
-                if (n > 0) parties.Add(n == 1 ? verbe : $"{verbe} {n} fois");
+                if (n > 0) parties.Add(new Recit("j.jour.fois", ("v", new Recit($"j.jour.{a}", ("h", h))), ("n", n)));
             }
-            Ajouter(Activite.Boire, "a bu");
-            Ajouter(Activite.Cueillir, "a cueilli");
-            Ajouter(Activite.Chasser, "a chassé");
-            Ajouter(Activite.ChercherEau, "est allé" + e + " vers l'eau");
-            Ajouter(Activite.ChercherNourriture, "est allé" + e + " vers de quoi manger");
-            Ajouter(Activite.ChercherAbri, "a cherché un abri");
-            Ajouter(Activite.SAbriter, "s'est recroquevillé" + e + " de froid");
-            Ajouter(Activite.Explorer, "a exploré");
-            Ajouter(Activite.Migrer, "a marché avec les siens vers de nouvelles terres");
-            Ajouter(Activite.RejoindrePartenaire, "a rejoint son compagnon".Replace("son compagnon", h.Sexe == Sexe.Femme ? "son compagnon" : "sa compagne"));
-            Ajouter(Activite.RejoindreProche, "est allé" + e + " retrouver un proche");
-            Ajouter(Activite.SuivreParent, "a suivi ses parents");
-            Ajouter(Activite.VeillerEnfant, "est allé" + e + " chercher son enfant");
-            Ajouter(Activite.Experimenter, "a essayé des choses de ses mains");
-            Ajouter(Activite.Fabriquer, "a fabriqué ou fait ce qu'il sait faire".Replace("qu'il", h.Sexe == Sexe.Femme ? "qu'elle" : "qu'il"));
-            Ajouter(Activite.Veiller, "a entretenu le feu");
-            Ajouter(Activite.Nager, "a nagé");
-            Ajouter(Activite.Repos, "s'est reposé" + e);
-            Ajouter(Activite.Dormir, "a dormi");
             if (parties.Count == 0) continue;
-            resumes.Add(new EvenementJournal(maintenant, TypeEvenement.Journee, id, 0, $"Journée de {h.Nom} : {string.Join(", ", parties)}."));
+            resumes.Add(new EvenementJournal(maintenant, TypeEvenement.Journee, id, 0, new Recit("j.journee", ("h", h), ("l", new Liste(parties, virgules: true)))));
         }
         _compteurs.Clear();
         return resumes;

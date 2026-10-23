@@ -125,7 +125,7 @@ public sealed class SuitesCatastrophesTests
         (victime.X, victime.Y) = (x, y);
         var (cause, contexte) = catastrophes.Attribuer(victime, CauseDeMort.Faim, Jour + Heure);
         Assert.Equal(id, cause);
-        Assert.Contains("terres dévastées", contexte);
+        Assert.Contains("terres dévastées", contexte!.Texte);
         Assert.Equal(1, catastrophes.EnMemoire.Single(c => c.Id == id).MortsSuites);
 
         // Ailleurs, ou d'une autre cause, la mort ne lui doit rien.

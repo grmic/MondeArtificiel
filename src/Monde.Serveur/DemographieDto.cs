@@ -67,7 +67,7 @@ public sealed record DemographieDto(long Maintenant, string Date, long SecondesP
         var series = points.Where(p => p.Key >= 1 && p.Key <= communautes.Count)
             .Select(p => (Communaute: communautes[p.Key - 1], Points: p.Value, Pic: p.Value.Max(x => x.Membres)))
             .OrderByDescending(s => s.Pic).ThenBy(s => s.Communaute.Id).Take(limite)
-            .Select(s => new SerieCommunauteDto(s.Communaute.Id, s.Communaute.Nom, s.Communaute.Active, s.Pic,
+            .Select(s => new SerieCommunauteDto(s.Communaute.Id, L.Communaute(s.Communaute.Nom), s.Communaute.Active, s.Pic,
                 [.. s.Points.Select(x => x.Secondes)], [.. s.Points.Select(x => x.Membres)]))
             .ToList();
 

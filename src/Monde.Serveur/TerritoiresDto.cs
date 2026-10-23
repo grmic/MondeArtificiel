@@ -27,7 +27,7 @@ public static class Territoires
         var (maintenant, humains) = monde.InstantaneHumains();
         var membres = humains.Where(h => h.EstVivant && h.CommunauteId != 0).ToLookup(h => h.CommunauteId);
         var liste = monde.Communautes().Where(c => c.Active)
-            .Select(c => new TerritoireDto(c.Id, c.Nom, membres[c.Id].Count(), Plages(VieSociale.Etendue(VieSociale.Frequentees(c.Territoire), monde.Carte))))
+            .Select(c => new TerritoireDto(c.Id, L.Communaute(c.Nom), membres[c.Id].Count(), Plages(VieSociale.Etendue(VieSociale.Frequentees(c.Territoire), monde.Carte))))
             .Where(t => t.Plages.Length > 0).ToList();
         return new TerritoiresDto(maintenant, L.Date(maintenant), true, liste);
     }
@@ -58,7 +58,7 @@ public static class Territoires
             .Select(t => new TailleDto(t.Secondes, L.Date(t.Secondes), t.Membres, t.Adultes)).ToList();
 
     /// <summary>Le nom que portait une communauté à une date.</summary>
-    private static string NomA(Communaute c, long secondes) => c.Noms.LastOrDefault(n => n.Depuis <= secondes)?.Nom ?? c.Nom;
+    private static string NomA(Communaute c, long secondes) => L.Communaute(c.Noms.LastOrDefault(n => n.Depuis <= secondes)?.Nom ?? c.Nom);
 
     /// <summary>Cases triées → plages (début, longueur).</summary>
     public static int[] Plages(IReadOnlyList<int> cases)

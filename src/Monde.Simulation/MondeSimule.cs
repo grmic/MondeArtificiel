@@ -3,6 +3,8 @@ using Monde.Simulation.Monde;
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation;
 
 /// <summary>
@@ -357,9 +359,8 @@ public sealed class MondeSimule
             var avant = Clemence;
             Clemence = clemence;
             if (clemence == avant) return;
-            var texte = clemence == 0 ? "L'Entité cesse d'adoucir le monde : maladies, couches et catastrophes reprennent toute leur dureté."
-                : clemence > avant ? $"L'Entité adoucit le monde : {clemence} % des risques de maladie, d'infection, de mort en couches, de mort des tout-petits et de mort dans les catastrophes sont écartés."
-                : $"L'Entité adoucit moins le monde : elle n'écarte plus que {clemence} % des risques de maladie, d'infection, de mort en couches, de mort des tout-petits et de mort dans les catastrophes.";
+            var texte = clemence == 0 ? new Recit("j.clemence.fin")
+                : new Recit(clemence > avant ? "j.clemence.plus" : "j.clemence.moins", ("n", clemence));
             _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Nature, 0, 0, texte, Origine.Entite)
             {
                 Id = _numeros.Suivant(), Significatif = true,
@@ -693,15 +694,17 @@ public sealed class MondeSimule
             var pere = pereId > 0 ? _humains[pereId - 1] : null;
             var bebe = GenerateurPopulation.Naissance(_humains.Count + 1, mere, pere, _secondes, _alea, _noms, _humains);
             _humains.Ajouter(bebe);
-            var fils = bebe.Sexe == Sexe.Femme ? "fille" : "fils";
             var naissance = new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
-                $"{bebe.Nom} naît, {fils} de {mere.Nom}{(pere is null ? "" : $" et de {pere.Nom}")}.") { Id = _numeros.Suivant() };
+                new Recit("j.naissance", ("b", bebe), ("m", mere), ("p", pere is null ? "" : new Recit("j.naissance.pere", ("p", pere)))))
+            {
+                Id = _numeros.Suivant(),
+            };
             _comportement.Journal.Add(naissance);
             // Regard de l'Entité : un esprit hors du commun (QI de 145 ou plus, environ une naissance sur 740) ; nul ne le sait.
             if (bebe.Personnalite.Intelligence.Generale >= EspritHorsDuCommun)
             {
                 _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Naissance, bebe.Id, mere.Id,
-                    $"Regard de l'Entité : {bebe.Nom} naît avec un esprit hors du commun (QI {Math.Round(bebe.Personnalite.Intelligence.Generale)}). Nul ne le sait encore.")
+                    new Recit("j.naissance.genie", ("b", bebe), ("qi", (long)Math.Round(bebe.Personnalite.Intelligence.Generale))))
                 {
                     Id = _numeros.Suivant(), CauseId = naissance.Id, Significatif = true,
                 });
@@ -860,14 +863,12 @@ public sealed class MondeSimule
         _eteint = true;
         var dernier = _humains.OrderBy(h => h.MortLe).ThenBy(h => h.Id).Last();
         var nes = _humains.Count;
-        var texte = $"{dernier.Nom} était {(dernier.Sexe == Sexe.Femme ? "la dernière" : "le dernier")} des humains : "
-            + $"avec sa mort, l'humanité s'est éteinte, {Echelle.Duree(_secondes)} après la naissance du monde. "
-            + $"{nes} humains auront vécu ici.";
+        var texte = new Recit("extinction.annonce", ("nom", dernier), ("g", dernier), ("duree", Echelle.DureeR(_secondes)), ("n", nes));
         _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Mort, dernier.Id, 0, texte)
         {
             Id = _numeros.Suivant(), CauseId = dernier.MortEvenementId, Significatif = true,
         });
-        _extinction = texte;
+        _extinction = texte.Texte;
         _pauseExtinction = true;
     }
 
@@ -966,12 +967,16 @@ public sealed class MondeSimule
             {
                 var quoi = l.Type switch
                 {
-                    TypeLieu.Eau => "un point d'eau",
-                    TypeLieu.Nourriture => "un coin où manger",
-                    _ => "un abri",
+                    TypeLieu.Eau => "eau",
+                    TypeLieu.Nourriture => "nourriture",
+                    _ => "abri",
                 };
+                object fois = l.Rappels > 0 ? new Recit("j.oubli.fois", ("h", h), ("n", l.Rappels + 1)) : "";
                 _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Souvenir, h.Id, 0,
-                    $"{h.Nom} a oublié {quoi} (en {l.X}, {l.Y}){(l.Rappels > 0 ? $", où {Pronom(h)} était allé{(h.Sexe == Sexe.Femme ? "e" : "")} {l.Rappels + 1} fois" : "")}.") { Id = _numeros.Suivant() });
+                    new Recit("j.oubli", ("h", h), ("quoi", new Recit($"j.oubli.{quoi}")), ("x", l.X), ("y", l.Y), ("fois", fois)))
+                {
+                    Id = _numeros.Suivant(),
+                });
             }
         }
     }

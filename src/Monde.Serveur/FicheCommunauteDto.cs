@@ -353,7 +353,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
                 .Select(s => (s.Effet, Autre: H(s.MaitreId)!.CommunauteId)))
             .Distinct().GroupBy(x => x.Effet)
             .Select(g => service.Monde.Communautes()[g.First().Autre - 1].Nom is var nom
-                ? L.T("savoirs.venuDe", ("effet", L.T($"effet.{g.Key}")), ("nom", nom), ("nomMin", Minuscule(nom))) : "").ToList();
+                ? L.T("savoirs.venuDe", ("effet", L.T($"effet.{g.Key}")), ("nom", L.CommunautePhrase(nom)), ("nomMin", L.CommunauteMin(nom))) : "").ToList();
         var perdus = humains.Where(h => !h.EstVivant && h.CommunauteId == c.Id)
             .SelectMany(h => h.Savoirs.Where(Utile).Select(s => s.Effet)).Distinct().Where(e => !connus.Contains(e))
             .Order().Select(e => L.T($"effet.{e}")).ToList();
@@ -363,7 +363,6 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         return new SavoirsCommunauteDto(siennes, Decouvertes.DeCommunaute(membres), appris, perdus, fragiles);
     }
 
-    private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 
     // ───────────── Territoire, nourriture, santé ─────────────
 
@@ -392,15 +391,15 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             {
                 var autre = r.HoteId == c.Id ? r.InviteeId : r.HoteId;
                 var fin = r.FiniLe > 0 ? r.FiniLe : maintenant;
-                return new RassemblementDto(L.Date(r.Debut), autre, NomDe(autre), r.HoteId == c.Id,
+                return new RassemblementDto(L.Date(r.Debut), autre, L.Communaute(NomDe(autre)), r.HoteId == c.Id,
                     Math.Max(1, (int)Math.Round((fin - r.Debut) / (double)Calendrier.SecondesParJour)), r.Actif, r.Participants, r.Cadeaux, r.Appris, r.Couples,
                     r.EvenementId, r.BilanEvenementId);
             }).ToList();
-        string Chez(Humain h) => h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count ? humains[h.VisiteChezId - 1] is var o ? L.T("visite.chez", ("nom", o.Nom), ("de", NomDe(o.CommunauteId)), ("deMin", Minuscule(NomDe(o.CommunauteId)))) : "" : "";
+        string Chez(Humain h) => h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count ? humains[h.VisiteChezId - 1] is var o ? L.T("visite.chez", ("nom", o.Nom), ("de", L.CommunautePhrase(NomDe(o.CommunauteId))), ("deMin", L.CommunauteMin(NomDe(o.CommunauteId)))) : "" : "";
         var enVisite = membres.Where(h => h.VisiteChezId != 0).Select(h => new PersonneDto(h.Id, h.Nom, h.VisiteArriveeLe == 0 ? L.T("visite.enRoute", ("chez", Chez(h))) : Chez(h))).ToList();
         var visiteurs = humains.Where(h => h.EstVivant && h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count && humains[h.VisiteChezId - 1].CommunauteId == c.Id)
-            .Select(h => new PersonneDto(h.Id, h.Nom, L.T("visite.visiteur", ("de", NomDe(h.CommunauteId)), ("deMin", Minuscule(NomDe(h.CommunauteId))), ("nom", humains[h.VisiteChezId - 1].Nom)))).ToList();
-        var venus = membres.Where(h => h.VenuDeId != 0).Select(h => new PersonneDto(h.Id, h.Nom, L.T("visite.venu", ("de", NomDe(h.VenuDeId)), ("deMin", Minuscule(NomDe(h.VenuDeId))), ("g", Lib.G(h))))).ToList();
+            .Select(h => new PersonneDto(h.Id, h.Nom, L.T("visite.visiteur", ("de", L.CommunautePhrase(NomDe(h.CommunauteId))), ("deMin", L.CommunauteMin(NomDe(h.CommunauteId))), ("nom", humains[h.VisiteChezId - 1].Nom)))).ToList();
+        var venus = membres.Where(h => h.VenuDeId != 0).Select(h => new PersonneDto(h.Id, h.Nom, L.T("visite.venu", ("de", L.CommunautePhrase(NomDe(h.VenuDeId))), ("deMin", L.CommunauteMin(NomDe(h.VenuDeId))), ("g", Lib.G(h))))).ToList();
         return new RencontresCommunauteDto(specialistes, rassemblements, enVisite, visiteurs, venus);
     }
 
@@ -440,7 +439,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             .ToList();
         var sans = membres.Count(h => h.ReligionId == 0);
         if (parts.Count > 0 && sans > 0) parts.Add(L.T("foi.sans", ("n", sans), ("pourcent", Math.Round(100.0 * sans / membres.Count))));
-        var noms = communautes.ToDictionary(x => x.Id, x => x.Nom);
+        var noms = communautes.ToDictionary(x => x.Id, x => L.Communaute(x.Nom));
         var porteurs = membres.Where(h => h.Role != RoleReligieux.Aucun && h.ReligionId >= 1 && h.ReligionId <= religions.Count)
             .Select(h => new PorteurDto(h.Id, h.Nom, L.T("foi.porteur", ("role", Role(h)), ("religion", religions[h.ReligionId - 1].Nom)),
                 h.Role == RoleReligieux.Prophete ? L.T($"sourceProphete.{h.SourceProphete}") : null, h.Miracles, null, true)).ToList();

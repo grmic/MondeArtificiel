@@ -91,7 +91,7 @@ public sealed class IdentiteTests
         Assert.Equal(2, c.Noms.Count);
         Assert.NotEmpty(c.Lexique);
         var bapteme = Assert.Single(social.Journal, e => e.Texte.Contains("se donnent un nom", StringComparison.Ordinal));
-        Assert.Contains($"« {c.NomPropre} », qui veut dire « {c.Sens} »", bapteme.Texte);
+        Assert.Contains($"« {c.NomPropre} », qui veut dire « {Recit.EnFrancais(c.Sens)} »", bapteme.Texte);
         Assert.Contains("C'est la première fois que des humains nomment leur groupe.", bapteme.Texte);
         Assert.Equal(c.Id, bapteme.CommunauteId);
         Assert.Equal(bapteme.Id, c.Noms[^1].EvenementId);

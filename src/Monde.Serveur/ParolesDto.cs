@@ -59,7 +59,7 @@ public static class ParolesEntite
         var directions = Paroles.Directions.Select((_, i) => new ChoixDto(i.ToString(System.Globalization.CultureInfo.InvariantCulture), L.T($"direction.{i}"))).ToList();
         var plantes = monde.Flore.Especes.Select(e => new ChoixDto(e.Numero.ToString(System.Globalization.CultureInfo.InvariantCulture), e.Nom)).ToList();
         var communautes = monde.Communautes().Where(c => c.Active)
-            .Select(c => new ChoixDto(c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), c.Nom)).ToList();
+            .Select(c => new ChoixDto(c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), L.Communaute(c.Nom))).ToList();
         return new ChoixParolesDto(paroles, modes, directions, plantes, communautes);
     }
 
@@ -67,7 +67,7 @@ public static class ParolesEntite
     {
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
-        var noms = monde.Communautes().ToDictionary(c => c.Id, c => c.Nom);
+        var noms = monde.Communautes().ToDictionary(c => c.Id, c => L.Communaute(c.Nom));
         var texte = (f.Texte ?? "").Trim();
         if (texte.Length > 40) texte = texte[..40];
         var pres = f.Pres >= 1 && f.Pres <= humains.Count ? humains[f.Pres - 1] : null;

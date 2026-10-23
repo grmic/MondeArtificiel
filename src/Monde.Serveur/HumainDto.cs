@@ -56,7 +56,7 @@ public sealed record HumainDto(
             h.EstVivant ? null : Lib.Cause(h.CauseDeMort),
             h.MereId, h.PereId, h.EstEnceinte,
             h.EstBebe(instant) ? "bébé" : h.EstEnfant(instant) ? "enfant" : "adulte",
-            h.EstVivant && h.Memoire.Pensees.Count > 0 ? h.Memoire.Pensees[^1].Texte : null,
+            h.EstVivant && h.Memoire.Pensees.Count > 0 ? L.Ecrire(h.Memoire.Pensees[^1]) : null,
             h.EstVivant && !h.EstBebe(maintenant) ? Lib.Humeur(h) : null,
             h.EstVivant ? h.CommunauteId : 0,
             Math.Round(h.Reserves),

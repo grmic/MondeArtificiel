@@ -2,6 +2,8 @@ using Monde.Simulation.Monde;
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -80,12 +82,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <paramref name="karmaAutre"/> : ce que vaut l'acte, aux yeux de l'Entité, pour <paramref name="h"/> et pour
     /// <paramref name="autre"/> (voir <see cref="Regard"/>).
     /// </summary>
-    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0, bool significatif = false,
+    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, object texte, long cause = 0, bool significatif = false,
         double karma = 0, double karmaAutre = 0, int autreCommunaute = 0)
     {
-        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte)
+        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte as string)
         {
-            Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif, AutreCommunauteId = autreCommunaute,
+            Recit = texte as Recit, Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif, AutreCommunauteId = autreCommunaute,
             Karma = Regard.Juger(h, karma, maintenant, autre), KarmaAutre = Regard.Juger(autre, karmaAutre, maintenant, h),
         };
         Journal.Add(e);
@@ -151,7 +153,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (routine && JournalQuotidien) CompterRoutine(h.Id, h.Activite);
             var nouvelle = !routine && (JournalQuotidien || !EstQuotidien(h.Activite, _motif))
                            && !h.Memoire.PenseeRecente(pensee, Memoire.PenseesMax);
-            if (h.Memoire.Penser(maintenant, pensee) && nouvelle) Noter(maintenant, TypeEvenement.Pensee, h, _autre, $"{h.Nom} : « {pensee} »");
+            if (h.Memoire.Penser(maintenant, pensee) && nouvelle) Noter(maintenant, TypeEvenement.Pensee, h, _autre, new Recit("j.pensee", ("h", h), ("p", pensee)));
         }
     }
 
@@ -429,7 +431,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 h.Maladie = maladie;
                 var fiche = Maladies.Fiche(h.Maladie);
                 h.MaladeJusqua = maintenant + Maladies.Duree(fiche, h, alea);
-                Noter(maintenant, TypeEvenement.Maladie, h, null, $"{h.Nom} tombe malade : {fiche.Nom} (personne ne sait la nommer).");
+                Noter(maintenant, TypeEvenement.Maladie, h, null, new Recit("j.malade", ("h", h), ("mal", new Recit($"maladie.{fiche.Maladie}"))));
             }
         }
     }
@@ -450,26 +452,26 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var maudisseur = h.MauditParId >= 1 && h.MauditParId <= _tous.Count ? _tous[h.MauditParId - 1] : null;
         // Mort de froid pendant une vague de froid, de chaleur pendant une canicule, d'une maladie contagieuse, de faim dans une
         // terre dévastée qui n'a pas reverdi : la cause est notée, et dite.
-        string? contexte = null;
+        Recit? contexte = null;
         if (causeId == 0 && Catastrophes is not null) (causeId, contexte) = Catastrophes.Attribuer(h, cause, maintenant);
-        var suite = contexte is null ? "" : $", {contexte}";
+        object suite = contexte is null ? "" : contexte;
+        var age = AgeEnMots(h, maintenant);
         h.MortEvenementId = cause switch
         {
             CauseDeMort.Desespoir => Noter(maintenant, TypeEvenement.Mort, h, null,
-                $"{h.Nom}, accablé{(h.Sexe == Sexe.Femme ? "e" : "")} de tristesse, met fin à ses jours, à {AgeEnMots(h, maintenant)}.",
-                h.DepressionEvenementId),
+                new Recit("j.mort.desespoir", ("h", h), ("age", age)), h.DepressionEvenementId),
             CauseDeMort.Meurtre when meurtrier is not null => Noter(maintenant, TypeEvenement.Mort, h, meurtrier,
-                $"{h.Nom} meurt sous les coups de {meurtrier.Nom}, à {AgeEnMots(h, maintenant)}.", causeId, karmaAutre: karmaMeurtrier),
+                new Recit("j.mort.meurtre", ("h", h), ("m", meurtrier), ("age", age)), causeId, karmaAutre: karmaMeurtrier),
             CauseDeMort.Envoutement when maudisseur is not null => Noter(maintenant, TypeEvenement.Mort, h, maudisseur,
-                $"{h.Nom} dépérit et meurt, persuadé{(h.Sexe == Sexe.Femme ? "e" : "")} que la malédiction de {maudisseur.Nom} {(h.Sexe == Sexe.Femme ? "la" : "le")} tue, à {AgeEnMots(h, maintenant)}.",
-                h.MauditEvenementId, karmaAutre: Regard.MortMaudit),
+                new Recit("j.mort.envoutement", ("h", h), ("m", maudisseur), ("age", age)), h.MauditEvenementId, karmaAutre: Regard.MortMaudit),
             CauseDeMort.Empoisonnement => Noter(maintenant, TypeEvenement.Mort, h, null,
-                $"{h.Nom} meurt empoisonné{(h.Sexe == Sexe.Femme ? "e" : "")} par la plante qu'{(h.Sexe == Sexe.Femme ? "elle" : "il")} a mangée, à {AgeEnMots(h, maintenant)}.", causeId),
+                new Recit("j.mort.empoisonnement", ("h", h), ("age", age)), causeId),
             CauseDeMort.Noyade when causeId == 0 => Noter(maintenant, TypeEvenement.Mort, h, null,
-                $"{h.Nom} se noie en nageant, à {AgeEnMots(h, maintenant)}.", causeId),
+                new Recit("j.mort.noyade", ("h", h), ("age", age)), causeId),
             CauseDeMort.Maladie when h.Maladie != Maladie.Aucune && h.EstMalade(maintenant) => Noter(maintenant, TypeEvenement.Mort, h, null,
-                $"{h.Nom} meurt {De(Maladies.Fiche(h.Maladie).Nom)}{suite}, à {AgeEnMots(h, maintenant)}.", causeId),
-            _ => Noter(maintenant, TypeEvenement.Mort, h, null, $"{h.Nom} meurt {Libelles.Cause(cause)}{suite}, à {AgeEnMots(h, maintenant)}.", causeId),
+                new Recit("j.mort.maladie", ("h", h), ("mal", new Recit($"maladieDe.{Maladies.Fiche(h.Maladie).Maladie}")), ("suite", suite), ("age", age)), causeId),
+            _ => Noter(maintenant, TypeEvenement.Mort, h, null,
+                new Recit("j.mort", ("h", h), ("cause", new Recit($"j.cause.{cause}", ("h", h))), ("suite", suite), ("age", age)), causeId),
         };
         h.MeurtrierId = meurtrier?.Id ?? 0;
         Tour.Differer(h, x => Deces.Add(x));
@@ -781,10 +783,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         return choisi;
     }
 
-    internal static string AgeEnMots(Humain h, long maintenant)
+    internal static Recit AgeEnMots(Humain h, long maintenant)
     {
         var age = h.AgeEnAnnees(maintenant);
-        return age < 1 ? $"{Math.Max(0, (int)(age * 12))} mois" : $"{(int)age} an{(age >= 2 ? "s" : "")}";
+        return age < 1 ? new Recit("j.age.mois", ("n", Math.Max(0, (int)(age * 12)))) : new Recit("j.age.ans", ("n", (int)age));
     }
 
     /// <summary>Urgence d'un besoin : croît avec lui, et beaucoup plus vite au-delà de 70 (danger).</summary>

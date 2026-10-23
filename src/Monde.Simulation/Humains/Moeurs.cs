@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Ce qu'une communauté pense des amours entre personnes de même sexe.</summary>
@@ -93,15 +95,14 @@ public sealed partial class VieSociale
             c.ToleranceMoeurs = Math.Clamp(c.ToleranceMoeurs + 0.015 * (temperament - c.ToleranceMoeurs) + 0.002 * couples, 0, 1);
             var usage = ClasserMoeurs(c.ToleranceMoeurs, c.UsageMoeurs);
             var figure = humains[c.FigureId - 1];
-            var nom = Minuscule(c.Nom);
             if (usage != c.UsageMoeurs)
             {
                 var texte = (c.UsageMoeurs, usage) switch
                 {
-                    (_, UsageMoeurs.Reprouvees) => $"Dans la {nom}, les amours entre hommes ou entre femmes deviennent mal vues.",
-                    (_, UsageMoeurs.Acceptees) => $"Dans la {nom}, nul ne s'offusque plus des amours entre hommes ou entre femmes.",
-                    (UsageMoeurs.Reprouvees, _) => $"Dans la {nom}, on cesse de blâmer les amours entre hommes ou entre femmes.",
-                    _ => $"Dans la {nom}, on commence à mal supporter les amours entre hommes ou entre femmes.",
+                    (_, UsageMoeurs.Reprouvees) => new Recit("j.moeurs.reprouvees", ("c", c)),
+                    (_, UsageMoeurs.Acceptees) => new Recit("j.moeurs.acceptees", ("c", c)),
+                    (UsageMoeurs.Reprouvees, _) => new Recit("j.moeurs.finBlame", ("c", c)),
+                    _ => new Recit("j.moeurs.debutMal", ("c", c)),
                 };
                 c.UsageMoeurs = usage;
                 Noter(maintenant, TypeEvenement.Communaute, figure, null, texte, c.AffaireMoeursId, communaute: c.Id);
@@ -113,10 +114,10 @@ public sealed partial class VieSociale
             if (note == c.IdealNote) continue;
             Noter(maintenant, TypeEvenement.Communaute, figure, null, note switch
             {
-                1 when c.Disette => $"Dans la {nom}, où la nourriture manque, on admire désormais les corps bien en chair.",
-                1 => $"Dans la {nom}, on admire désormais les corps bien en chair.",
-                -1 => $"Dans la {nom}, où l'on mange à sa faim, on trouve désormais beaux les corps minces.",
-                _ => $"Dans la {nom}, on ne trouve plus beaux ni les corps trop maigres, ni les corps trop gras.",
+                1 when c.Disette => new Recit("j.ideal.chairDisette", ("c", c)),
+                1 => new Recit("j.ideal.chair", ("c", c)),
+                -1 => new Recit("j.ideal.mince", ("c", c)),
+                _ => new Recit("j.ideal.moyen", ("c", c)),
             }, c.Disette ? c.DisetteEvenementId : 0, communaute: c.Id);
             c.IdealNote = note;
         }
@@ -138,23 +139,23 @@ public sealed partial class VieSociale
         var tolerance = 0.5 * ToleranceMoeursDe(temoin) + 0.5 * TemperamentMoeurs(temoin.Personnalite);
         var amitie = Math.Max(0, temoin.AffectionPour(a.Id)) / 100;
         var reprobation = 100 * Math.Clamp((0.6 - tolerance) * 2 * (1.2 - 0.6 * amitie), 0, 1);
-        var vus = $"{a.Nom} et {b?.Nom} s'aiment";
+        var vus = new Recit("j.moeurs.vus", ("a", a), ("b", b));
         var communaute = CommunauteDe(temoin) ?? CommunauteDe(a);
         long id;
         if (reprobation < 15)
         {
             id = Noter(maintenant, TypeEvenement.Attirance, temoin, a, b is null
-                ? $"{temoin.Nom} repousse les avances de {a.Nom}, sans lui en vouloir."
-                : $"{temoin.Nom} voit que {vus}, et ne s'en émeut pas.", cause);
+                ? new Recit("j.moeurs.avanceIndifferent", ("t", temoin), ("a", a))
+                : new Recit("j.moeurs.vusIndifferent", ("t", temoin), ("vus", vus)), cause);
         }
         else
         {
             id = Noter(maintenant, TypeEvenement.Attirance, temoin, a, (b, reprobation >= 60) switch
             {
-                (null, true) => $"{temoin.Nom} est scandalisé{E(temoin)} que {a.Nom}, de son sexe, lui ait fait des avances.",
-                (null, false) => $"{temoin.Nom} reproche à {a.Nom}, de son sexe, de lui avoir fait des avances.",
-                (_, true) => $"{temoin.Nom} découvre que {vus}, et en est scandalisé{E(temoin)}.",
-                _ => $"{temoin.Nom} découvre que {vus}, et le leur reproche.",
+                (null, true) => new Recit("j.moeurs.avanceScandale", ("t", temoin), ("a", a)),
+                (null, false) => new Recit("j.moeurs.avanceReproche", ("t", temoin), ("a", a)),
+                (_, true) => new Recit("j.moeurs.vusScandale", ("t", temoin), ("vus", vus)),
+                _ => new Recit("j.moeurs.vusReproche", ("t", temoin), ("vus", vus)),
             }, cause);
             foreach (var x in b is null ? [a] : new[] { a, b })
             {
@@ -177,8 +178,8 @@ public sealed partial class VieSociale
     {
         var force = (0.4 - c.ToleranceMoeurs) * 30;
         var id = Noter(maintenant, TypeEvenement.Attirance, a, b, b is null
-            ? $"La {Minuscule(c.Nom)} réprouve {a.Nom}, qui a désiré quelqu'un de son sexe."
-            : $"La {Minuscule(c.Nom)} réprouve les amours de {a.Nom} et {b.Nom}.", cause, communaute: c.Id);
+            ? new Recit("j.moeurs.reprouve1", ("c", c), ("a", a))
+            : new Recit("j.moeurs.reprouve2", ("c", c), ("a", a), ("b", b)), cause, communaute: c.Id);
         foreach (var x in b is null ? [a] : new[] { a, b })
         {
             foreach (var m in humains.Vivants())

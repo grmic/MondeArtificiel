@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -54,7 +56,7 @@ public sealed partial class VieSociale
             v.Humeur = Math.Max(0, v.Humeur - (v.Peur - avant) / 6);
             if (v.Peur >= 30 && avant < 20)
             {
-                Noter(maintenant, TypeEvenement.Humeur, v, s, $"{v.Nom} prend peur à son tour, gagné{E(v)} par l'effroi de {s.Nom}.", s.PeurEvenementId);
+                Noter(maintenant, TypeEvenement.Humeur, v, s, new Recit("j.peurGagne", ("v", v), ("s", s)), s.PeurEvenementId);
             }
         }
     }
@@ -86,7 +88,7 @@ public sealed partial class VieSociale
             if (v.Memoire.Jardin.Exists(x => x.Cle == cle)) continue;
             var mort = s.DeuilDeId >= 1 && s.DeuilDeId <= humains.Count ? humains[s.DeuilDeId - 1] : null;
             var id = Noter(maintenant, TypeEvenement.Entraide, v, s,
-                mort is null ? $"{v.Nom} console {s.Nom}." : $"{v.Nom} console {s.Nom}, qui pleure {Parente(s, mort)}.", s.DeuilEvenementId, karma: Regard.Consoler);
+                mort is null ? new Recit("j.console", ("v", v), ("s", s)) : new Recit("j.console.deuil", ("v", v), ("s", s), ("p", ParenteR(s, mort))), s.DeuilEvenementId, karma: Regard.Consoler);
             var (il, e) = s.Sexe == Sexe.Femme ? ("elle", "e") : ("il", "");
             var pensee = Jardin.Varier(v, cle, 0, s.Nom,
                 new Jardin.V($"Je reste près de {s.Nom} tant qu'{il} a du chagrin.", 0.4),
@@ -127,7 +129,7 @@ public sealed partial class VieSociale
             if (v.Memoire.Jardin.Exists(x => x.Cle == cle && maintenant - x.Secondes < 30 * Temps.Calendrier.SecondesParJour)) return;
             var etat = s.EstMalade(maintenant) || s.InfectionId != 0 ? "malade" : $"blessé{E(s)}";
             var id = Noter(maintenant, TypeEvenement.Entraide, v, s,
-                $"{v.Nom} veille sur {s.Nom}, {etat}, et lui apporte à boire et à manger.", s.InfectionId != 0 ? s.InfectionEvenementId : 0, karma: Regard.Veiller);
+                new Recit(s.EstMalade(maintenant) || s.InfectionId != 0 ? "j.veille.malade" : "j.veille.blesse", ("v", v), ("s", s)), s.InfectionId != 0 ? s.InfectionEvenementId : 0, karma: Regard.Veiller);
             Jardin.Retirer(v, cle);
             var lui = s.Sexe == Sexe.Femme ? "elle" : "lui";
             var pensee = Jardin.Varier(v, cle, 0, s.Nom,
@@ -156,7 +158,7 @@ public sealed partial class VieSociale
             var parents = new[] { e.MereId, e.PereId }.Where(id => id > 0).Select(id => humains[id - 1]).ToList();
             var dernier = parents.MaxBy(x => x.MortLe ?? 0);
             var id = Noter(maintenant, TypeEvenement.Entraide, g, e,
-                $"{g.Nom} recueille {e.Nom} ({Comportement.AgeEnMots(e, maintenant)}), {(e.Sexe == Sexe.Femme ? "orpheline" : "orphelin")}.",
+                new Recit("j.recueille", ("g", g), ("e", e), ("age", Comportement.AgeEnMots(e, maintenant))),
                 dernier?.MortEvenementId ?? 0, karma: Regard.Recueillir);
             Jardin.Confier(g, TypeIntime.Intention, e.Id, $"Je veillerai sur {e.Nom}.", 30 + 40 * g.Personnalite.Moral.Compassion, id, maintenant, cle);
         }

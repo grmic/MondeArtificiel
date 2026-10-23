@@ -53,54 +53,12 @@ public static partial class Lib
         _ => L.T($"sentiment.{s}.extreme", ("g", G(h))),
     };
 
-    /// <summary>Un proche nommé par son lien, comme <see cref="VieSociale.Parente"/> : « sa fille Ana », sinon son nom (la clé suit le genre de <paramref name="h"/>, la forme celui du proche).</summary>
-    public static string Parente(Humain h, Humain autre)
-    {
-        var lien = autre switch
-        {
-            _ when autre.MereId == h.Id || autre.PereId == h.Id => "enfant",
-            _ when h.MereId == autre.Id => "mere",
-            _ when h.PereId == autre.Id => "pere",
-            _ when h.PartenaireId == autre.Id || autre.PartenaireId == h.Id => "compagnon",
-            _ when h.MereId != 0 && h.MereId == autre.MereId => "fratrie",
-            _ when h.LienAvec(autre.Id) is { Amis: true } => "ami",
-            _ => null,
-        };
-        return lien is null ? autre.Nom : L.T($"parente.{lien}.{G(h)}", ("nom", autre.Nom), ("g", G(autre)));
-    }
+    /// <summary>Un proche nommé par son lien : « sa fille Ana », sinon son nom.</summary>
+    public static string Parente(Humain h, Humain autre) => L.Courante.Ecrire(VieSociale.ParenteR(h, autre));
 
-    /// <summary>Les raisons de son humeur, de la plus lourde à la plus légère, comme <see cref="VieSociale.Phrases"/>.</summary>
-    public static List<string> Raisons(Humain h, IReadOnlyList<Humain> humains, long maintenant)
-    {
-        var g = G(h);
-        string Nom(int id) => id >= 1 && id <= humains.Count ? humains[id - 1].Nom : "?";
-        var phrases = new List<string>();
-        foreach (var r in h.Raisons)
-        {
-            string? phrase = r.Type switch
-            {
-                TypeRaison.Deuil when r.AutreId > 0 => L.T("raison.deuil", ("qui", Parente(h, humains[r.AutreId - 1])), ("g", g)),
-                TypeRaison.FaimSoif => L.T("raison.faimSoif", ("g", g)),
-                TypeRaison.Froid => L.T("raison.froid", ("g", g)),
-                TypeRaison.Maladie => L.T("raison.maladie", ("g", g)),
-                TypeRaison.Solitude => L.T("raison.solitude", ("g", g)),
-                TypeRaison.Rejet => VieSociale.Hostiles(h, maintenant) switch
-                {
-                    [var a] => L.T("raison.hostile", ("a", Nom(a)), ("g", g)),
-                    [var a, var b] => L.T("raison.hostiles", ("a", Nom(a)), ("b", Nom(b)), ("g", g)),
-                    [var a, var b, ..] => L.T("raison.rejete", ("a", Nom(a)), ("b", Nom(b)), ("g", g)),
-                    _ => null,
-                },
-                TypeRaison.Trahison when r.AutreId > 0 => L.T("raison.trahison", ("qui", Parente(h, humains[r.AutreId - 1])), ("g", g)),
-                TypeRaison.Colere => L.T("raison.colere", ("g", g)),
-                TypeRaison.Temperament => L.T("raison.temperament", ("g", g)),
-                TypeRaison.Peur => L.T("raison.peur", ("de", L.T($"catastropheDe.{(TypeCatastrophe)r.AutreId}")), ("g", g)),
-                _ => null,
-            };
-            if (phrase is not null) phrases.Add(phrase);
-        }
-        return phrases;
-    }
+    /// <summary>Les raisons de son humeur, de la plus lourde à la plus légère.</summary>
+    public static List<string> Raisons(Humain h, IReadOnlyList<Humain> humains, long maintenant) =>
+        VieSociale.Raisons(h, humains, maintenant).Select(L.Rediger).ToList();
 
     /// <summary>Orientation sexuelle en mots, comme <see cref="Attirance.Orienter"/>.</summary>
     public static string Orientation(Humain h)

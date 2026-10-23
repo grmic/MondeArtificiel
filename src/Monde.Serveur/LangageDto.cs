@@ -27,7 +27,7 @@ public sealed record LangageDto(string Stade, string? Nom, string? Sens, string?
                 if (!c.Active || c.Id == h.CommunauteId || c.Lexique.Count + c.Signes.Count < 10) continue;
                 var pareils = h.Vocabulaire.Count(m => (m.Signe ? c.Signes : c.Lexique).TryGetValue(m.Idee, out var f) && f == m.Forme);
                 var part = (int)Math.Round(100.0 * pareils / Math.Max(10, c.Lexique.Count + c.Signes.Count));
-                if (part >= 20) comprises.Add(new LangueCompriseDto(c.Id, c.Nom, part));
+                if (part >= 20) comprises.Add(new LangueCompriseDto(c.Id, L.Communaute(c.Nom), part));
             }
         }
         return new LangageDto(L.T($"stade.{Math.Clamp(h.StadeParole, 0, 3)}"), h.NomLangue, h.NomSens,
@@ -75,7 +75,7 @@ public sealed record LangueDto(string Mode, string Stade, string? Ordre, string?
         var lexique = c.Lexique.Select(m => Mot(m.Key, m.Value, false)).Concat(c.Signes.Select(m => Mot(m.Key, m.Value, true)))
             .OrderBy(m => m.Sens, StringComparer.Create(L.Courante.Culture, true)).ToList();
         var proches = toutes.Where(o => o.Id != c.Id && (o.Active || !c.Active) && o.Lexique.Count + o.Signes.Count > 0)
-            .Select(o => new LangueCompriseDto(o.Id, o.Nom, (int)Math.Round(100 * VieSociale.Communs(c, o))))
+            .Select(o => new LangueCompriseDto(o.Id, L.Communaute(o.Nom), (int)Math.Round(100 * VieSociale.Communs(c, o))))
             .Where(x => x.Pourcent >= 10).OrderByDescending(x => x.Pourcent).Take(8).ToList();
         return new LangueDto(mode, L.T($"stade.{Math.Clamp((int)c.Stade, 0, 3)}"), c.Stade >= 3 ? L.T($"ordreMots.{c.Ordre}") : null,
             c.ParoleLe > 0 ? Date(c.ParoleLe) : null, c.CombinaisonLe > 0 ? Date(c.CombinaisonLe) : null, c.OrdreLe > 0 ? Date(c.OrdreLe) : null,
@@ -95,7 +95,7 @@ public sealed record LangueDto(string Mode, string Stade, string? Ordre, string?
         {
             ChangementMot.Deforme => L.T("langue.histoire.deforme", ("sens", sens), ("dit", dit), ("avant", Avant(x))),
             ChangementMot.Emprunte when x.SourceId >= 1 && x.SourceId <= toutes.Count => L.T("langue.histoire.emprunte", ("sens", sens), ("dit", dit),
-                ("nom", toutes[x.SourceId - 1].Nom), ("nomMin", Minuscule(toutes[x.SourceId - 1].Nom))),
+                ("nom", L.CommunautePhrase(toutes[x.SourceId - 1].Nom)), ("nomMin", L.CommunauteMin(toutes[x.SourceId - 1].Nom))),
             ChangementMot.Emprunte => L.T("langue.histoire.emprunteAilleurs", ("sens", sens), ("dit", dit)),
             ChangementMot.Remplace => L.T("langue.histoire.remplace", ("sens", sens), ("dit", dit), ("avant", Avant(x))),
             ChangementMot.Oublie => L.T("langue.histoire.oublie", ("sens", sens), ("dit", dit)),
@@ -106,5 +106,4 @@ public sealed record LangueDto(string Mode, string Stade, string? Ordre, string?
     // La forme remplacée peut être un signe alors que la nouvelle est un mot, ou l'inverse : un signe s'écrit avec des points.
     private static string Avant(HistoireMot x) => x.Ancienne is { } a ? Lib.Mot(a, a.Contains('.')) : "";
 
-    private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 }

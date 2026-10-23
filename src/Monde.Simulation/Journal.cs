@@ -76,9 +76,23 @@ public enum Origine : byte
 /// <see cref="CauseId"/> désigne l'événement qui l'a provoqué (0 : aucune cause notée) : en remontant les causes,
 /// on suit l'enchaînement des faits (une trahison, la jalousie, des coups, une mort, un deuil, une vengeance…).
 /// </summary>
-public sealed record EvenementJournal(long Secondes, TypeEvenement Type, int HumainId, int AutreId, string Texte,
+/// <para>
+/// Depuis 0.30.1, ce qui est raconté est un <see cref="Recits.Recit"/> (clé et paramètres), écrit dans la langue de
+/// l'observateur au moment de l'affichage ; les événements plus anciens, et ceux qui ne sont pas encore traduits, gardent
+/// leur phrase française (<see cref="Brut"/>). <see cref="Texte"/> donne toujours la phrase en français.
+/// </para>
+public sealed record EvenementJournal(long Secondes, TypeEvenement Type, int HumainId, int AutreId, string? Brut,
     Origine Origine = Origine.Naturelle)
 {
+    public EvenementJournal(long secondes, TypeEvenement type, int humainId, int autreId, Recits.Recit recit, Origine origine = Origine.Naturelle)
+        : this(secondes, type, humainId, autreId, (string?)null, origine) => Recit = recit;
+
+    /// <summary>Ce qui est raconté, à écrire dans la langue de l'observateur (null : phrase française déjà écrite).</summary>
+    public Recits.Recit? Recit { get; init; }
+
+    /// <summary>La phrase en français.</summary>
+    public string Texte => Recit?.Texte ?? Brut ?? "";
+
     public long Id { get; init; }
     public long CauseId { get; init; }
 

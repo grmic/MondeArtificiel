@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Qui est séparé de qui : exil hors d'une communauté, rejet par un parent.</summary>
@@ -82,16 +84,16 @@ public sealed partial class VieSociale
         return (score, principal);
     }
 
-    private static string Raison(Grief? g, Humain x, IReadOnlyList<Humain> humains) => g?.Motif switch
+    private static Recit Raison(Grief? g, Humain x, IReadOnlyList<Humain> humains) => g?.Motif switch
     {
-        MotifGrief.Meurtre when g.VictimeId > 0 => $"pour le meurtre de {humains[g.VictimeId - 1].Nom}",
-        MotifGrief.Meurtre => "pour un meurtre",
-        MotifGrief.Moeurs => "pour ses amours avec quelqu'un de son sexe",
-        MotifGrief.Coups => "pour sa violence",
-        MotifGrief.Vol => "pour ses vols",
-        MotifGrief.Trahison => "pour avoir trahi les siens",
-        MotifGrief.Infidelite or MotifGrief.Rival => "pour avoir semé la discorde en s'unissant hors de son couple",
-        _ => $"parce que plus personne ne {(x.Sexe == Sexe.Femme ? "la" : "le")} supporte",
+        MotifGrief.Meurtre when g.VictimeId > 0 => new Recit("j.exil.raison.meurtreDe", ("v", humains[g.VictimeId - 1])),
+        MotifGrief.Meurtre => new Recit("j.exil.raison.meurtre"),
+        MotifGrief.Moeurs => new Recit("j.exil.raison.moeurs", ("x", x)),
+        MotifGrief.Coups => new Recit("j.exil.raison.coups", ("x", x)),
+        MotifGrief.Vol => new Recit("j.exil.raison.vol", ("x", x)),
+        MotifGrief.Trahison => new Recit("j.exil.raison.trahison", ("x", x)),
+        MotifGrief.Infidelite or MotifGrief.Rival => new Recit("j.exil.raison.infidelite", ("x", x)),
+        _ => new Recit("j.exil.raison.defaut", ("x", x)),
     };
 
     /// <summary>
@@ -131,9 +133,9 @@ public sealed partial class VieSociale
                 h.Exclusions[i] = e with { Levee = true };
                 Noter(maintenant, TypeEvenement.Exclusion, h, e.Type == TypeExclusion.Famille ? humains[e.De - 1] : null, e.Type switch
                 {
-                    TypeExclusion.Famille => $"{humains[e.De - 1].Nom} cesse de renier {h.Nom}.",
-                    _ when e.De <= Communautes.Count => $"L'exil de {h.Nom} prend fin : {(h.Sexe == Sexe.Femme ? "elle" : "il")} peut revenir parmi la {Minuscule(Communautes[e.De - 1].Nom)}.",
-                    _ => $"L'exil de {h.Nom} prend fin.",
+                    TypeExclusion.Famille => new Recit("j.exil.finRenie", ("p", humains[e.De - 1]), ("h", h)),
+                    _ when e.De <= Communautes.Count => new Recit("j.exil.finRetour", ("h", h), ("c", Communautes[e.De - 1])),
+                    _ => new Recit("j.exil.fin", ("h", h)),
                 }, e.EvenementId, communaute: e.Type == TypeExclusion.Famille ? -1 : e.De);
             }
         }
@@ -246,12 +248,12 @@ public sealed partial class VieSociale
         foreach (var m in flechis) hostiles.Remove(m);
         var renonce = hostiles.Count * 2 <= adultes.Count - 1 || hostiles.All(m => m.Id != c.FigureId);
         var raison = Raison(motif, x, humains);
-        var (le, lui, e) = x.Sexe == Sexe.Femme ? ("la", "elle", "e") : ("le", "lui", "");
+        var e = x.Sexe == Sexe.Femme ? "e" : "";
         var suite = renonce
-            ? flechis.Count == 1 ? $" {flechis[0].Nom} renonce à {le} chasser, et l'exil est abandonné." : $" {flechis.Count} des siens renoncent à {le} chasser, et l'exil est abandonné."
-            : flechis.Count == 0 ? " Personne ne se laisse fléchir."
-            : flechis.Count == 1 ? $" {flechis[0].Nom} se laisse fléchir, pas assez pour l'empêcher." : $" {flechis.Count} des siens se laissent fléchir, pas assez pour l'empêcher.";
-        var id = Noter(maintenant, TypeEvenement.Exclusion, p, x, $"La {Minuscule(c.Nom)} veut chasser {x.Nom} {raison} ; {p.Nom} plaide pour {lui}.{suite}",
+            ? flechis.Count == 1 ? new Recit("j.exil.renonce1", ("f", flechis[0]), ("x", x)) : new Recit("j.exil.renonceN", ("n", flechis.Count), ("x", x))
+            : flechis.Count == 0 ? new Recit("j.exil.personne")
+            : flechis.Count == 1 ? new Recit("j.exil.flechi1", ("f", flechis[0])) : new Recit("j.exil.flechiN", ("n", flechis.Count), ("x", x));
+        var id = Noter(maintenant, TypeEvenement.Exclusion, p, x, new Recit("j.exil.plaidoyer", ("c", c), ("x", x), ("raison", raison), ("p", p), ("suite", suite)),
             motif?.EvenementId ?? 0, communaute: c.Id, significatif: renonce, karma: Regard.Plaider);
         foreach (var m in flechis)
         {
@@ -284,12 +286,12 @@ public sealed partial class VieSociale
         var duree = DureeExil(motif, Math.Min(1, colere / 2), clemence);
         var raison = Raison(motif, x, humains);
         var il = x.Sexe == Sexe.Femme ? "elle" : "il";
-        var pour = duree == 0 ? "pour toujours" : $"pour {DireDuree(duree)}";
+        var pour = duree == 0 ? new Recit("j.exil.pourToujours") : new Recit("j.exil.pour", ("d", DireDuree(duree)));
         var id = Noter(maintenant, TypeEvenement.Exclusion, x, humains[c.FigureId - 1],
-            $"La {Minuscule(c.Nom)} chasse {x.Nom} {raison}, {pour}. {Majuscule(il)} doit partir.", motif?.EvenementId ?? 0,
+            new Recit("j.exil.chasse", ("c", c), ("x", x), ("raison", raison), ("pour", pour)), motif?.EvenementId ?? 0,
             communaute: c.Id, significatif: true);
         var jusqua = duree == 0 ? 0 : maintenant + duree;
-        x.Exclusions.Add(new Exclusion(TypeExclusion.Communaute, c.Id, maintenant, jusqua, id, raison));
+        x.Exclusions.Add(new Exclusion(TypeExclusion.Communaute, c.Id, maintenant, jusqua, id, raison.Encoder()));
         x.Humeur = Math.Max(0, x.Humeur - 25 * (0.6 + 0.8 * x.Personnalite.Nevrosisme));
         x.Colere = Math.Min(100, x.Colere + 20);
         Jardin.Confier(x, TypeIntime.Peine, 0, $"Les miens m'ont chassé{E(x)}.", 70, id, maintenant, $"exil:{c.Id}");
@@ -301,9 +303,9 @@ public sealed partial class VieSociale
         if (humains.ElementAtOrDefault(x.PartenaireId - 1) is { EstVivant: true } p && p.CommunauteId == c.Id
             && Reproche(p, x).Score < 0.3 && alea.Reel() < Math.Max(0, p.AffectionPour(x.Id) - 30) / 70 * (0.4 + 0.6 * p.Personnalite.Attachement))
         {
-            var suit = Noter(maintenant, TypeEvenement.Exclusion, p, x, $"{p.Nom} part avec {x.Nom}, plutôt que de {(x.Sexe == Sexe.Femme ? "la" : "le")} perdre.", id,
+            var suit = Noter(maintenant, TypeEvenement.Exclusion, p, x, new Recit("j.exil.suit", ("p", p), ("x", x)), id,
                 communaute: c.Id);
-            p.Exclusions.Add(new Exclusion(TypeExclusion.Depart, c.Id, maintenant, jusqua, suit, $"pour suivre {x.Nom} en exil"));
+            p.Exclusions.Add(new Exclusion(TypeExclusion.Depart, c.Id, maintenant, jusqua, suit, new Recit("j.exil.raison.suivre", ("x", x)).Encoder()));
             Jardin.Confier(p, TypeIntime.Intention, x.Id, $"Je reste avec {x.Nom}, où qu'{il} aille.", 60, suit, maintenant, $"exil-suivre:{x.Id}");
         }
     }
@@ -312,26 +314,23 @@ public sealed partial class VieSociale
     {
         var raison = Raison(g, x, humains);
         var duree = DureeExil(g, g.Intensite / 100);
-        var enfant = x.Sexe == Sexe.Femme ? "sa fille" : "son fils";
-        var id = Noter(maintenant, TypeEvenement.Exclusion, p, x, $"{p.Nom} renie {enfant} {x.Nom} {raison}.", g.EvenementId, significatif: true);
-        x.Exclusions.Add(new Exclusion(TypeExclusion.Famille, p.Id, maintenant, duree == 0 ? 0 : maintenant + duree, id, raison));
+        var id = Noter(maintenant, TypeEvenement.Exclusion, p, x, new Recit("j.exil.renie", ("p", p), ("x", x), ("raison", raison)), g.EvenementId, significatif: true);
+        x.Exclusions.Add(new Exclusion(TypeExclusion.Famille, p.Id, maintenant, duree == 0 ? 0 : maintenant + duree, id, raison.Encoder()));
         x.Humeur = Math.Max(0, x.Humeur - 15 * (0.6 + 0.8 * x.Personnalite.Nevrosisme));
         var parent = p.Sexe == Sexe.Femme ? "Ma mère" : "Mon père";
         Jardin.Confier(x, TypeIntime.Peine, p.Id, $"{parent} m'a renié{E(x)}.", 60, id, maintenant, $"renie:{p.Id}");
         Jardin.Confier(p, TypeIntime.Opinion, x.Id, $"{x.Nom} n'est plus mon enfant.", 60, id, maintenant, $"opinion:{x.Id}");
     }
 
-    private static string Majuscule(string s) => char.ToUpperInvariant(s[0]) + s[1..];
-
-    private static string DireDuree(long secondes)
+    private static Recit DireDuree(long secondes)
     {
         var mois = secondes / (double)Calendrier.SecondesParAn * 12;
         return mois switch
         {
-            < 1.5 => "un mois",
-            < 11.5 => $"{Math.Round(mois)} mois",
-            < 18 => "un an",
-            _ => $"{Math.Round(mois / 12)} ans",
+            < 1.5 => new Recit("j.duree.unMois"),
+            < 11.5 => new Recit("j.duree.mois", ("n", (long)Math.Round(mois))),
+            < 18 => new Recit("j.duree.unAn"),
+            _ => new Recit("j.duree.ans", ("n", (long)Math.Round(mois / 12))),
         };
     }
 }

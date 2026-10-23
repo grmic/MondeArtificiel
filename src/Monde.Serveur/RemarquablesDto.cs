@@ -96,7 +96,7 @@ public static class Remarquables
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
         var comptes = new Comptes(humains, monde.Oeuvres(), monde.Installations().Decouvertes, maintenant).Compter();
-        var noms = monde.Communautes().ToDictionary(c => c.Id, c => c.Nom);
+        var noms = monde.Communautes().ToDictionary(c => c.Id, c => L.Communaute(c.Nom));
         bas &= critere.Bas;
         var candidats = humains.Where(h => morts || h.EstVivant).Select(h => (H: h, V: critere.Valeur(h, comptes)))
             .Where(x => double.IsFinite(x.V) && (critere.Bas ? critere.Cle != "karma" || x.V != 0 : x.V > 0));

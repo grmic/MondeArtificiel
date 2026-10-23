@@ -52,7 +52,7 @@ public static class Religions
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
         var religions = monde.Religions().Religions;
-        var communautes = monde.Communautes().ToDictionary(c => c.Id, c => c.Nom);
+        var communautes = monde.Communautes().ToDictionary(c => c.Id, c => L.Communaute(c.Nom));
         return monde.Prieres().Where(p => !enAttente || p.Issue == IssuePriere.EnAttente)
             .OrderBy(p => p.Issue == IssuePriere.EnAttente ? 0 : 1).ThenByDescending(p => p.Issue == IssuePriere.EnAttente && p.Forte)
             .ThenByDescending(p => p.Issue == IssuePriere.EnAttente ? p.Le : p.IssueLe)
@@ -91,7 +91,7 @@ public static class Religions
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
         var (religions, lieux, _) = monde.Religions();
-        var communautes = monde.Communautes().ToDictionary(c => c.Id, c => c.Nom);
+        var communautes = monde.Communautes().ToDictionary(c => c.Id, c => L.Communaute(c.Nom));
         var fideles = humains.Where(h => h.EstVivant && h.ReligionId != 0).GroupBy(h => h.ReligionId).ToDictionary(g => g.Key, g => g.ToList());
         var flore = monde.Flore;
         return religions.Select(r =>
@@ -127,7 +127,7 @@ public static class Religions
     {
         var monde = service.Monde;
         var religions = monde.Religions().Religions;
-        var communautes = monde.Communautes().ToDictionary(c => c.Id, c => c.Nom);
+        var communautes = monde.Communautes().ToDictionary(c => c.Id, c => L.Communaute(c.Nom));
         var r = h.ReligionId >= 1 && h.ReligionId <= religions.Count ? religions[h.ReligionId - 1] : null;
         var prieres = monde.Prieres().Where(p => p.HumainId == h.Id).OrderByDescending(p => p.Id).Take(12)
             .Select(p => Depuis(p, humains, religions, communautes)).ToList();

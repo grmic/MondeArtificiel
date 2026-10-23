@@ -102,8 +102,8 @@ public sealed class PsycheEtSocialTests
         Assert.Equal(a.LienAvec(2)!.Affection, b.LienAvec(1)!.Affection); // lien symétrique
         Assert.True(c.LienAvec(4)!.Rivaux);
         Assert.Null(a.LienAvec(3)); // trop loin pour se connaître
-        Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Lien && e.Texte.Contains("attachés"));
-        Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Lien && e.Texte.Contains("ne se supportent plus"));
+        Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Lien && e.Recit?.Cle == "j.lien.amis");
+        Assert.Contains(social.Journal, e => e.Type == TypeEvenement.Lien && e.Recit?.Cle == "j.lien.rivaux");
 
         // Séparés, ils s'oublient lentement.
         b.X = 80;

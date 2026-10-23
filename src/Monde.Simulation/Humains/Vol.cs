@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -73,7 +75,7 @@ public sealed partial class Comportement
         var psychopathe = Psyche.EstPsychopathe(h, maintenant);
         if (!surpris && temoin is null)
         {
-            var id = Noter(maintenant, TypeEvenement.Vol, h, victime, $"{h.Nom} prend en cachette la nourriture de {victime.Nom}, sans être vu{E(h)}.",
+            var id = Noter(maintenant, TypeEvenement.Vol, h, victime, new Recit("j.vol.cache", ("h", h), ("v", victime)),
                 karma: Regard.Vol);
             if (psychopathe)
                 Confier(h, TypeIntime.ImageDeSoi, 0, "Ils ne voient rien. Je prends ce que je veux.", 40, id, maintenant, "vol");
@@ -90,8 +92,8 @@ public sealed partial class Comportement
 
         var qui = surpris ? victime : temoin!;
         var texte = surpris
-            ? $"{victime.Nom} surprend {h.Nom} en train de lui prendre sa nourriture."
-            : $"{temoin!.Nom} voit {h.Nom} prendre la nourriture de {victime.Nom}, et le lui dit.";
+            ? new Recit("j.vol.surpris", ("v", victime), ("h", h))
+            : new Recit("j.vol.temoin", ("t", temoin!), ("h", h), ("v", victime));
         var vol = Noter(maintenant, TypeEvenement.Vol, h, victime, texte, significatif: psychopathe, karma: Regard.Vol);
         Confier(h, TypeIntime.Intention, victime.Id, psychopathe
             ? $"{victime.Nom} m'a vu{E(h)}. La prochaine fois, je serai plus prudent{E(h)}."
@@ -128,7 +130,7 @@ public sealed partial class Comportement
             victime.Sante -= degats;
             Medecine.Blesser(victime, degats, maintenant);
             victime.Humeur = Math.Max(0, victime.Humeur - degats / 3);
-            var coups = Noter(maintenant, TypeEvenement.Conflit, h, victime, $"{h.Nom} frappe {victime.Nom}, qui proteste, et garde la nourriture.", vol,
+            var coups = Noter(maintenant, TypeEvenement.Conflit, h, victime, new Recit("j.vol.coups", ("h", h), ("v", victime)), vol,
                 karma: Regard.Coups);
             VieSociale.AjouterGrief(victime, new Grief(h.Id, MotifGrief.Coups, Math.Min(100, 30 + degats), Math.Min(100, 30 + degats), coups));
             social.Offenser(h, victime, 4, coups, tous, maintenant);

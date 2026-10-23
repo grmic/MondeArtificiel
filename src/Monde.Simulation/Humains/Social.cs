@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -268,12 +270,12 @@ public sealed partial class VieSociale(Alea alea)
     /// Note un événement et renvoie son numéro, pour que ses suites puissent le citer comme cause. Sans communauté
     /// précisée, l'événement appartient à la chronologie de la communauté de <paramref name="h"/>.
     /// </summary>
-    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0,
+    private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, object texte, long cause = 0,
         int communaute = -1, int autreCommunaute = 0, bool significatif = false, double karma = 0)
     {
-        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte)
+        var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte as string)
         {
-            Id = Numeros.Suivant(), CauseId = cause, CommunauteId = communaute >= 0 ? communaute : h.CommunauteId,
+            Recit = texte as Recit, Id = Numeros.Suivant(), CauseId = cause, CommunauteId = communaute >= 0 ? communaute : h.CommunauteId,
             AutreCommunauteId = autreCommunaute, Significatif = significatif, Karma = Regard.Juger(h, karma, maintenant, autre),
         };
         Journal.Add(e);
@@ -328,7 +330,7 @@ public sealed partial class VieSociale(Alea alea)
         {
             var d = humains[donneur - 1];
             var r = humains[receveur - 1];
-            Noter(maintenant, TypeEvenement.Partage, d, r, $"{d.Nom} partage sa nourriture avec {r.Nom}.", karma: Regard.Partage);
+            Noter(maintenant, TypeEvenement.Partage, d, r, new Recit("j.partage", ("d", d), ("r", r)), karma: Regard.Partage);
         }
         PartagesDuJour.Clear();
     }
@@ -396,22 +398,22 @@ public sealed partial class VieSociale(Alea alea)
     {
         if (!avant.Amis && apres.Affection >= SeuilAmitie && apres.Familiarite >= 20)
         {
-            Noter(maintenant, TypeEvenement.Lien, a, b, $"{a.Nom} et {b.Nom} se sont attachés l'un à l'autre.");
+            Noter(maintenant, TypeEvenement.Lien, a, b, new Recit("j.lien.amis", ("a", a), ("b", b), ("ab", new Groupe([a, b]))));
             return apres with { Amis = true };
         }
         if (avant.Amis && apres.Affection < FinAmitie)
         {
-            Noter(maintenant, TypeEvenement.Lien, a, b, $"{a.Nom} et {b.Nom} se sont éloignés.");
+            Noter(maintenant, TypeEvenement.Lien, a, b, new Recit("j.lien.finAmis", ("a", a), ("b", b), ("ab", new Groupe([a, b]))));
             return apres with { Amis = false };
         }
         if (!avant.Rivaux && apres.Affection <= SeuilHostilite)
         {
-            Noter(maintenant, TypeEvenement.Lien, a, b, $"{a.Nom} et {b.Nom} ne se supportent plus.");
+            Noter(maintenant, TypeEvenement.Lien, a, b, new Recit("j.lien.rivaux", ("a", a), ("b", b)));
             return apres with { Rivaux = true };
         }
         if (avant.Rivaux && apres.Affection > FinHostilite)
         {
-            Noter(maintenant, TypeEvenement.Lien, a, b, $"{a.Nom} et {b.Nom} ont fait la paix.");
+            Noter(maintenant, TypeEvenement.Lien, a, b, new Recit("j.lien.finRivaux", ("a", a), ("b", b)));
             return apres with { Rivaux = false };
         }
         return apres;
@@ -552,16 +554,16 @@ public sealed partial class VieSociale(Alea alea)
             if (!h.EstDeprime && h.JoursSombres >= 21 && !h.EstEnfant(maintenant))
             {
                 h.DeprimeDepuis = maintenant;
-                var raisons = Expliquer(h, humains, maintenant);
+                var raisons = ExpliquerR(h, humains, maintenant);
                 h.DepressionEvenementId = Noter(maintenant, TypeEvenement.Humeur, h, null,
-                    $"{h.Nom} sombre dans une profonde tristesse{(raisons.Length > 0 ? " : " + raisons : "")}.", CauseDe(h, h.Raisons.FirstOrDefault()));
+                    new Recit("j.depression", ("h", h), ("r", raisons is null ? "" : new Recit("j.raisons", ("l", raisons)))), CauseDe(h, h.Raisons.FirstOrDefault()));
             }
             // Un épisode dépressif dure au moins deux semaines (critère du DSM-5) et ne cède qu'à un vrai mieux.
             else if (h.EstDeprime && h.Humeur > 35 && maintenant - h.DeprimeDepuis >= 14 * Calendrier.SecondesParJour)
             {
                 h.DeprimeDepuis = null;
                 h.JoursSombres = 0;
-                Noter(maintenant, TypeEvenement.Humeur, h, null, $"{h.Nom} reprend goût à la vie.", h.DepressionEvenementId);
+                Noter(maintenant, TypeEvenement.Humeur, h, null, new Recit("j.finDepression", ("h", h)), h.DepressionEvenementId);
                 h.DepressionEvenementId = 0;
             }
         }
@@ -616,7 +618,7 @@ public sealed partial class VieSociale(Alea alea)
             h.Humeur = Math.Max(0, h.Humeur - k / 2);
             if (k >= 25)
             {
-                Noter(maintenant, TypeEvenement.Humeur, h, mort, $"{h.Nom} pleure {Parente(h, mort)}.", mort.MortEvenementId);
+                Noter(maintenant, TypeEvenement.Humeur, h, mort, new Recit("j.pleure", ("h", h), ("p", ParenteR(h, mort))), mort.MortEvenementId);
                 // Penser à la mort pousse à croire qu'il y a autre chose (Jong et al., 2012) : d'autant plus que le deuil est lourd.
                 Croyances.Ajouter(h, k / 25 * (0.3 + p.Transcendance), $"la mort de {Parente(h, mort)}", mort.MortEvenementId, maintenant);
                 Jardin.Pleurer(h, mort, Parente(h, mort), k, maintenant);
@@ -759,7 +761,7 @@ public sealed partial class VieSociale(Alea alea)
                 renees.Add(communaute.Id);
                 var figure = Figure(g, maintenant);
                 Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                    $"Les anciens de la {Minuscule(communaute.Nom)} se retrouvent autour de {figure.Nom} : la communauté renaît, {g.Count} humains vivent de nouveau ensemble.",
+                    new Recit("j.communaute.renait", ("c", communaute), ("f", figure), ("n", g.Count)),
                     communaute: communaute.Id);
             }
             else
@@ -800,8 +802,8 @@ public sealed partial class VieSociale(Alea alea)
                 communautes.Add(communaute);
                 reprises.Add(communaute.Id);
                 var id = Noter(maintenant, TypeEvenement.Communaute, figure, null, scission
-                    ? $"{g.Count} humains quittent la {Minuscule(communautes[origine.Id - 1].Nom)} et se rassemblent autour de {figure.Nom}."
-                    : $"Une communauté se forme autour de {figure.Nom} : {g.Count} humains vivent désormais ensemble.",
+                    ? new Recit("j.communaute.scission", ("n", g.Count), ("c", communautes[origine.Id - 1]), ("f", figure))
+                    : new Recit("j.communaute.forme", ("f", figure), ("n", g.Count)),
                     communaute: communaute.Id, autreCommunaute: scission ? origine.Id : 0);
                 communaute.Noms.Add(new NomCommunaute(communaute.Nom, null, maintenant, id));
             }
@@ -812,7 +814,7 @@ public sealed partial class VieSociale(Alea alea)
             {
                 communaute.FigureId = nouvelleFigure.Id;
                 Noter(maintenant, TypeEvenement.Communaute, nouvelleFigure, null,
-                    $"{nouvelleFigure.Nom} devient la figure centrale de la {Minuscule(communaute.Nom)}.", communaute: communaute.Id);
+                    new Recit("j.communaute.figure", ("f", nouvelleFigure), ("c", communaute)), communaute: communaute.Id);
             }
         }
 
@@ -834,7 +836,7 @@ public sealed partial class VieSociale(Alea alea)
                 if (maintenant - c.FondeeLe < AgeAvantDeSeNommer && c.FusionEvenementId == 0)
                 {
                     Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                        $"La {Minuscule(c.Nom)} ne dure pas : {accueil.Nombre} de ses membres vivent de nouveau avec la {Minuscule(cible.Nom)}.",
+                        new Recit("j.communaute.dureePas", ("c", c), ("n", accueil.Nombre), ("d", cible)),
                         communaute: cible.Id, autreCommunaute: c.Id);
                 }
                 else
@@ -845,7 +847,7 @@ public sealed partial class VieSociale(Alea alea)
                 c.Territoire.Clear();
                 continue;
             }
-            Noter(maintenant, TypeEvenement.Communaute, figure, null, $"La {Minuscule(c.Nom)} se disperse.", communaute: c.Id);
+            Noter(maintenant, TypeEvenement.Communaute, figure, null, new Recit("j.communaute.disperse", ("c", c)), communaute: c.Id);
             c.Territoire.Clear();
         }
 
@@ -860,7 +862,7 @@ public sealed partial class VieSociale(Alea alea)
             }
         }
         var accompagnes = suivent.Values.SelectMany(l => l).Select(h => h.Id).ToHashSet();
-        string Avec(Humain h) => suivent.TryGetValue(h.Id, out var l) ? AvecEnfants(h, l, maintenant) : "";
+        object Avec(Humain h) => suivent.TryGetValue(h.Id, out var l) ? AvecEnfants(h, l, maintenant) : "";
 
         foreach (var h in membres)
         {
@@ -876,7 +878,7 @@ public sealed partial class VieSociale(Alea alea)
             if (apres != 0 && communautes[apres - 1].FondeeLe != maintenant && !renees.Contains(apres)
                 && fondues.GetValueOrDefault(avant) != apres)
             {
-                var arrivee = Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}{Avec(h)}{AgeSiEnfant(h, maintenant)}.",
+                var arrivee = Noter(maintenant, TypeEvenement.Communaute, h, null, new Recit("j.communaute.rejoint", ("h", h), ("c", communautes[apres - 1]), ("avec", Avec(h)), ("age", AgeSiEnfant(h, maintenant))),
                     communaute: apres, autreCommunaute: avant);
                 // Il apporte ce qu'il savait faire chez les siens d'avant (voir Comportement.VenuDAilleurs).
                 var origine = avant != 0 ? avant : perdue;
@@ -887,7 +889,7 @@ public sealed partial class VieSociale(Alea alea)
             }
             else if (apres == 0 && communautes[avant - 1].Active)
             {
-                Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} quitte la {Minuscule(communautes[avant - 1].Nom)}{Avec(h)}{AgeSiEnfant(h, maintenant)}.",
+                Noter(maintenant, TypeEvenement.Communaute, h, null, new Recit("j.communaute.quitte", ("h", h), ("c", communautes[avant - 1]), ("avec", Avec(h)), ("age", AgeSiEnfant(h, maintenant))),
                     communaute: avant);
             }
         }
@@ -937,7 +939,7 @@ public sealed partial class VieSociale(Alea alea)
             if (id == 0)
             {
                 id = Noter(maintenant, TypeEvenement.Conflit, h, null,
-                    $"Pour les siens de la {Minuscule(quittee.Nom)}, {h.Nom} est {(h.Sexe == Sexe.Femme ? "une traîtresse" : "un traître")} : {(h.Sexe == Sexe.Femme ? "elle" : "il")} est passé{E(h)} chez la {Minuscule(rejointe.Nom)}, leur rivale.",
+                    new Recit("j.traitre", ("c", quittee), ("h", h), ("d", rejointe)),
                     arrivee, communaute: quittee.Id, autreCommunaute: rejointe.Id, karma: Regard.Trahir);
             }
             AjouterGrief(m, new Grief(h.Id, MotifGrief.Trahison, Math.Min(100, colere), Math.Min(100, colere), id));
@@ -946,19 +948,17 @@ public sealed partial class VieSociale(Alea alea)
     }
 
     /// <summary>« , avec sa fille X (3 ans) » ou « , avec ses enfants X (5 ans) et Y (8 mois) ».</summary>
-    private static string AvecEnfants(Humain h, List<Humain> enfants, long maintenant)
+    private static Recit AvecEnfants(Humain h, List<Humain> enfants, long maintenant)
     {
-        var noms = enfants.OrderBy(e => e.Naissance).Select(e => $"{e.Nom} ({Comportement.AgeEnMots(e, maintenant)})").ToList();
-        var liste = noms.Count == 1 ? noms[0] : $"{string.Join(", ", noms[..^1])} et {noms[^1]}";
-        if (enfants.Count > 1) return $", avec {(enfants.All(e => e.MereId == h.Id || e.PereId == h.Id) ? "ses enfants" : "les enfants")} {liste}";
-        var e = enfants[0];
-        var lien = e.MereId == h.Id || e.PereId == h.Id ? (e.Sexe == Sexe.Femme ? "sa fille" : "son fils") : e.Sexe == Sexe.Femme ? "la petite" : "le petit";
-        return $", avec {lien} {liste}";
+        var liste = new Liste(enfants.OrderBy(e => e.Naissance).Select(e => (object?)new Recit("j.enfantAge", ("e", e), ("age", Comportement.AgeEnMots(e, maintenant)))).ToList());
+        var siens = enfants.All(e => e.MereId == h.Id || e.PereId == h.Id);
+        if (enfants.Count > 1) return new Recit(siens ? "j.avec.sesEnfants" : "j.avec.enfants", ("h", h), ("l", liste));
+        return new Recit(siens ? "j.avec.sonEnfant" : "j.avec.petit", ("h", h), ("e", enfants[0]), ("l", liste));
     }
 
     /// <summary>Un enfant qui part ou arrive seul : son âge, pour qu'on le comprenne.</summary>
-    private static string AgeSiEnfant(Humain h, long maintenant) =>
-        h.EstEnfant(maintenant) ? $" ({Comportement.AgeEnMots(h, maintenant)}, sans les siens)" : "";
+    private static object AgeSiEnfant(Humain h, long maintenant) =>
+        h.EstEnfant(maintenant) ? new Recit("j.sansLesSiens", ("h", h), ("age", Comportement.AgeEnMots(h, maintenant))) : "";
 
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 

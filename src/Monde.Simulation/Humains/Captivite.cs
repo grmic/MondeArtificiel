@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -23,7 +25,7 @@ public sealed partial class VieSociale
             var chez = ravisseur.CommunauteId;
             if (!ravisseur.EstVivant)
             {
-                Liberer(h, $"{ravisseur.Nom} est mort : {h.Nom}, qu'il avait enlevée, n'est plus captive.", ravisseur.MortEvenementId, maintenant);
+                Liberer(h, new Recit("j.captive.ravisseurMort", ("r", ravisseur), ("h", h)), ravisseur.MortEvenementId, maintenant);
                 continue;
             }
             var attachee = h.Liens.Any(l => l.Affection >= 40 && l.Id != ravisseur.Id && humains[l.Id - 1] is { EstVivant: true } a
@@ -32,18 +34,18 @@ public sealed partial class VieSociale
                            || h.DernierAccouchement is { } n && n > h.CaptifLe;
             if (attachee)
             {
-                var nom = chez != 0 && chez <= Communautes.Count ? $"la {Minuscule(Communautes[chez - 1].Nom)}" : $"les siens de {ravisseur.Nom}";
-                Liberer(h, $"{h.Nom} ne cherche plus à fuir : elle vit désormais parmi {nom}.", 0, maintenant);
+                object nom = chez != 0 && chez <= Communautes.Count ? Communautes[chez - 1] : new Recit("j.captive.siensDe", ("r", ravisseur));
+                Liberer(h, new Recit("j.captive.reste", ("h", h), ("parmi", nom)), 0, maintenant);
                 continue;
             }
             var p = h.Personnalite;
             var fuite = 0.003 * (0.5 + p.Ouverture) * (1.4 - p.Nevrosisme) * (0.5 + h.Personnalite.Moral.Fondements.Loyaute);
             if (alea.Reel() < fuite)
-                Liberer(h, $"{h.Nom} s'enfuit de chez {ravisseur.Nom}, qui l'avait enlevée, pour retrouver les siens.", 0, maintenant);
+                Liberer(h, new Recit("j.captive.fuite", ("h", h), ("r", ravisseur)), 0, maintenant);
         }
     }
 
-    private void Liberer(Humain h, string texte, long cause, long maintenant)
+    private void Liberer(Humain h, Recit texte, long cause, long maintenant)
     {
         h.CaptifDe = 0;
         Noter(maintenant, TypeEvenement.Guerre, h, null, texte, cause, significatif: true);
@@ -71,7 +73,7 @@ public sealed partial class Comportement
         captive.CaptifDe = ravisseur.Id;
         captive.CaptifLe = maintenant;
         var id = Noter(maintenant, TypeEvenement.Guerre, ravisseur, captive,
-            $"{ravisseur.Nom} enlève {captive.Nom} ({AgeEnMots(captive, maintenant)}) lors du raid de la {Minuscule(c.Nom)} contre la {Minuscule(cible.Nom)}.",
+            new Recit("j.enleve", ("r", ravisseur), ("h", captive), ("age", AgeEnMots(captive, maintenant)), ("c", c), ("d", cible)),
             cause, significatif: true, karma: Regard.Enlever);
         Jardin.Confier(captive, TypeIntime.Peine, ravisseur.Id, $"{ravisseur.Nom} m'a arrachée aux miens. Je veux les revoir.",
             60 + 30 * captive.Personnalite.Nevrosisme, id, maintenant, "captive");

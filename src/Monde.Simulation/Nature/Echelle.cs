@@ -1,5 +1,7 @@
 using System.Globalization;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>
@@ -64,17 +66,20 @@ public static class Echelle
     public static string Surface(int cases) => Surface(KilometresCarres(cases));
 
     /// <summary>Une durée du monde en mots : « 3 semaines », « 8 mois », « un an », « 12 ans ».</summary>
-    public static string Duree(long secondes)
+    public static string Duree(long secondes) => DureeR(secondes).Texte;
+
+    /// <summary>La même durée, à écrire dans la langue de l'observateur.</summary>
+    public static Recit DureeR(long secondes)
     {
         var jours = secondes / (double)Temps.Calendrier.SecondesParJour;
         var mois = jours / 30;
         return jours switch
         {
-            < 10 => "quelques jours",
-            < 45 => $"{Math.Max(2, Math.Round(jours / 7))} semaines",
-            _ when mois < 11.5 => $"{Math.Round(mois)} mois",
-            _ when mois < 18 => "un an",
-            _ => $"{Math.Round(mois / 12)} ans",
+            < 10 => new Recit("duree.quelquesJours"),
+            < 45 => new Recit("duree.semaines", ("n", (long)Math.Max(2, Math.Round(jours / 7)))),
+            _ when mois < 11.5 => new Recit("duree.mois", ("n", (long)Math.Round(mois))),
+            _ when mois < 18 => new Recit("duree.unAn"),
+            _ => new Recit("duree.ans", ("n", (long)Math.Round(mois / 12))),
         };
     }
 }

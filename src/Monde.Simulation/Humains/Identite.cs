@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Un nom porté par une communauté : le nom affiché, ce qu'il veut dire, depuis quand, et l'événement qui l'a donné.</summary>
@@ -13,7 +15,13 @@ public sealed record NomCommunaute(string Nom, string? Sens, long Depuis, long E
 public sealed record ArchiveCommunaute(int CommunauteId, long Secondes, int Membres, int Adultes, int[] Cases);
 
 /// <summary>Ce qu'un nom de groupe veut dire : l'idée (clé), la traduction pour l'observateur, et l'humain qu'il honore.</summary>
-public sealed record SensDuNom(string Cle, string Texte, int HumainId = 0);
+public sealed record SensDuNom(string Cle, Recit Recit, int HumainId = 0)
+{
+    public SensDuNom(string cle, int humainId = 0, params (string, object?)[] args) : this(cle, new Recit($"sens.{cle}", args), humainId) { }
+
+    /// <summary>Le sens en français.</summary>
+    public string Texte => Recit.Texte;
+}
 
 /// <summary>
 /// Identité et histoire des communautés : les terres qu'elles parcourent, le nom qu'elles se donnent et qu'elles
@@ -176,8 +184,8 @@ public sealed partial class VieSociale
             }
             Noter(maintenant, TypeEvenement.Communaute, humains[c.FigureId - 1], null,
                 cible.Active
-                    ? $"La {Minuscule(c.Nom)} renonce à rejoindre la {Minuscule(cible.Nom)}."
-                    : $"La {Minuscule(c.Nom)} n'a plus personne à rejoindre : la {Minuscule(cible.Nom)} n'existe plus.",
+                    ? new Recit("j.fusion.renonce", ("c", c), ("d", cible))
+                    : new Recit("j.fusion.plusPersonne", ("c", c), ("d", cible)),
                 c.FusionEvenementId, communaute: c.Id, autreCommunaute: cible.Id);
             c.FusionVersId = 0;
             c.DestinationX = c.DestinationY = -1;
@@ -218,15 +226,15 @@ public sealed partial class VieSociale
                 petite.FusionDecideeLe = maintenant;
                 (petite.DestinationX, petite.DestinationY) = (grande.CentreX, grande.CentreY);
                 var (pourquoi, cause) = ennemie is not null
-                    ? ($", pour faire front ensemble contre la {Minuscule(ennemie.Nom)}", _offenses.GetValueOrDefault(Paire(petite.Id, ennemie.Id)))
+                    ? (new Recit("j.fusion.pourquoi.front", ("e", ennemie)), _offenses.GetValueOrDefault(Paire(petite.Id, ennemie.Id)))
                     : disette
-                        ? (", pour affronter ensemble la disette", a.Disette ? a.DisetteEvenementId : b.DisetteEvenementId)
+                        ? (new Recit("j.fusion.pourquoi.disette"), a.Disette ? a.DisetteEvenementId : b.DisetteEvenementId)
                         : parentes
-                            ? (", pour vivre de nouveau ensemble", 0L)
-                            : (", pour être plus nombreux", 0L);
+                            ? (new Recit("j.fusion.pourquoi.retrouver"), 0L)
+                            : (new Recit("j.fusion.pourquoi.nombre"), 0L);
                 if (cause == 0) cause = _debutsRelations.GetValueOrDefault(Paire(a.Id, b.Id));
                 petite.FusionEvenementId = Noter(maintenant, TypeEvenement.Communaute, fa, fb,
-                    $"{fa.Nom} et {fb.Nom} décident d'unir leurs groupes{pourquoi} : la {Minuscule(petite.Nom)} va rejoindre la {Minuscule(grande.Nom)}.",
+                    new Recit("j.fusion.decident", ("a", fa), ("b", fb), ("pourquoi", pourquoi), ("p", petite), ("g", grande)),
                     cause, communaute: petite.Id, autreCommunaute: grande.Id);
             }
         }
@@ -274,8 +282,8 @@ public sealed partial class VieSociale
         // Un groupe sans nom adopte celui du groupe qu'il accueille.
         var prend = cible.NomPropre is null && c.NomPropre is not null;
         var id = Noter(maintenant, TypeEvenement.Communaute, figure, null,
-            $"La {Minuscule(c.Nom)} se fond dans la {Minuscule(cible.Nom)} : {nombre} de ses membres vivent désormais avec eux"
-            + (prend ? $", et le groupe prend le nom de « {c.NomPropre} »." : "."),
+            prend ? new Recit("j.fusion.fondNom", ("c", c), ("d", cible), ("n", nombre), ("mot", c.NomPropre))
+                : new Recit("j.fusion.fond", ("c", c), ("d", cible), ("n", nombre)),
             c.FusionEvenementId, communaute: cible.Id, autreCommunaute: c.Id);
         if (!prend) return;
         (cible.NomPropre, cible.Sens, cible.SensCle, cible.EponymeId, cible.Nom) = (c.NomPropre, c.Sens, c.SensCle, c.EponymeId, c.Nom);
@@ -295,24 +303,24 @@ public sealed partial class VieSociale
         }
 
         // Un nom qui ne convient plus : le paysage qu'il évoque est loin, ou l'humain qu'il honore est devenu détesté.
-        string? raison = null;
+        Recit? raison = null;
         long cause = 0;
         // Le paysage ne compte que si le groupe s'est installé ailleurs depuis qu'il porte ce nom (pas au gré d'une excursion).
         if (EstPaysage(c.SensCle) && c.InstallationEvenementId > (c.Noms.LastOrDefault()?.EvenementId ?? 0) && Paysage(c, carte).All(p => p.Cle != c.SensCle))
         {
-            if (alea.Reel() < 0.03) (raison, cause) = (", loin des terres qui leur avaient donné leur ancien nom", c.InstallationEvenementId);
+            if (alea.Reel() < 0.03) (raison, cause) = (new Recit("j.nom.raison.loin"), c.InstallationEvenementId);
         }
         else if (c.EponymeId > 0 && humains[c.EponymeId - 1] is { EstVivant: true } eponyme
                  && AffectionMoyenne(adultes, eponyme) <= -15 && alea.Reel() < 0.1)
         {
-            raison = $" : ils ne veulent plus porter le nom de {eponyme.Nom}";
+            raison = new Recit("j.nom.raison.eponyme", ("e", eponyme));
         }
         if (raison is null) return;
         var porteParole = adultes.MaxBy(h => h.Personnalite.Charisme * h.Personnalite.Intelligence.Verbale)!;
         var sens = ChoisirSens(c, porteParole, groupe, humains, carte, maintenant);
         var (mot, nouveaux) = Forger(c, sens, humains, communautes);
         Adopter(c, mot, sens, nouveaux, porteParole, maintenant, cause,
-            ancien => $"Les membres de la {ancien} se nomment désormais « {mot} », « {sens.Texte} »{raison}.");
+            ancien => new Recit("j.nom.renomme", ("ancien", ancien), ("mot", mot), ("sens", sens.Recit), ("raison", raison)));
     }
 
     private void ProposerNom(Communaute c, List<Humain> groupe, List<Humain> adultes, List<Humain> humains, List<Communaute> communautes,
@@ -334,27 +342,26 @@ public sealed partial class VieSociale
             if (alea.Reel() >= accord)
             {
                 Noter(maintenant, TypeEvenement.Communaute, h, null,
-                    $"{h.Nom} propose d'appeler le groupe « {mot} », « {sens.Texte} », mais les autres ne reprennent pas ce nom.",
+                    new Recit("j.nom.refuse", ("h", h), ("mot", mot), ("sens", sens.Recit)),
                     cause, communaute: c.Id);
                 return;
             }
             var premier = communautes.All(x => x.NomPropre is null);
-            var inspiration = connue is null || premier ? "" : $" (à l'exemple de la {Minuscule(connue.Nom)})";
+            object inspiration = connue is null || premier ? "" : new Recit("j.nom.exemple", ("c", connue));
             Adopter(c, mot, sens, nouveaux, h, maintenant, cause,
-                ancien => $"Sur une idée de {h.Nom}, les membres de la {ancien} se donnent un nom{inspiration} : « {mot} », qui veut dire « {sens.Texte} »."
-                          + (premier ? " C'est la première fois que des humains nomment leur groupe." : ""));
+                ancien => new Recit("j.nom.nomme", ("h", h), ("ancien", ancien), ("insp", inspiration), ("mot", mot), ("sens", sens.Recit), ("premier", premier)));
             return;
         }
     }
 
     private void Adopter(Communaute c, string mot, SensDuNom sens, Dictionary<string, string> nouveaux, Humain auteur, long maintenant,
-        long cause, Func<string, string> texte)
+        long cause, Func<RefCommunaute, Recit> texte)
     {
         foreach (var (idee, m) in nouveaux) c.Lexique[idee] = m;
-        var id = Noter(maintenant, TypeEvenement.Communaute, auteur, null, texte(Minuscule(c.Nom)), cause, communaute: c.Id);
-        (c.NomPropre, c.Sens, c.SensCle, c.EponymeId) = (mot, sens.Texte, sens.Cle, sens.HumainId);
+        var id = Noter(maintenant, TypeEvenement.Communaute, auteur, null, texte(new RefCommunaute(c)), cause, communaute: c.Id);
+        (c.NomPropre, c.Sens, c.SensCle, c.EponymeId) = (mot, sens.Recit.Encoder(), sens.Cle, sens.HumainId);
         c.Nom = $"Communauté {mot}";
-        c.Noms.Add(new NomCommunaute(c.Nom, sens.Texte, maintenant, id));
+        c.Noms.Add(new NomCommunaute(c.Nom, c.Sens, maintenant, id));
     }
 
     /// <summary>
@@ -368,18 +375,18 @@ public sealed partial class VieSociale
         var candidats = new List<(SensDuNom Sens, double Poids)>();
         foreach (var lieu in Paysage(c, carte)) candidats.Add((lieu, 0.6 + p.Ouverture));
         var figure = humains[c.FigureId - 1];
-        if (figure.Id != auteur.Id) candidats.Add((new SensDuNom("eponyme", $"ceux de {figure.Nom}", figure.Id), 0.4 + p.Agreabilite));
-        candidats.Add((new SensDuNom("eponyme", $"ceux de {auteur.Nom}", auteur.Id), 1.5 * (1 - p.Agreabilite) * p.Extraversion));
+        if (figure.Id != auteur.Id) candidats.Add((new SensDuNom("eponyme", figure.Id, ("h", figure)), 0.4 + p.Agreabilite));
+        candidats.Add((new SensDuNom("eponyme", auteur.Id, ("h", auteur)), 1.5 * (1 - p.Agreabilite) * p.Extraversion));
         if (Ancetre(groupe, humains) is { } ancetre && ancetre.Id != figure.Id)
         {
-            candidats.Add((new SensDuNom("ancetre", $"les enfants de {ancetre.Nom}", ancetre.Id), 1.2));
+            candidats.Add((new SensDuNom("ancetre", ancetre.Id, ("h", ancetre)), 1.2));
         }
-        candidats.Add((new SensDuNom("gens", "les humains"), 0.8));
-        candidats.Add((new SensDuNom("soleil", "ceux du soleil"), 1.5 * p.Transcendance * p.Transcendance));
-        candidats.Add((new SensDuNom("etoiles", "ceux des étoiles"), 1.5 * p.Transcendance * p.Transcendance));
-        if (c.DisettesSurmontees > 0) candidats.Add((new SensDuNom("faim", "ceux qui ont vaincu la faim"), 0.8));
-        if (c.Migrations > 0) candidats.Add((new SensDuNom("marche", "ceux qui marchent"), 0.8));
-        if (c.OrigineId != 0) candidats.Add((new SensDuNom("partis", "ceux qui sont partis"), 0.7));
+        candidats.Add((new SensDuNom("gens"), 0.8));
+        candidats.Add((new SensDuNom("soleil"), 1.5 * p.Transcendance * p.Transcendance));
+        candidats.Add((new SensDuNom("etoiles"), 1.5 * p.Transcendance * p.Transcendance));
+        if (c.DisettesSurmontees > 0) candidats.Add((new SensDuNom("faim"), 0.8));
+        if (c.Migrations > 0) candidats.Add((new SensDuNom("marche"), 0.8));
+        if (c.OrigineId != 0) candidats.Add((new SensDuNom("partis"), 0.7));
 
         // On ne se renomme pas pour reprendre le même sens.
         candidats.RemoveAll(x => x.Sens.Cle == c.SensCle && x.Sens.HumainId == c.EponymeId);
@@ -430,15 +437,15 @@ public sealed partial class VieSociale
         }
         int N(Biome b) => compte[(int)b];
         var resultat = new List<SensDuNom>();
-        if (N(Biome.Riviere) >= 2) resultat.Add(new("riviere", "ceux de la rivière"));
-        if (N(Biome.Lac) >= 2) resultat.Add(new("lac", "ceux du lac"));
-        if (N(Biome.Plage) + N(Biome.EauPeuProfonde) >= 3) resultat.Add(new("rivage", "ceux du rivage"));
-        if (N(Biome.Montagne) + N(Biome.SommetEnneige) >= 4) resultat.Add(new("montagnes", "ceux des montagnes"));
-        if (N(Biome.Marais) >= 4) resultat.Add(new("marais", "ceux du marais"));
-        if (N(Biome.Desert) >= 4) resultat.Add(new("sables", "ceux des sables"));
+        if (N(Biome.Riviere) >= 2) resultat.Add(new("riviere"));
+        if (N(Biome.Lac) >= 2) resultat.Add(new("lac"));
+        if (N(Biome.Plage) + N(Biome.EauPeuProfonde) >= 3) resultat.Add(new("rivage"));
+        if (N(Biome.Montagne) + N(Biome.SommetEnneige) >= 4) resultat.Add(new("montagnes"));
+        if (N(Biome.Marais) >= 4) resultat.Add(new("marais"));
+        if (N(Biome.Desert) >= 4) resultat.Add(new("sables"));
         var forets = N(Biome.ForetDeConiferes) + N(Biome.ForetTropicale);
-        if (forets > 0 && forets >= N(Biome.PlaineDeFougeres)) resultat.Add(new("foret", "ceux de la forêt"));
-        else if (N(Biome.PlaineDeFougeres) > 0) resultat.Add(new("fougeres", "ceux des fougères"));
+        if (forets > 0 && forets >= N(Biome.PlaineDeFougeres)) resultat.Add(new("foret"));
+        else if (N(Biome.PlaineDeFougeres) > 0) resultat.Add(new("fougeres"));
         return resultat;
     }
 

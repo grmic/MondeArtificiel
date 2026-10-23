@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -67,7 +69,7 @@ public sealed partial class Comportement
         {
             if (!Recent(h, "entite:retenue", 7, maintenant))
             {
-                var id0 = Noter(maintenant, TypeEvenement.Conflit, h, cible, $"{h.Nom} sent la colère monter contre {cible.Nom}, mais se retient : la voix le lui a demandé.", retenue.EvenementId);
+                var id0 = Noter(maintenant, TypeEvenement.Conflit, h, cible, new Recit("j.retenue", ("h", h), ("c", cible)), retenue.EvenementId);
                 Confier(h, TypeIntime.Intention, cible.Id, $"Je ne me vengerai pas de {cible.Nom}. La voix l'a voulu.", 30, id0, maintenant, "entite:retenue");
             }
             h.Colere *= 0.7;
@@ -75,15 +77,15 @@ public sealed partial class Comportement
         }
 
         var p = h.Personnalite;
-        var motif = grief.Motif switch
+        object motif = grief.Motif switch
         {
-            MotifGrief.Infidelite => $", qui l'a trahi{E(h)}",
-            MotifGrief.Rival => $", qui s'est uni{E(cible)} à {(h.Sexe == Sexe.Femme ? "son compagnon" : "sa compagne")}",
-            MotifGrief.Coups => $", qui l'a frappé{E(h)}",
-            MotifGrief.Vol => $", qui l'a volé{E(h)}",
-            MotifGrief.Trahison => ", qui a trahi les siens",
+            MotifGrief.Infidelite => new Recit("j.motif.infidelite", ("h", h)),
+            MotifGrief.Rival => new Recit("j.motif.rival", ("h", h), ("c", cible)),
+            MotifGrief.Coups => new Recit("j.motif.coups", ("h", h)),
+            MotifGrief.Vol => new Recit("j.motif.vol", ("h", h)),
+            MotifGrief.Trahison => new Recit("j.motif.trahison", ("c", cible)),
             MotifGrief.Moeurs => "",
-            _ => grief.VictimeId > 0 ? $", qui a tué {VieSociale.Parente(h, tous[grief.VictimeId - 1])}" : "",
+            _ => grief.VictimeId > 0 ? new Recit("j.motif.meurtre", ("v", VieSociale.ParenteR(h, tous[grief.VictimeId - 1]))) : "",
         };
         var violence = (1 - p.Agreabilite) * h.Colere / 100 * (h.Sexe == Sexe.Homme ? 1.3 : 0.7)
                        * (grief.Motif == MotifGrief.Meurtre ? 1.5 : 1) * (1 + Psyche.Froideur(p)) * (1.2 - 0.4 * p.Moral.Compassion)
@@ -91,7 +93,7 @@ public sealed partial class Comportement
                        * (Langues.SExpliquent(h, cible) ? 0.75 : 1);
         if (alea.Reel() >= 0.5 * violence)
         {
-            Noter(maintenant, TypeEvenement.Conflit, h, cible, $"{h.Nom} s'emporte contre {cible.Nom}{motif} : cris, reproches et menaces.",
+            Noter(maintenant, TypeEvenement.Conflit, h, cible, new Recit("j.emporte", ("h", h), ("c", cible), ("motif", motif)),
                 grief.EvenementId);
             h.Colere *= 0.6;
             Tour.Changer(cible, c => c.Colere = Math.Min(100, c.Colere + 10 * (1 - c.Personnalite.Agreabilite)));
@@ -103,14 +105,14 @@ public sealed partial class Comportement
     }
 
     // À part : la fermeture n'est créée que s'il y a des coups.
-    private void DiffererCombat(int ih, int ic, Grief grief, string motif, IReadOnlyList<Humain> tous, long maintenant) =>
+    private void DiffererCombat(int ih, int ic, Grief grief, object motif, IReadOnlyList<Humain> tous, long maintenant) =>
         // Des coups : l'issue dépend de la force de chacun. Pendant un pas simultané, ils se battent après le pas, s'ils vivent encore.
         Tour.Differer(tous, t =>
         {
             if (t[ih - 1].EstVivant && t[ic - 1].EstVivant) Combattre(t[ih - 1], t[ic - 1], grief, motif, t, maintenant);
         });
 
-    private void Combattre(Humain h, Humain cible, Grief grief, string motif, IReadOnlyList<Humain> tous, long maintenant)
+    private void Combattre(Humain h, Humain cible, Grief grief, object motif, IReadOnlyList<Humain> tous, long maintenant)
     {
         // Toujours présent : Affronter l'a vérifié avant de différer le combat.
         if (Social is not { } social) return;
@@ -120,11 +122,10 @@ public sealed partial class Comportement
         var (vainqueur, vaincu) = gagne ? (h, cible) : (cible, h);
         var grave = alea.Reel() < RisqueBlessureGrave;
         var degats = grave ? 50 + 50 * alea.Reel() : 5 + 20 * alea.Reel();
-        var le = vaincu.Sexe == Sexe.Femme ? "la" : "le";
-        var blesse = grave ? $"{le} blesse grièvement" : $"{le} blesse";
+        var blesse = new Recit(grave ? "j.blesseGrave" : "j.blesse", ("v", vaincu));
         var id = Noter(maintenant, TypeEvenement.Conflit, h, cible, gagne
-            ? $"{h.Nom} frappe {cible.Nom}{motif}, et {blesse}."
-            : $"{h.Nom} s'en prend à {cible.Nom}{motif}, mais {cible.Nom} se défend et {blesse}.", grief.EvenementId, karma: Regard.Coups);
+            ? new Recit("j.frappe", ("h", h), ("c", cible), ("motif", motif), ("blesse", blesse))
+            : new Recit("j.sePrendA", ("h", h), ("c", cible), ("motif", motif), ("blesse", blesse)), grief.EvenementId, karma: Regard.Coups);
         h.Colere *= 0.4;
         vaincu.Sante -= degats;
         Medecine.Blesser(vaincu, degats, maintenant);

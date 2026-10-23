@@ -651,7 +651,7 @@ public sealed partial class Catastrophes
     /// ou un hiver volcanique, la chaleur pendant une canicule, la maladie quand on porte un mal contagieux) :
     /// renvoie l'événement à citer comme cause (0 : aucun), et compte la victime dans le bilan de la catastrophe.
     /// </summary>
-    internal (long Id, string? Contexte) Attribuer(Humain h, CauseDeMort cause, long maintenant)
+    internal (long Id, Recits.Recit? Contexte) Attribuer(Humain h, CauseDeMort cause, long maintenant)
     {
         var type = cause switch
         {
@@ -672,7 +672,7 @@ public sealed partial class Catastrophes
         if (type is not null)
         {
             Compter(type, h);
-            return (type.Id, $"pendant {TypesCatastrophe.Nom(type.Type)}");
+            return (type.Id, new Recits.Recit("j.suite.pendant", ("cat", new Recits.Recit($"catastropheNom.{type.Type}"))));
         }
         // Dans une terre que la catastrophe a dévastée et qui n'a pas encore reverdi, la faim, la soif, le froid et les maladies
         // tuent plus qu'ailleurs : ces morts sont celles de ses suites.
@@ -688,7 +688,7 @@ public sealed partial class Catastrophes
             Toucher(suites, communaute);
             if (communaute > 0) suites.PertesParCommunaute[communaute] = suites.PertesParCommunaute.GetValueOrDefault(communaute) + 1;
         });
-        return (suites.Id, $"dans les terres dévastées par {TypesCatastrophe.Nom(suites.Type)}");
+        return (suites.Id, new Recits.Recit("j.suite.devastees", ("cat", new Recits.Recit($"catastropheNom.{suites.Type}"))));
     }
 
     /// <summary>Dégâts les plus forts sur la case et ses voisines (là où l'on cherche sa nourriture).</summary>

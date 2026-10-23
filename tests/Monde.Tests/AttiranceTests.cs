@@ -218,7 +218,7 @@ public sealed class AttiranceTests
         for (; semaine < 200 && meurtrier.Exclusions.Count == 0; semaine++) social.Exiler(tous, [c], groupes, Maintenant + semaine * 7 * Jour);
 
         var exil = Assert.Single(meurtrier.Exclusions);
-        Assert.Equal((TypeExclusion.Communaute, 1, "pour le meurtre de H7"), (exil.Type, exil.De, exil.Raison));
+        Assert.Equal((TypeExclusion.Communaute, 1, "pour le meurtre de H7"), (exil.Type, exil.De, Recit.EnFrancais(exil.Raison)));
         var evenement = Assert.Single(social.Journal, j => j.Type == TypeEvenement.Exclusion);
         Assert.True(evenement.Significatif);
         Assert.Equal(55, evenement.CauseId);

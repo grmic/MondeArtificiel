@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -200,9 +202,9 @@ public sealed partial class Comportement
         var femme = a.Sexe == Sexe.Femme ? a : b;
         var homme = a.Sexe == Sexe.Femme ? b : a;
         var infidele = Vivant(tous, a.PartenaireId) is { } pa && pa.Id != b.Id || Vivant(tous, b.PartenaireId) is { } pb && pb.Id != a.Id;
-        var hors = infidele ? " (hors de leur couple)" : "";
+        object hors = infidele ? new Recit("j.horsCouple") : "";
         // Un penchant inspiré ou un ordre de l'Entité y a mené : il en est la cause.
-        var accouplement = Noter(maintenant, TypeEvenement.Accouplement, femme, homme, $"{femme.Nom} et {homme.Nom} s'accouplent{hors}.",
+        var accouplement = Noter(maintenant, TypeEvenement.Accouplement, femme, homme, new Recit("j.accouplement", ("f", femme), ("h", homme), ("hors", hors)),
             CauseEntite(a, b, maintenant), karma: PointsInfidelite(femme, homme, tous), karmaAutre: PointsInfidelite(homme, femme, tous));
         if (infidele)
         {
@@ -217,7 +219,7 @@ public sealed partial class Comportement
             femme.TermeGrossesse = maintenant + (long)(jours * Calendrier.SecondesParJour);
             femme.PereEnfantId = homme.Id;
             Noter(maintenant, TypeEvenement.Grossesse, femme, homme,
-                $"{femme.Nom} attend un enfant de {homme.Nom}. Elle ne le sait pas encore.", accouplement);
+                new Recit("j.grossesse", ("f", femme), ("h", homme)), accouplement);
         }
 
         // Deux humains seuls qui s'accouplent forment un couple.
@@ -225,7 +227,7 @@ public sealed partial class Comportement
         {
             a.PartenaireId = b.Id;
             b.PartenaireId = a.Id;
-            Noter(maintenant, TypeEvenement.Union, femme, homme, $"{femme.Nom} et {homme.Nom} forment un nouveau couple.", accouplement);
+            Noter(maintenant, TypeEvenement.Union, femme, homme, new Recit("j.couple", ("f", femme), ("h", homme)), accouplement);
             Social?.CoupleNe(a, b);
             VieSociale.Rejouir(a, 10);
             VieSociale.Rejouir(b, 10);
@@ -317,7 +319,7 @@ public sealed partial class Comportement
             if (alea.Reel() < risqueParPas)
             {
                 TerminerGrossesse(mere, maintenant);
-                Noter(maintenant, TypeEvenement.FausseCouche, mere, null, $"{mere.Nom} perd l'enfant qu'elle portait.");
+                Noter(maintenant, TypeEvenement.FausseCouche, mere, null, new Recit("j.fausseCouche", ("m", mere)));
             }
             return;
         }
@@ -336,7 +338,7 @@ public sealed partial class Comportement
         for (var n = jumeaux ? 2 : 1; n > 0; n--)
         {
             if (alea.Reel() >= risqueMortNe) { var pere = mere.PereEnfantId; Tour.Differer(mere, m => Accouchements.Add((m, pere))); }
-            else Noter(maintenant, TypeEvenement.MortNe, mere, null, $"{mere.Nom} met au monde un enfant mort-né.");
+            else Noter(maintenant, TypeEvenement.MortNe, mere, null, new Recit("j.mortNe", ("m", mere)));
         }
 
         TerminerGrossesse(mere, maintenant);
@@ -380,10 +382,8 @@ public sealed partial class Comportement
             });
             VieSociale.Gratitude(a, mere, 2);
         }
-        var noms = aides.Count == 1 ? aides[0].H.Nom
-            : string.Join(", ", aides.Take(aides.Count - 1).Select(a => a.H.Nom)) + " et " + aides[^1].H.Nom;
         Noter(maintenant, TypeEvenement.Entraide, aides[0].H, mere,
-            $"{noms} {(aides.Count == 1 ? "aide" : "aident")} {mere.Nom} à accoucher.", karma: Regard.AiderAccoucher);
+            new Recit("j.aideAccoucher", ("l", new Groupe(aides.Select(a => a.H))), ("n", aides.Count), ("m", mere)), karma: Regard.AiderAccoucher);
         return Math.Min(0.45, 0.1 + 0.3 * aides[0].Experience + 0.05 * (aides.Count - 1));
     }
 
@@ -527,7 +527,7 @@ public sealed partial class Comportement
             if (!choisie.Memoire.Jardin.Exists(x => x.Cle == cle))
             {
                 var id = Noter(maintenant, TypeEvenement.Entraide, choisie, b,
-                    $"{choisie.Nom} prend {b.Nom} ({AgeEnMots(b, maintenant)}){(morte is null ? "" : $", qui a perdu sa mère {morte.Nom},")} et l'allaite comme son enfant.",
+                    new Recit("j.allaite", ("c", choisie), ("b", b), ("age", AgeEnMots(b, maintenant)), ("morte", morte is null ? "" : new Recit("j.allaite.orphelin", ("b", b), ("m", morte)))),
                     morte?.MortEvenementId ?? 0, significatif: true, karma: Regard.Allaiter);
                 Jardin.Confier(choisie, TypeIntime.Intention, b.Id, $"Je nourrirai {b.Nom} de mon lait, comme mon enfant.",
                     40 + 40 * choisie.Personnalite.Moral.Compassion, id, maintenant, cle);
@@ -539,7 +539,7 @@ public sealed partial class Comportement
         if (!g.Memoire.Jardin.Exists(x => x.Cle == cle))
         {
             var id = Noter(maintenant, TypeEvenement.Entraide, g, b,
-                $"Faute de lait, {g.Nom} porte {b.Nom} ({AgeEnMots(b, maintenant)}) et {(b.Sexe == Sexe.Femme ? "la" : "le")} nourrit de bouchées mâchées.",
+                new Recit("j.bouchees", ("g", g), ("b", b), ("age", AgeEnMots(b, maintenant))),
                 morte?.MortEvenementId ?? 0, significatif: true, karma: Regard.NourrirSansLait);
             Jardin.Confier(g, TypeIntime.Intention, b.Id, $"{b.Nom} n'a plus de mère : c'est moi qui le nourrirai.",
                 40 + 40 * g.Personnalite.Moral.Compassion, id, maintenant, cle);
@@ -564,8 +564,8 @@ public sealed partial class Comportement
         if (proche && !porte && b.Activite is Activite.PorteParSaMere or Activite.Dormir)
         {
             Noter(maintenant, TypeEvenement.Delaissement, mere!, b, orphelin
-                ? $"{mere!.Nom}, à bout de forces, laisse là {b.Nom}, qu'{(mere.Sexe == Sexe.Femme ? "elle" : "il")} portait."
-                : $"{mere!.Nom}, à bout de forces, délaisse son bébé {b.Nom}.");
+                ? new Recit("j.delaisse.orphelin", ("m", mere!), ("b", b))
+                : new Recit("j.delaisse", ("m", mere!), ("b", b)));
         }
         if (mere is not null && porte)
         {

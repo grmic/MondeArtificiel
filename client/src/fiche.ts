@@ -25,6 +25,8 @@ interface Evenement {
   /** Karma gagné ou perdu par cet acte (regard de l'Entité), par l'humain et par l'autre. */
   karma?: number;
   karmaAutre?: number;
+  /** Écrit avant la traduction du journal : la phrase reste en français dans une autre langue. */
+  ancien?: boolean;
 }
 
 /** Une chose du jardin secret. */
@@ -90,7 +92,7 @@ interface Fiche {
   ame: Ame | null;
   communaute: { id: number; nom: string } | null;
   enfants: number[];
-  pensees: { date: string; texte: string }[];
+  pensees: { date: string; texte: string; ancien?: boolean }[];
   jardin: Intime[];
   lieux: { type: string; x: number; y: number; vuLe: string; visites: number }[];
   liens: { id: number; nom: string; familiarite: number; affection: number; statut: string; vivant: boolean }[];
@@ -506,6 +508,7 @@ export class PanneauFiche {
     const pensees = el("ul", "liste");
     for (const p of f.pensees) {
       const li = el("li");
+      if (p.ancien) li.title = t("evenement.ancien");
       li.append(el("span", "date", p.date), ` ${p.texte}`);
       pensees.append(li);
     }
@@ -932,6 +935,7 @@ function texteAvecLiens(e: Evenement): (string | HTMLElement)[] {
 /** Ligne d'événement : date, texte (noms cliquables), et la marque d'une intervention de l'Entité. */
 export function ligneEvenement(e: Evenement): HTMLElement {
   const li = el("li", `evenement ${e.type}${e.significatif ? " significatif" : ""}`);
+  if (e.ancien) li.title = t("evenement.ancien");
   li.append(el("span", "date", e.date));
   if (e.significatif) li.append(el("span", "etoile", " ★"));
   li.append(" ", ...texteAvecLiens(e));
