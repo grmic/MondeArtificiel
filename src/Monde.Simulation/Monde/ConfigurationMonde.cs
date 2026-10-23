@@ -34,14 +34,24 @@ public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, 
     public static ConfigurationMonde ParDefaut(ulong graine) =>
         new(graine, CouplesParDefaut, TailleParDefaut, TailleParDefaut, 1);
 
+    /// <summary>Premier défaut des réglages (la place pour les couples est vérifiée à la génération).</summary>
+    public ProblemeConfiguration Probleme() =>
+        Couples is < CouplesMin or > CouplesMax ? ProblemeConfiguration.Couples
+        : Largeur is < TailleMin or > TailleMax || Hauteur is < TailleMin or > TailleMax ? ProblemeConfiguration.Taille
+        : Continents is < ContinentsMin or > ContinentsMax ? ProblemeConfiguration.Continents
+        : Placement < PlacementTous || Placement > Continents ? ProblemeConfiguration.Placement
+        : ProblemeConfiguration.Aucun;
+
     /// <summary>Premier défaut des réglages, ou null s'ils sont valides (la place pour les couples est vérifiée à la génération).</summary>
-    public string? Erreur() =>
-        Couples is < CouplesMin or > CouplesMax ? $"Le nombre de couples doit être compris entre {CouplesMin} et {CouplesMax}."
-        : Largeur is < TailleMin or > TailleMax || Hauteur is < TailleMin or > TailleMax
-            ? $"La carte doit mesurer entre {Echelle.Distance(Echelle.Kilometres(TailleMin))} et {Echelle.Distance(Echelle.Kilometres(TailleMax))} de côté."
-        : Continents is < ContinentsMin or > ContinentsMax ? $"Le nombre de continents doit être compris entre {ContinentsMin} et {ContinentsMax}."
-        : Placement < PlacementTous || Placement > Continents ? "Le continent de départ des couples doit être l'un des continents du monde."
-        : null;
+    public string? Erreur() => Probleme() switch
+    {
+        ProblemeConfiguration.Couples => $"Le nombre de couples doit être compris entre {CouplesMin} et {CouplesMax}.",
+        ProblemeConfiguration.Taille =>
+            $"La carte doit mesurer entre {Echelle.Distance(Echelle.Kilometres(TailleMin))} et {Echelle.Distance(Echelle.Kilometres(TailleMax))} de côté.",
+        ProblemeConfiguration.Continents => $"Le nombre de continents doit être compris entre {ContinentsMin} et {ContinentsMax}.",
+        ProblemeConfiguration.Placement => "Le continent de départ des couples doit être l'un des continents du monde.",
+        _ => null,
+    };
 
     /// <summary>Où partent les couples, en mots.</summary>
     public string DecrirePlacement() => Placement switch
@@ -50,4 +60,14 @@ public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, 
         1 => Continents == 1 ? "sur le continent" : "sur le plus grand continent",
         var n => $"sur le {n}e continent par la taille",
     };
+}
+
+/// <summary>Défaut de réglages d'un monde (voir <see cref="ConfigurationMonde.Probleme"/>).</summary>
+public enum ProblemeConfiguration : byte
+{
+    Aucun = 0,
+    Couples = 1,
+    Taille = 2,
+    Continents = 3,
+    Placement = 4,
 }

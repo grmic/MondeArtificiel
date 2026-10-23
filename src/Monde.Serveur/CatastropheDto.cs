@@ -15,62 +15,65 @@ public sealed record CatastropheDto(long Id, string Type, string Libelle, string
     string? Fin, bool Active, int X, int Y, int Rayon, string Intensite, int Morts, int Blesses, string? Surface,
     IReadOnlyList<CommunauteRefDto> Communautes, int Temoins, bool Phenomene, int MortsSuites, string? SuitesJusqua, bool EnSuites)
 {
-    public static readonly IReadOnlyDictionary<TypeCatastrophe, (string Cle, string Libelle)> Types =
-        new Dictionary<TypeCatastrophe, (string, string)>
+    /// <summary>Clé de chaque type (le navigateur filtre et colore avec elle) ; son nom vient du fichier de langue (catastrophe.&lt;clé&gt;).</summary>
+    public static readonly IReadOnlyDictionary<TypeCatastrophe, string> Types =
+        new Dictionary<TypeCatastrophe, string>
         {
-            [TypeCatastrophe.Seisme] = ("seisme", "Séisme"),
-            [TypeCatastrophe.Tsunami] = ("tsunami", "Vague géante"),
-            [TypeCatastrophe.Eruption] = ("eruption", "Éruption"),
-            [TypeCatastrophe.Crue] = ("crue", "Crue"),
-            [TypeCatastrophe.Incendie] = ("incendie", "Incendie"),
-            [TypeCatastrophe.Cyclone] = ("cyclone", "Tempête"),
-            [TypeCatastrophe.VagueDeFroid] = ("froid", "Vague de froid"),
-            [TypeCatastrophe.Canicule] = ("canicule", "Canicule"),
-            [TypeCatastrophe.Epidemie] = ("epidemie", "Épidémie"),
-            [TypeCatastrophe.Eclipse] = ("eclipse", "Éclipse"),
-            [TypeCatastrophe.Comete] = ("comete", "Comète"),
-            [TypeCatastrophe.Bolide] = ("bolide", "Boule de feu"),
-            [TypeCatastrophe.Impact] = ("impact", "Astéroïde"),
-            [TypeCatastrophe.Aurore] = ("aurore", "Aurore"),
-            [TypeCatastrophe.HiverVolcanique] = ("hiver-volcanique", "Hiver volcanique"),
-            [TypeCatastrophe.HiverDImpact] = ("hiver-impact", "Longue nuit"),
+            [TypeCatastrophe.Seisme] = "seisme",
+            [TypeCatastrophe.Tsunami] = "tsunami",
+            [TypeCatastrophe.Eruption] = "eruption",
+            [TypeCatastrophe.Crue] = "crue",
+            [TypeCatastrophe.Incendie] = "incendie",
+            [TypeCatastrophe.Cyclone] = "cyclone",
+            [TypeCatastrophe.VagueDeFroid] = "froid",
+            [TypeCatastrophe.Canicule] = "canicule",
+            [TypeCatastrophe.Epidemie] = "epidemie",
+            [TypeCatastrophe.Eclipse] = "eclipse",
+            [TypeCatastrophe.Comete] = "comete",
+            [TypeCatastrophe.Bolide] = "bolide",
+            [TypeCatastrophe.Impact] = "impact",
+            [TypeCatastrophe.Aurore] = "aurore",
+            [TypeCatastrophe.HiverVolcanique] = "hiver-volcanique",
+            [TypeCatastrophe.HiverDImpact] = "hiver-impact",
         };
 
     public static TypeCatastrophe? TypeDepuis(string? cle) =>
-        Types.FirstOrDefault(t => t.Value.Cle == cle) is { Value.Cle: not null } t ? t.Key : null;
+        Types.FirstOrDefault(t => t.Value == cle) is { Value: not null } t ? t.Key : null;
 
-    private static readonly System.Globalization.CultureInfo Fr = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
+    /// <summary>Nom du type dans la langue courante : « Séisme », « Vague géante »…</summary>
+    public static string NomDuType(TypeCatastrophe type) => Types.TryGetValue(type, out var cle) ? L.T($"catastrophe.{cle}") : L.T("catastrophe.autre");
 
-    private static string Decimal(double v) => v.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture).Replace('.', ',');
+    /// <summary>Un décimal, toujours avec un chiffre après la virgule : « 6,0 ».</summary>
+    private static string Decimal(double v) => v.ToString("0.0", L.Courante.Nombres);
+
+    private static string Entier(double v) => Math.Round(v).ToString("0", System.Globalization.CultureInfo.InvariantCulture);
 
     private static string DecrireIntensite(Catastrophe c) => c.Type switch
     {
-        TypeCatastrophe.Seisme => $"magnitude {Decimal(c.Intensite)}",
-        TypeCatastrophe.Tsunami => $"vague de {c.Intensite:0} m",
-        TypeCatastrophe.Eruption => $"indice d'explosivité {c.Intensite:0}",
-        TypeCatastrophe.Crue => $"ampleur {c.Intensite:0} sur 3",
-        TypeCatastrophe.Cyclone => $"catégorie {c.Intensite:0}",
+        TypeCatastrophe.Seisme => L.T("intensite.seisme", ("v", Decimal(c.Intensite))),
+        TypeCatastrophe.Tsunami => L.T("intensite.tsunami", ("v", Entier(c.Intensite))),
+        TypeCatastrophe.Eruption => L.T("intensite.eruption", ("v", Entier(c.Intensite))),
+        TypeCatastrophe.Crue => L.T("intensite.crue", ("v", Entier(c.Intensite))),
+        TypeCatastrophe.Cyclone => L.T("intensite.cyclone", ("v", Entier(c.Intensite))),
         TypeCatastrophe.VagueDeFroid or TypeCatastrophe.Canicule or TypeCatastrophe.HiverVolcanique or TypeCatastrophe.HiverDImpact =>
             $"{(c.Intensite > 0 ? "+" : "")}{Decimal(c.Intensite)} °C",
-        TypeCatastrophe.Epidemie => $"{c.Intensite:0} malades au début",
-        TypeCatastrophe.Impact => c.Intensite < 10
-            ? $"{c.Intensite.ToString("0.#", Fr)} mégatonnes"
-            : $"{c.Intensite.ToString("N0", Fr)} mégatonnes",
-        TypeCatastrophe.Eclipse => c.Intensite >= 0.999 ? "totale" : $"{c.Intensite:P0} du soleil caché",
-        TypeCatastrophe.Bolide => c.Intensite > 0 ? "une pierre est tombée" : "",
+        TypeCatastrophe.Epidemie => L.T("intensite.epidemie", ("n", (int)Math.Round(c.Intensite)), ("v", Entier(c.Intensite))),
+        TypeCatastrophe.Impact => L.T("intensite.impact", ("v", L.Nombre(c.Intensite, c.Intensite < 10 ? 1 : 0))),
+        TypeCatastrophe.Eclipse => c.Intensite >= 0.999 ? L.T("intensite.eclipseTotale") : L.T("intensite.eclipse", ("v", Entier(c.Intensite * 100))),
+        TypeCatastrophe.Bolide => c.Intensite > 0 ? L.T("intensite.bolide") : "",
         _ => "",
     };
 
     public static CatastropheDto Depuis(Catastrophe c, IReadOnlyList<Simulation.Humains.Communaute> communautes, long maintenant)
     {
-        var (cle, libelle) = Types.TryGetValue(c.Type, out var t) ? t : ("autre", "Catastrophe");
+        var cle = Types.GetValueOrDefault(c.Type, "autre");
         var cases = c.Cases.Count + c.Front.Count;
-        return new CatastropheDto(c.Id, cle, libelle, c.Nom, c.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", c.Debut,
-            Calendrier.Decomposer(c.Debut).ToString(), c.Fin is { } f ? Calendrier.Decomposer(f).ToString() : null, c.Active,
-            c.X, c.Y, c.Rayon, DecrireIntensite(c), c.Morts, c.Blesses, cases == 0 ? null : Catastrophes.Surface(cases),
+        return new CatastropheDto(c.Id, cle, NomDuType(c.Type), c.Nom, c.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", c.Debut,
+            L.Date(c.Debut), c.Fin is { } f ? L.Date(f) : null, c.Active,
+            c.X, c.Y, c.Rayon, DecrireIntensite(c), c.Morts, c.Blesses, cases == 0 ? null : L.Surface(Echelle.KilometresCarres(cases)),
             c.Communautes.Where(id => id >= 1 && id <= communautes.Count).Select(id => new CommunauteRefDto(id, communautes[id - 1].Nom)).ToList(),
             c.Temoins.Count, TypesCatastrophe.EstPhenomene(c.Type), c.MortsSuites,
-            c.SuitesJusqua > 0 ? Calendrier.Decomposer(c.SuitesJusqua).ToString() : null, c.EnSuites(maintenant));
+            c.SuitesJusqua > 0 ? L.Date(c.SuitesJusqua) : null, c.EnSuites(maintenant));
     }
 
     /// <summary>Catastrophes en mémoire et enregistrées, fusionnées, de la plus récente à la plus ancienne.</summary>
@@ -102,6 +105,19 @@ public sealed record VolcanDto(int Numero, string Nom, int X, int Y, int ReposMo
 public sealed record GeologieDto(string Contexte, string Description, double SeismesFortsParSiecle, double MagnitudeMax,
     IReadOnlyList<FailleDto> Failles, IReadOnlyList<VolcanDto> Volcans, double Anomalie)
 {
+    /// <summary>Sous-sol en mots : contexte tectonique, côte où plonge la plaque, volcans actifs.</summary>
+    public static string Decrire(Geologie g)
+    {
+        var cote = g.CoteActive switch { "l'ouest" => "ouest", "l'est" => "est", "le nord" => "nord", "le sud" => "sud", _ => null };
+        var contexte = g.Contexte switch
+        {
+            ContexteTectonique.Stable => L.T("geologie.stable"),
+            ContexteTectonique.Rift => L.T("geologie.rift"),
+            _ => L.T("geologie.margeActive", ("cote", cote is null ? g.CoteActive : L.T($"geologie.cote.{cote}"))),
+        };
+        return $"{contexte} {L.T("geologie.volcans", ("n", g.Volcans.Count))}";
+    }
+
     public static GeologieDto Depuis(MondeSimule monde)
     {
         var g = monde.Geologie;
@@ -112,7 +128,7 @@ public sealed record GeologieDto(string Contexte, string Description, double Sei
                 ContexteTectonique.Rift => "rift",
                 _ => "marge-active",
             },
-            g.Description, Math.Round(g.TauxM5ParAn * 100, 1), Math.Round(g.MagnitudeMax, 1),
+            Decrire(g), Math.Round(g.TauxM5ParAn * 100, 1), Math.Round(g.MagnitudeMax, 1),
             g.Failles.Select(f => new FailleDto(f.X1, f.Y1, f.X2, f.Y2, f.SousMarine)).ToList(),
             g.Volcans.Select(v => new VolcanDto(v.Numero, v.Nom, v.X, v.Y, (int)Math.Round(v.ReposMoyenAns), eruptions.Contains(v.Numero))).ToList(),
             Math.Round(monde.AnomalieTemperature, 1));
@@ -127,11 +143,11 @@ public sealed record MaladieDto(int Id, string Nom, string ApparueLe, double R0,
     {
         var (maintenant, humains) = monde.InstantaneHumains();
         var vivants = humains.Where(h => h.EstVivant).ToList();
-        return monde.Pathogenes().OrderByDescending(p => p.Id).Select(p => new MaladieDto(p.Id, p.Nom, Calendrier.Decomposer(p.ApparuLe).ToString(),
+        return monde.Pathogenes().OrderByDescending(p => p.Id).Select(p => new MaladieDto(p.Id, p.Nom, L.Date(p.ApparuLe),
             // Transmission = R0 / (contacts × 24 h × durée) : voir Catastrophes.NouveauPathogene.
             Math.Round(p.Transmission * 2.5 * 24 * p.DureeJours, 2), Math.Round(p.Letalite * 100, 1),
             (int)Math.Round(p.IncubationJours), (int)Math.Round(p.DureeJours),
-            p.ImmuniteAns <= 0 ? "à vie" : $"environ {p.ImmuniteAns:0.#} ans",
+            p.ImmuniteAns <= 0 ? L.T("maladie.immuniteAVie") : L.T("maladie.immuniteAns", ("v", L.Nombre(p.ImmuniteAns, 1)), ("n", p.ImmuniteAns)),
             vivants.Count(h => h.InfectionId == p.Id),
             vivants.Count(h => h.Immunites.Any(i => i.PathogeneId == p.Id && (i.Jusqua is null || i.Jusqua > maintenant))),
             humains.Count(h => !h.EstVivant && h.CauseDeMort == Simulation.Humains.CauseDeMort.Maladie && h.InfectionId == p.Id),
@@ -144,7 +160,7 @@ public sealed record MaladieDto(int Id, string Nom, string ApparueLe, double R0,
 public sealed record AlerteDto(long Catastrophe, string Type, string Texte, bool Grave)
 {
     public static AlerteDto Depuis(AlerteCatastrophe a) =>
-        new(a.CatastropheId, CatastropheDto.Types.TryGetValue(a.Type, out var t) ? t.Cle : "autre", a.Texte, a.Grave);
+        new(a.CatastropheId, CatastropheDto.Types.GetValueOrDefault(a.Type, "autre"), a.Texte, a.Grave);
 }
 
 /// <summary>Demande de catastrophe (provoquée par l'Entité).</summary>

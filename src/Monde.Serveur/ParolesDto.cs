@@ -46,17 +46,17 @@ public static class ParolesEntite
     public static ChoixParolesDto Choix(ServiceMonde service)
     {
         var monde = service.Monde;
-        var paroles = Enum.GetValues<Parole>().Where(p => p != Parole.Penchant).Select(p => new ParoleDto(p.ToString(), Paroles.Libelle(p),
-            Paroles.Rubrique(p), Paroles.VeutCible(p), p switch
+        var paroles = Enum.GetValues<Parole>().Where(p => p != Parole.Penchant).Select(p => new ParoleDto(p.ToString(), L.T($"parole.{p}"),
+            Lib.RubriqueParole(p), Paroles.VeutCible(p), p switch
             {
                 Parole.PartsVers => "direction",
                 Parole.PlanteDangereuse => "plante",
                 Parole.NeVaPasALaGuerre => "communaute",
                 _ => null,
-            }, Paroles.Phrase(p, "{cible}", "{extra}"), Paroles.Nuit(p))).ToList();
+            }, Lib.Phrase(p, "{cible}", "{extra}", "{extra}"), Paroles.Nuit(p))).ToList();
         var modes = new[] { ModeParole.Reve, ModeParole.Voix, ModeParole.Signe, ModeParole.Apparition }
-            .Select(m => new ChoixDto(m.ToString(), Paroles.NomMode(m))).ToList();
-        var directions = Paroles.Directions.Select((d, i) => new ChoixDto(i.ToString(System.Globalization.CultureInfo.InvariantCulture), d)).ToList();
+            .Select(m => new ChoixDto(m.ToString(), L.T($"modeParole.{m}"))).ToList();
+        var directions = Paroles.Directions.Select((_, i) => new ChoixDto(i.ToString(System.Globalization.CultureInfo.InvariantCulture), L.T($"direction.{i}"))).ToList();
         var plantes = monde.Flore.Especes.Select(e => new ChoixDto(e.Numero.ToString(System.Globalization.CultureInfo.InvariantCulture), e.Nom)).ToList();
         var communautes = monde.Communautes().Where(c => c.Active)
             .Select(c => new ChoixDto(c.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), c.Nom)).ToList();
@@ -98,22 +98,24 @@ public static class ParolesEntite
             string texte;
             if (i.Parole == Parole.Penchant)
             {
-                var force = i.Force >= 0.4 ? "Une passion" : "Un penchant";
-                texte = $"{force} pour {Nom(i.CibleId)}{(i.Orientation ? " (son cœur a changé)" : "")}"
-                        + (i.Reponse == Reponse.Ressenti ? (maintenant < i.Jusqua ? $", qui s'efface ({(int)Math.Round(100 * i.ForceA(maintenant) / Math.Max(0.01, i.Force))} % de sa force)" : ", effacé") : "");
+                texte = L.T(i.Force >= 0.4 ? "penchant.passion" : "penchant.penchant", ("nom", Nom(i.CibleId)))
+                        + (i.Orientation ? L.T("penchant.coeurChange") : "")
+                        + (i.Reponse == Reponse.Ressenti ? (maintenant < i.Jusqua
+                            ? L.T("penchant.sEfface", ("v", (int)Math.Round(100 * i.ForceA(maintenant) / Math.Max(0.01, i.Force))))
+                            : L.T("penchant.efface", ("g", i.Force >= 0.4 ? "f" : "m"))) : "");
             }
             else
             {
                 string? extra = i.Parole switch
                 {
-                    Parole.PartsVers => null,
+                    Parole.PartsVers => L.T("phrase.labas"),
                     Parole.PlanteDangereuse when i.Param >= 1 && i.Param <= monde.Flore.Especes.Count => monde.Flore.Get(i.Param).Nom,
-                    Parole.NeVaPasALaGuerre when i.Param > 0 => communautes.FirstOrDefault(c => c.Id == i.Param)?.Nom.ToLowerInvariant(),
+                    Parole.NeVaPasALaGuerre when i.Param > 0 => communautes.FirstOrDefault(c => c.Id == i.Param)?.Nom,
                     _ => null,
                 };
-                texte = "« " + Paroles.Phrase(i.Parole, Nom(i.CibleId), i.Parole == Parole.PartsVers ? "là-bas" : extra, h.Sexe == Sexe.Femme) + " »";
+                texte = L.T("commun.guillemets", ("texte", Lib.Phrase(i.Parole, Nom(i.CibleId), extra, i.Parole == Parole.NeVaPasALaGuerre ? extra?.ToLowerInvariant() : extra, h.Sexe == Sexe.Femme)));
             }
-            return new ParoleRecueDto(Calendrier.Decomposer(i.Le).ToString(), Paroles.NomMode(i.Mode), texte, Paroles.NomReponse(i.Reponse), i.CibleId, i.EvenementId);
+            return new ParoleRecueDto(L.Date(i.Le), L.T($"modeParole.{i.Mode}"), texte, L.T($"reponse.{i.Reponse}"), i.CibleId, i.EvenementId);
         }).ToList();
     }
 }

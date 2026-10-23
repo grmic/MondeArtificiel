@@ -76,14 +76,14 @@ public sealed record DemographieDto(long Maintenant, string Date, long SecondesP
             .Where(c => c.Morts > 0 || c.MortsSuites > 0 || c.Origine == Origine.Entite)
             .Select(c => new Stockage.RepereCatastrophe(c.Id, c.Type, c.Origine, c.Debut, c.Nom, c.Morts, c.MortsSuites));
         var reperes = enMemoire.Concat(service.Depot.LireReperesCatastrophes()).DistinctBy(c => c.Id)
-            .Select(c => new RepereDto(c.Id, CatastropheDto.Types.TryGetValue(c.Type, out var t) ? t.Cle : "autre", c.Debut,
-                Calendrier.Decomposer(c.Debut).ToString(), c.Nom, c.Morts, c.MortsSuites, c.Origine == Origine.Entite))
+            .Select(c => new RepereDto(c.Id, CatastropheDto.Types.GetValueOrDefault(c.Type, "autre"), c.Debut,
+                L.Date(c.Debut), c.Nom, c.Morts, c.MortsSuites, c.Origine == Origine.Entite))
             .Concat(monde.Guerres().Where(g => g.MortsA + g.MortsB > 0).Select(g => new RepereDto(g.Id, "guerre", g.Debut,
-                Calendrier.Decomposer(g.Debut).ToString(), $"Guerre entre {NomDe(communautes, g.A)} et {NomDe(communautes, g.B)}",
+                L.Date(g.Debut), L.T("demographie.guerre", ("a", NomDe(communautes, g.A)), ("b", NomDe(communautes, g.B))),
                 g.MortsA + g.MortsB, 0, false)))
             .OrderBy(r => r.Secondes).ToList();
 
-        return new DemographieDto(maintenant, Calendrier.Decomposer(maintenant).ToString(), Calendrier.SecondesParAn, pas,
+        return new DemographieDto(maintenant, L.Date(maintenant), Calendrier.SecondesParAn, pas,
             [.. dates], vivants, nees, mortes, series, points.Count, reperes);
     }
 

@@ -18,7 +18,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
 
     public HorlogeDto Horloge() => HorlogeDto.Depuis(service);
 
-    public IReadOnlyList<Vitesse> Vitesses() => Vitesse.Toutes;
+    public IReadOnlyList<Vitesse> Vitesses() => Vitesse.Toutes.Select(v => v with { Nom = L.T($"vitesse.{v.Niveau}") }).ToList();
 
     public List<HumainDto> Humains() => HumainDto.Depuis(service.Monde);
 
@@ -27,7 +27,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         if (!Vitesse.Existe(niveau))
         {
             // Message volontairement simple : il est renvoyé tel quel au navigateur.
-            throw new HubException("Vitesse inconnue.");
+            throw new HubException(L.T("vitesse.inconnue"));
         }
         return AppliquerFacteur(Vitesse.Toutes[niveau].Facteur);
     }
@@ -37,7 +37,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     {
         if (!Vitesse.FacteurValide(facteur))
         {
-            throw new HubException($"La vitesse doit valoir 0 ou être comprise entre {Vitesse.FacteurMin} et {Vitesse.FacteurMax}.");
+            throw new HubException(L.T("vitesse.horsLimites", ("min", Vitesse.FacteurMin), ("max", Vitesse.FacteurMax)));
         }
         return AppliquerFacteur(facteur);
     }
@@ -58,14 +58,14 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
             "pas" => MondeSimule.SecondesParPas,
             "heure" => Calendrier.SecondesParHeure,
             "jour" => Calendrier.SecondesParJour,
-            _ => throw new HubException("Unité inconnue (pas, heure ou jour)."),
+            _ => throw new HubException(L.T("erreur.unite")),
         };
         var monde = service.Monde;
         monde.ChangerFacteur(0);
         service.FacteurAtteint = 0;
         monde.AvancerDe(secondes);
         service.Sauvegarder();
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return await DiffuserHorloge();
     }
 
@@ -78,7 +78,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         var monde = service.Monde;
         var maintenant = monde.Secondes;
         if (monde.Eteint && demande.Type is "naissance" or "mort")
-            throw new HubException("Plus aucun humain : il n'y aura plus de naissance ni de mort.");
+            throw new HubException(L.T("erreur.plusPersonne"));
         try
         {
             var objectif = demande.Type switch
@@ -89,13 +89,13 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
                 "annee" => Objectif.Date(Objectif.ProchaineAnnee(maintenant), maintenant),
                 "naissance" => Objectif.Evenement(TypeObjectif.Naissance, maintenant),
                 "mort" => Objectif.Evenement(TypeObjectif.Mort, maintenant),
-                _ => throw new HubException("Objectif inconnu."),
+                _ => throw new HubException(L.T("erreur.objectif")),
             };
             monde.FixerObjectif(objectif);
         }
         catch (ArgumentOutOfRangeException)
         {
-            throw new HubException("Date invalide : elle doit exister dans le calendrier, être dans le futur et à moins de mille ans.");
+            throw new HubException(L.T("erreur.date"));
         }
         return await DiffuserHorloge();
     }
@@ -110,7 +110,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Catastrophes et phénomènes, du plus récent au plus ancien, éventuellement ceux qui ont touché une communauté.</summary>
     public List<CatastropheDto> Catastrophes(int? communaute, int limite = 200)
     {
-        if (limite is < 1 or > Stockage.DepotMonde.LimiteJournal || communaute is < 1) throw new HubException("Filtre des catastrophes invalide.");
+        if (limite is < 1 or > Stockage.DepotMonde.LimiteJournal || communaute is < 1) throw new HubException(L.T("erreur.filtreCatastrophes"));
         return CatastropheDto.Liste(service, communaute, limite);
     }
 
@@ -140,7 +140,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Cœurs donnés au calcul : 1 = l'un après l'autre (classique), 0 = tous, 2 ou plus = ce nombre, en même temps.</summary>
     public ConfigurationDto ChoisirCoeurs(int coeurs)
     {
-        if (coeurs < 0 || coeurs > ServiceMonde.CoeursMachine) throw new HubException($"Nombre de cœurs invalide (0 à {ServiceMonde.CoeursMachine}).");
+        if (coeurs < 0 || coeurs > ServiceMonde.CoeursMachine) throw new HubException(L.T("erreur.coeurs", ("max", ServiceMonde.CoeursMachine)));
         service.Coeurs = coeurs;
         return ConfigurationDto.Depuis(service);
     }
@@ -148,7 +148,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Clémence du monde, de 0 à 100 % des risques visés écartés par l'Entité.</summary>
     public ConfigurationDto ChoisirClemence(int clemence)
     {
-        if (clemence is < 0 or > 100) throw new HubException("Clémence invalide (0 à 100 %).");
+        if (clemence is < 0 or > 100) throw new HubException(L.T("erreur.clemence"));
         service.Clemence = clemence;
         return ConfigurationDto.Depuis(service);
     }
@@ -171,7 +171,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         }
         catch (InvalidOperationException e)
         {
-            return new ApercuDto(false, e.Message);
+            return new ApercuDto(false, Lib.Message(e));
         }
     }
 
@@ -188,11 +188,11 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException)
         {
-            throw new HubException(e.Message);
+            throw new HubException(Lib.Message(e));
         }
         service.FacteurAtteint = 0;
-        await Clients.All.SendAsync("MondeReinitialise", (uint)monde.Graine);
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        await Clients.Diffuser("MondeReinitialise", () => (uint)monde.Graine);
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return await DiffuserHorloge();
     }
 
@@ -219,12 +219,12 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         }
         catch (FileNotFoundException)
         {
-            throw new HubException("Cette sauvegarde n'existe plus.");
+            throw new HubException(L.T("sauvegarde.disparue"));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             // Le message du système peut contenir des chemins : on ne les montre pas au navigateur.
-            throw new HubException("Le système a refusé de la mettre à la corbeille.");
+            throw new HubException(L.T("corbeille.refus"));
         }
         return SauvegardeDto.Toutes(service);
     }
@@ -245,8 +245,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
             throw new HubException(e.Message);
         }
         service.FacteurAtteint = 0;
-        await Clients.All.SendAsync("MondeReinitialise", (uint)monde.Graine);
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        await Clients.Diffuser("MondeReinitialise", () => (uint)monde.Graine);
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return await DiffuserHorloge();
     }
 
@@ -256,7 +256,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         var carte = service.Monde.Carte;
         if (Math.Min(Math.Min(x1, y1), Math.Min(x2, y2)) < 0 || Math.Max(x1, x2) >= carte.Largeur || Math.Max(y1, y2) >= carte.Hauteur)
         {
-            throw new HubException("Points hors de la carte.");
+            throw new HubException(L.T("erreur.pointsHorsCarte"));
         }
         return TrajetDto.Depuis(carte, x1, y1, x2, y2);
     }
@@ -270,15 +270,15 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         var monde = service.Monde;
         if (CatastropheDto.TypeDepuis(demande.Type) is not { } type || type is Simulation.Nature.TypeCatastrophe.HiverVolcanique or Simulation.Nature.TypeCatastrophe.HiverDImpact)
         {
-            throw new HubException("Type de catastrophe inconnu.");
+            throw new HubException(L.T("erreur.typeCatastrophe"));
         }
         if (demande.X < 0 || demande.Y < 0 || demande.X >= monde.Carte.Largeur || demande.Y >= monde.Carte.Hauteur || !double.IsFinite(demande.Intensite))
         {
-            throw new HubException("Lieu ou intensité invalide.");
+            throw new HubException(L.T("erreur.lieuIntensite"));
         }
         var id = monde.Declencher(type, demande.X, demande.Y, demande.Intensite);
         service.Sauvegarder();
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return id;
     }
 
@@ -307,19 +307,19 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
             || !Enum.TryParse<Simulation.Humains.Matiere>(demande.A, out var a) || !Enum.IsDefined(a)
             || !Enum.TryParse<Simulation.Humains.Matiere>(demande.B ?? nameof(Simulation.Humains.Matiere.Aucune), out var b) || !Enum.IsDefined(b))
         {
-            throw new HubException("Geste ou matière inconnus.");
+            throw new HubException(L.T("erreur.geste"));
         }
         // Liste blanche : seules les matières qui ont un sens pour ce geste ; une plante doit être désignée par son espèce.
         var plante = geste is Simulation.Humains.Geste.Manger or Simulation.Humains.Geste.Appliquer;
         if (!Simulation.Humains.Physique.Convient(geste, a, b) || plante && (demande.Espece < 1 || demande.Espece > service.Monde.Flore.Especes.Count))
         {
-            throw new HubException("Ce geste ne va pas avec ces matières.");
+            throw new HubException(L.T("erreur.gesteMatieres"));
         }
         var effet = service.Monde.Souffler(demande.Humain, geste, a, b, plante ? demande.Espece : 0);
         service.Sauvegarder();
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde));
-        if (plante && effet == Simulation.Humains.Effet.Rien) return "La plante a été essayée ; le journal dira ce qui a été ressenti, et la croyance qui en naît.";
-        return effet == Simulation.Humains.Effet.Rien ? "Rien n'en est sorti (le journal dit ce qu'il en a fait)." : "Obtenu : " + Simulation.Humains.Physique.NomEffet(effet) + ".";
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
+        if (plante && effet == Simulation.Humains.Effet.Rien) return L.T("geste.planteEssayee");
+        return effet == Simulation.Humains.Effet.Rien ? L.T("geste.rien") : L.T("geste.obtenu", ("effet", L.T($"effet.{effet}")));
     }
 
     /// <summary>Prières en mémoire (en attente seulement, ou aussi celles de l'année écoulée).</summary>
@@ -334,20 +334,20 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>L'Entité exauce une prière en attente. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Exaucer(int priere)
     {
-        if (priere < 1) throw new HubException("Prière inconnue.");
+        if (priere < 1) throw new HubException(L.T("erreur.priere"));
         var texte = service.Monde.Exaucer(priere);
         service.Sauvegarder();
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde));
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return texte;
     }
 
     /// <summary>L'Entité refuse une prière en attente, en secret (par défaut) ou par un signe. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Refuser(int priere, bool signe = false)
     {
-        if (priere < 1) throw new HubException("Prière inconnue.");
+        if (priere < 1) throw new HubException(L.T("erreur.priere"));
         var texte = service.Monde.Refuser(priere, signe);
         service.Sauvegarder();
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(service.Monde));
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return texte;
     }
 
@@ -357,7 +357,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>L'Entité fait un geste sur un humain ou une communauté. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Agir(DemandeGeste demande)
     {
-        if (demande is null) throw new HubException("Demande vide.");
+        if (demande is null) throw new HubException(L.T("erreur.demandeVide"));
         var monde = service.Monde;
         (Simulation.Humains.GesteEntite geste, Simulation.Humains.ManiereGeste maniere, int param) lu;
         try
@@ -370,7 +370,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         }
         var texte = monde.Agir(lu.geste, demande.Cible, lu.maniere, lu.param, demande.Force, demande.Jours);
         service.Sauvegarder();
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return texte;
     }
 
@@ -390,27 +390,27 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         if (!Enum.TryParse<Simulation.Humains.Parole>(demande.Parole, out var parole) || !Enum.IsDefined(parole) || parole == Simulation.Humains.Parole.Penchant
             || !Enum.TryParse<Simulation.Humains.ModeParole>(demande.Mode, out var mode) || !Enum.IsDefined(mode) || mode == Simulation.Humains.ModeParole.Penchant)
         {
-            throw new HubException("Parole ou manière inconnues.");
+            throw new HubException(L.T("erreur.parole"));
         }
         var (humainsIds, communautes) = Destinataires(demande.Humains, demande.Communautes);
         var (maintenant, humains) = monde.InstantaneHumains();
         var veutCible = Simulation.Humains.Paroles.VeutCible(parole);
         if (veutCible && (demande.Cible < 1 || demande.Cible > humains.Count || !humains[demande.Cible - 1].EstVivant))
-            throw new HubException("Il faut désigner un humain vivant.");
+            throw new HubException(L.T("erreur.humainVivant"));
         if (parole == Simulation.Humains.Parole.UnisToi && humains[demande.Cible - 1].EstEnfant(maintenant))
-            throw new HubException("Pour s'unir, il faut désigner un adulte.");
+            throw new HubException(L.T("erreur.adulte"));
         var param = parole switch
         {
             Simulation.Humains.Parole.PartsVers when demande.Param is >= 0 and <= 7 => demande.Param,
             Simulation.Humains.Parole.PlanteDangereuse when demande.Param >= 1 && demande.Param <= monde.Flore.Especes.Count => demande.Param,
             Simulation.Humains.Parole.NeVaPasALaGuerre when demande.Param >= 0 && demande.Param <= monde.Communautes().Count => demande.Param,
             Simulation.Humains.Parole.PartsVers or Simulation.Humains.Parole.PlanteDangereuse or Simulation.Humains.Parole.NeVaPasALaGuerre
-                => throw new HubException("Précision invalide."),
+                => throw new HubException(L.T("erreur.precision")),
             _ => 0,
         };
         var resultats = monde.Parler(humainsIds, communautes, parole, mode, veutCible ? demande.Cible : 0, param);
         service.Sauvegarder();
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return Resultats(resultats);
     }
 
@@ -421,10 +421,10 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         var (humainsIds, communautes) = Destinataires(demande.Humains, demande.Communautes);
         var (_, humains) = monde.InstantaneHumains();
         if (demande.Cible != 0 && (demande.Cible < 1 || demande.Cible > humains.Count || !humains[demande.Cible - 1].EstVivant))
-            throw new HubException("Il faut désigner un humain vivant.");
+            throw new HubException(L.T("erreur.humainVivant"));
         var resultats = monde.Inspirer(humainsIds, communautes, demande.Cible, demande.Mutuel, demande.Passion, demande.Orientation);
         service.Sauvegarder();
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return Resultats(resultats);
     }
 
@@ -434,7 +434,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         humains ??= [];
         communautes ??= [];
         if (humains.Length + communautes.Length == 0 || humains.Length > 500 || communautes.Length > 50)
-            throw new HubException("Destinataires invalides.");
+            throw new HubException(L.T("erreur.destinataires"));
         return (humains.Distinct().ToArray(), communautes.Distinct().ToArray());
     }
 
@@ -484,9 +484,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     {
         if (filtre.Types is { Length: > 20 } || filtre.Limite is < 1 or > Stockage.DepotMonde.LimiteJournal)
         {
-            throw new HubException("Filtre du journal invalide.");
+            throw new HubException(L.T("erreur.filtreJournal"));
         }
-        var types = EvenementDto.TypesDepuis(filtre.Types) ?? throw new HubException("Type d'événement inconnu.");
+        var types = EvenementDto.TypesDepuis(filtre.Types) ?? throw new HubException(L.T("erreur.typeEvenement"));
         return FicheDto.Journal(service, filtre, types).Select(EvenementDto.Depuis).ToList();
     }
 
@@ -500,9 +500,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
 
     private async Task<HorlogeDto> DiffuserHorloge()
     {
-        var horloge = HorlogeDto.Depuis(service);
-        await Clients.All.SendAsync("Horloge", horloge);
-        return horloge;
+        await Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service));
+        return HorlogeDto.Depuis(service);
     }
 
     /// <summary>
@@ -513,7 +512,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     {
         if (graine is < 0 or > uint.MaxValue)
         {
-            throw new HubException("La graine doit être un entier entre 0 et 4294967295.");
+            throw new HubException(L.T("erreur.graine"));
         }
         var valeur = graine is { } g ? (uint)g : (uint)Random.Shared.NextInt64(0, (long)uint.MaxValue + 1);
         MondeSimule monde;
@@ -524,11 +523,11 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         catch (InvalidOperationException e)
         {
             // Avec cette graine, les réglages du monde ne laissent pas la place aux couples : rien n'a changé.
-            throw new HubException(e.Message);
+            throw new HubException(Lib.Message(e));
         }
         service.FacteurAtteint = 0;
-        await Clients.All.SendAsync("MondeReinitialise", valeur);
-        await Clients.All.SendAsync("Humains", HumainDto.Depuis(monde));
+        await Clients.Diffuser("MondeReinitialise", () => valeur);
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return await DiffuserHorloge();
     }
 }
@@ -567,9 +566,9 @@ public sealed record HorlogeDto(
         var (secondes, pas, facteurDemande, objectif) = service.Monde.Horloge;
         var facteur = objectif is null ? facteurDemande : Vitesse.FacteurMax;
         var date = Calendrier.Decomposer(secondes);
-        return new HorlogeDto(secondes, pas, date.ToString(), date.Annee, date.NomSaison,
+        return new HorlogeDto(secondes, pas, L.Date(date), date.Annee, L.Saison(date.Saison),
             date.JourDeSaison, date.Heure, date.Minute, date.EstJour, date.Lumiere,
             objectif is null ? Vitesse.NiveauDe(facteur) : -1, facteur,
-            facteur == 0 ? 0 : service.FacteurAtteint, objectif?.Description, service.ReprendreVitesse, service.PauseSurCatastrophe, service.Monde.Eteint);
+            facteur == 0 ? 0 : service.FacteurAtteint, objectif is null ? null : Lib.Objectif(objectif), service.ReprendreVitesse, service.PauseSurCatastrophe, service.Monde.Eteint);
     }
 }

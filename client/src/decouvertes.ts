@@ -1,5 +1,6 @@
 import { connexion } from "./connexion";
 import { boutonCause, el } from "./fiche";
+import { t } from "./langue";
 
 /** Première fois qu'un savoir est apparu dans le monde. */
 interface Decouverte {
@@ -58,14 +59,14 @@ function dessinerProgres(p: Progres, detail: HTMLElement): SVGSVGElement {
   const y = (v: number) => HAUTEUR - MARGE.b - (v / max) * (HAUTEUR - MARGE.b - MARGE.h);
   for (const v of graduations(0, max, 4)) {
     graphe.append(svg("line", { x1: MARGE.g, x2: LARGEUR - MARGE.d, y1: y(v), y2: y(v), class: "grille" }));
-    const t = svg("text", { x: MARGE.g - 4, y: y(v) + 3, "text-anchor": "end", class: "axe" });
-    t.textContent = String(v);
-    graphe.append(t);
+    const etiquette = svg("text", { x: MARGE.g - 4, y: y(v) + 3, "text-anchor": "end", class: "axe" });
+    etiquette.textContent = String(v);
+    graphe.append(etiquette);
   }
   for (const a of graduations(debut, fin, 6)) {
-    const t = svg("text", { x: x(a), y: HAUTEUR - 6, "text-anchor": "middle", class: "axe" });
-    t.textContent = `an ${Math.round(a)}`;
-    graphe.append(t);
+    const etiquette = svg("text", { x: x(a), y: HAUTEUR - 6, "text-anchor": "middle", class: "axe" });
+    etiquette.textContent = t("decouvertes.an", { an: String(Math.round(a)) });
+    graphe.append(etiquette);
   }
   graphe.append(svg("line", { x1: MARGE.g, x2: LARGEUR - MARGE.d, y1: y(0), y2: y(0), class: "axe-trait" }));
   const trace = (liste: typeof pts, classe: string) => {
@@ -90,11 +91,11 @@ function dessinerProgres(p: Progres, detail: HTMLElement): SVGSVGElement {
   for (const m of p.marques) {
     const rond = svg("circle", { cx: x(m.annee), cy: y(valeurA(m.annee)), r: 3.5, class: `marque ${m.perdu ? "perdu" : "retrouve"}` });
     const titre = svg("title");
-    titre.textContent = `${m.date} : ${m.texte}`;
+    titre.textContent = t("commun.dateTexte", { date: m.date, texte: m.texte });
     rond.append(titre);
     rond.addEventListener("click", () => {
       detail.replaceChildren(el("span", "date", m.date), ` ${m.texte} `);
-      if (m.cause > 0) detail.append(boutonCause(detail, m.cause, "pourquoi ?"));
+      if (m.cause > 0) detail.append(boutonCause(detail, m.cause, t("commun.pourquoi")));
     });
     graphe.append(rond);
   }
@@ -114,15 +115,15 @@ export class PanneauDecouvertes {
     private readonly ouvrirHumain: (id: number) => void,
   ) {
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, "Découvertes"));
+    tete.append(el("h2", undefined, t("decouvertes.titre")));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
-    fermer.title = "Fermer";
+    fermer.title = t("commun.fermer");
     fermer.addEventListener("click", () => this.fermer());
     tete.append(fermer);
     racine.append(tete, this.corps);
     this.choix.id = "decouvertes-communaute";
-    this.choix.title = "Monde entier ou une communauté";
+    this.choix.title = t("decouvertes.choix");
     this.choix.addEventListener("change", () => void this.charger());
   }
 
@@ -155,25 +156,23 @@ export class PanneauDecouvertes {
     ]);
     if (!this.ouvert) return;
     if (!liste) {
-      this.corps.replaceChildren(el("p", "discret", "Le serveur n'a pas répondu."));
+      this.corps.replaceChildren(el("p", "discret", t("commun.pasDeReponse")));
       return;
     }
     const defilement = this.corps.scrollTop;
-    this.corps.replaceChildren(el("p", "discret",
-      "Personne ne leur a appris : chaque savoir naît d'un essai, d'une observation, d'une réflexion ou d'une intuition de l'Entité, " +
-      "se transmet par imitation ou parce qu'on le montre, et peut se perdre."));
+    this.corps.replaceChildren(el("p", "discret", t("decouvertes.aide")));
     if (progres) this.afficherProgres(progres, communaute);
-    if (liste.length === 0) this.corps.append(el("p", "discret", "Aucune découverte pour l'instant."));
+    if (liste.length === 0) this.corps.append(el("p", "discret", t("decouvertes.aucune")));
     const ul = el("ul", "liste");
     for (const d of liste) {
       const li = el("li", d.detenteurs === 0 ? "discret" : undefined);
       const qui = el("button", "lien", d.nom);
       qui.type = "button";
       qui.addEventListener("click", () => this.ouvrirHumain(d.humain));
-      li.append(el("span", "date", d.date), ` ${d.savoir} : `, qui, `, ${d.origine} · `,
-        d.detenteurs === 0 ? "savoir perdu" : d.detenteurs === 1 ? "un seul vivant le sait" : `${d.detenteurs} vivants le savent`);
-      if (d.origine.includes("Entité")) li.append(el("span", "entite", " ✦"));
-      if (d.evenement > 0) li.append(" ", boutonCause(li, d.evenement, "comment ?"));
+      li.append(el("span", "date", d.date), " " + t("decouvertes.savoir", { savoir: d.savoir }), qui, t("decouvertes.origine", { origine: d.origine }),
+        d.detenteurs === 0 ? t("decouvertes.perdu") : t("decouvertes.detenteurs", { n: d.detenteurs }));
+      if (d.origine === t("origineSavoir.Entite")) li.append(el("span", "entite", " ✦"));
+      if (d.evenement > 0) li.append(" ", boutonCause(li, d.evenement, t("commun.comment")));
       ul.append(li);
     }
     this.corps.append(ul);
@@ -182,8 +181,8 @@ export class PanneauDecouvertes {
 
   /** Courbe des savoirs vivants, avec le choix du monde entier ou d'une communauté. */
   private afficherProgres(p: Progres, communaute: number): void {
-    const options: [number, string][] = [[0, "Monde entier"], ...p.communautes.map((c): [number, string] => [c.id, c.active ? c.nom : `${c.nom} (dispersée)`])];
-    if (!options.some(([id]) => id === communaute)) options.push([communaute, "Communauté disparue"]);
+    const options: [number, string][] = [[0, t("decouvertes.monde")], ...p.communautes.map((c): [number, string] => [c.id, c.active ? c.nom : t("decouvertes.dispersee", { nom: c.nom })])];
+    if (!options.some(([id]) => id === communaute)) options.push([communaute, t("decouvertes.disparue")]);
     this.choix.replaceChildren(...options.map(([id, nom]) => {
       const o = el("option", undefined, nom);
       o.value = String(id);
@@ -191,15 +190,14 @@ export class PanneauDecouvertes {
     }));
     this.choix.value = String(communaute);
     const outils = el("div", "outils");
-    outils.append("Savoirs vivants : ", this.choix);
+    outils.append(t("decouvertes.vivants"), this.choix);
     const dernier = p.points[p.points.length - 1];
-    if (dernier) outils.append(el("span", "discret", ` ${dernier.savoirs} aujourd'hui`));
+    if (dernier) outils.append(el("span", "discret", " " + t("decouvertes.aujourdhui", { n: dernier.savoirs })));
     this.progres.replaceChildren(dessinerProgres(p, this.detail));
     const legende = el("p", "discret",
       communaute === 0
-        ? "Effets que sait obtenir au moins un vivant, au début de chaque année. En pointillé : reconstitué depuis le journal. "
-          + "Points rouges : savoirs perdus ; verts : retrouvés."
-        : "Effets que sait obtenir au moins un membre vivant, au début de chaque année depuis la 0.29.1.");
+        ? t("decouvertes.legendeMonde")
+        : t("decouvertes.legendeCommunaute"));
     this.corps.append(outils, this.progres, legende, this.detail);
   }
 }

@@ -1,6 +1,7 @@
 import { connexion } from "./connexion";
 import type { Indicateurs } from "./carte";
 import { boutonCause, el } from "./fiche";
+import { t } from "./langue";
 
 export interface Communaute {
   id: number;
@@ -18,7 +19,7 @@ export interface Communaute {
   destination: string | null;
   faim: number;
   reserves: number;
-  relations: { id: number; nom: string; etat: string; evenement: number }[];
+  relations: { id: number; nom: string; etat: string; code: string; evenement: number }[];
   /** Usage du groupe envers ceux qui s'unissent hors de leur couple. */
   usage: string;
   /** Nom que se donnent ses membres, et ce qu'il veut dire (null tant qu'ils ne se sont pas nommés). */
@@ -122,38 +123,38 @@ export function courbe(tailles: Taille[]): SVGSVGElement {
     svg.append(ligne);
   }
   const titre = document.createElementNS(ns, "title");
-  titre.textContent = `De ${tailles[0].date} à ${tailles[tailles.length - 1].date} : jusqu'à ${max} membres`;
+  titre.textContent = t("communautes.courbeTailles", { debut: tailles[0].date, fin: tailles[tailles.length - 1].date, n: max });
   svg.append(titre);
   return svg;
 }
 
 /** Section « Langue » : comment on y parle, ses étapes, ses mots traduits, son histoire, les langues voisines et ses interprètes. */
 export function blocLangue(bloc: HTMLElement, l: Langue, ouvrirFiche: (id: number) => void): void {
-  bloc.append(el("h3", undefined, "Langue"));
+  bloc.append(el("h3", undefined, t("langage.titre")));
   const p = el("p", "langage");
-  p.append(`Langue ${l.mode} ; on y parle par ${l.stade}${l.ordre ? ` ; ordre des mots : ${l.ordre}` : ""}.`);
-  if (l.dialecteDe) p.append(el("br"), `Un dialecte de la langue de la ${l.dialecteDe.charAt(0).toLowerCase()}${l.dialecteDe.slice(1)}.`);
-  const etapes = [l.premierMot ? `premier mot en usage le ${l.premierMot}` : "", l.assemblage ? `mots assemblés depuis le ${l.assemblage}` : "",
-    l.ordreFixe ? `ordre fixe depuis le ${l.ordreFixe}` : ""].filter(Boolean);
+  p.append(t(l.ordre ? "langage.resumeOrdre" : "langage.resume", { mode: l.mode, stade: l.stade, ordre: l.ordre }));
+  if (l.dialecteDe) p.append(el("br"), t("langage.dialecte", { nom: l.dialecteDe, nomMin: `${l.dialecteDe.charAt(0).toLowerCase()}${l.dialecteDe.slice(1)}` }));
+  const etapes = [l.premierMot ? t("langage.premierMot", { date: l.premierMot }) : "", l.assemblage ? t("langage.assemblage", { date: l.assemblage }) : "",
+    l.ordreFixe ? t("langage.ordreFixe", { date: l.ordreFixe }) : ""].filter(Boolean);
   if (etapes.length > 0) p.append(el("br"), `${etapes.join(" ; ")}.`);
   if (l.proches.length > 0) {
-    p.append(el("br"), `Proche de : ${l.proches.map((x) => `${x.nom} (${x.pourcent} % de mots parents)`).join(", ")}.`);
+    p.append(el("br"), t("langage.proches", { liste: l.proches.map((x) => t("langage.proche", { nom: x.nom, pourcent: x.pourcent })).join(", ") }));
   }
   if (l.interpretes.length > 0) {
-    p.append(el("br"), "Interprètes : ");
+    p.append(el("br"), t("langage.interpretes"));
     l.interpretes.forEach((x, i) => {
       if (i > 0) p.append(", ");
       const b = el("button", "lien", x.nom);
       b.type = "button";
       b.addEventListener("click", () => ouvrirFiche(x.id));
-      p.append(b, ` (parle aussi la langue de ${x.nomLangue})`);
+      p.append(b, ` ${t("langage.parleAussi", { nom: x.nomLangue })}`);
     });
     p.append(".");
   }
   bloc.append(p);
   if (l.lexique.length > 0) {
     const mots = el("details");
-    mots.append(el("summary", undefined, `${l.nombreDeMots} mot${l.nombreDeMots > 1 ? "s" : ""}`));
+    mots.append(el("summary", undefined, t("langage.mots", { n: l.nombreDeMots })));
     const ul = el("ul", "liste mots");
     for (const m of l.lexique) {
       const li = el("li");
@@ -166,12 +167,12 @@ export function blocLangue(bloc: HTMLElement, l: Langue, ouvrirFiche: (id: numbe
   }
   if (l.histoire.length > 0) {
     const histoire = el("details");
-    histoire.append(el("summary", undefined, "Histoire de la langue"));
+    histoire.append(el("summary", undefined, t("langage.histoire")));
     const ul = el("ul", "liste");
     for (const x of l.histoire) {
       const li = el("li");
       li.append(el("span", "date", x.date), ` ${x.texte} `);
-      if (x.evenement > 0) li.append(boutonCause(li, x.evenement, "comment ?"));
+      if (x.evenement > 0) li.append(boutonCause(li, x.evenement, t("commun.comment")));
       ul.append(li);
     }
     histoire.append(ul);
@@ -237,7 +238,7 @@ export class PanneauCommunautes {
     const defilement = r.querySelector(".corps")?.scrollTop ?? 0;
     r.replaceChildren();
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, "Communautés"));
+    tete.append(el("h2", undefined, t("barre.communautes")));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.addEventListener("click", () => this.fermer());
@@ -248,27 +249,27 @@ export class PanneauCommunautes {
     const dispersees = liste.filter((c) => c.disperseeLe);
     corps.append(el("p", "discret",
       actives.length === 0
-        ? "Aucune communauté pour l'instant : les humains vivent encore en familles isolées."
-        : `${actives.length} communauté${actives.length > 1 ? "s" : ""} · ${actives.reduce((n, c) => n + c.membres.length, 0)} humains y vivent.`));
+        ? t("communautes.aucune")
+        : `${t("communautes.nombre", { n: actives.length })} · ${t("communautes.yVivent", { n: actives.reduce((n, c) => n + c.membres.length, 0) })}`));
     if (monde) {
       corps.append(el("p", "discret",
-        `Monde : ${monde.vivants} vivants · terres à ${Math.round(monde.abondance * 100)} % de leurs ressources naturelles · ` +
-        `réserves moyennes des adultes ${Math.round(monde.reservesMoyennes)} · sécheresse dans ${monde.regionsSeches} région${monde.regionsSeches > 1 ? "s" : ""} habitée${monde.regionsSeches > 1 ? "s" : ""} sur ${monde.regionsHabitees}` +
-        (monde.communautesEnDisette > 0 ? ` · ${monde.communautesEnDisette} en disette` : "")));
+        t("communautes.monde", { vivants: monde.vivants, abondance: Math.round(monde.abondance * 100), reserves: Math.round(monde.reservesMoyennes) }) +
+        ` · ${t("communautes.secheresse", { n: monde.regionsSeches, habitees: monde.regionsHabitees })}` +
+        (monde.communautesEnDisette > 0 ? ` · ${t("communautes.enDisette", { n: monde.communautesEnDisette })}` : "")));
     }
 
     for (const c of actives) corps.append(this.carte(c));
     if (dispersees.length > 0) {
-      corps.append(el("h3", undefined, "Dispersées"));
+      corps.append(el("h3", undefined, t("communautes.dispersees")));
       const ul = el("ul", "liste");
       for (const c of dispersees.slice(0, 30)) {
         const li = el("li", "discret");
         const nom = el("button", "lien", c.nom);
         nom.type = "button";
-        nom.title = "Ouvrir sa fiche";
+        nom.title = t("commun.ouvrirSaFiche");
         nom.addEventListener("click", () => this.ouvrirCommunaute(c.id));
         li.append(nom, ` : ${c.fondeeLe} → ${c.disperseeLe}${c.histoire.length > 0 ? ` · ${c.histoire.join(" ")}` : ""} `);
-        const chrono = el("button", "lien", "chronologie");
+        const chrono = el("button", "lien", t("communautes.chronologieMin"));
         chrono.type = "button";
         chrono.addEventListener("click", () => this.suivre(c.id, c.nom));
         li.append(chrono);
@@ -286,10 +287,10 @@ export class PanneauCommunautes {
   /** Une communauté dans la liste : l'essentiel, ses alertes, et ce qui ouvre sa fiche. Le détail est dans la fiche. */
   private carte(c: Communaute): HTMLElement {
     const bloc = el("div", `communaute-carte${c.id === this.choisie ? " choisie" : ""}`);
-    const titre = el("button", "titre", `${c.nom} · ${c.membres.length} membres${c.disette ? " · disette" : ""}`);
+    const titre = el("button", "titre", `${c.nom} · ${t("communautes.membres", { n: c.membres.length })}${c.disette ? ` · ${t("communautes.disette")}` : ""}`);
     if (c.disette) titre.classList.add("disette");
     titre.type = "button";
-    titre.title = "Montrer ses membres sur la carte";
+    titre.title = t("communautes.montrerMembres");
     titre.addEventListener("click", () => {
       this.choisie = this.choisie === c.id ? 0 : c.id;
       this.surChoix(this.choisie);
@@ -298,32 +299,32 @@ export class PanneauCommunautes {
     bloc.append(titre);
     if (c.nomPropre && c.sens) bloc.append(el("p", "nom-propre", `« ${c.nomPropre} » : ${c.sens}`));
     const adultes = c.membres.filter((m) => m.etape === "adulte").length;
-    bloc.append(el("p", "discret", `Née ${c.fondeeLe} · ${adultes} adultes, ${c.membres.length - adultes} enfants · terres alentour à ${c.abondance} %`));
+    bloc.append(el("p", "discret", t("communautes.nee", { date: c.fondeeLe, adultes, enfants: c.membres.length - adultes, abondance: c.abondance })));
     if (!c.disperseeLe && c.figure > 0) {
-      const figure = el("p", "discret", "Figure centrale : ");
+      const figure = el("p", "discret", t("communautes.figure"));
       const lien = el("button", "lien", c.nomFigure);
       lien.type = "button";
       lien.addEventListener("click", () => this.ouvrirFiche(c.figure));
       figure.append(lien);
       bloc.append(figure);
     }
-    if (c.destination) bloc.append(el("p", "alerte", `En route vers ${c.destination}, à la recherche de terres plus riches.`));
+    if (c.destination) bloc.append(el("p", "alerte", t("communautes.enRoute", { destination: c.destination })));
     for (const g of c.guerre) bloc.append(el("p", "alerte", g));
-    if (c.projet) bloc.append(el("p", "alerte projet", `⚔ Prépare la guerre contre ${c.projet.nomCible}.`));
+    if (c.projet) bloc.append(el("p", "alerte projet", t("communautes.prepareGuerre", { cible: c.projet.nomCible })));
     const enCours = c.guerres.filter((g) => g.issue === null);
-    if (enCours.length > 0) bloc.append(el("p", "relation-en", `En guerre contre ${enCours.map((g) => g.nomContre).join(", ")}.`));
+    if (enCours.length > 0) bloc.append(el("p", "relation-en", t("communautes.enGuerre", { liste: enCours.map((g) => g.nomContre).join(", ") })));
     const boutons = el("div", "boutons");
-    const fiche = el("button", undefined, "Fiche");
+    const fiche = el("button", undefined, t("communautes.fiche"));
     fiche.type = "button";
-    fiche.title = "Tout sur cette communauté, rangé par thème";
+    fiche.title = t("communautes.ficheAide");
     fiche.addEventListener("click", () => this.ouvrirCommunaute(c.id));
-    const chrono = el("button", undefined, "Chronologie");
+    const chrono = el("button", undefined, t("communautes.chronologie"));
     chrono.type = "button";
-    chrono.title = "Tout ce qui est arrivé à cette communauté, dans le journal";
+    chrono.title = t("communautes.chronologieAide");
     chrono.addEventListener("click", () => this.suivre(c.id, c.nom));
-    const terres = el("button", undefined, "Terres");
+    const terres = el("button", undefined, t("communautes.terres"));
     terres.type = "button";
-    terres.title = "Ses terres sur la carte, aujourd'hui et au fil des saisons";
+    terres.title = t("communautes.terresAide");
     terres.addEventListener("click", () => this.montrerTerres(c.id));
     boutons.append(fiche, chrono, terres);
     bloc.append(boutons);

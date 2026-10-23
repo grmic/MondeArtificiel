@@ -1,4 +1,5 @@
 import { connexion } from "./connexion";
+import { nombre as ecrire, t } from "./langue";
 
 export interface Horloge {
   secondes: number;
@@ -42,8 +43,8 @@ const versPosition = (facteur: number) =>
 
 /** Vitesse en mots : « ×1 440 (1 min = 1 jour) ». */
 export function decrireFacteur(facteur: number): string {
-  if (facteur === 0) return "pause";
-  const nombre = facteur < 10 ? facteur.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : Math.round(facteur).toLocaleString("fr-FR");
+  if (facteur === 0) return t("temps.pause");
+  const nombre = facteur < 10 ? ecrire(facteur, 1) : ecrire(Math.round(facteur));
   const parMinute = facteur * 60; // secondes du monde par minute réelle
   const unites: [number, string][] = [
     [360 * 86_400, "an"],
@@ -55,9 +56,8 @@ export function decrireFacteur(facteur: number): string {
   ];
   const [taille, nom] = unites.find(([t]) => parMinute >= t) ?? [1, "seconde"];
   const quantite = parMinute / taille;
-  const texte = quantite.toLocaleString("fr-FR", { maximumFractionDigits: quantite < 10 ? 1 : 0 });
-  const pluriel = quantite >= 2 ? `${nom}s` : nom;
-  return `×${nombre} (1 min = ${texte} ${pluriel})`;
+  const texte = ecrire(quantite, quantite < 10 ? 1 : 0);
+  return t("temps.facteur", { facteur: nombre, duree: t(`temps.unite.${nom}`, { n: quantite, q: texte }) });
 }
 
 /**
@@ -81,7 +81,7 @@ export class PanneauHorloge {
       this.afficher(h);
     });
     connexion.on("ObjectifAtteint", (description: string) => {
-      this.surMessage(`Arrivé : ${description}. Le temps est en pause.`);
+      this.surMessage(t("temps.arrive", { objectif: description }));
     });
     this.brancher();
   }
@@ -97,8 +97,8 @@ export class PanneauHorloge {
     this.boutons = vitesses.map((v) => {
       const bouton = document.createElement("button");
       bouton.type = "button";
-      bouton.textContent = v.niveau === 0 ? "⏸ Pause" : v.niveau === 1 ? "▶ Temps réel" : v.nom;
-      bouton.title = v.niveau <= 1 ? v.nom : `Accéléré : ${v.nom}`;
+      bouton.textContent = v.niveau === 0 ? t("temps.boutonPause") : v.niveau === 1 ? t("temps.boutonTempsReel") : v.nom;
+      bouton.title = v.niveau <= 1 ? v.nom : t("temps.accelere", { vitesse: v.nom });
       bouton.dataset.niveau = String(v.niveau);
       bouton.addEventListener("click", () => void this.envoyer("ChoisirVitesse", v.niveau));
       this.zoneVitesses.appendChild(bouton);
@@ -136,7 +136,7 @@ export class PanneauHorloge {
         demande.jour = lire("#objJour");
         demande.heure = lire("#objHeure");
         if (![demande.annee, demande.saison, demande.jour, demande.heure].every(Number.isInteger)) {
-          this.surMessage("La date doit être faite de nombres entiers.");
+          this.surMessage(t("temps.dateEntiers"));
           return;
         }
       }
@@ -156,7 +156,7 @@ export class PanneauHorloge {
     } catch (erreur) {
       // Les refus du serveur (HubException) ont un message clair ; on ne montre que lui.
       const texte = erreur instanceof Error ? erreur.message.replace(/^.*HubException: /, "") : "";
-      this.surMessage(texte || "Le serveur a refusé cette commande.");
+      this.surMessage(texte || t("commun.refusServeur"));
     }
   }
 
@@ -171,17 +171,17 @@ export class PanneauHorloge {
     if (!this.curseurActif) {
       const curseur = this.el<HTMLInputElement>("#curseurVitesse");
       if (h.facteur > 0 && !h.objectif) curseur.value = String(versPosition(h.facteur));
-      this.el("#vitesseDemandee").textContent = h.objectif ? "vitesse maximale" : decrireFacteur(h.facteur);
+      this.el("#vitesseDemandee").textContent = h.objectif ? t("temps.vitesseMaximale") : decrireFacteur(h.facteur);
     }
     // Vitesse réelle : utile seulement si la machine ne suit pas, ou pendant un « aller jusqu'à ».
     const atteint = this.el("#vitesseAtteinte");
     const enRetard = h.facteur > 0 && h.facteurAtteint > 0 && h.facteurAtteint < h.facteur * 0.9;
-    atteint.textContent = h.facteur > 0 && h.facteurAtteint > 0 ? `réelle : ${decrireFacteur(h.facteurAtteint)}` : "";
+    atteint.textContent = h.facteur > 0 && h.facteurAtteint > 0 ? t("temps.reelle", { vitesse: decrireFacteur(h.facteurAtteint) }) : "";
     atteint.classList.toggle("alerte", enRetard);
 
     const zoneObjectif = this.el("#objectifEnCours");
     zoneObjectif.hidden = !h.objectif;
-    this.el("#texteObjectif").textContent = h.objectif ? `En route vers : ${h.objectif}` : "";
+    this.el("#texteObjectif").textContent = h.objectif ? t("temps.enRoute", { objectif: h.objectif }) : "";
     this.el<HTMLInputElement>("#reprendreVitesse").checked = h.reprendreVitesse;
     this.el<HTMLInputElement>("#pauseCatastrophe").checked = h.pauseCatastrophe;
 

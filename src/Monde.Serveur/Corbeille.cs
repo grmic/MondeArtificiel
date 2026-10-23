@@ -35,7 +35,7 @@ public static class Corbeille
     {
         Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(chemin,
             Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
-        if (File.Exists(chemin)) throw new CorbeilleRefusee("La Corbeille de Windows a refusé la sauvegarde.");
+        if (File.Exists(chemin)) throw new CorbeilleRefusee(L.T("corbeille.windows"));
     }
 
     private static void JeterMac(string chemin)
@@ -53,11 +53,11 @@ public static class Corbeille
         var info = new ProcessStartInfo("osascript") { RedirectStandardError = true, RedirectStandardOutput = true };
         info.ArgumentList.Add("-e");
         info.ArgumentList.Add($"tell application \"Finder\" to delete (POSIX file \"{chemin.Replace("\\", "\\\\").Replace("\"", "\\\"")}\")");
-        using var p = Process.Start(info) ?? throw new CorbeilleRefusee("Le Finder n'a pas répondu.");
+        using var p = Process.Start(info) ?? throw new CorbeilleRefusee(L.T("corbeille.finder"));
         if (!p.WaitForExit(30_000)) p.Kill();
         if (File.Exists(chemin))
         {
-            throw new CorbeilleRefusee("macOS a refusé de la mettre à la Corbeille (autorisez le serveur à piloter le Finder dans Réglages Système, Confidentialité et sécurité, Automatisation).");
+            throw new CorbeilleRefusee(L.T("corbeille.macos"));
         }
     }
 

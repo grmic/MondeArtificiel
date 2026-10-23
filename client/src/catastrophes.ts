@@ -1,6 +1,7 @@
 import { connexion } from "./connexion";
 import type { VueCarte } from "./carte";
 import { boutonCause, el } from "./fiche";
+import { nombre, t } from "./langue";
 
 export interface CatastropheVue {
   id: number;
@@ -69,21 +70,21 @@ export interface Alerte {
 
 /** Ce que l'Entité peut provoquer, avec l'intensité proposée et ce qu'elle mesure. */
 export const PROVOQUABLES: [string, string, number, string][] = [
-  ["seisme", "Séisme", 6.5, "magnitude (3 à 9,5)"],
-  ["eruption", "Éruption du volcan le plus proche", 3, "indice d'explosivité (1 à 7)"],
-  ["tsunami", "Vague géante", 8, "hauteur en mètres"],
-  ["crue", "Crue", 2, "ampleur (1 à 3)"],
-  ["incendie", "Incendie", 0, ""],
-  ["cyclone", "Tempête", 3, "catégorie (1 à 5)"],
-  ["froid", "Vague de froid", 8, "°C de moins"],
-  ["canicule", "Canicule", 7, "°C de plus"],
-  ["epidemie", "Maladie nouvelle (le plus proche)", 0, ""],
-  ["eclipse", "Éclipse totale", 0, ""],
-  ["comete", "Comète", 0, ""],
-  ["aurore", "Aurore", 0, ""],
-  ["bolide", "Boule de feu", 0, ""],
-  ["impact", "Astéroïde", 10, "mégatonnes (0,1 à 100 000 000 ; Chicxulub ≈ 100 000 000)"],
-];
+  ["seisme", 6.5, true],
+  ["eruption", 3, true],
+  ["tsunami", 8, true],
+  ["crue", 2, true],
+  ["incendie", 0, false],
+  ["cyclone", 3, true],
+  ["froid", 8, true],
+  ["canicule", 7, true],
+  ["epidemie", 0, false],
+  ["eclipse", 0, false],
+  ["comete", 0, false],
+  ["aurore", 0, false],
+  ["bolide", 0, false],
+  ["impact", 10, true],
+].map(([cle, valeur, mesure]) => [cle as string, t(`provoquer.${cle}`), valeur as number, mesure ? t(`provoquer.${cle}.unite`) : ""]);
 
 /**
  * Catastrophes et phénomènes du monde. En tête, ce que l'Entité peut provoquer ; puis ce qui est en cours, l'histoire
@@ -111,7 +112,7 @@ export class PanneauCatastrophes {
     private readonly message: (texte: string) => void,
   ) {
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, "Catastrophes"));
+    tete.append(el("h2", undefined, t("barre.catastrophes")));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.addEventListener("click", () => this.fermer());
@@ -187,54 +188,53 @@ export class PanneauCatastrophes {
 
     if (this.communaute) {
       const suivi = el("p", "suivi");
-      const tous = el("button", undefined, "× tout le continent");
+      const tous = el("button", undefined, t("catastrophes.toutLeContinent"));
       tous.type = "button";
       tous.addEventListener("click", () => {
         this.communaute = null;
         void this.rafraichir();
       });
-      suivi.append(`Ce qui a frappé la ${minuscule(this.communaute.nom)} `, tous);
+      suivi.append(`${t("catastrophes.cequiAFrappe", { nom: this.communaute.nom, nomMin: minuscule(this.communaute.nom) })} `, tous);
       c.append(suivi);
     }
 
     const actives = this.liste.filter((x) => x.active);
     const suites = this.liste.filter((x) => !x.active && x.enSuites);
     const passees = this.liste.filter((x) => !x.active && !x.enSuites);
-    c.append(el("h3", undefined, `En cours (${actives.length})`));
-    c.append(this.lignes(actives, "Rien en ce moment."));
+    c.append(el("h3", undefined, t("catastrophes.enCours", { n: actives.length })));
+    c.append(this.lignes(actives, t("catastrophes.rienEnCeMoment")));
     if (suites.length > 0) {
-      c.append(el("h3", undefined, `Terres encore dévastées (${suites.length})`));
+      c.append(el("h3", undefined, t("catastrophes.terresDevastees", { n: suites.length })));
       c.append(this.lignes(suites, ""));
     }
-    c.append(el("h3", undefined, "Histoire"));
-    c.append(this.lignes(passees, "Rien encore."));
+    c.append(el("h3", undefined, t("catastrophes.histoire")));
+    c.append(this.lignes(passees, t("catastrophes.rienEncore")));
 
     if (!this.communaute) {
-      c.append(el("h3", undefined, "Maladies"));
+      c.append(el("h3", undefined, t("catastrophes.maladies")));
       const ul = el("ul", "liste");
       for (const m of this.maladies) {
         const li = el("li", m.malades > 0 ? "maladie active" : "maladie");
-        li.append(el("strong", undefined, m.nom), ` · apparue ${m.apparueLe} · contagion R0 ${m.r0.toFixed(2)} · létalité ${m.letalite} %`,
-          ` · ${m.malades} malades, ${m.immunises} immunisés, ${m.morts} morts · immunité ${m.immunite} `);
-        if (m.evenement > 0) li.append(boutonCause(li, m.evenement, "premier malade"));
+        li.append(el("strong", undefined, m.nom), ` · ${t("catastrophes.maladie", { apparue: m.apparueLe, r0: nombre(m.r0, 2), letalite: m.letalite, malades: m.malades, immunises: m.immunises, morts: m.morts, immunite: m.immunite })} `);
+        if (m.evenement > 0) li.append(boutonCause(li, m.evenement, t("catastrophes.premierMalade")));
         ul.append(li);
       }
-      if (this.maladies.length === 0) ul.append(el("li", "discret", "Aucune maladie nouvelle n'est apparue."));
+      if (this.maladies.length === 0) ul.append(el("li", "discret", t("catastrophes.aucuneMaladie")));
       c.append(ul);
 
       if (this.geologie) {
         const g = this.geologie;
-        c.append(el("h3", undefined, "Le continent"));
+        c.append(el("h3", undefined, t("catastrophes.leContinent")));
         c.append(el("p", undefined, g.description));
         c.append(el("p", "discret",
-          `Séismes de magnitude 5 ou plus : environ ${g.seismesFortsParSiecle} par siècle · magnitude maximale ${g.magnitudeMax.toFixed(1)}`
-          + ` · ${g.volcans.length} volcan${g.volcans.length > 1 ? "s" : ""}`
-          + (g.anomalie !== 0 ? ` · température : ${g.anomalie > 0 ? "+" : ""}${g.anomalie} °C par rapport à la normale` : "")));
+          t("catastrophes.seismes", { parSiecle: g.seismesFortsParSiecle, magnitude: nombre(g.magnitudeMax, 1) })
+          + ` · ${t("catastrophes.volcans", { n: g.volcans.length })}`
+          + (g.anomalie !== 0 ? ` · ${t("catastrophes.anomalie", { ecart: `${g.anomalie > 0 ? "+" : ""}${nombre(g.anomalie, 1)}` })}` : "")));
         if (g.volcans.length > 0) {
           const ul2 = el("ul", "liste");
           for (const v of g.volcans) {
             ul2.append(el("li", v.enEruption ? "alerte" : undefined,
-              `${v.nom} (${v.x}, ${v.y}) · une éruption tous les ${v.reposMoyenAns} ans en moyenne${v.enEruption ? " · en éruption" : ""}`));
+              `${v.nom} (${v.x}, ${v.y}) · ${t("catastrophes.volcan", { n: v.reposMoyenAns })}${v.enEruption ? ` · ${t("catastrophes.enEruption")}` : ""}`));
           }
           c.append(ul2);
         }
@@ -243,7 +243,7 @@ export class PanneauCatastrophes {
     // Le formulaire n'est jamais reconstruit : un menu ouvert ou une valeur en cours de saisie restent en place.
     this.entite.hidden = this.communaute !== null;
     if (this.viser || this.cible) this.entite.open = true;
-    this.boutonLieu.textContent = this.viser ? "Clique sur la carte…" : this.cible ? `Lieu : ${this.cible.x}, ${this.cible.y}` : "Choisir le lieu sur la carte";
+    this.boutonLieu.textContent = this.viser ? t("catastrophes.cliqueCarte") : this.cible ? t("catastrophes.lieu", { x: String(this.cible.x), y: String(this.cible.y) }) : t("catastrophes.choisirLieu");
     this.boutonProvoquer.disabled = !this.cible;
     this.corps.scrollTop = defilement;
   }
@@ -254,21 +254,21 @@ export class PanneauCatastrophes {
       const li = el("li", `catastrophe ${x.type}${x.id === this.choisie ? " choisie" : ""}${x.phenomene ? " phenomene" : ""}`);
       const titre = el("button", "lien", x.nom);
       titre.type = "button";
-      titre.title = "Montrer sur la carte";
+      titre.title = t("commun.montrerSurCarte");
       titre.addEventListener("click", () => {
         this.choisie = this.choisie === x.id ? 0 : x.id;
         void this.rafraichir();
       });
       li.append(el("span", "date", x.debut), " ", titre);
-      if (x.origine === "entite") li.append(el("span", "entite", " ✦ Entité"));
-      const details = [x.intensite, x.surface ? `${x.surface} touchés` : "",
-        x.morts ? `${x.morts} mort${x.morts > 1 ? "s" : ""}` : "", x.blesses ? `${x.blesses} blessé${x.blesses > 1 ? "s" : ""}` : "",
-        x.mortsSuites ? `${x.mortsSuites} mort${x.mortsSuites > 1 ? "s" : ""} dans les suites` : "",
-        x.temoins ? `${x.temoins} témoin${x.temoins > 1 ? "s" : ""}` : "", x.fin ? `jusqu'au ${x.fin}` : "",
-        x.suitesJusqua ? (x.enSuites ? `terres dévastées jusqu'au ${x.suitesJusqua} environ` : `terres remises le ${x.suitesJusqua}`) : ""].filter(Boolean);
+      if (x.origine === "entite") li.append(el("span", "entite", ` ✦ ${t("commun.entite")}`));
+      const details = [x.intensite, x.surface ? t("catastrophes.touches", { surface: x.surface }) : "",
+        x.morts ? t("catastrophes.morts", { n: x.morts }) : "", x.blesses ? t("catastrophes.blesses", { n: x.blesses }) : "",
+        x.mortsSuites ? t("catastrophes.mortsSuites", { n: x.mortsSuites }) : "",
+        x.temoins ? t("catastrophes.temoins", { n: x.temoins }) : "", x.fin ? t("catastrophes.jusquau", { date: x.fin }) : "",
+        x.suitesJusqua ? (x.enSuites ? t("catastrophes.devasteesJusqua", { date: x.suitesJusqua }) : t("catastrophes.remises", { date: x.suitesJusqua })) : ""].filter(Boolean);
       if (details.length > 0) li.append(el("span", "discret", ` · ${details.join(" · ")}`));
       if (x.communautes.length > 0) {
-        li.append(el("br"), "Touchées : ");
+        li.append(el("br"), t("catastrophes.touchees"));
         x.communautes.forEach((co, i) => {
           if (i > 0) li.append(", ");
           const b = el("button", "lien", co.nom);
@@ -286,7 +286,7 @@ export class PanneauCatastrophes {
   /** Formulaire de l'Entité : choisir une catastrophe, son intensité, puis un lieu sur la carte. */
   private formulaireEntite(): [HTMLDetailsElement, HTMLButtonElement, HTMLButtonElement] {
     const bloc = el("details", "entite-bloc");
-    bloc.append(el("summary", "entite", "✦ L'Entité provoque…"));
+    bloc.append(el("summary", "entite", t("catastrophes.entiteProvoque")));
     const type = el("select");
     for (const [cle, libelle] of PROVOQUABLES) type.append(Object.assign(el("option", undefined, libelle), { value: cle }));
     const intensite = el("input");
@@ -301,13 +301,13 @@ export class PanneauCatastrophes {
     };
     majIntensite();
     type.addEventListener("change", majIntensite);
-    const lieu = el("button", undefined, "Choisir le lieu sur la carte");
+    const lieu = el("button", undefined, t("catastrophes.choisirLieu"));
     lieu.type = "button";
     lieu.addEventListener("click", () => {
       this.viser = true;
-      lieu.textContent = "Clique sur la carte…";
+      lieu.textContent = t("catastrophes.cliqueCarte");
     });
-    const go = el("button", "danger", "Provoquer");
+    const go = el("button", "danger", t("catastrophes.provoquer"));
     go.type = "button";
     go.disabled = true;
     go.addEventListener("click", async () => {
@@ -318,7 +318,7 @@ export class PanneauCatastrophes {
           this.message(e.message.replace(/^.*HubException: /, ""));
           return -1;
         });
-      if (id === 0) this.message("Rien ne s'est produit (pas de volcan, rien à brûler, ou personne à rendre malade).");
+      if (id === 0) this.message(t("catastrophes.rienProduit"));
       if (id > 0) {
         this.choisie = id;
         this.cible = null;
@@ -331,7 +331,7 @@ export class PanneauCatastrophes {
     l2.append(intensite, unite);
     const l3 = el("div", "ligne");
     l3.append(lieu, go);
-    bloc.append(l1, l2, l3, el("p", "discret", "Le journal gardera la trace de l'intervention de l'Entité."));
+    bloc.append(l1, l2, l3, el("p", "discret", t("catastrophes.traceJournal")));
     return [bloc, lieu, go];
   }
 }
@@ -372,8 +372,10 @@ const ALERTES_MAX = 3;
  */
 export class BandeauAlertes {
   private nonVues = 0;
+  private readonly titreBouton: string;
 
   constructor(private readonly racine: HTMLElement, private readonly bouton: HTMLElement, private readonly ouvrir: (id: number) => void) {
+    this.titreBouton = bouton.title;
     connexion.on("Alertes", (alertes: Alerte[]) => this.montrer(alertes));
     window.addEventListener("alertes-catastrophes", (e) => {
       if (!(e as CustomEvent<boolean>).detail) this.vider();
@@ -403,11 +405,11 @@ export class BandeauAlertes {
     const carte = el("div", `alerte-carte${a.grave ? " grave" : ""}`);
     const texte = el("button", "lien", a.texte + (alertes.length > 1 ? ` (+${alertes.length - 1})` : ""));
     texte.type = "button";
-    texte.title = "Voir sur la carte";
+    texte.title = t("commun.voirSurCarte");
     texte.addEventListener("click", () => this.ouvrir(a.catastrophe));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
-    fermer.title = "Fermer";
+    fermer.title = t("commun.fermer");
     fermer.addEventListener("click", () => this.retirer(carte));
     carte.append(el("span", "icone", a.grave ? "⚠" : "✦"), texte, fermer);
     // La plus récente en haut ; au-delà de trois, la plus ancienne s'en va.
@@ -426,7 +428,6 @@ export class BandeauAlertes {
   private pastille(): void {
     this.bouton.dataset.pastille = this.nonVues > 0 ? String(Math.min(this.nonVues, 99)) : "";
     this.bouton.classList.toggle("avec-pastille", this.nonVues > 0);
-    this.bouton.title = this.bouton.title.replace(/ · \d+ alertes? non vues?$/, "")
-      + (this.nonVues > 0 ? ` · ${this.nonVues} alerte${this.nonVues > 1 ? "s" : ""} non vue${this.nonVues > 1 ? "s" : ""}` : "");
+    this.bouton.title = this.titreBouton + (this.nonVues > 0 ? ` · ${t("catastrophes.nonVues", { n: this.nonVues })}` : "");
   }
 }

@@ -1,6 +1,7 @@
 import type { VueCarte } from "./carte";
 import { connexion } from "./connexion";
 import { el } from "./fiche";
+import { t } from "./langue";
 
 interface Mesure {
   libelle: string;
@@ -42,9 +43,10 @@ export class PanneauMonde {
     private readonly vue: VueCarte,
   ) {
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, "Caractéristiques du Monde"));
+    tete.append(el("h2", undefined, t("monde.titre")));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
+    fermer.title = t("commun.fermer");
     fermer.addEventListener("click", () => this.fermer());
     tete.append(fermer);
     racine.append(tete, this.corps);
@@ -61,10 +63,10 @@ export class PanneauMonde {
 
   async ouvrir(): Promise<void> {
     this.racine.hidden = false;
-    this.corps.replaceChildren(el("p", "discret", "Mesure du monde…"));
+    this.corps.replaceChildren(el("p", "discret", t("monde.mesure")));
     const c = await connexion.invoke<Caracteristiques>("Caracteristiques").catch(() => null);
     if (!c) {
-      this.corps.replaceChildren(el("p", "discret", "Le serveur n'a pas répondu."));
+      this.corps.replaceChildren(el("p", "discret", t("commun.pasDeReponse")));
       return;
     }
     this.afficher(c);
@@ -77,7 +79,7 @@ export class PanneauMonde {
 
   private afficher(c: Caracteristiques): void {
     this.largeur = this.vue.largeurCarte();
-    const entete = el("p", "discret", `${c.nom} · graine ${c.graine} · ${c.date}`);
+    const entete = el("p", "discret", t("monde.entete", { nom: c.nom, graine: String(c.graine), date: c.date }));
     const parties: HTMLElement[] = [entete];
     for (const r of c.rubriques) {
       parties.push(el("h3", undefined, r.titre));
@@ -89,11 +91,11 @@ export class PanneauMonde {
         valeur.append(el("span", undefined, m.valeur));
         if (m.aide) valeur.append(el("span", "aide", m.aide));
         if (m.case >= 0 && this.largeur > 0) {
-          const voir = el("button", "lien", "voir");
+          const voir = el("button", "lien", t("monde.voir"));
           voir.type = "button";
-          voir.title = "Montrer sur la carte";
+          voir.title = t("commun.montrerSurCarte");
           voir.addEventListener("click", () => {
-            if (r.titre === "Marche" && c.traversee.length > 1) this.montrerTraversee(c.traversee);
+            if (r.titre === t("carac.marche") && c.traversee.length > 1) this.montrerTraversee(c.traversee);
             else this.vue.montrer(m.case % this.largeur, Math.floor(m.case / this.largeur));
           });
           valeur.append(" ", voir);
@@ -138,7 +140,7 @@ export class OutilMesure {
     this.depart = null;
     this.bouton.classList.add("actif");
     this.vue.afficherTrajet(null);
-    this.message("Mesure : clique le point de départ sur la carte.");
+    this.message(t("mesure.depart"));
   }
 
   arreter(): void {
@@ -146,7 +148,7 @@ export class OutilMesure {
     this.depart = null;
     this.bouton.classList.remove("actif");
     this.vue.afficherTrajet(null);
-    this.message("Mesure terminée.");
+    this.message(t("mesure.terminee"));
   }
 
   /** Un clic sur la carte pendant la mesure : départ, puis arrivée (un troisième clic recommence). */
@@ -154,7 +156,7 @@ export class OutilMesure {
     if (!this.depart) {
       this.depart = { x, y };
       this.vue.afficherTrajet(null, [this.depart]);
-      this.message("Mesure : clique maintenant le point d'arrivée.");
+      this.message(t("mesure.arrivee"));
       return;
     }
     const a = this.depart;
@@ -162,10 +164,10 @@ export class OutilMesure {
     const trajet = await connexion.invoke<Trajet | null>("Trajet", a.x, a.y, x, y).catch(() => null);
     if (!trajet) {
       this.vue.afficherTrajet(null, [a, { x, y }]);
-      this.message("On ne peut pas aller de l'un à l'autre à pied (eau, île). Clique un nouveau départ.");
+      this.message(t("mesure.impossible"));
       return;
     }
     this.vue.afficherTrajet(trajet.cases, [a, { x, y }]);
-    this.message(`${trajet.texte}\nClique un nouveau départ pour une autre mesure, ou « Mesurer » pour arrêter.`);
+    this.message(t("mesure.resultat", { texte: trajet.texte }));
   }
 }

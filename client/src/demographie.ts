@@ -1,5 +1,6 @@
 import { connexion } from "./connexion";
 import { el } from "./fiche";
+import { t as traduire, nombre as ecrireNombre } from "./langue";
 
 interface SerieCommunaute {
   id: number;
@@ -50,7 +51,7 @@ const SVG = "http://www.w3.org/2000/svg";
 /** Dix teintes distinctes, lisibles sur fond sombre. */
 const COULEURS = ["#6aa3e0", "#f5a04a", "#ef6f6c", "#7fd0c8", "#74c26a", "#f0d45a", "#c792c0", "#ffadb5", "#c29a7e", "#cfc8c4"];
 const COULEUR_MONDE = "#8fd3a0";
-const PERIODES: [string, number][] = [["tout", 0], ["50 ans", 50], ["10 ans", 10], ["2 ans", 2]];
+const PERIODES: [string, number][] = [["demographie.tout", 0], ["", 50], ["", 10], ["", 2]];
 const ACTUALISATION_MS = 5000;
 
 function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
@@ -70,7 +71,7 @@ function graduations(min: number, max: number, cible: number): number[] {
   return res;
 }
 
-const nombre = (n: number) => n.toLocaleString("fr-FR");
+const nombre = (n: number) => ecrireNombre(n, 2);
 
 /**
  * Fenêtre « Démographie » : population du monde (avec naissances et morts) et des communautés les plus peuplées,
@@ -90,10 +91,10 @@ export class PanneauDemographie {
     private readonly ouvrirCommunaute: (id: number) => void,
   ) {
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, "Démographie"));
+    tete.append(el("h2", undefined, traduire("demographie.titre")));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
-    fermer.title = "Fermer";
+    fermer.title = traduire("commun.fermer");
     fermer.addEventListener("click", () => this.fermer());
     tete.append(fermer);
     racine.append(tete, this.corps);
@@ -110,7 +111,7 @@ export class PanneauDemographie {
 
   async ouvrir(): Promise<void> {
     this.racine.hidden = false;
-    if (!this.donnees) this.corps.replaceChildren(el("p", "discret", "Calcul des courbes…"));
+    if (!this.donnees) this.corps.replaceChildren(el("p", "discret", traduire("demographie.calcul")));
     await this.charger();
     window.clearInterval(this.minuteur);
     this.minuteur = window.setInterval(() => void this.charger(), ACTUALISATION_MS);
@@ -125,7 +126,7 @@ export class PanneauDemographie {
     const d = await connexion.invoke<Demographie>("Demographie", 10).catch(() => null);
     if (!this.ouvert) return;
     if (!d) {
-      if (!this.donnees) this.corps.replaceChildren(el("p", "discret", "Le serveur n'a pas répondu."));
+      if (!this.donnees) this.corps.replaceChildren(el("p", "discret", traduire("commun.pasDeReponse")));
       return;
     }
     this.donnees = d;
@@ -153,14 +154,14 @@ export class PanneauDemographie {
       }
     }
     const resume = el("p", undefined);
-    resume.append(el("strong", undefined, `${nombre(d.monde[n - 1])} vivants`), ` le ${d.date}`);
+    resume.append(el("strong", undefined, traduire("demographie.vivants", { n: d.monde[n - 1] })), " " + traduire("demographie.le", { date: d.date }));
     resume.append(el("br"), el("span", "discret",
-      `Pic : ${nombre(pic)} (${annee(d.secondes[iPic], an)}) · sur la dernière année : ${nombre(nees)} naissance${nees > 1 ? "s" : ""}, ${nombre(mortes)} mort${mortes > 1 ? "s" : ""}`));
+      traduire("demographie.pic", { pic, annee: annee(d.secondes[iPic], an), naissances: traduire("demographie.naissances", { n: nees }), morts: traduire("demographie.morts", { n: mortes }) })));
 
     // Choix de la période et des repères.
     const outils = el("div", "outils");
     for (const [libelle, ans] of PERIODES) {
-      const b = el("button", ans === this.periode ? "actif" : undefined, libelle);
+      const b = el("button", ans === this.periode ? "actif" : undefined, libelle ? traduire(libelle) : traduire("age.ans", { n: ans }));
       b.type = "button";
       b.addEventListener("click", () => {
         this.periode = ans;
@@ -176,15 +177,15 @@ export class PanneauDemographie {
       this.reperes = caseReperes.checked;
       this.afficher();
     });
-    coche.append(caseReperes, " repères");
+    coche.append(caseReperes, " " + traduire("demographie.reperes"));
     outils.append(coche);
 
     // Monde : population, puis naissances et morts par intervalle (regroupées en barres).
-    const monde: Trace = { cle: "monde", nom: "Monde", couleur: COULEUR_MONDE, t: d.secondes, v: d.monde, aire: true };
+    const monde: Trace = { cle: "monde", nom: traduire("demographie.monde"), couleur: COULEUR_MONDE, t: d.secondes, v: d.monde, aire: true };
     const reperes = this.reperes ? d.reperes.filter((r) => r.secondes >= debut && r.secondes <= fin) : [];
     const graphiqueMonde = this.graphique([monde], debut, fin, an, 170, reperes, (t) => {
       const i = plusProche(d.secondes, t);
-      return [`${dateCourte(d.secondes[i], an)} : ${nombre(d.monde[i])} vivants`];
+      return [traduire("demographie.bulleMonde", { date: dateCourte(d.secondes[i], an), vivants: traduire("demographie.vivants", { n: d.monde[i] }) })];
     });
     const barres = this.barres(d, debut, fin);
 
@@ -198,7 +199,7 @@ export class PanneauDemographie {
         .map((tr) => ({ tr, v: valeurA(tr, t) }))
         .filter((x) => x.v !== null)
         .sort((a, b) => b.v! - a.v!)
-        .map((x) => `${x.tr.nom} : ${nombre(x.v!)}`);
+        .map((x) => traduire("demographie.bulleCommunaute", { nom: x.tr.nom, n: x.v! }));
       return [dateCourte(t, an), ...lignes];
     });
     const legende = el("div", "legende");
@@ -207,7 +208,7 @@ export class PanneauDemographie {
       const pastille = el("button", "pastille");
       pastille.type = "button";
       pastille.style.background = COULEURS[i % COULEURS.length];
-      pastille.title = this.cachees.has(c.id) ? "Montrer la courbe" : "Cacher la courbe";
+      pastille.title = this.cachees.has(c.id) ? traduire("demographie.montrer") : traduire("demographie.cacher");
       pastille.addEventListener("click", () => {
         if (this.cachees.has(c.id)) this.cachees.delete(c.id);
         else this.cachees.add(c.id);
@@ -215,24 +216,22 @@ export class PanneauDemographie {
       });
       const nom = el("button", "lien", c.nom);
       nom.type = "button";
-      nom.title = `Pic : ${nombre(c.pic)} membres${c.active ? "" : " · dispersée"} — ouvrir la communauté`;
+      nom.title = traduire(c.active ? "demographie.picCommunaute" : "demographie.picDispersee", { n: c.pic });
       nom.addEventListener("click", () => this.ouvrirCommunaute(c.id));
       item.append(pastille, nom);
-      if (!c.active) item.append(el("span", "discret", " (dispersée)"));
+      if (!c.active) item.append(el("span", "discret", " " + traduire("demographie.dispersee")));
       legende.append(item);
     });
 
     const titreCo = d.communautesEnTout > d.communautes.length
-      ? `Les ${d.communautes.length} communautés les plus peuplées (sur ${d.communautesEnTout})`
-      : `Communautés (${d.communautes.length})`;
-    const parties: HTMLElement[] = [resume, outils, el("h3", undefined, "Population du monde"), graphiqueMonde,
-      el("h3", undefined, "Naissances et morts"), barres, el("h3", undefined, titreCo)];
-    if (d.communautes.length === 0) parties.push(el("p", "discret", "Aucune communauté n'a encore été archivée (une fois par saison)."));
+      ? traduire("demographie.plusPeuplees", { n: d.communautes.length, total: d.communautesEnTout })
+      : traduire("demographie.communautes", { n: d.communautes.length });
+    const parties: HTMLElement[] = [resume, outils, el("h3", undefined, traduire("demographie.population")), graphiqueMonde,
+      el("h3", undefined, traduire("demographie.naissancesMorts")), barres, el("h3", undefined, titreCo)];
+    if (d.communautes.length === 0) parties.push(el("p", "discret", traduire("demographie.aucune")));
     else parties.push(legende, graphiqueCommunautes);
     if (reperes.length > 0) parties.push(this.listeReperes(reperes));
-    parties.push(el("p", "discret note",
-      "Monde : un point par mois (plus espacés sur une longue histoire). Communautés : une mesure au début de chaque saison, et maintenant. "
-      + "Repères : catastrophes meurtrières (rouge), interventions de l'Entité (violet), guerres sanglantes (orange)."));
+    parties.push(el("p", "discret note", traduire("demographie.note")));
     this.corps.replaceChildren(...parties);
     this.corps.scrollTop = defilement;
   }
@@ -270,7 +269,8 @@ export class PanneauDemographie {
       s.append(svg("line", { x1: x(t), x2: x(t), y1: marge.h + h, y2: marge.h + h + 4, class: "axe-trait" }));
       const texte = svg("text", { x: x(t), y: hauteur - 6, class: "axe", "text-anchor": "middle" });
       // An 1 commence à 0 : la graduation a marque le début de l'an a + 1.
-      texte.textContent = Number.isInteger(a) ? `an ${a + 1}` : `${SAISONS[Math.min(3, Math.floor((a % 1) * 4))]} an ${Math.floor(a) + 1}`;
+      texte.textContent = Number.isInteger(a) ? traduire("demographie.an", { an: String(a + 1) })
+        : traduire("demographie.saisonAn", { saison: traduire(SAISONS[Math.min(3, Math.floor((a % 1) * 4))]), an: String(Math.floor(a) + 1) });
       s.append(texte);
     }
     s.append(svg("line", { x1: marge.g, x2: marge.g + l, y1: marge.h + h, y2: marge.h + h, class: "axe-trait" }));
@@ -381,7 +381,7 @@ export class PanneauDemographie {
       const w = Math.max(1, lb - 2);
       const a = (k * duree + debut);
       const b = a + duree;
-      const titre = `${dateCourte(a, d.secondesParAn)} → ${dateCourte(b, d.secondesParAn)} : ${nombre(nees[k])} naissances, ${nombre(mortes[k])} morts`;
+      const titre = traduire("demographie.barre", { de: dateCourte(a, d.secondesParAn), a: dateCourte(b, d.secondesParAn), naissances: traduire("demographie.naissances", { n: nees[k] }), morts: traduire("demographie.morts", { n: mortes[k] }) });
       const hn = (nees[k] / max) * demi;
       const hm = (mortes[k] / max) * demi;
       const rn = svg("rect", { x: x0, y: milieu - hn, width: w, height: Math.max(hn, 0), class: "naissances" });
@@ -393,14 +393,14 @@ export class PanneauDemographie {
       s.append(rn, rm, capteur);
     }
     const legende = el("div", "legende discret");
-    legende.append(el("span", "carre naissances"), " naissances (en haut) ", el("span", "carre morts"), " morts (en bas)");
+    legende.append(el("span", "carre naissances"), " " + traduire("demographie.enHaut") + " ", el("span", "carre morts"), " " + traduire("demographie.enBas"));
     boite.append(s, legende);
     return boite;
   }
 
   private listeReperes(reperes: Repere[]): HTMLElement {
     const bloc = el("details", "reperes");
-    bloc.append(el("summary", undefined, `Repères sur la période (${reperes.length})`));
+    bloc.append(el("summary", undefined, traduire("demographie.reperesPeriode", { n: reperes.length })));
     const ul = el("ul", "liste");
     for (const r of [...reperes].reverse()) {
       const li = el("li", classeRepere(r));
@@ -425,9 +425,9 @@ function classeRepere(r: Repere): string {
 }
 
 function bilan(r: Repere): string {
-  const parties = [r.morts ? `${nombre(r.morts)} mort${r.morts > 1 ? "s" : ""}` : "",
-    r.mortsSuites ? `${nombre(r.mortsSuites)} dans les suites` : ""].filter(Boolean);
-  return parties.length > 0 ? parties.join(", ") : "aucun mort";
+  const parties = [r.morts ? traduire("demographie.morts", { n: r.morts }) : "",
+    r.mortsSuites ? traduire("demographie.suites", { n: r.mortsSuites }) : ""].filter(Boolean);
+  return parties.length > 0 ? parties.join(traduire("commun.virgule")) : traduire("demographie.aucunMort");
 }
 
 function texteRepere(r: Repere): string {
@@ -435,14 +435,14 @@ function texteRepere(r: Repere): string {
 }
 
 function annee(t: number, an: number): string {
-  return `an ${Math.floor(t / an) + 1}`;
+  return traduire("demographie.an", { an: String(Math.floor(t / an) + 1) });
 }
 
-const SAISONS = ["printemps", "été", "automne", "hiver"];
+const SAISONS = ["saison.printemps", "saison.ete", "saison.automne", "saison.hiver"];
 
 function dateCourte(t: number, an: number): string {
   const saison = Math.min(3, Math.floor(((t % an) / an) * 4));
-  return `${annee(t, an)}, ${SAISONS[saison]}`;
+  return traduire("demographie.dateCourte", { annee: annee(t, an), saison: traduire(SAISONS[saison]) });
 }
 
 function plusProche(ts: number[], t: number): number {

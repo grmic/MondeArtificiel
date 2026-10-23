@@ -1,4 +1,5 @@
 import { connexion } from "./connexion";
+import { nombre, t } from "./langue";
 
 interface Choix {
   cle: string;
@@ -38,17 +39,17 @@ interface Trouve {
 
 /** Filtres de karma proposés : bornes incluses (null : sans limite). */
 const KARMAS: { cle: string; libelle: string; min: number | null; max: number | null }[] = [
-  { cle: "", libelle: "tout karma", min: null, max: null },
-  { cle: "lumineux", libelle: "karma lumineux (50 et plus)", min: 50, max: null },
-  { cle: "bon", libelle: "karma bienveillant (5 et plus)", min: 5, max: null },
-  { cle: "neutre", libelle: "karma neutre (−5 à 5)", min: -5, max: 5 },
-  { cle: "charge", libelle: "karma chargé (−5 et moins)", min: null, max: -5 },
-  { cle: "lourd", libelle: "karma lourd (−20 et moins)", min: null, max: -20 },
+  { cle: "", libelle: "entite.karma.tout", min: null, max: null },
+  { cle: "lumineux", libelle: "entite.karma.lumineux", min: 50, max: null },
+  { cle: "bon", libelle: "entite.karma.bon", min: 5, max: null },
+  { cle: "neutre", libelle: "entite.karma.neutre", min: -5, max: 5 },
+  { cle: "charge", libelle: "entite.karma.charge", min: null, max: -5 },
+  { cle: "lourd", libelle: "entite.karma.lourd", min: null, max: -20 },
 ];
 
 /** « +2 », « −30 » : un karma signé, à la française. */
 function signe(v: number): string {
-  const n = Math.abs(v).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  const n = nombre(Math.abs(v), 1);
   return v > 0 ? `+${n}` : v < 0 ? `−${n}` : "0";
 }
 
@@ -106,7 +107,7 @@ class Designer {
 
   constructor(private readonly dest: () => Destinataires, libelle: string, private readonly avecMonde = false) {
     this.texte.type = "search";
-    this.texte.placeholder = "nom…";
+    this.texte.placeholder = t("entite.nom");
     this.texte.maxLength = 40;
     for (const c of [this.memeGroupe, this.seuls, this.pres]) c.type = "checkbox";
     this.pres.checked = true;
@@ -116,14 +117,14 @@ class Designer {
     };
     this.texte.addEventListener("input", relancer);
     for (const c of [this.memeGroupe, this.seuls, this.pres, this.karma]) c.addEventListener("change", relancer);
-    remplir(this.karma, KARMAS.map((k) => ({ cle: k.cle, libelle: k.libelle })));
-    this.karma.title = "Regard de l'Entité : chercher selon le karma (invisible aux humains)";
+    remplir(this.karma, KARMAS.map((k) => ({ cle: k.cle, libelle: t(k.libelle) })));
+    this.karma.title = t("entite.karmaAide");
     const filtres = el("div", "ligne discret");
     filtres.append(el("label", undefined), el("label", undefined), el("label", undefined));
     const [a, b, c] = Array.from(filtres.children) as HTMLLabelElement[];
-    a.append(this.memeGroupe, " même communauté");
-    b.append(this.seuls, " seuls");
-    c.append(this.pres, " les plus proches d'abord");
+    a.append(this.memeGroupe, " " + t("entite.memeCommunaute"));
+    b.append(this.seuls, " " + t("entite.seuls"));
+    c.append(this.pres, " " + t("entite.proches"));
     filtres.append(this.karma);
     this.bloc.append(ligne(libelle, this.texte, this.liste), filtres);
   }
@@ -152,16 +153,18 @@ class Designer {
       const avant = this.liste.value;
       const options: HTMLOptionElement[] = [];
       if (this.avecMonde) {
-        const o = el("option", undefined, "laisser le monde choisir");
+        const o = el("option", undefined, t("entite.mondeChoisit"));
         o.value = "0";
-        o.dataset.nom = "quelqu'un";
+        o.dataset.nom = t("entite.quelquun");
         options.push(o);
       }
-      for (const t of trouves.filter((t) => !d.humains.includes(t.id))) {
-        const o = el("option", undefined,
-          `${t.nom} (${t.sexe === "femme" ? "F" : "H"}, ${t.age} ans${t.communaute ? `, ${t.communaute}` : ""}${t.seul ? ", seul" + (t.sexe === "femme" ? "e" : "") : ""}${d.pres ? `, ${t.distanceKm} km` : ""}, karma ${signe(t.karma)})`);
-        o.value = String(t.id);
-        o.dataset.nom = t.nom;
+      for (const h of trouves.filter((x) => !d.humains.includes(x.id))) {
+        const g = h.sexe === "femme" ? "f" : "m";
+        const details = [t("entite.sexeAge", { g, age: t("age.ans", { n: h.age }) }), h.communaute, h.seul ? t("entite.seul", { g }) : null,
+          d.pres ? t("entite.km", { v: h.distanceKm }) : null, t("entite.karma", { v: signe(h.karma) })].filter((x) => x).join(t("commun.virgule"));
+        const o = el("option", undefined, `${h.nom} (${details})`);
+        o.value = String(h.id);
+        o.dataset.nom = h.nom;
         options.push(o);
       }
       this.liste.replaceChildren(...options);
@@ -187,9 +190,9 @@ export class FormulaireEntite {
   private choix: ChoixParoles | null = null;
 
   constructor(private readonly dest: () => Destinataires) {
-    this.bloc.append(el("summary", "entite", "✦ L'Entité parle ou inspire un amour…"));
+    this.bloc.append(el("summary", "entite", t("entite.parleOuInspire")));
     const action = el("select");
-    remplir(action, [{ cle: "parler", libelle: "Parler" }, { cle: "inspirer", libelle: "Inspirer un amour" }]);
+    remplir(action, [{ cle: "parler", libelle: t("entite.parler") }, { cle: "inspirer", libelle: t("entite.inspirerAmour") }]);
     const parler = this.parler();
     const inspirer = this.inspirer();
     inspirer.hidden = true;
@@ -197,8 +200,8 @@ export class FormulaireEntite {
       parler.hidden = action.value !== "parler";
       inspirer.hidden = action.value !== "inspirer";
     });
-    this.bloc.append(ligne("Que faire", action), parler, inspirer, this.resultat,
-      el("p", "discret", "Rien n'est garanti : chacun comprend, croit, obéit, hésite ou refuse selon ce qu'il est. Le journal marque tout cela d'un ✦."));
+    this.bloc.append(ligne(t("entite.queFaire"), action), parler, inspirer, this.resultat,
+      el("p", "discret", t("entite.rienGaranti")));
   }
 
   /** Un autre destinataire : on referme le formulaire et l'on efface les réponses d'avant. */
@@ -216,7 +219,7 @@ export class FormulaireEntite {
     try {
       this.choix = await connexion.invoke<ChoixParoles>("ChoixParoles");
     } catch {
-      this.ecrire(["Le serveur n'a pas répondu."]);
+      this.ecrire([t("commun.pasDeReponse")]);
     }
     return this.choix;
   }
@@ -226,7 +229,7 @@ export class FormulaireEntite {
   }
 
   private montrer(resultats: Resultat[]): void {
-    this.ecrire(resultats.length === 0 ? ["Personne n'a rien reçu."] : resultats.map((r) => `${r.nom} : ${r.resultat}`));
+    this.ecrire(resultats.length === 0 ? [t("entite.personneRecu")] : resultats.map((r) => t("priere.resultat", { nom: r.nom, texte: r.resultat })));
   }
 
   private parler(): HTMLElement {
@@ -235,9 +238,10 @@ export class FormulaireEntite {
     const mode = el("select");
     const precision = el("select");
     const lignePrecision = ligne("", precision);
-    const qui = new Designer(this.dest, "Qui");
+    const qui = new Designer(this.dest, t("entite.qui"));
     const apercu = el("p", "entite");
-    const bouton = el("button", undefined, "Parler");
+    const bouton = el("button", undefined, t("entite.parler"));
+    let phraseDite = "";
     bouton.type = "button";
     const actuelle = () => this.choix?.paroles.find((p) => p.cle === parole.value);
     const accorder = () => {
@@ -247,19 +251,20 @@ export class FormulaireEntite {
       lignePrecision.hidden = !p.precision;
       const titre = lignePrecision.firstElementChild as HTMLElement;
       if (p.precision === "direction") {
-        titre.textContent = "Vers";
+        titre.textContent = t("entite.vers");
         remplir(precision, this.choix.directions);
       } else if (p.precision === "plante") {
-        titre.textContent = "Plante";
+        titre.textContent = t("entite.plante");
         remplir(precision, this.choix.plantes);
       } else if (p.precision === "communaute") {
-        titre.textContent = "Contre";
-        remplir(precision, [{ cle: "0", libelle: "quiconque" }, ...this.choix.communautes]);
+        titre.textContent = t("entite.contre");
+        remplir(precision, [{ cle: "0", libelle: t("entite.quiconque") }, ...this.choix.communautes]);
       }
       const extra = precision.selectedOptions[0]?.textContent ?? "";
-      const phrase = p.modele.replace("{cible}", qui.nom).replace("{extra}", extra)
-        .replace("Ne va pas à la guerre contre la quiconque.", "Ne va pas à la guerre.");
-      apercu.textContent = `${this.dest().libelle} recevra ${mode.selectedOptions[0]?.textContent ?? ""} : « ${phrase} »`;
+      // « Ne va pas à la guerre » contre quiconque : la phrase sans adversaire.
+      phraseDite = p.precision === "communaute" && precision.value === "0" ? t(`phrase.${p.cle}`)
+        : p.modele.replace("{cible}", qui.nom).replace("{extra}", extra);
+      apercu.textContent = t("entite.apercu", { qui: this.dest().libelle, mode: mode.selectedOptions[0]?.textContent ?? "", phrase: phraseDite });
       bouton.classList.toggle("danger", p.nuit);
     };
     parole.addEventListener("change", () => {
@@ -295,10 +300,10 @@ export class FormulaireEntite {
       const p = actuelle();
       if (!p) return;
       if (p.cible && !qui.valeur) {
-        this.ecrire(["Choisissez d'abord la personne désignée."]);
+        this.ecrire([t("entite.choisirPersonne")]);
         return;
       }
-      if (p.nuit && !window.confirm(`L'Entité va ordonner : « ${apercu.textContent?.split("« ")[1]?.replace(" »", "") ?? p.libelle} ». Continuer ?`)) return;
+      if (p.nuit && !window.confirm(t("entite.confirmer", { phrase: phraseDite || p.libelle }))) return;
       const d = this.dest();
       bouton.disabled = true;
       try {
@@ -311,30 +316,30 @@ export class FormulaireEntite {
           param: p.precision ? Number(precision.value) : 0,
         }));
       } catch (e) {
-        this.ecrire([e instanceof Error && e.message.includes("HubException") ? e.message.split("HubException: ").pop() ?? "Refusé." : "La parole n'a pas pu être dite."]);
+        this.ecrire([e instanceof Error && e.message.includes("HubException") ? e.message.split("HubException: ").pop() ?? t("commun.refuse") : t("entite.paroleEchec")]);
       } finally {
         bouton.disabled = false;
       }
     });
-    bloc.append(ligne("Parole", parole), ligne("Comment", mode), qui.bloc, lignePrecision, apercu, bouton);
+    bloc.append(ligne(t("entite.parole"), parole), ligne(t("agir.comment"), mode), qui.bloc, lignePrecision, apercu, bouton);
     return bloc;
   }
 
   private inspirer(): HTMLElement {
     const bloc = el("div");
-    const pour = new Designer(this.dest, "Pour", true);
+    const pour = new Designer(this.dest, t("entite.pour"), true);
     const force = el("select");
-    remplir(force, [{ cle: "leger", libelle: "un penchant léger (quelques semaines)" }, { cle: "passion", libelle: "une passion (des mois)" }]);
+    remplir(force, [{ cle: "leger", libelle: t("entite.leger") }, { cle: "passion", libelle: t("entite.passion") }]);
     const mutuel = el("input");
     const orientation = el("input");
     mutuel.type = orientation.type = "checkbox";
     const options = el("div", "ligne");
     const l1 = el("label");
-    l1.append(mutuel, " réciproque (coup de foudre)");
+    l1.append(mutuel, " " + t("entite.reciproque"));
     const l2 = el("label");
-    l2.append(orientation, " changer son orientation s'il le faut");
+    l2.append(orientation, " " + t("entite.orientation"));
     options.append(l1, l2);
-    const bouton = el("button", undefined, "Inspirer");
+    const bouton = el("button", undefined, t("entite.inspirer"));
     bouton.type = "button";
     this.bloc.addEventListener("toggle", () => {
       if (this.bloc.open) void pour.chercher();
@@ -352,13 +357,13 @@ export class FormulaireEntite {
           orientation: orientation.checked,
         }));
       } catch {
-        this.ecrire(["Le penchant n'a pas pu être inspiré."]);
+        this.ecrire([t("entite.inspirerEchec")]);
       } finally {
         bouton.disabled = false;
       }
     });
-    bloc.append(pour.bloc, ligne("Force", force), options, bouton,
-      el("p", "discret", "Le penchant naît sans un mot et s'efface avec le temps. Envers un parent, il fait presque toujours horreur."));
+    bloc.append(pour.bloc, ligne(t("agir.force"), force), options, bouton,
+      el("p", "discret", t("entite.penchantAide")));
     return bloc;
   }
 }

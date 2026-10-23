@@ -243,7 +243,7 @@ public sealed class ServiceMonde
     public string MettreALaCorbeille(string nom)
     {
         // Seuls les noms de la liste sont acceptés : aucun chemin venu du navigateur n'est utilisé tel quel.
-        if (!FichiersRestaurables().TryGetValue(nom, out var chemin)) throw new ArgumentException("Cette sauvegarde n'existe pas.", nameof(nom));
+        if (!FichiersRestaurables().TryGetValue(nom, out var chemin)) throw new ArgumentException(L.T("sauvegarde.inexistante"), nameof(nom));
         lock (_verrou)
         {
             try
@@ -269,7 +269,7 @@ public sealed class ServiceMonde
     public MondeSimule Restaurer(string nom)
     {
         // Seuls les noms de la liste sont acceptés : aucun chemin venu du navigateur n'est utilisé tel quel.
-        if (!FichiersRestaurables().TryGetValue(nom, out var source)) throw new ArgumentException("Cette sauvegarde n'existe pas.", nameof(nom));
+        if (!FichiersRestaurables().TryGetValue(nom, out var source)) throw new ArgumentException(L.T("sauvegarde.inexistante"), nameof(nom));
         lock (_verrou)
         {
             var (prepare, etat) = Depot.PreparerRestauration(source);
@@ -286,7 +286,7 @@ public sealed class ServiceMonde
             {
                 File.Delete(prepare);
                 _journal.LogWarning(e, "Sauvegarde {Source} impossible à restaurer", source);
-                throw new InvalidDataException("Cette sauvegarde ne correspond à aucun monde possible.", e);
+                throw new InvalidDataException(L.T("sauvegarde.impossible"), e);
             }
             var copie = SauvegarderMaintenant("avant-restauration");
             Depot.RemplacerPar(prepare);

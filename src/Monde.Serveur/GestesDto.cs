@@ -29,7 +29,7 @@ public static class GestesEntite
         {
             var (jmin, jmax) = Gestes.Jours(g);
             var (fmin, fmax) = Gestes.Force(g);
-            return new GesteDto(g.ToString(), Gestes.Nom(g), Gestes.SurHumain(g), Gestes.EstBienfait(g), jmin, jmax, fmin, fmax, g switch
+            return new GesteDto(g.ToString(), L.T($"gesteEntite.{g}"), Gestes.SurHumain(g), Gestes.EstBienfait(g), jmin, jmax, fmin, fmax, g switch
             {
                 GesteEntite.FrapperDeMort => "forme",
                 GesteEntite.RendreMalade or GesteEntite.Epidemie => "maladie",
@@ -37,13 +37,13 @@ public static class GestesEntite
                 _ => null,
             });
         }).ToList();
-        var manieres = Enum.GetValues<ManiereGeste>().Select(m => new ChoixDto(m.ToString(), m == ManiereGeste.Cachee ? "Caché (passe pour naturel)" : Majuscule(Gestes.NomManiere(m))))
+        var manieres = Enum.GetValues<ManiereGeste>().Select(m => new ChoixDto(m.ToString(), m == ManiereGeste.Cachee ? L.T("gestes.cache") : Majuscule(L.T($"maniere.{m}"))))
             .ToList();
-        var formes = Enum.GetValues<FormeMort>().Select(f => new ChoixDto(((int)f).ToString(CultureInfo.InvariantCulture), Majuscule(Gestes.NomForme(f)))).ToList();
+        var formes = Enum.GetValues<FormeMort>().Select(f => new ChoixDto(((int)f).ToString(CultureInfo.InvariantCulture), Majuscule(L.T($"formeMort.{f}")))).ToList();
         var maladies = Enum.GetValues<Maladie>().Where(m => m != Maladie.Aucune)
-            .Select(m => new ChoixDto(((int)m).ToString(CultureInfo.InvariantCulture), Maladies.Fiche(m).Nom))
-            .Concat(service.Monde.Pathogenes().Select(p => new ChoixDto((Gestes.Contagieuse + p.Id).ToString(CultureInfo.InvariantCulture), $"{p.Nom} (contagieuse)")))
-            .Append(new ChoixDto("0", "Une maladie nouvelle (contagieuse)"))
+            .Select(m => new ChoixDto(((int)m).ToString(CultureInfo.InvariantCulture), L.T($"maladie.{m}")))
+            .Concat(service.Monde.Pathogenes().Select(p => new ChoixDto((Gestes.Contagieuse + p.Id).ToString(CultureInfo.InvariantCulture), L.T("gestes.contagieuse", ("nom", p.Nom)))))
+            .Append(new ChoixDto("0", L.T("gestes.maladieNouvelle")))
             .ToList();
         return new ChoixGestesDto(gestes, manieres, formes, maladies);
     }
@@ -55,8 +55,8 @@ public static class GestesEntite
     {
         if (!Enum.TryParse<GesteEntite>(d.Geste, out var geste) || !Enum.IsDefined(geste)
             || !Enum.TryParse<ManiereGeste>(d.Maniere, out var maniere) || !Enum.IsDefined(maniere))
-            throw new ArgumentException("Geste ou manière inconnus.");
-        if (!double.IsFinite(d.Force) || !double.IsFinite(d.Jours)) throw new ArgumentException("Force ou durée invalides.");
+            throw new ArgumentException(L.T("erreur.gesteManiere"));
+        if (!double.IsFinite(d.Force) || !double.IsFinite(d.Jours)) throw new ArgumentException(L.T("erreur.forceDuree"));
         var param = geste switch
         {
             GesteEntite.FrapperDeMort when d.Param is >= 0 and <= (int)FormeMort.Sommeil => d.Param,
@@ -64,7 +64,7 @@ public static class GestesEntite
                 || d.Param is >= 1 and < Gestes.Contagieuse && Enum.IsDefined((Maladie)d.Param)
                 || d.Param > Gestes.Contagieuse && pathogenes.Contains(d.Param - Gestes.Contagieuse) => d.Param,
             GesteEntite.Calamite when CatastropheDto.TypeDepuis(d.Calamite) is { } t && t is not (TypeCatastrophe.HiverVolcanique or TypeCatastrophe.HiverDImpact) => (int)t,
-            GesteEntite.FrapperDeMort or GesteEntite.RendreMalade or GesteEntite.Epidemie or GesteEntite.Calamite => throw new ArgumentException("Précision invalide."),
+            GesteEntite.FrapperDeMort or GesteEntite.RendreMalade or GesteEntite.Epidemie or GesteEntite.Calamite => throw new ArgumentException(L.T("erreur.precision")),
             _ => 0,
         };
         return (geste, maniere, param);

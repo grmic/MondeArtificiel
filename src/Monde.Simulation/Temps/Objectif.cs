@@ -61,3 +61,6 @@ public sealed record Objectif(TypeObjectif Type, long Limite, string Description
 
     public static long ProchaineAnnee(long maintenant) => (maintenant / Calendrier.SecondesParAn + 1) * Calendrier.SecondesParAn;
 }
+
+/// <summary>Un objectif « avancer jusqu'à » terminé : atteint, ou abandonné quand l'événement attendu n'est pas venu en cent ans.</summary>
+public sealed record ObjectifAtteint(Objectif Objectif, bool RienEnCentAns, string Description);

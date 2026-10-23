@@ -1,5 +1,6 @@
 import { connexion } from "./connexion";
 import { boutonCause, el } from "./fiche";
+import { t } from "./langue";
 
 export interface Priere {
   id: number;
@@ -38,17 +39,17 @@ export interface BilanPrieres {
 export function ligneBilan(b: BilanPrieres | null | undefined, collectives: boolean): HTMLElement | null {
   if (!b || b.total + b.remerciements === 0) return null;
   const parts = [
-    `${b.total} prière${b.total > 1 ? "s" : ""}`,
-    `exaucées par l'Entité : ${b.exauceesEntite}`,
-    `arrivées d'elles-mêmes : ${b.exauceesHasard}`,
-    `refusées : ${b.refusees}${b.refuseesEnSecret > 0 ? ` (dont ${b.refuseesEnSecret} en secret)` : ""}`,
-    `pas entendues : ${b.pasEntendues}`,
-    `en attente : ${b.enAttente}`,
+    t("bilan.total", { n: b.total }),
+    t("bilan.entite", { n: b.exauceesEntite }),
+    t("bilan.hasard", { n: b.exauceesHasard }),
+    b.refuseesEnSecret > 0 ? t("bilan.refuseesSecret", { n: b.refusees, secret: b.refuseesEnSecret }) : t("bilan.refusees", { n: b.refusees }),
+    t("bilan.pasEntendues", { n: b.pasEntendues }),
+    t("bilan.enAttente", { n: b.enAttente }),
   ];
-  if (b.remerciements > 0) parts.push(`remerciements : ${b.remerciements}`);
-  if (collectives && b.collectives > 0) parts.push(`dont prières collectives : ${b.collectives}`);
+  if (b.remerciements > 0) parts.push(t("bilan.remerciements", { n: b.remerciements }));
+  if (collectives && b.collectives > 0) parts.push(t("bilan.collectives", { n: b.collectives }));
   const p = el("p", "bilan-prieres", parts.join(" · "));
-  p.title = "Toutes les prières depuis le début du monde. « Pas entendues » : trop anciennes, ou rien n'est venu.";
+  p.title = t("bilan.aide");
   return p;
 }
 
@@ -77,21 +78,21 @@ function lienCommunaute(nom: string, id: number): HTMLElement | string {
   if (id <= 0) return nom;
   const b = el("button", "lien", nom);
   b.type = "button";
-  b.title = "Ouvrir la fiche de la communauté";
+  b.title = t("suivis.ouvrirCommunaute");
   b.addEventListener("click", () => ouvrirCommunaute(id));
   return b;
 }
 
 /** Tête d'une fenêtre latérale : titre et bouton de fermeture. */
 function tete(titre: string, fermer: () => void): HTMLElement {
-  const t = el("div", "tete");
-  t.append(el("h2", undefined, titre));
+  const entete = el("div", "tete");
+  entete.append(el("h2", undefined, titre));
   const b = el("button", "fermer", "×");
   b.type = "button";
-  b.title = "Fermer";
+  b.title = t("commun.fermer");
   b.addEventListener("click", fermer);
-  t.append(b);
-  return t;
+  entete.append(b);
+  return entete;
 }
 
 /** Une prière en une ligne : qui, quoi, avec quelle ferveur, ce qu'il en est advenu. */
@@ -102,29 +103,29 @@ export function lignePriere(p: Priere, ouvrirHumain: (id: number) => void, exauc
   qui.type = "button";
   qui.addEventListener("click", () => ouvrirHumain(p.humain));
   if (p.collective) {
-    li.append(`${p.date} · `, lienCommunaute(p.collective, p.collectiveId), " prie ensemble, guidée par ", qui, `, pour ${p.texte}`);
+    li.append(`${p.date} · `, lienCommunaute(p.collective, p.collectiveId), " " + t("priere.ensemble") + " ", qui, t("priere.pour", { texte: p.texte }));
   } else {
     li.append(`${p.date} · `, qui);
     if (p.communaute) li.append(" (", lienCommunaute(p.communaute, p.communauteId), ")");
-    li.append(` prie pour ${p.texte}`);
+    li.append(" " + t("priere.priePour", { texte: p.texte }));
   }
-  li.append(el("span", "discret", ` · ferveur ${p.ferveur}/100${p.forte ? " · forte" : ""}${p.religion ? ` · ${p.religion}` : ""}`));
-  const issue = el("span", p.issue === "en attente" ? "issue attente" : "issue", ` · ${p.issue}${p.issueDate ? ` le ${p.issueDate}` : ""}`);
+  li.append(el("span", "discret", ` · ${t("priere.ferveur", { v: p.ferveur })}${p.forte ? ` · ${t("priere.forte")}` : ""}${p.religion ? ` · ${p.religion}` : ""}`));
+  const issue = el("span", p.issue === t("issuePriere.EnAttente") ? "issue attente" : "issue", ` · ${p.issueDate ? t("priere.issueLe", { issue: p.issue, date: p.issueDate }) : p.issue}`);
   li.append(issue);
   if (p.refus) li.append(el("span", "issue refus", ` · ${p.refus}`));
   if (p.conclusion) li.append(el("span", "discret", ` (${p.conclusion})`));
-  if (p.evenement > 0) li.append(" ", boutonCause(li, p.evenement, "au journal"));
+  if (p.evenement > 0) li.append(" ", boutonCause(li, p.evenement, t("commun.auJournal")));
   if (p.exaucable && exaucer) {
-    const b = el("button", "exaucer", "✦ Exaucer");
+    const b = el("button", "exaucer", t("priere.exaucer"));
     b.type = "button";
-    b.title = "L'Entité exauce cette prière : ce qui était demandé arrive.";
+    b.title = t("priere.exaucerAide");
     b.addEventListener("click", () => exaucer(p, li));
     li.append(" ", b);
   }
   if (p.exaucable && refuser) {
-    const b = el("button", "refuser", "✕ Refuser");
+    const b = el("button", "refuser", t("priere.refuser"));
     b.type = "button";
-    b.title = "L'Entité refuse cette prière (en secret, ou par un signe si la case « Refuser par un signe » est cochée).";
+    b.title = t("priere.refuserAide");
     b.addEventListener("click", () => refuser(p, li));
     li.append(" ", b);
   }
@@ -147,19 +148,19 @@ export class PanneauPrieres {
     this.attente.type = "checkbox";
     this.attente.checked = true;
     const etiquette = el("label", "case-config");
-    etiquette.append(this.attente, " En attente seulement");
+    etiquette.append(this.attente, " " + t("priere.enAttenteSeulement"));
     this.attente.addEventListener("change", () => void this.charger());
     this.signe.type = "checkbox";
     this.signe.checked = false;
     const etiquetteSigne = el("label", "case-config");
-    etiquetteSigne.append(this.signe, " Refuser par un signe");
-    etiquetteSigne.title = "Coché : celui qui prie (ou toute la communauté) comprend que l'invisible a dit non. Décoché : le refus reste secret, il attend en vain.";
+    etiquetteSigne.append(this.signe, " " + t("priere.parUnSigne"));
+    etiquetteSigne.title = t("priere.parUnSigneAide");
     const corps = el("div", "corps");
     corps.append(
-      el("p", "discret", "Ce que les humains demandent à l'invisible. Seules les prières fortes vont au journal. Personne ne répond, sauf si l'Entité exauce ; ce qui arrive de soi-même, le croyant le prend pour une réponse. Une prière trop ancienne n'est plus entendue."),
+      el("p", "discret", t("prieres.aide")),
       etiquette, etiquetteSigne, this.resultat, this.liste,
     );
-    racine.append(tete("Prières", () => this.fermer()), corps);
+    racine.append(tete(t("prieres.titre"), () => this.fermer()), corps);
   }
 
   get ouvert(): boolean {
@@ -187,15 +188,15 @@ export class PanneauPrieres {
 
   private async exaucer(p: Priere, li: HTMLElement): Promise<void> {
     li.querySelectorAll<HTMLButtonElement>("button.exaucer, button.refuser").forEach((b) => b.setAttribute("disabled", ""));
-    const texte = await connexion.invoke<string>("Exaucer", p.id).catch(() => "Le serveur n'a pas répondu.");
-    this.resultat.textContent = `${p.collective ?? p.nom} : ${texte}`;
+    const texte = await connexion.invoke<string>("Exaucer", p.id).catch(() => t("commun.pasDeReponse"));
+    this.resultat.textContent = t("priere.resultat", { nom: p.collective ?? p.nom, texte });
     await this.charger();
   }
 
   private async refuser(p: Priere, li: HTMLElement): Promise<void> {
     li.querySelectorAll<HTMLButtonElement>("button.exaucer, button.refuser").forEach((b) => b.setAttribute("disabled", ""));
-    const texte = await connexion.invoke<string>("Refuser", p.id, this.signe.checked).catch(() => "Le serveur n'a pas répondu.");
-    this.resultat.textContent = `${p.collective ?? p.nom} : ${texte}`;
+    const texte = await connexion.invoke<string>("Refuser", p.id, this.signe.checked).catch(() => t("commun.pasDeReponse"));
+    this.resultat.textContent = t("priere.resultat", { nom: p.collective ?? p.nom, texte });
     await this.charger();
   }
 
@@ -203,11 +204,11 @@ export class PanneauPrieres {
     const liste = await connexion.invoke<Priere[]>("Prieres", this.attente.checked).catch(() => null);
     if (!this.ouvert) return;
     if (!liste) {
-      this.liste.replaceChildren(el("li", "discret", "Le serveur n'a pas répondu."));
+      this.liste.replaceChildren(el("li", "discret", t("commun.pasDeReponse")));
       return;
     }
     if (liste.length === 0) {
-      this.liste.replaceChildren(el("li", "discret", this.attente.checked ? "Aucune prière n'attend de réponse." : "Personne n'a encore prié."));
+      this.liste.replaceChildren(el("li", "discret", this.attente.checked ? t("prieres.aucuneEnAttente") : t("prieres.personne")));
       return;
     }
     this.liste.replaceChildren(...liste.map((p) => lignePriere(p, this.ouvrirHumain, (x, li) => void this.exaucer(x, li), (x, li) => void this.refuser(x, li))));
@@ -231,10 +232,10 @@ export class PanneauReligions {
   ) {
     const corps = el("div", "corps");
     corps.append(
-      el("p", "discret", "Les croyances partagées nées parmi les humains. L'origine de chaque précepte n'est connue que de l'Entité. Les lieux sacrés sont marqués ✦ sur la carte."),
+      el("p", "discret", t("religions.aide")),
       this.liste,
     );
-    racine.append(tete("Religions", () => this.fermer()), corps);
+    racine.append(tete(t("religions.titre"), () => this.fermer()), corps);
   }
 
   get ouvert(): boolean {
@@ -275,11 +276,11 @@ export class PanneauReligions {
     if (!this.ouvert) return;
     this.marquerLieux(lieux);
     if (!religions) {
-      this.liste.replaceChildren(el("p", "discret", "Le serveur n'a pas répondu."));
+      this.liste.replaceChildren(el("p", "discret", t("commun.pasDeReponse")));
       return;
     }
     if (religions.length === 0) {
-      this.liste.replaceChildren(el("p", "discret", "Aucune croyance n'est encore partagée."));
+      this.liste.replaceChildren(el("p", "discret", t("religions.aucune")));
       return;
     }
     this.liste.replaceChildren(...religions.map((r) => {
@@ -287,34 +288,35 @@ export class PanneauReligions {
       d.open = this.ouverts.has(r.id);
       d.addEventListener("toggle", () => (d.open ? this.ouverts.add(r.id) : this.ouverts.delete(r.id)));
       const resume = el("summary");
-      resume.append(el("strong", undefined, r.nom), ` « ${r.sens} » · `,
-        r.eteinteLe ? `éteinte le ${r.eteinteLe} (jusqu'à ${r.fidelesMax} fidèles)` : `${r.fideles} fidèle${r.fideles > 1 ? "s" : ""}, ferveur ${r.ferveur}/100`);
+      resume.append(el("strong", undefined, r.nom), " " + t("religion.sens", { sens: r.sens }) + " · ",
+        r.eteinteLe ? t("religion.eteinte", { date: r.eteinteLe, n: r.fidelesMax }) : t("religion.vivante", { n: r.fideles, ferveur: r.ferveur }));
       d.append(resume);
       const p = el("p");
-      p.append(`Née le ${r.fondeeLe} ${r.naissance}, fondée par `, this.lien(r.fondateur, r.nomFondateur),
-        r.communaute ? ` dans la ${r.communaute.charAt(0).toLowerCase()}${r.communaute.slice(1)}` : "", r.parent ? `, séparée du ${r.parent}` : "", ". ");
-      if (r.evenement > 0) p.append(boutonCause(p, r.evenement, "au journal"));
-      if (r.gestes) p.append(el("br"), `On y prie ${r.gestes}.`);
-      if (r.lieuSacre) p.append(el("br"), `Lieu sacré : ${r.lieuSacre}.`);
-      if (r.communautes.length > 0) p.append(el("br"), `Fidèles : ${r.communautes.join(", ")}.`);
+      p.append(t("religion.nee", { date: r.fondeeLe, naissance: r.naissance }), this.lien(r.fondateur, r.nomFondateur),
+        r.communaute ? t("religion.dans", { nom: r.communaute, nomMin: `${r.communaute.charAt(0).toLowerCase()}${r.communaute.slice(1)}` }) : "",
+        r.parent ? t("religion.separee", { parent: r.parent }) : "", ". ");
+      if (r.evenement > 0) p.append(boutonCause(p, r.evenement, t("commun.auJournal")));
+      if (r.gestes) p.append(el("br"), t("religion.gestes", { gestes: r.gestes }));
+      if (r.lieuSacre) p.append(el("br"), t("religion.lieu", { lieu: r.lieuSacre }));
+      if (r.communautes.length > 0) p.append(el("br"), t("religion.fideles", { liste: r.communautes.join(t("commun.virgule")) }));
       d.append(p);
       const dogmes = el("ul", "liste dogmes");
       for (const x of r.dogmes) {
         const li = el("li", x.deLEntite ? "dogme entite" : "dogme");
-        li.append(`« ${x.texte} » `, el("span", "discret", `(${x.origine}, ${x.date})`));
+        li.append(t("commun.guillemets", { texte: x.texte }) + " ", el("span", "discret", t("religion.origine", { origine: x.origine, date: x.date })));
         dogmes.append(li);
       }
-      d.append(el("h4", undefined, "Préceptes"), dogmes);
+      d.append(el("h4", undefined, t("religion.preceptes")), dogmes);
       if (r.porteurs.length > 0) {
         const ul = el("ul", "liste");
         for (const x of r.porteurs) {
           const li = el("li", x.vivant ? undefined : "discret");
-          li.append(this.lien(x.id, x.nom), ` : ${x.role}${x.source ? ` (${x.source})` : ""}${x.miracles > 0 ? `, ${x.miracles} miracle${x.miracles > 1 ? "s" : ""} attribué${x.miracles > 1 ? "s" : ""}` : ""}`);
+          li.append(this.lien(x.id, x.nom), t("religion.porteur", { role: x.role }) + (x.source ? ` (${x.source})` : "") + (x.miracles > 0 ? t("religion.miracles", { n: x.miracles }) : ""));
           if (x.communaute) li.append(" · ", lienCommunaute(x.communaute, x.communauteId));
-          if (!x.vivant) li.append(" · mort");
+          if (!x.vivant) li.append(" · " + t("religion.mort"));
           ul.append(li);
         }
-        d.append(el("h4", undefined, "Ceux qui la portent"), ul);
+        d.append(el("h4", undefined, t("religion.porteurs")), ul);
       }
       return d;
     }));

@@ -144,7 +144,7 @@ public sealed class MondeSimule
 
     /// <summary>Nombre d'événements récents gardés en mémoire pour les navigateurs (hors événements fréquents).</summary>
     public const int TailleJournalRecent = 500;
-    private string? _objectifAtteint;
+    private ObjectifAtteint? _objectifAtteint;
 
     public MondeSimule(Carte carte, EtatMonde etat)
     {
@@ -535,7 +535,10 @@ public sealed class MondeSimule
     }
 
     /// <summary>Renvoie, une seule fois, la description du dernier objectif atteint (null sinon).</summary>
-    public string? PrendreObjectifAtteint()
+    public string? PrendreObjectifAtteint() => PrendreObjectifAtteintDetaille()?.Description;
+
+    /// <summary>Renvoie, une seule fois, le dernier objectif atteint ou abandonné après cent ans (null sinon).</summary>
+    public ObjectifAtteint? PrendreObjectifAtteintDetaille()
     {
         lock (_verrou)
         {
@@ -640,9 +643,8 @@ public sealed class MondeSimule
 
         if (objectif is not null && (evenement || _secondes >= objectif.Limite))
         {
-            _objectifAtteint = evenement || objectif.Type == TypeObjectif.Date
-                ? objectif.Description
-                : $"{objectif.Description} : rien en cent ans";
+            var rien = !evenement && objectif.Type != TypeObjectif.Date;
+            _objectifAtteint = new ObjectifAtteint(objectif, rien, rien ? $"{objectif.Description} : rien en cent ans" : objectif.Description);
             _objectif = null;
             _facteur = 0;
             _reliquat = 0;

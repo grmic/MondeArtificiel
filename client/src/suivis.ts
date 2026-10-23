@@ -1,5 +1,6 @@
 import { connexion } from "./connexion";
 import { el } from "./fiche";
+import { t } from "./langue";
 
 /** Un humain ou une communauté que l'on suit, avec son nom au moment où on l'a suivi. */
 export interface Suivi {
@@ -70,8 +71,8 @@ export function boutonSuivre(genre: Suivi["genre"], id: number, nom: string): HT
   b.type = "button";
   const peindre = () => {
     const oui = estSuivi(genre, id);
-    b.textContent = oui ? "★ Suivi" : "☆ Suivre";
-    b.title = oui ? "Ne plus suivre (fenêtre « Suivis »)" : "Suivre ses nouvelles dans la fenêtre « Suivis »";
+    b.textContent = oui ? t("suivis.suivi") : t("suivis.suivre");
+    b.title = oui ? t("suivis.neplusAide") : t("suivis.suivreAide");
     b.classList.toggle("actif", oui);
   };
   b.addEventListener("click", () => {
@@ -101,10 +102,10 @@ export class PanneauSuivis {
     const tete = el("div", "tete");
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
-    fermer.title = "Fermer";
+    fermer.title = t("commun.fermer");
     fermer.addEventListener("click", () => this.fermer());
-    tete.append(el("h2", undefined, "Suivis"), fermer);
-    this.corps.append(this.qui, el("h3", undefined, "Leurs nouvelles"), this.nouvelles);
+    tete.append(el("h2", undefined, t("suivis.titre")), fermer);
+    this.corps.append(this.qui, el("h3", undefined, t("suivis.nouvelles")), this.nouvelles);
     racine.append(tete, this.corps);
     window.addEventListener("suivis", () => {
       if (this.ouvert) void this.charger();
@@ -140,17 +141,17 @@ export class PanneauSuivis {
       const li = el("li");
       const nom = el("button", "lien", s.nom);
       nom.type = "button";
-      nom.title = s.genre === "humain" ? "Ouvrir sa fiche" : "Ouvrir la fiche de la communauté";
+      nom.title = s.genre === "humain" ? t("commun.ouvrirSaFiche") : t("suivis.ouvrirCommunaute");
       nom.addEventListener("click", () => (s.genre === "humain" ? this.ouvrirHumain(s.id) : this.ouvrirCommunaute(s.id)));
       const retirer = el("button", "fermer", "×");
       retirer.type = "button";
-      retirer.title = "Ne plus suivre";
+      retirer.title = t("suivis.neplus");
       retirer.addEventListener("click", () => basculerSuivi(s.genre, s.id, s.nom));
       li.append(s.genre === "humain" ? "👤 " : "👥 ", nom, " ", retirer);
       return li;
     }));
     if (tous.length === 0) {
-      this.qui.replaceChildren(el("li", "discret", "Personne n'est suivi. Sur la fiche d'un humain ou d'une communauté, « ☆ Suivre » l'ajoute ici."));
+      this.qui.replaceChildren(el("li", "discret", t("suivis.personne")));
       this.nouvelles.replaceChildren();
       this.entourer([]);
       return;
@@ -163,7 +164,7 @@ export class PanneauSuivis {
     const vus = new Set<number>();
     const mele = listes.flat().filter((e) => !vus.has(e.id) && vus.add(e.id)).sort((a, b) => b.id - a.id).slice(0, NOUVELLES_MAX);
     this.nouvelles.replaceChildren(...(mele.length === 0
-      ? [el("li", "discret", "Rien de noté pour l'instant.")]
+      ? [el("li", "discret", t("suivis.rien"))]
       : mele.map((e) => el("li", e.significatif ? "significatif" : undefined, `${e.significatif ? "★ " : ""}${e.date} · ${e.texte}`))));
   }
 }

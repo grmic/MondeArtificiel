@@ -10,10 +10,10 @@ public sealed record DemandeConfiguration(long? Graine, int Couples, int Largeur
     /// <exception cref="ArgumentException">Graine ou réglages hors limites (message lisible).</exception>
     public ConfigurationMonde Valider()
     {
-        if (Graine is < 0 or > uint.MaxValue) throw new ArgumentException("La graine doit être un entier entre 0 et 4294967295.");
+        if (Graine is < 0 or > uint.MaxValue) throw new ArgumentException(L.T("erreur.graine"));
         var graine = Graine is { } g ? (uint)g : (uint)Random.Shared.NextInt64(0, (long)uint.MaxValue + 1);
         var configuration = new ConfigurationMonde(graine, Couples, Largeur, Hauteur, Continents, Placement);
-        return configuration.Erreur() is { } erreur ? throw new ArgumentException(erreur) : configuration;
+        return Lib.Erreur(configuration) is { } erreur ? throw new ArgumentException(erreur) : configuration;
     }
 }
 
@@ -48,12 +48,11 @@ public sealed record ConfigurationDto(
     public static string Resumer(ConfigurationMonde c, Carte carte)
     {
         var (continents, iles) = Geographie.MassesDeTerre(carte);
-        var surfaces = string.Join(", ", continents.Select(Echelle.Surface));
-        var nombre = continents.Count == 1 ? "1 continent" : $"{continents.Count} continents";
-        var ilesTexte = iles.Count switch { 0 => "", 1 => " ; 1 île", _ => $" ; {iles.Count} îles" };
-        var couples = c.Couples == 1 ? "1 couple" : $"{c.Couples} couples";
-        return $"Carte de {Echelle.Distance(Echelle.Kilometres(c.Largeur))} × {Echelle.Distance(Echelle.Kilometres(c.Hauteur))}, "
-            + $"{nombre} ({surfaces}){ilesTexte}. Les {couples} ({c.Couples * 2} humains) partent {c.DecrirePlacement()}.";
+        var surfaces = string.Join(", ", continents.Select(cases => L.Surface(Echelle.KilometresCarres(cases))));
+        var ilesTexte = iles.Count == 0 ? "" : L.T("config.resume.iles", ("n", iles.Count));
+        return L.T("config.resume", ("largeur", L.Distance(Echelle.Kilometres(c.Largeur))), ("hauteur", L.Distance(Echelle.Kilometres(c.Hauteur))),
+            ("continents", L.T("config.nContinents", ("n", continents.Count))), ("surfaces", surfaces), ("iles", ilesTexte),
+            ("couples", L.T("config.resume.couples", ("n", c.Couples))), ("humains", c.Couples * 2), ("placement", Lib.Placement(c)));
     }
 }
 
@@ -73,7 +72,7 @@ public sealed record SauvegardeDto(string Nom, string DateMonde, string FaiteLe,
             var resume = Stockage.DepotMonde.Decrire(f.Value);
             var possible = resume is not null && resume.Version <= Stockage.DepotMonde.VersionSchema;
             return (Ecrit: info.LastWriteTimeUtc, Dto: new SauvegardeDto(f.Key,
-                resume is null ? "illisible" : Simulation.Temps.Calendrier.Decomposer(resume.Secondes).ToString(),
+                resume is null ? L.T("config.illisibleMin") : L.Date(resume.Secondes),
                 info.LastWriteTime.ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture),
                 Math.Round(info.Length / 1048576.0, 1), resume?.Vivants ?? 0, (uint)(resume?.Graine ?? 0), possible));
         })

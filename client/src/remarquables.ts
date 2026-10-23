@@ -1,5 +1,6 @@
 import { connexion } from "./connexion";
 import { el } from "./fiche";
+import { t } from "./langue";
 
 interface Critere {
   cle: string;
@@ -44,27 +45,27 @@ export class PanneauRemarquables {
     private readonly ouvrirCommunaute: (id: number) => void = () => {},
   ) {
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, "Remarquables"));
+    tete.append(el("h2", undefined, t("remarquables.titre")));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
-    fermer.title = "Fermer";
+    fermer.title = t("commun.fermer");
     fermer.addEventListener("click", () => this.fermer());
     tete.append(fermer);
 
-    const plusHaut = el("option", undefined, "les plus hauts");
+    const plusHaut = el("option", undefined, t("remarquables.plusHauts"));
     plusHaut.value = "haut";
-    const plusBas = el("option", undefined, "les plus bas");
+    const plusBas = el("option", undefined, t("remarquables.plusBas"));
     plusBas.value = "bas";
     this.sens.append(plusHaut, plusBas);
     this.morts.type = "checkbox";
     const etiquetteMorts = el("label", "case-config");
-    etiquetteMorts.append(this.morts, " Compter aussi les morts");
+    etiquetteMorts.append(this.morts, " " + t("remarquables.morts"));
     const filtres = el("div", "filtres-remarquables");
     filtres.append(this.critere, this.sens, etiquetteMorts);
     for (const e of [this.critere, this.sens, this.morts]) e.addEventListener("change", () => void this.charger());
 
     this.corps.append(
-      el("p", "discret", "Le regard de l'Entité : les humains n'en savent rien. Les vivants classés sont entourés sur la carte ; un nom ouvre sa fiche."),
+      el("p", "discret", t("remarquables.aide")),
       filtres,
       this.liste,
     );
@@ -85,7 +86,7 @@ export class PanneauRemarquables {
     if (this.criteres.length === 0) {
       const criteres = await connexion.invoke<Critere[]>("CriteresRemarquables").catch(() => null);
       if (!criteres) {
-        this.liste.replaceChildren(el("li", "discret", "Le serveur n'a pas répondu."));
+        this.liste.replaceChildren(el("li", "discret", t("commun.pasDeReponse")));
         return;
       }
       this.criteres = criteres;
@@ -117,11 +118,11 @@ export class PanneauRemarquables {
       .catch(() => null);
     if (!this.ouvert) return;
     if (!liste) {
-      this.liste.replaceChildren(el("li", "discret", "Le serveur n'a pas répondu."));
+      this.liste.replaceChildren(el("li", "discret", t("commun.pasDeReponse")));
       return;
     }
     if (liste.length === 0) {
-      this.liste.replaceChildren(el("li", "discret", "Personne ne s'est encore distingué ainsi."));
+      this.liste.replaceChildren(el("li", "discret", t("remarquables.personne")));
       this.entourer([]);
       return;
     }
@@ -130,13 +131,14 @@ export class PanneauRemarquables {
       const qui = el("button", "lien", r.nom);
       qui.type = "button";
       qui.addEventListener("click", () => this.ouvrirHumain(r.id));
-      const qualite = [`${r.sexe === "femme" ? "femme" : "homme"}, ${r.age} ans`, r.vivant ? null : "mort" + (r.sexe === "femme" ? "e" : "")]
+      const g = r.sexe === "femme" ? "f" : "m";
+      const qualite = [t("remarquables.qualite", { sexe: t(r.sexe === "femme" ? "sexe.femme" : "sexe.homme"), age: t("age.ans", { n: r.age }) }), r.vivant ? null : t("commun.mort", { g })]
         .filter((x) => x).join(" · ");
       li.append(qui, ` (${qualite}`);
       if (r.communaute && r.communauteId > 0) {
         const groupe = el("button", "lien", r.communaute);
         groupe.type = "button";
-        groupe.title = "Ouvrir la fiche de sa communauté";
+        groupe.title = t("commun.ficheCommunaute");
         groupe.addEventListener("click", () => this.ouvrirCommunaute(r.communauteId));
         li.append(" · ", groupe);
       }

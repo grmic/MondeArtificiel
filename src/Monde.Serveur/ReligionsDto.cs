@@ -35,16 +35,16 @@ public sealed record FoiDto(int Religion, string? NomReligion, int Ferveur, stri
 
 public static class Religions
 {
-    private static string Date(long s) => Calendrier.Decomposer(s).ToString();
+    private static string Date(long s) => L.Date(s);
 
     private static string? Role(Humain h) => h.Role switch
     {
-        RoleReligieux.Prophete => h.Sexe == Sexe.Femme ? "prophétesse" : "prophète",
-        RoleReligieux.Pretre => h.Sexe == Sexe.Femme ? "gardienne des rites" : "gardien des rites",
+        RoleReligieux.Prophete => L.T("role.prophete", ("g", Lib.G(h))),
+        RoleReligieux.Pretre => L.T("role.pretre", ("g", Lib.G(h))),
         _ => null,
     };
 
-    private static string Titre(Religion r) => $"{r.Nom} (« {r.Sens} »)";
+    private static string Titre(Religion r) => L.T("religion.titre", ("nom", r.Nom), ("sens", r.Sens));
 
     /// <summary>Prières en mémoire : en attente d'abord (les plus fortes en tête), puis les plus récentes.</summary>
     public static List<PriereDto> Prieres(ServiceMonde service, bool enAttente, int limite = 300)
@@ -66,23 +66,23 @@ public static class Religions
         var r = p.ReligionId >= 1 && p.ReligionId <= religions.Count ? religions[p.ReligionId - 1] : null;
         var texte = p.Sujet switch
         {
-            SujetPriere.Guerison => x is null ? "guérir" : $"que {x.Nom} guérisse",
-            SujetPriere.Nourriture => "avoir à manger",
-            SujetPriere.Pluie => "que la pluie revienne",
-            SujetPriere.Accalmie => "que le malheur cesse",
-            SujetPriere.Enfant => "avoir un enfant",
-            SujetPriere.Protection => "que les siens soient protégés de la guerre",
-            SujetPriere.Vengeance => $"que {x?.Nom} soit frappé{(x?.Sexe == Sexe.Femme ? "e" : "")}",
-            SujetPriere.Amour => $"que {x?.Nom} l'aime",
-            _ => "rendre grâce",
+            SujetPriere.Guerison => x is null ? L.T("priere.guerir") : L.T("priere.guerisse", ("nom", x.Nom)),
+            SujetPriere.Nourriture => L.T("priere.manger"),
+            SujetPriere.Pluie => L.T("priere.pluie"),
+            SujetPriere.Accalmie => L.T("priere.accalmie"),
+            SujetPriere.Enfant => L.T("priere.enfant"),
+            SujetPriere.Protection => L.T("priere.protection"),
+            SujetPriere.Vengeance => L.T("priere.vengeance", ("nom", x?.Nom), ("g", x is null ? "m" : Lib.G(x))),
+            SujetPriere.Amour => L.T("priere.amour", ("nom", x?.Nom)),
+            _ => L.T("priere.grace"),
         };
         var collective = p.CommunauteId != 0;
-        return new PriereDto(p.Id, Date(p.Le), h.Id, h.Nom, communautes.GetValueOrDefault(h.CommunauteId), Cultes.Dire(p.Sujet), p.CibleId, x?.Nom,
+        return new PriereDto(p.Id, Date(p.Le), h.Id, h.Nom, communautes.GetValueOrDefault(h.CommunauteId), L.T($"sujetPriere.{p.Sujet}"), p.CibleId, x?.Nom,
             (int)Math.Round(100 * p.Ferveur), p.Forte, r is null ? null : r.Nom, texte,
-            p.Refus == RefusPriere.Signe ? "refusée par un signe" : Cultes.Dire(p.Issue), p.IssueLe > 0 ? Date(p.IssueLe) : null,
+            p.Refus == RefusPriere.Signe ? L.T("priere.refuseeSigne") : L.T($"issuePriere.{p.Issue}"), p.IssueLe > 0 ? Date(p.IssueLe) : null,
             p.Conclusion, p.EvenementId,
             p.Issue == IssuePriere.EnAttente && p.Refus == RefusPriere.Aucun && (collective || h.EstVivant) && p.Sujet != SujetPriere.Remerciement,
-            h.CommunauteId, collective ? communautes.GetValueOrDefault(p.CommunauteId, "?") : null, p.CommunauteId, p.Refus == RefusPriere.Cache ? "refusée en secret" : null);
+            h.CommunauteId, collective ? communautes.GetValueOrDefault(p.CommunauteId, "?") : null, p.CommunauteId, p.Refus == RefusPriere.Cache ? L.T("priere.refuseeSecret") : null);
     }
 
     /// <summary>Toutes les religions, les vivantes d'abord (les plus suivies en tête).</summary>
@@ -98,18 +98,18 @@ public static class Religions
         {
             var f = fideles.GetValueOrDefault(r.Id) ?? [];
             var porteurs = humains.Where(h => h.ReligionId == r.Id && h.Role != RoleReligieux.Aucun)
-                .Select(h => new PorteurDto(h.Id, h.Nom, Role(h)!, h.Role == RoleReligieux.Prophete ? Cultes.Dire(h.SourceProphete) : null, h.Miracles,
+                .Select(h => new PorteurDto(h.Id, h.Nom, Role(h)!, h.Role == RoleReligieux.Prophete ? L.T($"sourceProphete.{h.SourceProphete}") : null, h.Miracles,
                     communautes.GetValueOrDefault(h.CommunauteId), h.EstVivant, h.CommunauteId)).ToList();
             var parCommunaute = f.Where(h => h.CommunauteId != 0).GroupBy(h => h.CommunauteId).OrderByDescending(g => g.Count())
-                .Select(g => $"{communautes.GetValueOrDefault(g.Key, "?")} ({g.Count()})").ToList();
+                .Select(g => L.T("religion.parCommunaute", ("nom", communautes.GetValueOrDefault(g.Key, "?")), ("n", g.Count()))).ToList();
             var sansGroupe = f.Count(h => h.CommunauteId == 0);
-            if (sansGroupe > 0) parCommunaute.Add($"sans communauté ({sansGroupe})");
+            if (sansGroupe > 0) parCommunaute.Add(L.T("religion.sansCommunaute", ("n", sansGroupe)));
             var lieu = lieux.Find(l => l.ReligionId == r.Id);
             var fondateur = humains[r.FondateurId - 1];
-            return new ReligionDto(r.Id, r.Nom, r.Sens, Cultes.Dire(r.Naissance), r.FondateurId, fondateur.Nom, Date(r.FondeeLe),
+            return new ReligionDto(r.Id, r.Nom, r.Sens, L.T($"naissanceReligion.{r.Naissance}"), r.FondateurId, fondateur.Nom, Date(r.FondeeLe),
                 r.ParentId >= 1 && r.ParentId <= religions.Count ? religions[r.ParentId - 1].Nom : null, communautes.GetValueOrDefault(r.CommunauteId),
                 f.Count, r.FidelesMax, f.Count == 0 ? 0 : (int)Math.Round(100 * f.Average(h => h.Ferveur)), r.EteinteLe > 0 ? Date(r.EteinteLe) : null,
-                r.Gestes, r.Dogmes.Select(d => new DogmeDto(d.Texte, Cultes.Dire(d.Origine), d.Origine is OrigineDogme.Entite, Date(d.Le), d.EvenementId)).ToList(),
+                r.Gestes, r.Dogmes.Select(d => new DogmeDto(d.Texte, L.T($"origineDogme.{d.Origine}"), d.Origine is OrigineDogme.Entite, Date(d.Le), d.EvenementId)).ToList(),
                 porteurs, parCommunaute, lieu?.Raison, r.EvenementId);
         }).OrderBy(r => r.EteinteLe is null ? 0 : 1).ThenByDescending(r => r.Fideles).ThenBy(r => r.Id).ToList();
     }
@@ -132,7 +132,7 @@ public static class Religions
         var prieres = monde.Prieres().Where(p => p.HumainId == h.Id).OrderByDescending(p => p.Id).Take(12)
             .Select(p => Depuis(p, humains, religions, communautes)).ToList();
         return new FoiDto(h.ReligionId, r is null ? null : Titre(r), (int)Math.Round(100 * h.Ferveur), Role(h),
-            h.Role == RoleReligieux.Prophete ? Cultes.Dire(h.SourceProphete) : null, h.Miracles, prieres, Bilan(service, [h.Id], 0));
+            h.Role == RoleReligieux.Prophete ? L.T($"sourceProphete.{h.SourceProphete}") : null, h.Miracles, prieres, Bilan(service, [h.Id], 0));
     }
 
     /// <summary>

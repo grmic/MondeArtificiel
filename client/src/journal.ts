@@ -1,40 +1,41 @@
 import { connexion } from "./connexion";
 import { el, ligneEvenement, type Evenement } from "./fiche";
+import { t } from "./langue";
 
 const TYPES: [string, string][] = [
-  ["naissance", "Naissances"],
-  ["mort", "Morts"],
-  ["mort-ne", "Morts-nés"],
-  ["maladie", "Maladies"],
-  ["union", "Couples"],
-  ["accouplement", "Accouplements"],
-  ["grossesse", "Grossesses"],
-  ["fausse-couche", "Fausses couches"],
-  ["delaissement", "Délaissements"],
-  ["lien", "Amitiés et hostilités"],
-  ["humeur", "Deuils et humeur"],
-  ["conflit", "Jalousie et conflits"],
-  ["attirance", "Attirances et refus"],
-  ["exclusion", "Exils et reniements"],
-  ["decouverte", "Découvertes et savoirs"],
-  ["vol", "Vols"],
-  ["entraide", "Soins et consolation"],
-  ["parole", "Paroles de l'Entité"],
-  ["croyance", "Croyance en l'invisible"],
-  ["religion", "Prières, prophètes et religions"],
-  ["geste", "Gestes de l'Entité"],
-  ["medecine", "Médecine et transes"],
-  ["art", "Arts, chants et fêtes"],
-  ["langage", "Langage et récits"],
-  ["mots", "Mots, un par un"],
-  ["communaute", "Communautés"],
-  ["guerre", "Guerres et alliances"],
-  ["nature", "Nature"],
-  ["catastrophe", "Catastrophes"],
-  ["partage", "Partages"],
-  ["pensee", "Pensées"],
-  ["journee", "Journées"],
-  ["souvenir", "Oublis"],
+  ["naissance", "naissance"],
+  ["mort", "mort"],
+  ["mort-ne", "mort-ne"],
+  ["maladie", "maladie"],
+  ["union", "union"],
+  ["accouplement", "accouplement"],
+  ["grossesse", "grossesse"],
+  ["fausse-couche", "fausse-couche"],
+  ["delaissement", "delaissement"],
+  ["lien", "lien"],
+  ["humeur", "humeur"],
+  ["conflit", "conflit"],
+  ["attirance", "attirance"],
+  ["exclusion", "exclusion"],
+  ["decouverte", "decouverte"],
+  ["vol", "vol"],
+  ["entraide", "entraide"],
+  ["parole", "parole"],
+  ["croyance", "croyance"],
+  ["religion", "religion"],
+  ["geste", "geste"],
+  ["medecine", "medecine"],
+  ["art", "art"],
+  ["langage", "langage"],
+  ["mots", "mots"],
+  ["communaute", "communaute"],
+  ["guerre", "guerre"],
+  ["nature", "nature"],
+  ["catastrophe", "catastrophe"],
+  ["partage", "partage"],
+  ["pensee", "pensee"],
+  ["journee", "journee"],
+  ["souvenir", "souvenir"],
 ];
 
 /** Types très nombreux : décochés au départ, et non reçus en direct (le bouton ↻ les relit). */
@@ -131,13 +132,14 @@ export class PanneauJournal {
   private construire(): void {
     const r = this.racine;
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, "Journal"));
+    tete.append(el("h2", undefined, t("journal.entete")));
     const relire = el("button", "fermer", "↻");
     relire.type = "button";
-    relire.title = "Relire le journal (les pensées, journées et oublis n'arrivent pas en direct)";
+    relire.title = t("journal.relire");
     relire.addEventListener("click", () => void this.recharger());
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
+    fermer.title = t("commun.fermer");
     fermer.addEventListener("click", () => this.basculer());
     this.boutonPause.type = "button";
     this.boutonPause.addEventListener("click", () => {
@@ -154,7 +156,8 @@ export class PanneauJournal {
     tete.append(boutons);
 
     const filtres = el("div", "filtres");
-    for (const [cle, libelle] of TYPES) {
+    for (const [cle] of TYPES) {
+      const libelle = t(`journal.type.${cle}`);
       const etiquette = el("label", "puce");
       const case_ = el("input");
       case_.type = "checkbox";
@@ -176,14 +179,14 @@ export class PanneauJournal {
       this.significatifs = seulement.checked;
       void this.recharger();
     });
-    etiquette.title = "Projets de guerre et renoncements, raids, guerres et paix, pactes, soumissions, catastrophes…";
-    etiquette.append(seulement, " ★ Significatifs seulement");
+    etiquette.title = t("journal.significatifsAide");
+    etiquette.append(seulement, " " + t("journal.significatifs"));
     filtres.append(etiquette);
 
     const recherche = el("div", "ligne");
     const champ = el("input");
     champ.type = "search";
-    champ.placeholder = "Nom d'un humain (vide : tous)";
+    champ.placeholder = t("journal.recherche");
     champ.setAttribute("list", "nomsHumains");
     champ.maxLength = 40;
     const liste = el("datalist");
@@ -201,7 +204,7 @@ export class PanneauJournal {
     r.append(suivi);
 
     const zone = el("ul", "liste evenements");
-    const plus = el("button", "plus", "Plus anciens…");
+    const plus = el("button", "plus", t("journal.plusAnciens"));
     plus.type = "button";
     plus.addEventListener("click", async () => {
       const dernier = this.evenements.at(-1);
@@ -219,8 +222,8 @@ export class PanneauJournal {
     const b = this.boutonPause;
     b.textContent = this.enPause ? `▶${this.enAttente.length > 0 ? ` ${this.enAttente.length}` : ""}` : "⏸";
     b.title = this.enPause
-      ? `Journal figé (la simulation continue) : ${this.enAttente.length} nouvel${this.enAttente.length > 1 ? "s" : ""} événement${this.enAttente.length > 1 ? "s" : ""} en attente. Cliquer pour reprendre.`
-      : "Figer le journal pour le lire tranquillement (la simulation continue)";
+      ? t("journal.fige", { n: this.enAttente.length })
+      : t("journal.figer");
     b.classList.toggle("actif", this.enPause);
   }
 
@@ -228,22 +231,22 @@ export class PanneauJournal {
     const suivi = this.racine.querySelector<HTMLElement>(".suivi")!;
     suivi.hidden = this.communaute === null;
     if (this.communaute) {
-      const arreter = el("button", undefined, "× tout le monde");
+      const arreter = el("button", undefined, t("journal.toutLeMonde"));
       arreter.type = "button";
       arreter.addEventListener("click", () => {
         this.communaute = null;
         void this.recharger();
       });
-      suivi.replaceChildren(`Chronologie de la ${this.communaute.nom.charAt(0).toLowerCase()}${this.communaute.nom.slice(1)}`, arreter);
+      suivi.replaceChildren(t("journal.chronologie", { nom: this.communaute.nom, nomMin: `${this.communaute.nom.charAt(0).toLowerCase()}${this.communaute.nom.slice(1)}` }), arreter);
     }
     const zone = this.racine.querySelector(".evenements")!;
     zone.replaceChildren(...this.evenements.map((e) => {
       const li = ligneEvenement(e);
-      li.title = "Cliquer pour ouvrir la fiche";
+      li.title = t("journal.ouvrirFiche");
       li.addEventListener("click", () => this.ouvrirFiche(e.humain));
       return li;
     }));
-    if (this.evenements.length === 0) zone.append(el("li", "discret", this.humain === -1 ? "Aucun humain de ce nom." : "Aucun événement."));
+    if (this.evenements.length === 0) zone.append(el("li", "discret", this.humain === -1 ? t("journal.aucunHumain") : t("journal.aucun")));
     this.racine.querySelector<HTMLButtonElement>(".plus")!.hidden = !this.plusAncien || this.evenements.length < 100;
   }
 }

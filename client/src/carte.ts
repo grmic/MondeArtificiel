@@ -1,4 +1,5 @@
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
+import { langue, nombre, t } from "./langue";
 import type { CatastropheVue, DetailCatastrophe, Geologie } from "./catastrophes";
 
 export interface Emplacement {
@@ -39,19 +40,17 @@ export interface Carte {
   metresParUnite: number;
 }
 
-const nombreFr = (v: number, decimales: number) =>
-  v.toLocaleString("fr-FR", { maximumFractionDigits: decimales }).replace(/\u202f|\u00a0/g, " ");
 
 /** Distance en mots : « 600 m », « 3,2 km », « 48 km ». */
 export function distanceEnMots(km: number): string {
   if (km < 1) return `${Math.round((km * 1000) / 50) * 50} m`;
-  return `${nombreFr(km, km < 10 ? 1 : 0)} km`;
+  return `${nombre(km, km < 10 ? 1 : 0)} km`;
 }
 
 /** Surface en mots : « 40 hectares », « 3,8 km² », « 1 250 km² ». */
 export function surfaceEnMots(km2: number): string {
-  if (km2 < 1) return `${Math.round(km2 * 100)} hectares`;
-  return `${nombreFr(km2, km2 < 100 ? 1 : 0)} km²`;
+  if (km2 < 1) return t("mesure.hectares", { n: Math.round(km2 * 100) });
+  return `${nombre(km2, km2 < 100 ? 1 : 0)} km²`;
 }
 
 /** Côté d'une case en km, tel que l'a donné le serveur avec la dernière carte chargée. */
@@ -94,11 +93,12 @@ function decoderBase64(texte: string): Uint8Array {
 export async function chargerCarte(reglages?: Record<string, number | null>): Promise<Carte> {
   const parametres = new URLSearchParams();
   for (const [k, v] of Object.entries(reglages ?? {})) if (v !== null) parametres.set(k, String(v));
-  const requete = parametres.size === 0 ? "/api/carte" : `/api/carte?${parametres}`;
+  parametres.set("langue", langue());
+  const requete = `/api/carte?${parametres}`;
   const reponse = await fetch(requete);
   if (!reponse.ok) {
     const probleme = (await reponse.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(probleme?.detail ?? `Le serveur a répondu ${reponse.status}`);
+    throw new Error(probleme?.detail ?? t("commun.reponseServeur", { statut: String(reponse.status) }));
   }
   const json = (await reponse.json()) as CarteJson;
   if (json.kilometresParCase > 0) kmParCase = json.kilometresParCase;
@@ -368,7 +368,7 @@ export class VueCarte {
     // Barre d'échelle en bas à gauche : sa longueur suit le zoom.
     vue.barreEchelle = document.createElement("div");
     vue.barreEchelle.className = "barre-echelle";
-    vue.barreEchelle.setAttribute("aria-label", "Échelle de la carte");
+    vue.barreEchelle.setAttribute("aria-label", t("carte.echelle"));
     hote.appendChild(vue.barreEchelle);
     return vue;
   }
@@ -465,8 +465,8 @@ export class VueCarte {
   /** Feux et réserves d'une tuile, en mots. */
   feuxEn(x: number, y: number): string[] {
     const lignes: string[] = [];
-    for (const f of this.feux.feux) if (f.x === x && f.y === y) lignes.push(f.couve ? "Un feu couve sous la cendre" : "Un feu flambe");
-    if (this.reservesVisibles) for (const r of this.feux.reserves) if (r.x === x && r.y === y) lignes.push(`Réserve : ${r.texte}`);
+    for (const f of this.feux.feux) if (f.x === x && f.y === y) lignes.push(f.couve ? t("carte.feuCouve") : t("carte.feuFlambe"));
+    if (this.reservesVisibles) for (const r of this.feux.reserves) if (r.x === x && r.y === y) lignes.push(t("carte.reserve", { texte: r.texte }));
     return lignes;
   }
 

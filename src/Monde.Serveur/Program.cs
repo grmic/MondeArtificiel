@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.SignalR;
 using Monde.Serveur;
 using Monde.Serveur.Hubs;
 using Monde.Simulation;
@@ -8,10 +9,13 @@ var builder = WebApplication.CreateBuilder(args);
 // Serveur HTTP Kestrel intégré : l'adresse d'écoute vient de appsettings.json (section Kestrel).
 builder.Services.AddSignalR(options =>
 {
+    // Langue de chaque navigateur, posée pour chacun de ses appels (voir Langues.cs).
+    options.AddFilter<FiltreLangue>();
     // Limite la taille des messages reçus du navigateur (32 Ko, valeur par défaut explicite).
     options.MaximumReceiveMessageSize = 32 * 1024;
 });
 
+builder.Services.AddSingleton<FiltreLangue>();
 builder.Services.AddSingleton<ServiceMonde>();
 builder.Services.AddSingleton<ServiceCarte>();
 builder.Services.AddHostedService<MoteurSimulation>();
@@ -24,7 +28,8 @@ if (!app.Environment.IsDevelopment())
     {
         // Message générique : aucun détail interne n'est renvoyé au navigateur.
         contexte.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        return contexte.Response.WriteAsync("Erreur interne du serveur.");
+        L.Definir(contexte.Request.Query["langue"].ToString());
+        return contexte.Response.WriteAsync(L.T("erreur.interne"));
     }));
 }
 
@@ -34,7 +39,20 @@ app.Use(async (contexte, suite) =>
     contexte.Response.Headers.XContentTypeOptions = "nosniff";
     contexte.Response.Headers.XFrameOptions = "DENY";
     contexte.Response.Headers["Referrer-Policy"] = "no-referrer";
+    // Langue des textes renvoyés (aperçu de carte, erreurs) : celle que demande le navigateur, sinon le français.
+    L.Definir(contexte.Request.Query["langue"].ToString());
     await suite(contexte);
+});
+
+// Langues de l'interface : la liste (chaque langue dans sa propre langue, avec sa part traduite), puis le fichier.
+app.MapGet("/api/langues", () => Results.Ok(L.Toutes.Values
+    .OrderBy(l => l.Code == L.Francais ? 0 : 1).ThenBy(l => l.Nom, StringComparer.CurrentCulture)
+    .Select(l => new { l.Code, l.Nom, Part = Math.Round(L.Part(l), 3) })));
+app.MapGet("/api/langues/{code}", (string code, HttpContext contexte) =>
+{
+    if (!L.Toutes.TryGetValue(code, out var langue)) return Results.NotFound();
+    contexte.Response.Headers.CacheControl = "no-cache";
+    return Results.Text(langue.Json, "application/json; charset=utf-8");
 });
 
 // Client web (fichiers produits par Vite dans wwwroot).
@@ -71,14 +89,14 @@ app.MapGet("/api/carte", (uint? graine, int? couples, int? largeur, int? hauteur
     var nombre = continents ?? actuelle.Continents;
     var configuration = new ConfigurationMonde(graine ?? (uint)actuelle.Graine, couples ?? actuelle.Couples,
         largeur ?? actuelle.Largeur, hauteur ?? actuelle.Hauteur, nombre, placement ?? Math.Min(actuelle.Placement, nombre));
-    if (configuration.Erreur() is { } erreur) return Results.Problem(erreur, statusCode: StatusCodes.Status400BadRequest);
+    if (Lib.Erreur(configuration) is { } erreur) return Results.Problem(erreur, statusCode: StatusCodes.Status400BadRequest);
     try
     {
         return Results.Ok(CarteDto.Depuis(cartes.Obtenir(configuration)));
     }
     catch (InvalidOperationException e)
     {
-        return Results.Problem(e.Message, statusCode: StatusCodes.Status422UnprocessableEntity);
+        return Results.Problem(Lib.Message(e), statusCode: StatusCodes.Status422UnprocessableEntity);
     }
 });
 

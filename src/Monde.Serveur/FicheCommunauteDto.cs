@@ -92,7 +92,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
     IntelligenceDto Intelligence, CaractereDto Caractere, SavoirsCommunauteDto Savoirs, VieCommunauteDto Vie, FoiCommunauteDto Foi,
     IReadOnlyList<EvenementDto> Marquants, IReadOnlyList<EvenementDto> Entite, IReadOnlyList<MembreFicheDto> Membres)
 {
-    private static readonly System.Globalization.CultureInfo Fr = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
+    private static System.Globalization.NumberFormatInfo Fr => L.Courante.Nombres;
 
     /// <summary>Années montrées au plus dans le tableau (les plus récentes).</summary>
     private const int AnneesMax = 60;
@@ -133,17 +133,17 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
 
     private static string? Role(Humain h) => h.Role switch
     {
-        RoleReligieux.Prophete => h.Sexe == Sexe.Femme ? "prophétesse" : "prophète",
-        RoleReligieux.Pretre => h.Sexe == Sexe.Femme ? "gardienne des rites" : "gardien des rites",
-        _ => Comportement.Metier(h),
+        RoleReligieux.Prophete => L.T("role.prophete", ("g", Lib.G(h))),
+        RoleReligieux.Pretre => L.T("role.pretre", ("g", Lib.G(h))),
+        _ => Lib.Metier(h),
     };
 
     private static string AgeEnMots(long duree)
     {
         var ans = (int)(duree / Calendrier.SecondesParAn);
-        if (ans >= 1) return ans == 1 ? "1 an" : $"{ans} ans";
+        if (ans >= 1) return L.T("duree.ans", ("n", ans));
         var jours = (int)(duree / Calendrier.SecondesParJour);
-        return jours <= 1 ? "1 jour" : $"{jours} jours";
+        return L.T("duree.jours", ("n", Math.Max(1, jours)));
     }
 
     // ───────────── Population ─────────────
@@ -190,7 +190,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             AgeAuDeces(morts, humains.Where(h => !h.EstVivant && h.MortLe is not null).ToList()),
         };
         var causes = morts.GroupBy(h => h.CauseDeMort).OrderByDescending(g => g.Count())
-            .Select(g => $"{Libelles.Cause(g.Key)} : {g.Count()}").ToList();
+            .Select(g => L.T("population.cause", ("cause", Lib.Cause(g.Key)), ("n", g.Count()))).ToList();
         return new PopulationDto(pyramide, annees, indicateurs, causes, morts.Count, tailles);
     }
 
@@ -202,9 +202,9 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var femmes = membres.Count(h => Feconde(h, maintenant));
         var femmesMonde = vivants.Count(h => Feconde(h, maintenant));
         double? Taux(int naissances, int f) => f < 5 ? null : Math.Round(100.0 * naissances / f, 1);
-        return new IndicateurDto("Naissances de l'année pour 100 femmes de 15 à 44 ans",
+        return new IndicateurDto(L.T("indicateur.fecondite"),
             Taux(nes.Count(h => h.Naissance >= depuis), femmes), Taux(nesMonde.Count(h => h.Naissance >= depuis), femmesMonde),
-            "environ 20 à 30 (chasseurs-cueilleurs : une naissance tous les 3 à 4 ans)", "", femmes);
+            L.T("indicateur.fecondite.reference"), "", femmes);
     }
 
     /// <summary>Part des enfants nés il y a 15 à 40 ans qui ont atteint 15 ans (chasseurs-cueilleurs : environ 57 %, Gurven et Kaplan 2007).</summary>
@@ -219,8 +219,8 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             return (cohorte.Count < 10 ? null : Math.Round(100.0 * cohorte.Count(Atteint) / cohorte.Count), cohorte.Count);
         }
         var (communaute, cas) = Part(nes);
-        return new IndicateurDto("Enfants nés il y a 15 à 40 ans qui ont atteint 15 ans", communaute, Part(nesMonde).Item1,
-            "environ 57 % (Gurven et Kaplan, 2007)", "%", cas);
+        return new IndicateurDto(L.T("indicateur.survie"), communaute, Part(nesMonde).Item1,
+            L.T("indicateur.survie.reference"), "%", cas);
     }
 
     /// <summary>Âge moyen au décès de ceux qui ont passé 15 ans (chasseurs-cueilleurs : environ 51 ans de plus en moyenne à 15 ans, soit ~66).</summary>
@@ -232,16 +232,16 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             return (ages.Count < 5 ? null : Math.Round(ages.Average(), 1), ages.Count);
         }
         var (communaute, cas) = Moyenne(morts);
-        return new IndicateurDto("Âge moyen au décès des adultes (morts après 15 ans)", communaute, Moyenne(mortsMonde).Item1,
-            "environ 55 à 65 ans (Gurven et Kaplan, 2007 ; morts récents comptés surtout)", "ans", cas);
+        return new IndicateurDto(L.T("indicateur.ageDeces"), communaute, Moyenne(mortsMonde).Item1,
+            L.T("indicateur.ageDeces.reference"), L.T("indicateur.ageDeces.unite"), cas);
     }
 
     // ───────────── Sexes et orientations ─────────────
 
-    private static string Enleve(Humain h) => h.Sexe == Sexe.Femme ? "enlevée" : "enlevé";
+    private static string Enleve(Humain h) => L.T("captif.enleve", ("g", Lib.G(h)));
 
-    private static readonly string[] ClassesOrientation =
-        ["surtout vers l'autre sexe", "plutôt vers l'autre sexe", "vers les deux", "vers le même sexe", "peu d'attirance"];
+    /// <summary>Classes d'orientation, dans l'ordre de <see cref="ClasseOrientation"/>.</summary>
+    private static string[] ClassesOrientation => [.. Enumerable.Range(0, 5).Select(i => L.T($"classeOrientation.{i}"))];
 
     /// <summary>
     /// Classe d'orientation d'un adulte, d'après ses deux attirances continues (vers l'autre sexe, vers le sien), à la manière de
@@ -262,7 +262,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var hommes = new int[3];
         var femmes = new int[3];
         foreach (var h in membres) (h.Sexe == Sexe.Femme ? femmes : hommes)[Tranche(h)]++;
-        var orientations = new int[ClassesOrientation.Length];
+        var orientations = new int[5];
         foreach (var h in membres.Where(h => !h.EstEnfant(maintenant))) orientations[ClasseOrientation(h)]++;
         var ids = membres.Select(h => h.Id).ToHashSet();
         var couples = membres.Count(h => h.PartenaireId > h.Id && ids.Contains(h.PartenaireId)
@@ -286,11 +286,11 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         double Gen(Humain h) => h.Personnalite.Intelligence.Generale;
         var aptitudes = new (string Nom, Func<Humain, double> Valeur)[]
         {
-            ("verbale", h => h.Personnalite.Intelligence.Verbale),
-            ("spatiale", h => h.Personnalite.Intelligence.Spatiale),
-            ("manuelle", h => h.Personnalite.Intelligence.Manuelle),
-            ("mémoire", h => h.Personnalite.Intelligence.Memoire),
-            ("artistique", h => h.Personnalite.Intelligence.Artistique),
+            (L.T("aptitude.verbale"), h => h.Personnalite.Intelligence.Verbale),
+            (L.T("aptitude.spatiale"), h => h.Personnalite.Intelligence.Spatiale),
+            (L.T("aptitude.manuelle"), h => h.Personnalite.Intelligence.Manuelle),
+            (L.T("aptitude.memoire"), h => h.Personnalite.Intelligence.Memoire),
+            (L.T("aptitude.artistique"), h => h.Personnalite.Intelligence.Artistique),
         };
         var tries = mesures.Select(Gen).Order().ToList();
         return new IntelligenceDto(mesures.Count,
@@ -305,13 +305,13 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
 
     private static CaractereDto CalculerCaractere(List<Humain> adultes, List<Humain> adultesMonde)
     {
-        var traits = new (string Nom, string Haut, string Bas, Func<Humain, double> Valeur)[]
+        var traits = new (string Cle, Func<Humain, double> Valeur)[]
         {
-            ("ouverture", "curieux de nouveautés", "attachés à ce qu'ils connaissent", h => h.Personnalite.Ouverture),
-            ("conscience", "appliqués et prévoyants", "insouciants", h => h.Personnalite.Conscience),
-            ("extraversion", "sociables et expansifs", "réservés", h => h.Personnalite.Extraversion),
-            ("agréabilité", "conciliants", "durs entre eux", h => h.Personnalite.Agreabilite),
-            ("névrosisme", "anxieux", "d'humeur égale", h => h.Personnalite.Nevrosisme),
+            ("ouverture", h => h.Personnalite.Ouverture),
+            ("conscience", h => h.Personnalite.Conscience),
+            ("extraversion", h => h.Personnalite.Extraversion),
+            ("agreabilite", h => h.Personnalite.Agreabilite),
+            ("nevrosisme", h => h.Personnalite.Nevrosisme),
         };
         var liste = new List<AptitudeDto>();
         var distinctifs = new List<string>();
@@ -319,9 +319,10 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         {
             var m = adultes.Count == 0 ? 0 : adultes.Average(t.Valeur);
             var monde = adultesMonde.Count == 0 ? 0 : adultesMonde.Average(t.Valeur);
-            liste.Add(new AptitudeDto(t.Nom, Math.Round(m, 2), Math.Round(monde, 2), null));
+            liste.Add(new AptitudeDto(L.T($"trait.{t.Cle}"), Math.Round(m, 2), Math.Round(monde, 2), null));
             // Un écart d'un tiers d'écart-type des moyennes individuelles (~0,15) se voit déjà dans un groupe.
-            if (adultes.Count >= 5 && Math.Abs(m - monde) >= 0.05) distinctifs.Add($"plus {(m > monde ? t.Haut : t.Bas)} que la moyenne ({t.Nom} {m.ToString("0.00", Fr)} contre {monde.ToString("0.00", Fr)})");
+            if (adultes.Count >= 5 && Math.Abs(m - monde) >= 0.05) distinctifs.Add(L.T("caractere.distinctif", ("comment", L.T($"caractere.{t.Cle}.{(m > monde ? "haut" : "bas")}")),
+                ("trait", L.T($"trait.{t.Cle}")), ("v", m.ToString("0.00", Fr)), ("monde", monde.ToString("0.00", Fr))));
         }
         NommeDto? Karma(Humain? h) => h is null ? null : new NommeDto(h.Id, h.Nom, Math.Round(h.Karma, 1));
         return new CaractereDto(liste, distinctifs, adultes.Count == 0 ? null : Math.Round(adultes.Average(h => h.Karma), 1),
@@ -340,7 +341,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             .Where(x => x.Communaute == c.Id || x.Communaute == 0 && H(x.D.HumainId)?.CommunauteId == c.Id)
             .Select(x => x.Communaute == 0 ? x with { Estimee = true } : x)
             .OrderBy(x => x.D.Le)
-            .Select(x => new DecouverteMembreDto(Calendrier.Decomposer(x.D.Le).ToString(), Physique.NomDecouverte(x.D.Effet, x.D.Pieces), x.D.HumainId,
+            .Select(x => new DecouverteMembreDto(L.Date(x.D.Le), Decouvertes.NomDecouverte(x.D.Effet, x.D.Pieces), x.D.HumainId,
                 H(x.D.HumainId)?.Nom ?? "?", SavoirsDto.Origine(x.D.Origine), x.D.EvenementId, x.Estimee))
             .ToList();
 
@@ -351,13 +352,14 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
                                                                    && H(s.MaitreId) is { CommunauteId: var autre } && autre != c.Id && autre != 0)
                 .Select(s => (s.Effet, Autre: H(s.MaitreId)!.CommunauteId)))
             .Distinct().GroupBy(x => x.Effet)
-            .Select(g => $"{Physique.NomEffet(g.Key)} (de la {Minuscule(service.Monde.Communautes()[g.First().Autre - 1].Nom)})").ToList();
+            .Select(g => service.Monde.Communautes()[g.First().Autre - 1].Nom is var nom
+                ? L.T("savoirs.venuDe", ("effet", L.T($"effet.{g.Key}")), ("nom", nom), ("nomMin", Minuscule(nom))) : "").ToList();
         var perdus = humains.Where(h => !h.EstVivant && h.CommunauteId == c.Id)
             .SelectMany(h => h.Savoirs.Where(Utile).Select(s => s.Effet)).Distinct().Where(e => !connus.Contains(e))
-            .Order().Select(Physique.NomEffet).ToList();
+            .Order().Select(e => L.T($"effet.{e}")).ToList();
         var fragiles = membres.SelectMany(m => m.Savoirs.Where(s => Utile(s) && s.Espece == 0).Select(s => (s.Effet, Membre: m)))
             .DistinctBy(x => (x.Effet, x.Membre.Id)).GroupBy(x => x.Effet).Where(g => g.Count() <= 2 && membres.Count >= 4).OrderBy(g => g.Key)
-            .Select(g => new FragileDto(Physique.NomEffet(g.Key), g.Select(x => new NommeDto(x.Membre.Id, x.Membre.Nom, 0)).ToList())).ToList();
+            .Select(g => new FragileDto(L.T($"effet.{g.Key}"), g.Select(x => new NommeDto(x.Membre.Id, x.Membre.Nom, 0)).ToList())).ToList();
         return new SavoirsCommunauteDto(siennes, Decouvertes.DeCommunaute(membres), appris, perdus, fragiles);
     }
 
@@ -370,11 +372,11 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var (foyers, huttes, _) = service.Monde.Installations();
         bool Proche(int x, int y) => c.Active && Math.Max(Math.Abs(x - c.CentreX), Math.Abs(y - c.CentreY)) <= c.Rayon + 1;
         var malades = membres.Where(h => h.EstMalade(maintenant) && h.Maladie != Maladie.Aucune)
-            .Select(h => new PersonneDto(h.Id, h.Nom, Maladies.Fiche(h.Maladie).Nom)).ToList();
+            .Select(h => new PersonneDto(h.Id, h.Nom, Lib.Maladie(h.Maladie))).ToList();
         var mortsMaladie = humains.Count(h => !h.EstVivant && h.CommunauteId == c.Id && h.CauseDeMort == CauseDeMort.Maladie);
         var catastrophes = CatastropheDto.Liste(service, c.Id, 40).Where(x => !x.Phenomene || x.Morts > 0).ToList();
         var captifs = membres.Where(h => h.CaptifDe != 0)
-            .Select(h => new PersonneDto(h.Id, h.Nom, h.CaptifDe <= humains.Count ? $"{Enleve(h)} par {humains[h.CaptifDe - 1].Nom}" : Enleve(h))).ToList();
+            .Select(h => new PersonneDto(h.Id, h.Nom, h.CaptifDe <= humains.Count ? L.T("captif.par", ("enleve", Enleve(h)), ("nom", humains[h.CaptifDe - 1].Nom)) : Enleve(h))).ToList();
         return new VieCommunauteDto(huttes.Count(h => Proche(h.X, h.Y)), foyers.Count(f => Proche(f.X, f.Y)), malades, mortsMaladie, catastrophes, captifs,
             CalculerFeu(service, c, membres, maintenant, Proche), CalculerRencontres(service, c, humains, membres, maintenant));
     }
@@ -384,21 +386,21 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var communautes = service.Monde.Communautes();
         string NomDe(int id) => id >= 1 && id <= communautes.Count ? communautes[id - 1].Nom : "?";
         var specialistes = membres.Where(h => h.Specialite != Ouvrage.Aucun)
-            .Select(h => new PersonneDto(h.Id, h.Nom, $"{Comportement.Metier(h)} ({h.Servis(h.Specialite)} ouvrage{(h.Servis(h.Specialite) > 1 ? "s" : "")} pour d'autres)")).ToList();
+            .Select(h => new PersonneDto(h.Id, h.Nom, L.T("specialiste.phrase", ("metier", Lib.Metier(h)), ("n", h.Servis(h.Specialite))))).ToList();
         var rassemblements = service.Monde.Rassemblements().Where(r => r.HoteId == c.Id || r.InviteeId == c.Id).OrderByDescending(r => r.Id).Take(20)
             .Select(r =>
             {
                 var autre = r.HoteId == c.Id ? r.InviteeId : r.HoteId;
                 var fin = r.FiniLe > 0 ? r.FiniLe : maintenant;
-                return new RassemblementDto(Calendrier.Decomposer(r.Debut).ToString(), autre, NomDe(autre), r.HoteId == c.Id,
+                return new RassemblementDto(L.Date(r.Debut), autre, NomDe(autre), r.HoteId == c.Id,
                     Math.Max(1, (int)Math.Round((fin - r.Debut) / (double)Calendrier.SecondesParJour)), r.Actif, r.Participants, r.Cadeaux, r.Appris, r.Couples,
                     r.EvenementId, r.BilanEvenementId);
             }).ToList();
-        string Chez(Humain h) => h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count ? humains[h.VisiteChezId - 1] is var o ? $"chez {o.Nom}, de la {Minuscule(NomDe(o.CommunauteId))}" : "" : "";
-        var enVisite = membres.Where(h => h.VisiteChezId != 0).Select(h => new PersonneDto(h.Id, h.Nom, h.VisiteArriveeLe == 0 ? $"en route, {Chez(h)}" : Chez(h))).ToList();
+        string Chez(Humain h) => h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count ? humains[h.VisiteChezId - 1] is var o ? L.T("visite.chez", ("nom", o.Nom), ("de", NomDe(o.CommunauteId)), ("deMin", Minuscule(NomDe(o.CommunauteId)))) : "" : "";
+        var enVisite = membres.Where(h => h.VisiteChezId != 0).Select(h => new PersonneDto(h.Id, h.Nom, h.VisiteArriveeLe == 0 ? L.T("visite.enRoute", ("chez", Chez(h))) : Chez(h))).ToList();
         var visiteurs = humains.Where(h => h.EstVivant && h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count && humains[h.VisiteChezId - 1].CommunauteId == c.Id)
-            .Select(h => new PersonneDto(h.Id, h.Nom, $"de la {Minuscule(NomDe(h.CommunauteId))}, chez {humains[h.VisiteChezId - 1].Nom}")).ToList();
-        var venus = membres.Where(h => h.VenuDeId != 0).Select(h => new PersonneDto(h.Id, h.Nom, $"venu{(h.Sexe == Sexe.Femme ? "e" : "")} de la {Minuscule(NomDe(h.VenuDeId))}")).ToList();
+            .Select(h => new PersonneDto(h.Id, h.Nom, L.T("visite.visiteur", ("de", NomDe(h.CommunauteId)), ("deMin", Minuscule(NomDe(h.CommunauteId))), ("nom", humains[h.VisiteChezId - 1].Nom)))).ToList();
+        var venus = membres.Where(h => h.VenuDeId != 0).Select(h => new PersonneDto(h.Id, h.Nom, L.T("visite.venu", ("de", NomDe(h.VenuDeId)), ("deMin", Minuscule(NomDe(h.VenuDeId))), ("g", Lib.G(h))))).ToList();
         return new RencontresCommunauteDto(specialistes, rassemblements, enVisite, visiteurs, venus);
     }
 
@@ -410,11 +412,11 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var porteur = adultes.Where(h => h.PorteurDuFeuDepuis > 0).MaxBy(h => h.FeuxPortes);
         var siennes = reserves.Where(r => r.CommunauteId == c.Id && r.Kg > 0).ToList();
         var lignes = siennes.GroupBy(r => r.Sorte).OrderBy(g => g.Key)
-            .Select(g => Comportement.DecrireReserve(g.Key, g.Sum(r => r.Kg)) + (g.Count() > 1 ? $" ({g.Count()} caches)" : "")).ToList();
+            .Select(g => Lib.Reserve(g.Key, g.Sum(r => r.Kg)) + (g.Count() > 1 ? L.T("reserves.caches", ("n", g.Count())) : "")).ToList();
         var idee = c.IdeeReserve switch
         {
-            IdeeReserve.Commune => "La réserve est à tous : chacun y puise quand il a faim.",
-            IdeeReserve.ASoi => "La réserve est à celui qui l'a faite : y puiser sans lui, c'est voler.",
+            IdeeReserve.Commune => L.T("reserves.commune"),
+            IdeeReserve.ASoi => L.T("reserves.aSoi"),
             _ => null,
         };
         var incendies = c.IncendiesSouvenus.Select(id => CatastropheDto.Trouver(service, id)).OfType<Catastrophe>()
@@ -434,17 +436,17 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var c = communautes[id - 1];
         var parts = membres.Where(h => h.ReligionId >= 1 && h.ReligionId <= religions.Count).GroupBy(h => h.ReligionId)
             .OrderByDescending(g => g.Count())
-            .Select(g => $"{religions[g.Key - 1].Nom} (« {religions[g.Key - 1].Sens} ») : {g.Count()} fidèle{(g.Count() > 1 ? "s" : "")}, {Math.Round(100.0 * g.Count() / membres.Count)} %")
+            .Select(g => L.T("foi.part", ("nom", religions[g.Key - 1].Nom), ("sens", religions[g.Key - 1].Sens), ("n", g.Count()), ("pourcent", Math.Round(100.0 * g.Count() / membres.Count))))
             .ToList();
         var sans = membres.Count(h => h.ReligionId == 0);
-        if (parts.Count > 0 && sans > 0) parts.Add($"sans religion : {sans}, {Math.Round(100.0 * sans / membres.Count)} %");
+        if (parts.Count > 0 && sans > 0) parts.Add(L.T("foi.sans", ("n", sans), ("pourcent", Math.Round(100.0 * sans / membres.Count))));
         var noms = communautes.ToDictionary(x => x.Id, x => x.Nom);
         var porteurs = membres.Where(h => h.Role != RoleReligieux.Aucun && h.ReligionId >= 1 && h.ReligionId <= religions.Count)
-            .Select(h => new PorteurDto(h.Id, h.Nom, $"{Role(h)} du {religions[h.ReligionId - 1].Nom}",
-                h.Role == RoleReligieux.Prophete ? Cultes.Dire(h.SourceProphete) : null, h.Miracles, null, true)).ToList();
+            .Select(h => new PorteurDto(h.Id, h.Nom, L.T("foi.porteur", ("role", Role(h)), ("religion", religions[h.ReligionId - 1].Nom)),
+                h.Role == RoleReligieux.Prophete ? L.T($"sourceProphete.{h.SourceProphete}") : null, h.Miracles, null, true)).ToList();
         var proches = c.Active
             ? lieux.Where(l => Math.Max(Math.Abs(l.X - c.CentreX), Math.Abs(l.Y - c.CentreY)) <= c.Rayon + 5)
-                .Select(l => $"{l.Raison}{(l.ReligionId >= 1 && l.ReligionId <= religions.Count ? $" ({religions[l.ReligionId - 1].Nom})" : "")}").ToList()
+                .Select(l => l.ReligionId >= 1 && l.ReligionId <= religions.Count ? L.T("foi.lieu", ("raison", l.Raison), ("religion", religions[l.ReligionId - 1].Nom)) : l.Raison).ToList()
             : [];
         var ids = membres.Select(h => h.Id).ToHashSet();
         var prieres = Serveur.Religions.Prieres(service, enAttente: false, limite: 1000)
@@ -453,18 +455,18 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var (gestes, souvenirs) = monde.GestesEnCours();
         var effets = gestes.Where(e => e.CommunauteId == id).Select(e => e.Geste switch
         {
-            GesteEntite.Famine => $"Famine envoyée : {Math.Round(100 * e.Force)} % du gibier et des plantes perdus",
-            GesteEntite.Fecondite => $"Fécondité accordée : chances de concevoir × {e.Force:0.0}",
-            GesteEntite.Benir => $"Bénédiction : {Math.Round(100 * e.Force)} sur 100",
-            _ => Gestes.Nom(e.Geste),
-        } + $" (fin : {Calendrier.Decomposer(e.Fin)})").ToList();
+            GesteEntite.Famine => L.T("effetEntite.famine", ("v", Math.Round(100 * e.Force))),
+            GesteEntite.Fecondite => L.T("effetEntite.fecondite", ("v", e.Force.ToString("0.0", L.Courante.Nombres))),
+            GesteEntite.Benir => L.T("effetEntite.benir", ("v", Math.Round(100 * e.Force))),
+            _ => L.T($"gesteEntite.{e.Geste}"),
+        } + L.T("effetEntite.fin", ("date", L.Date(e.Fin)))).ToList();
         var recits = souvenirs.Where(s => s.CommunauteId == id).OrderByDescending(s => s.Le).Take(20)
-            .Select(s => new SouvenirDto(Calendrier.Decomposer(s.Le).ToString(), s.Texte, s.Bienfait, (int)Math.Round(s.Force), s.Faute switch
+            .Select(s => new SouvenirDto(L.Date(s.Le), s.Texte, s.Bienfait, (int)Math.Round(s.Force), s.Faute switch
             {
-                Gestes.FauteVol => "ils se disent punis pour leurs vols",
-                Gestes.FauteMeurtre => "ils se disent punis pour leurs meurtres",
-                Gestes.FauteGuerre => "ils se disent punis pour leur guerre",
-                _ when !s.Bienfait => "ils ne savent pas ce qu'ils ont fait",
+                Gestes.FauteVol => L.T("faute.vol"),
+                Gestes.FauteMeurtre => L.T("faute.meurtre"),
+                Gestes.FauteGuerre => L.T("faute.guerre"),
+                _ when !s.Bienfait => L.T("faute.inconnue"),
                 _ => null,
             }, s.EvenementId)).ToList();
         return new FoiCommunauteDto(Moyenne(h => h.Croyance), parts, porteurs, proches, prieres,

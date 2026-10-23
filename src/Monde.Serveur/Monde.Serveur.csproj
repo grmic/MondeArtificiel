@@ -5,6 +5,11 @@
     <ProjectReference Include="..\Monde.Stockage\Monde.Stockage.csproj" />
   </ItemGroup>
 
+  <!-- Langues de l'interface : un fichier par langue, lu par le serveur et servi au navigateur. -->
+  <ItemGroup>
+    <Content Include="..\..\langues\*.json" Link="langues\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

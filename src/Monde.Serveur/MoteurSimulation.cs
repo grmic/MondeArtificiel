@@ -61,38 +61,38 @@ public sealed class MoteurSimulation(
                 {
                     if (monde.Facteur == 0 && monde.Objectif is null) service.FacteurAtteint = 0;
                     if (alertes.Any(a => a.Grave)) service.Sauvegarder();
-                    await hub.Clients.All.SendAsync("Alertes", alertes.Select(AlerteDto.Depuis).ToList(), arret);
-                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
+                    await hub.Clients.Diffuser("Alertes", () => alertes.Select(AlerteDto.Depuis).ToList(), arret);
+                    await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
                 }
 
-                if (monde.PrendreObjectifAtteint() is { } objectif)
+                if (monde.PrendreObjectifAtteintDetaille() is { } objectif)
                 {
                     service.FacteurAtteint = 0;
                     service.Sauvegarder();
-                    await hub.Clients.All.SendAsync("ObjectifAtteint", objectif, arret);
-                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
+                    await hub.Clients.Diffuser("ObjectifAtteint", () => Lib.Objectif(objectif), arret);
+                    await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
                 }
 
                 // Le dernier humain est mort : le monde s'est mis en pause, quel que soit le réglage.
-                if (monde.PrendreExtinction() is { } extinction)
+                if (monde.PrendreExtinction() is not null)
                 {
                     service.FacteurAtteint = 0;
                     service.Sauvegarder();
-                    await hub.Clients.All.SendAsync("Extinction", extinction, arret);
-                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
+                    await hub.Clients.Diffuser("Extinction", () => Lib.Extinction(monde), arret);
+                    await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
                 }
 
                 if (maintenant - derniereDiffusion >= IntervalleDiffusion)
                 {
                     derniereDiffusion = maintenant;
-                    await hub.Clients.All.SendAsync("Horloge", HorlogeDto.Depuis(service), arret);
-                    await hub.Clients.All.SendAsync("Humains", HumainDto.Depuis(monde), arret);
+                    await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
+                    await hub.Clients.Diffuser("Humains", () => HumainDto.Depuis(monde), arret);
                     // Nouveaux événements du journal (les 50 derniers au plus, l'historique complet reste consultable).
                     var nouveaux = monde.JournalRecent(dernierEvenement);
                     if (nouveaux.Count > 0)
                     {
                         dernierEvenement = nouveaux[^1].Id;
-                        await hub.Clients.All.SendAsync("Journal", nouveaux.TakeLast(50).Select(EvenementDto.Depuis).ToList(), arret);
+                        await hub.Clients.Diffuser("Journal", () => nouveaux.TakeLast(50).Select(EvenementDto.Depuis).ToList(), arret);
                     }
                 }
 

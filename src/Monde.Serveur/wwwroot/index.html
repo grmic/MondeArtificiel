@@ -5,110 +5,104 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-OgAwSz0_.js"></script>
-    <link rel="modulepreload" crossorigin href="/assets/CanvasPool-CT7OQSgs.js">
-    <link rel="modulepreload" crossorigin href="/assets/canvasUtils-vHj9HkKG.js">
-    <link rel="modulepreload" crossorigin href="/assets/RenderTargetSystem-FtcCc_-0.js">
-    <link rel="modulepreload" crossorigin href="/assets/getTextureBatchBindGroup-DWZkPDHl.js">
-    <link rel="modulepreload" crossorigin href="/assets/getTexelRangeRects-Dz82KJmA.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-KWv7ZkGw.css">
+    <script type="module" crossorigin src="/assets/index-BglmODqT.js"></script>
   </head>
   <body>
     <div id="scene"></div>
     <header class="barre">
-      <h1>Monde artificiel</h1>
-      <span id="statut" class="statut">Connexion au serveur…</span>
+      <h1 data-t="app.titre"></h1>
+      <span id="statut" class="statut" data-t="connexion.enCours"></span>
       <span id="date" class="date"></span>
       <span id="population" class="population"></span>
-      <div id="vitesses" class="vitesses" role="group" aria-label="Vitesse du temps"></div>
+      <div id="vitesses" class="vitesses" role="group" data-t-aria-label="temps.vitesseDuTemps"></div>
       <form id="formGraine" class="graine">
-        <button type="button" id="boutonRessources" title="Ressources des terres (rouge : épuisées) et régions en sécheresse (cadre orange) ou très arrosées (cadre bleu)">Ressources</button>
-        <label class="case-barre" title="Montrer sur la carte les réserves d'eau et de nourriture (petit carré bleu ou brun)"><input id="voirReserves" type="checkbox" checked /> Réserves</label>
-        <button type="button" id="boutonCommunautes" title="Les groupes qui vivent ensemble">Communautés</button>
-        <button type="button" id="boutonTerritoires" title="Terres parcourues par chaque communauté, aujourd'hui et au fil des saisons">Territoires</button>
-        <button type="button" id="boutonCatastrophes" title="Séismes, volcans, feux, crues, tempêtes, épidémies, phénomènes du ciel">Catastrophes</button>
-        <button type="button" id="boutonDemographie" title="Courbes de population du monde et des communautés les plus peuplées, naissances et morts, avec les catastrophes et les guerres en repère">Démographie</button>
-        <button type="button" id="boutonDecouvertes" title="Chronologie des découvertes : qui a trouvé quoi, comment, et si le savoir s'est transmis ou perdu">Découvertes</button>
-        <button type="button" id="boutonRemarquables" title="Les humains hors du commun : intelligence, aptitudes, karma, croyance, découvertes, soins, œuvres, descendance, longévité">Remarquables</button>
-        <button type="button" id="boutonPrieres" title="Ce que les humains demandent à l'invisible ; l'Entité peut exaucer">Prières</button>
-        <button type="button" id="boutonReligions" title="Croyances partagées : religions, préceptes, prophètes, prêtres, lieux sacrés">Religions</button>
-        <button type="button" id="boutonSuivis" title="Les humains et les communautés que vous suivez, et leurs dernières nouvelles">Suivis</button>
-        <button type="button" id="boutonJournal" title="Naissances, morts, couples… filtrables par humain">Journal</button>
-        <button type="button" id="boutonMonde" title="Surface et dimensions du continent, relief, eaux, terrains, climat, population, marche">Monde</button>
-        <button type="button" id="boutonMesure" title="Mesurer une distance et le temps de marche entre deux points de la carte">📏 Mesurer</button>
-        <button type="button" id="boutonConfiguration" title="Réglages du monde (graine, couples, taille de la carte, continents, départ des couples) ; sauvegardes à restaurer ; aperçu et création d'un nouveau monde">⚙ Configuration</button>
+        <button type="button" id="boutonRessources" data-t="barre.ressources" data-t-title="barre.ressourcesAide"></button>
+        <label class="case-barre" data-t-title="barre.reservesAide"><input id="voirReserves" type="checkbox" checked /> <span data-t="barre.reserves"></span></label>
+        <button type="button" id="boutonCommunautes" data-t="barre.communautes" data-t-title="barre.communautesAide"></button>
+        <button type="button" id="boutonTerritoires" data-t="barre.territoires" data-t-title="barre.territoiresAide"></button>
+        <button type="button" id="boutonCatastrophes" data-t="barre.catastrophes" data-t-title="barre.catastrophesAide"></button>
+        <button type="button" id="boutonDemographie" data-t="barre.demographie" data-t-title="barre.demographieAide"></button>
+        <button type="button" id="boutonDecouvertes" data-t="barre.decouvertes" data-t-title="barre.decouvertesAide"></button>
+        <button type="button" id="boutonRemarquables" data-t="barre.remarquables" data-t-title="barre.remarquablesAide"></button>
+        <button type="button" id="boutonPrieres" data-t="barre.prieres" data-t-title="barre.prieresAide"></button>
+        <button type="button" id="boutonReligions" data-t="barre.religions" data-t-title="barre.religionsAide"></button>
+        <button type="button" id="boutonSuivis" data-t="barre.suivis" data-t-title="barre.suivisAide"></button>
+        <button type="button" id="boutonJournal" data-t="barre.journal" data-t-title="barre.journalAide"></button>
+        <button type="button" id="boutonMonde" data-t="barre.monde" data-t-title="barre.mondeAide"></button>
+        <button type="button" id="boutonMesure" data-t="barre.mesurer" data-t-title="barre.mesurerAide"></button>
+        <button type="button" id="boutonConfiguration" data-t="barre.configuration" data-t-title="barre.configurationAide"></button>
       </form>
     </header>
-    <section id="panneauTemps" class="temps" aria-label="Contrôle du temps">
+    <section id="panneauTemps" class="temps" data-t-aria-label="temps.controle">
       <div class="ligne">
-        <label for="curseurVitesse">Vitesse libre</label>
+        <label for="curseurVitesse" data-t="temps.vitesseLibre"></label>
         <input id="curseurVitesse" type="range" min="0" step="1" />
         <span id="vitesseDemandee" class="valeur"></span>
         <span id="vitesseAtteinte" class="valeur discret"></span>
-        <button type="button" id="reduireTemps" class="reduire" title="Réduire la fenêtre du temps à cette seule ligne" aria-expanded="true">▴</button>
+        <button type="button" id="reduireTemps" class="reduire" data-t-title="temps.reduireAide" aria-expanded="true">▴</button>
       </div>
       <div class="ligne">
-        <span>Pas à pas</span>
-        <button type="button" data-pas="pas" title="Met en pause, puis avance de 10 minutes">+10 min</button>
-        <button type="button" data-pas="heure" title="Met en pause, puis avance d'une heure">+1 h</button>
-        <button type="button" data-pas="jour" title="Met en pause, puis avance d'un jour">+1 jour</button>
+        <span data-t="temps.pasAPas"></span>
+        <button type="button" data-pas="pas" data-t="temps.plus10min" data-t-title="temps.plus10minAide"></button>
+        <button type="button" data-pas="heure" data-t="temps.plus1h" data-t-title="temps.plus1hAide"></button>
+        <button type="button" data-pas="jour" data-t="temps.plus1jour" data-t-title="temps.plus1jourAide"></button>
       </div>
       <form id="formObjectif" class="ligne">
-        <label for="typeObjectif">Aller jusqu'à</label>
+        <label for="typeObjectif" data-t="temps.allerJusqua"></label>
         <select id="typeObjectif">
-          <option value="matin">demain matin</option>
-          <option value="saison">la prochaine saison</option>
-          <option value="annee">la prochaine année</option>
-          <option value="naissance">la prochaine naissance</option>
-          <option value="mort">la prochaine mort</option>
-          <option value="date">une date…</option>
+          <option value="matin" data-t="temps.objectif.matin"></option>
+          <option value="saison" data-t="temps.objectif.saison"></option>
+          <option value="annee" data-t="temps.objectif.annee"></option>
+          <option value="naissance" data-t="temps.objectif.naissance"></option>
+          <option value="mort" data-t="temps.objectif.mort"></option>
+          <option value="date" data-t="temps.objectif.date"></option>
         </select>
         <span id="champsDate" class="champs-date" hidden>
-          an <input id="objAnnee" type="number" min="1" step="1" />
-          saison <select id="objSaison"><option value="1">printemps</option><option value="2">été</option><option value="3">automne</option><option value="4">hiver</option></select>
-          jour <input id="objJour" type="number" min="1" max="90" step="1" />
-          heure <input id="objHeure" type="number" min="0" max="23" step="1" />
+          <span data-t="temps.champ.an"></span> <input id="objAnnee" type="number" min="1" step="1" />
+          <span data-t="temps.champ.saison"></span> <select id="objSaison"><option value="1" data-t="saison.printemps"></option><option value="2" data-t="saison.ete"></option><option value="3" data-t="saison.automne"></option><option value="4" data-t="saison.hiver"></option></select>
+          <span data-t="temps.champ.jour"></span> <input id="objJour" type="number" min="1" max="90" step="1" />
+          <span data-t="temps.champ.heure"></span> <input id="objHeure" type="number" min="0" max="23" step="1" />
         </span>
-        <button type="submit">Aller</button>
+        <button type="submit" data-t="temps.aller"></button>
       </form>
       <div id="objectifEnCours" class="ligne objectif" hidden>
         <span id="texteObjectif"></span>
-        <button type="button" id="annulerObjectif">Arrêter</button>
+        <button type="button" id="annulerObjectif" data-t="temps.arreter"></button>
       </div>
-      <label class="ligne discret"><input id="reprendreVitesse" type="checkbox" /> Au redémarrage du serveur, reprendre la dernière vitesse (sinon : pause)</label>
-      <label class="ligne discret"><input id="pauseCatastrophe" type="checkbox" /> Mettre en pause quand une catastrophe menace des humains</label>
+      <label class="ligne discret"><input id="reprendreVitesse" type="checkbox" /> <span data-t="temps.reprendreVitesse"></span></label>
+      <label class="ligne discret"><input id="pauseCatastrophe" type="checkbox" /> <span data-t="temps.pauseCatastrophe"></span></label>
     </section>
     <dialog id="dialogueReinit" class="dialogue">
       <form method="dialog">
-        <h2>Créer un nouveau monde ?</h2>
+        <h2 data-t="nouveauMonde.question"></h2>
         <p id="texteNouveauMonde"></p>
         <menu>
-          <button value="annuler" autofocus>Annuler</button>
-          <button value="confirmer" class="danger">Créer ce monde</button>
+          <button value="annuler" autofocus data-t="commun.annuler"></button>
+          <button value="confirmer" class="danger" data-t="nouveauMonde.creer"></button>
         </menu>
       </form>
     </dialog>
-    <aside id="fiche" class="fiche panneau-lateral" aria-label="Fiche de l'humain" hidden></aside>
-    <aside id="ficheCommunaute" class="fiche fiche-communaute panneau-lateral" aria-label="Fiche de la communauté" hidden></aside>
-    <aside id="journal" class="journal-panneau panneau-lateral" aria-label="Journal du monde" hidden></aside>
-    <aside id="catastrophes" class="catastrophes-panneau panneau-lateral" aria-label="Catastrophes" hidden></aside>
-    <aside id="configuration" class="monde-panneau config-panneau panneau-lateral" aria-label="Configuration" hidden></aside>
-    <aside id="demographie" class="demographie-panneau panneau-lateral" aria-label="Démographie" hidden></aside>
-    <aside id="decouvertes" class="demographie-panneau panneau-lateral" aria-label="Découvertes" hidden></aside>
-    <aside id="suivis" class="journal-panneau panneau-lateral" aria-label="Suivis" hidden></aside>
-    <aside id="remarquables" class="demographie-panneau panneau-lateral" aria-label="Remarquables" hidden></aside>
-    <aside id="prieres" class="demographie-panneau panneau-lateral" aria-label="Prières" hidden></aside>
-    <aside id="religions" class="demographie-panneau panneau-lateral" aria-label="Religions" hidden></aside>
-    <aside id="caracteristiques" class="monde-panneau panneau-lateral" aria-label="Caractéristiques du Monde" hidden></aside>
+    <aside id="fiche" class="fiche panneau-lateral" data-t-aria-label="fiche.titre" hidden></aside>
+    <aside id="ficheCommunaute" class="fiche fiche-communaute panneau-lateral" data-t-aria-label="ficheCommunaute.titre" hidden></aside>
+    <aside id="journal" class="journal-panneau panneau-lateral" data-t-aria-label="journal.titre" hidden></aside>
+    <aside id="catastrophes" class="catastrophes-panneau panneau-lateral" data-t-aria-label="barre.catastrophes" hidden></aside>
+    <aside id="configuration" class="monde-panneau config-panneau panneau-lateral" data-t-aria-label="barre.configuration" hidden></aside>
+    <aside id="demographie" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.demographie" hidden></aside>
+    <aside id="decouvertes" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.decouvertes" hidden></aside>
+    <aside id="suivis" class="journal-panneau panneau-lateral" data-t-aria-label="barre.suivis" hidden></aside>
+    <aside id="remarquables" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.remarquables" hidden></aside>
+    <aside id="prieres" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.prieres" hidden></aside>
+    <aside id="religions" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.religions" hidden></aside>
+    <aside id="caracteristiques" class="monde-panneau panneau-lateral" data-t-aria-label="monde.titre" hidden></aside>
     <div id="alerte" class="alertes" role="alert" aria-live="assertive" hidden></div>
     <div id="extinction" class="alerte-catastrophe grave extinction" role="alert" hidden>
       <span id="texteExtinction"></span>
-      <button type="button" id="extinctionRestaurer">Restaurer une sauvegarde</button>
-      <button type="button" id="extinctionNouveau">Créer un nouveau monde</button>
-      <button type="button" class="fermer" id="extinctionFermer" title="Fermer : la nature continue seule si vous relancez le temps">×</button>
+      <button type="button" id="extinctionRestaurer" data-t="extinction.restaurer"></button>
+      <button type="button" id="extinctionNouveau" data-t="extinction.nouveau"></button>
+      <button type="button" class="fermer" id="extinctionFermer" data-t-title="extinction.fermerAide">×</button>
     </div>
-    <aside id="communautes" class="communautes-panneau panneau-lateral" aria-label="Communautés" hidden></aside>
-    <section id="panneauTerritoires" class="territoires" aria-label="Terres des communautés" hidden></section>
-    <aside id="infos" class="infos">Survole la carte pour voir une tuile. Molette : zoom · glisser : déplacer.</aside>
+    <aside id="communautes" class="communautes-panneau panneau-lateral" data-t-aria-label="barre.communautes" hidden></aside>
+    <section id="panneauTerritoires" class="territoires" data-t-aria-label="territoires.titre" hidden></section>
+    <aside id="infos" class="infos" data-t="carte.survol"></aside>
   </body>
 </html>

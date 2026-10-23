@@ -29,7 +29,7 @@ public static class Territoires
         var liste = monde.Communautes().Where(c => c.Active)
             .Select(c => new TerritoireDto(c.Id, c.Nom, membres[c.Id].Count(), Plages(VieSociale.Etendue(VieSociale.Frequentees(c.Territoire), monde.Carte))))
             .Where(t => t.Plages.Length > 0).ToList();
-        return new TerritoiresDto(maintenant, Calendrier.Decomposer(maintenant).ToString(), true, liste);
+        return new TerritoiresDto(maintenant, L.Date(maintenant), true, liste);
     }
 
     /// <summary>Terres archivées à une date (celles en attente d'enregistrement comprises), ou null si rien n'y est archivé.</summary>
@@ -39,7 +39,7 @@ public static class Territoires
         if (archives.Count == 0) archives = service.Depot.LireArchives(secondes);
         if (archives.Count == 0) return null;
         var noms = service.Monde.Communautes().ToDictionary(c => c.Id, c => NomA(c, secondes));
-        return new TerritoiresDto(secondes, Calendrier.Decomposer(secondes).ToString(), false,
+        return new TerritoiresDto(secondes, L.Date(secondes), false,
             archives.Where(a => a.Cases.Length > 0)
                 .Select(a => new TerritoireDto(a.CommunauteId, noms.GetValueOrDefault(a.CommunauteId, "?"), a.Membres, Plages(a.Cases))).ToList());
     }
@@ -47,7 +47,7 @@ public static class Territoires
     /// <summary>Dates archivées, de la plus ancienne à la plus récente.</summary>
     public static List<DateArchiveDto> Dates(ServiceMonde service) =>
         service.Depot.LireDatesArchives().Concat(service.Monde.ArchivesEnMemoire().Select(a => a.Secondes))
-            .Distinct().Order().Select(s => new DateArchiveDto(s, Calendrier.Decomposer(s).ToString())).ToList();
+            .Distinct().Order().Select(s => new DateArchiveDto(s, L.Date(s))).ToList();
 
     /// <summary>Taille d'une communauté au début de chaque saison.</summary>
     public static List<TailleDto> Tailles(ServiceMonde service, int communaute) =>
@@ -55,7 +55,7 @@ public static class Territoires
             .Select(t => (t.Secondes, t.Membres, t.Adultes))
             .Concat(service.Monde.ArchivesEnMemoire().Where(a => a.CommunauteId == communaute).Select(a => (a.Secondes, a.Membres, a.Adultes)))
             .DistinctBy(t => t.Secondes).OrderBy(t => t.Secondes)
-            .Select(t => new TailleDto(t.Secondes, Calendrier.Decomposer(t.Secondes).ToString(), t.Membres, t.Adultes)).ToList();
+            .Select(t => new TailleDto(t.Secondes, L.Date(t.Secondes), t.Membres, t.Adultes)).ToList();
 
     /// <summary>Le nom que portait une communauté à une date.</summary>
     private static string NomA(Communaute c, long secondes) => c.Noms.LastOrDefault(n => n.Depuis <= secondes)?.Nom ?? c.Nom;

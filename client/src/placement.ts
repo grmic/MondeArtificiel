@@ -1,3 +1,4 @@
+import { t } from "./langue";
 /**
  * Place la fenêtre du temps juste sous la barre de boutons, quelle que soit sa hauteur (elle passe sur plusieurs lignes
  * sur un écran étroit), et les panneaux de droite sous la fenêtre du temps. La fenêtre du temps peut se réduire à la
@@ -33,7 +34,7 @@ export function placerSousLaBarre(barre: HTMLElement, temps: HTMLElement, reduir
   const appliquer = (reduit: boolean) => {
     temps.classList.toggle("reduit", reduit);
     reduire.textContent = reduit ? "▾" : "▴";
-    reduire.title = reduit ? "Montrer toute la fenêtre du temps" : "Réduire la fenêtre du temps à cette seule ligne";
+    reduire.title = reduit ? t("temps.agrandirAide") : t("temps.reduireAide");
     reduire.setAttribute("aria-expanded", String(!reduit));
     placer();
   };

@@ -15,6 +15,7 @@ import { PanneauJournal } from "./journal";
 import { OutilMesure, PanneauMonde } from "./monde";
 import { PanneauTerritoires } from "./territoires";
 import { placerSousLaBarre } from "./placement";
+import { nombre, t } from "./langue";
 import "./style.css";
 
 const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
@@ -29,17 +30,18 @@ let humainsDeDepart = 66;
 
 function decrireHumain(h: HumainVue): string {
   const nom = (id: number) => nomsParId.get(id) ?? "?";
-  const age = h.age < 2 ? `${Math.round(h.age * 12)} mois` : `${Math.floor(h.age)} ans`;
+  const g = h.sexe === "femme" ? "f" : "m";
+  const age = h.age < 2 ? t("age.mois", { n: Math.round(h.age * 12) }) : t("age.ans", { n: Math.floor(h.age) });
   const liens: string[] = [];
-  if (h.mere) liens.push(`enfant de ${nom(h.mere)} et ${h.pere ? nom(h.pere) : "?"}`);
-  else liens.push(`couple de départ n° ${h.emplacement}`);
-  if (h.partenaire) liens.push(`avec ${nom(h.partenaire)}`);
-  const qui = `${h.nom}${h.nomLangue ? ` « ${h.nomLangue} »` : ""} (${h.sexe}, ${age}, ${liens.join(", ")})`;
-  if (!h.vivant) return `✝ ${qui}, mort ${h.causeDeMort ?? ""}`;
-  const etat = [h.activite, h.humeur ?? "", h.enceinte ? "enceinte" : "", h.malade ? "malade" : "", h.contagieux ? "contagieux" : "",
-    h.peur >= 20 ? "apeuré" : ""].filter(Boolean).join(" · ");
+  if (h.mere) liens.push(t("survol.enfantDe", { mere: nom(h.mere), pere: h.pere ? nom(h.pere) : "?" }));
+  else liens.push(t("survol.coupleDeDepart", { numero: h.emplacement }));
+  if (h.partenaire) liens.push(t("survol.avec", { nom: nom(h.partenaire) }));
+  const qui = `${h.nom}${h.nomLangue ? ` « ${h.nomLangue} »` : ""} (${t(`sexe.${h.sexe}`)}, ${age}, ${liens.join(", ")})`;
+  if (!h.vivant) return `✝ ${t("survol.mort", { qui, cause: h.causeDeMort ?? "", g })}`;
+  const etat = [h.activite, h.humeur ?? "", h.enceinte ? t("survol.enceinte") : "", h.malade ? t("survol.malade", { g }) : "",
+    h.contagieux ? t("survol.contagieux", { g }) : "", h.peur >= 20 ? t("survol.apeure", { g }) : ""].filter(Boolean).join(" · ");
   const pensee = h.pensee ? `\n   « ${h.pensee} »` : "";
-  return `${qui} ${etat}${pensee}\n   faim ${h.faim} · soif ${h.soif} · fatigue ${h.fatigue} · froid ${h.froid} · santé ${h.sante} · réserves ${h.reserves}`;
+  return `${qui} ${etat}${pensee}\n   ${t("survol.besoins", { faim: h.faim, soif: h.soif, fatigue: h.fatigue, froid: h.froid, sante: h.sante, reserves: h.reserves })}`;
 }
 
 let natureEn: (x: number, y: number) => { abondance: number; pluie: number } | null = () => null;
@@ -54,18 +56,18 @@ function decrire(info: InfoTuile): void {
   const altitude = Math.round((carte.altitudes[i] - carte.niveauMer) * carte.metresParUnite);
   const km = (cases: number) => distanceEnMots((cases + 0.5) * carte.kilometresParCase);
   const lignes = [
-    `Tuile ${x}, ${y} (${km(x)} du bord ouest, ${km(y)} du bord nord) · ${carte.nomsBiomes[carte.biomes[i]] ?? "?"}`,
-    `Altitude ${altitude.toLocaleString("fr-FR").replace(/\u202f|\u00a0/g, " ")} m · gibier ${carte.gibier[i]} · plantes ${carte.plantes[i]}`,
+    t("survol.tuile", { x: String(x), y: String(y), ouest: km(x), nord: km(y), biome: carte.nomsBiomes[carte.biomes[i]] ?? "?" }),
+    t("survol.altitude", { altitude: nombre(altitude), gibier: carte.gibier[i], plantes: carte.plantes[i] }),
   ];
   const nature = natureEn(x, y);
   if (nature && nature.abondance > 0) {
-    lignes.push(`Ressources : ${Math.round(nature.abondance * 100)} % de ce que la saison permet · pluies de l'année : ${Math.round(nature.pluie * 100)} % de la normale`);
+    lignes.push(t("survol.ressources", { abondance: Math.round(nature.abondance * 100), pluie: Math.round(nature.pluie * 100) }));
   }
   const terres = territoireEn(x, y);
-  if (terres) lignes.push(`Terres de la ${terres.nom.charAt(0).toLowerCase()}${terres.nom.slice(1)}`);
+  if (terres) lignes.push(t("survol.terres", { nom: terres.nom, nomMin: `${terres.nom.charAt(0).toLowerCase()}${terres.nom.slice(1)}` }));
   lignes.push(...feuxEn(x, y));
   for (const c of catastrophesEn(x, y)) lignes.push(`⚠ ${c.nom}${c.intensite ? ` (${c.intensite})` : ""}`);
-  if (emplacement) lignes.unshift(`Emplacement de départ n° ${emplacement.numero}`);
+  if (emplacement) lignes.unshift(t("survol.emplacement", { numero: emplacement.numero }));
   if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 5).map(decrireHumain));
   infos.textContent = lignes.join("\n");
 }
@@ -127,7 +129,7 @@ async function demarrer(): Promise<void> {
     element("#extinction").hidden = false;
   };
   connexion.on("Extinction", (texte: string) => {
-    montrerExtinction(`${texte} Le temps est en pause.`);
+    montrerExtinction(`${texte} ${t("temps.enPause")}`);
   });
   element("#extinctionFermer").addEventListener("click", () => (element("#extinction").hidden = true));
   const horloge = new PanneauHorloge(
@@ -138,7 +140,7 @@ async function demarrer(): Promise<void> {
       vue.eclairer(h.lumiere);
       eteint = h.eteint;
       // Monde déjà éteint à l'ouverture de la page : le bandeau le rappelle une fois.
-      if (h.eteint && !extinctionVue) montrerExtinction("Plus aucun humain ne vit dans ce monde.");
+      if (h.eteint && !extinctionVue) montrerExtinction(t("extinction.plusPersonne"));
       if (!h.eteint) {
         extinctionVue = false;
         element("#extinction").hidden = true;
@@ -158,10 +160,10 @@ async function demarrer(): Promise<void> {
     const enceintes = vivants.filter((h) => h.enceinte).length;
     const naissances = Math.max(0, Math.max(...humains.map((h) => h.id)) - humainsDeDepart);
     if (vivants.length === 0 && (eteint || humains.length > 0)) {
-      population.textContent = `Aucun humain · naissances : ${naissances}`;
+      population.textContent = t("population.aucun", { naissances });
       return;
     }
-    population.textContent = `Vivants : ${vivants.length} (dont ${enfants} enfants) · enceintes : ${enceintes} · naissances : ${naissances}`;
+    population.textContent = t("population.resume", { vivants: vivants.length, enfants, enceintes, naissances });
   };
   connexion.on("Humains", (humains: HumainVue[]) => {
     montrerHumains(humains);
@@ -175,7 +177,7 @@ async function demarrer(): Promise<void> {
     const humain = fiche.courant;
     fiche.fermer();
     if (ficheCommunaute) {
-      ficheCommunaute.retour = humain ? { libelle: `fiche de ${nomsParId.get(humain) ?? "?"}`, aller: () => void fiche.ouvrir(humain) } : null;
+      ficheCommunaute.retour = humain ? { libelle: t("retour.ficheDe", { nom: nomsParId.get(humain) ?? "?" }), aller: () => void fiche.ouvrir(humain) } : null;
       void ficheCommunaute.ouvrir(id);
     }
   };
@@ -196,7 +198,7 @@ async function demarrer(): Promise<void> {
   ficheCommunaute = new PanneauFicheCommunaute(element("#ficheCommunaute"), (id) => {
     const c = ficheCommunaute?.courant ?? 0;
     const nom = ficheCommunaute?.nom ?? "";
-    fiche.retour = c ? { libelle: `fiche de la ${nom.charAt(0).toLowerCase()}${nom.slice(1)}`, aller: () => ouvrirCommunaute(c) } : null;
+    fiche.retour = c ? { libelle: t("retour.ficheCommunaute", { nom, nomMin: `${nom.charAt(0).toLowerCase()}${nom.slice(1)}` }), aller: () => ouvrirCommunaute(c) } : null;
     void fiche.ouvrir(id);
   }, (ids) => vue.surligner(ids), suivreCommunaute, montrerTerres, (x, y) => vue.montrer(x, y));
   communautes = new PanneauCommunautes(element("#communautes"), (ids) => vue.surligner(ids), (id) => void fiche.ouvrir(id),
@@ -348,8 +350,8 @@ async function demarrer(): Promise<void> {
     if (h) void fiche.ouvrir(h.id);
   });
   const idDuNom = (nom: string) => {
-    const cherche = nom.toLocaleLowerCase("fr");
-    for (const [id, n] of nomsParId) if (n.toLocaleLowerCase("fr") === cherche) return id;
+    const cherche = nom.toLocaleLowerCase();
+    for (const [id, n] of nomsParId) if (n.toLocaleLowerCase() === cherche) return id;
     return undefined;
   };
   definirLiensNoms(idDuNom, (id) => void fiche.ouvrir(id), (id) => nomsParId.get(id) ?? "?");
@@ -384,18 +386,18 @@ async function demarrer(): Promise<void> {
 
   // Carte du monde courant (sans réglages) ou aperçu d'autres réglages : rend un message d'erreur, ou null.
   const charger = async (reglages?: Reglages): Promise<string | null> => {
-    infos.textContent = "Génération de la carte…";
+    infos.textContent = t("carte.generation");
     try {
       const carte = await chargerCarte(reglages ? { ...reglages } : undefined);
       vue.afficher(carte, reglages !== undefined);
       if (!reglages) humainsDeDepart = carte.emplacements.length * 2;
-      const apercu = reglages ? "Aperçu (le monde courant ne change pas)" : "Monde courant";
-      infos.textContent = `${apercu} · graine ${carte.graine} · ${carte.emplacements.length} emplacements de départ.\nMolette : zoom · glisser : déplacer · double-clic : recadrer.`;
+      const apercu = reglages ? t("carte.apercu") : t("carte.mondeCourant");
+      infos.textContent = t("carte.chargee", { apercu, graine: String(carte.graine), n: carte.emplacements.length });
       return null;
     } catch (e) {
       const raison = e instanceof Error ? e.message : "";
-      infos.textContent = `Impossible de charger la carte. ${raison}`;
-      return raison || "Impossible de charger la carte.";
+      infos.textContent = `${t("carte.impossible")} ${raison}`;
+      return raison || t("carte.impossible");
     }
   };
 
@@ -440,7 +442,7 @@ async function demarrer(): Promise<void> {
     void journal.recharger();
     void charger().then(() => {
       configuration.mondeRecree();
-      infos.textContent = `Nouveau monde · graine ${graine}. Le temps est en pause.`;
+      infos.textContent = t("carte.nouveauMonde", { graine: String(graine) });
     });
   });
 

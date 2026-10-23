@@ -32,20 +32,20 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
 
     public static Geographie Geographie(Carte carte) => Cache.GetValue(carte, Simulation.Monde.Geographie.Calculer);
 
-    private static string N(double v, int decimales = 1) => Echelle.Nombre(v, decimales);
+    private static string N(double v, int decimales = 1) => L.Nombre(v, decimales);
 
-    private static string Km(double km) => Echelle.Distance(km);
+    private static string Km(double km) => L.Distance(km);
 
-    private static string Km2(double km2) => Echelle.Surface(km2);
+    private static string Km2(double km2) => L.Surface(km2);
 
-    private static string Pourcent(double part) => $"{N(part * 100, part < 0.1 ? 1 : 0)} %";
+    private static string Pourcent(double part) => L.T("commun.pourcent", ("v", N(part * 100, part < 0.1 ? 1 : 0)));
 
     private static string Duree(double heures)
     {
-        if (heures < 1) return $"{Math.Round(heures * 60)} min";
+        if (heures < 1) return L.T("carac.marche.minutes", ("n", Math.Round(heures * 60)));
         var h = (int)heures;
         var min = (int)Math.Round((heures - h) * 60);
-        return min == 0 ? $"{h} h" : $"{h} h {min:00}";
+        return min == 0 ? L.T("carac.marche.heures", ("n", h)) : L.T("carac.marche.heuresMinutes", ("n", h), ("min", min.ToString("00", System.Globalization.CultureInfo.InvariantCulture)));
     }
 
     public static CaracteristiquesDto Depuis(ServiceMonde service)
@@ -58,56 +58,54 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
 
         var rubriques = new List<RubriqueDto>
         {
-            new("Réglages", [
-                new("Couples de départ", N(monde.Configuration.Couples, 0), $"{N(monde.Configuration.Couples * 2, 0)} humains au départ"),
-                new("Continents demandés", N(monde.Configuration.Continents, 0)),
-                new("Départ des couples", monde.Configuration.DecrirePlacement()),
-                new("Graine", monde.Graine.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    monde.Configuration == ConfigurationMonde.ParDefaut(monde.Graine) ? "réglages d'origine" : "réglages choisis à la création du monde"),
+            new(T("reglages"), [
+                new(T("couples"), N(monde.Configuration.Couples, 0), T("couples.aide", ("n", N(monde.Configuration.Couples * 2, 0)))),
+                new(T("continents"), N(monde.Configuration.Continents, 0)),
+                new(T("depart"), Lib.Placement(monde.Configuration)),
+                new(T("graine"), monde.Graine.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                    T(monde.Configuration == ConfigurationMonde.ParDefaut(monde.Graine) ? "graine.origine" : "graine.choisie")),
             ]),
-            new("Échelle", [
-                new("Carte", $"{Km(g.LargeurCarteKm)} × {Km(g.HauteurCarteKm)}", $"{carte.Largeur} × {carte.Hauteur} cases, {Km2(g.SurfaceCarteKm2)}"),
-                new("Une case", $"{N(Echelle.KilometresParCase * 1000, 0)} m de côté",
-                    $"{Km2(Echelle.KilometresCarres(1))} ; un adulte la traverse en une dizaine de minutes en terrain plat"),
-                new("Relief", $"{N(Echelle.MetresParUnite, 0)} m par degré d'altitude", "la carte compte 127 degrés au-dessus de la mer"),
+            new(T("echelle"), [
+                new(T("carte"), T("carte.valeur", ("l", Km(g.LargeurCarteKm)), ("h", Km(g.HauteurCarteKm))),
+                    T("carte.aide", ("l", carte.Largeur), ("h", carte.Hauteur), ("surface", Km2(g.SurfaceCarteKm2)))),
+                new(T("case"), T("case.valeur", ("v", N(Echelle.KilometresParCase * 1000, 0))), T("case.aide", ("surface", Km2(Echelle.KilometresCarres(1))))),
+                new(T("relief"), T("relief.valeur", ("v", N(Echelle.MetresParUnite, 0))), T("relief.aide")),
             ]),
-            new(g.AutresContinentsKm2.Count == 0 ? "Continent" : monde.Configuration.Placement == 1 ? "Continent des couples de départ" : "Plus grand continent", [
-                new("Surface", Km2(g.ContinentKm2), $"terres {Km2(g.TerresKm2)}, lacs {Km2(g.LacsKm2)}"),
-                new("Étendue est-ouest", Km(g.EtendueEstOuestKm)),
-                new("Étendue nord-sud", Km(g.EtendueNordSudKm)),
-                new("Plus grande longueur", Km(g.PlusGrandeLongueurKm), "entre les deux points de la côte les plus éloignés", g.LongueurDe),
-                new("Largeur moyenne", Km(g.PlusGrandeLongueurKm > 0 ? g.ContinentKm2 / g.PlusGrandeLongueurKm : 0),
-                    "surface divisée par la plus grande longueur"),
-                new("Côtes", $"environ {Km(g.CotesKm)}", $"mesurées case par case ({N(Echelle.KilometresParCase * 1000, 0)} m) : une côte réelle, plus découpée, serait plus longue"),
-                new("Point le plus éloigné de la mer", Km(g.PlusLoinDeLaMerKm), null, g.PlusLoinDeLaMer),
-                new("Îles au large", g.Iles == 0 ? "aucune" : $"{g.Iles} ({Km2(g.IlesKm2)})", "inaccessibles à pied"),
+            new(T(g.AutresContinentsKm2.Count == 0 ? "continent" : monde.Configuration.Placement == 1 ? "continentDepart" : "plusGrandContinent"), [
+                new(T("surface"), Km2(g.ContinentKm2), T("surface.aide", ("terres", Km2(g.TerresKm2)), ("lacs", Km2(g.LacsKm2)))),
+                new(T("estOuest"), Km(g.EtendueEstOuestKm)),
+                new(T("nordSud"), Km(g.EtendueNordSudKm)),
+                new(T("longueur"), Km(g.PlusGrandeLongueurKm), T("longueur.aide"), g.LongueurDe),
+                new(T("largeur"), Km(g.PlusGrandeLongueurKm > 0 ? g.ContinentKm2 / g.PlusGrandeLongueurKm : 0), T("largeur.aide")),
+                new(T("cotes"), T("cotes.valeur", ("v", Km(g.CotesKm))), T("cotes.aide", ("v", N(Echelle.KilometresParCase * 1000, 0)))),
+                new(T("loinMer"), Km(g.PlusLoinDeLaMerKm), null, g.PlusLoinDeLaMer),
+                new(T("iles"), g.Iles == 0 ? T("iles.aucune") : T("compte", ("n", g.Iles), ("surface", Km2(g.IlesKm2))), T("inaccessibles")),
                 .. g.AutresContinentsKm2.Count == 0 ? Array.Empty<MesureDto>() : [
-                    new("Autres continents", $"{g.AutresContinentsKm2.Count} ({string.Join(", ", g.AutresContinentsKm2.Select(Km2))})",
-                        "séparés par la mer : inaccessibles à pied"),
+                    new(T("autresContinents"), T("compteListe", ("n", g.AutresContinentsKm2.Count), ("liste", string.Join(L.T("commun.virgule"), g.AutresContinentsKm2.Select(Km2)))),
+                        T("autresContinents.aide")),
                 ],
             ]),
-            new("Relief", [
-                new("Point culminant", $"{N(g.AltitudeMaxM, 0)} m", null, g.Sommet),
-                new("Altitude moyenne des terres", $"{N(g.AltitudeMoyenneM, 0)} m"),
-                .. g.Altitudes.Select(t => new MesureDto($"Terres à {t.Tranche}", Km2(t.Km2), Pourcent(g.TerresKm2 > 0 ? t.Km2 / g.TerresKm2 : 0))),
+            new(T("relief"), [
+                new(T("culminant"), T("metres", ("v", N(g.AltitudeMaxM, 0))), null, g.Sommet),
+                new(T("altitudeMoyenne"), T("metres", ("v", N(g.AltitudeMoyenneM, 0)))),
+                .. g.Altitudes.Select((t, k) => new MesureDto(T($"tranche.{k}"), Km2(t.Km2), Pourcent(g.TerresKm2 > 0 ? t.Km2 / g.TerresKm2 : 0))),
             ]),
-            new("Eaux", [
-                new("Lacs", g.Lacs == 0 ? "aucun" : $"{g.Lacs} ({Km2(g.LacsKm2)})"),
-                new("Rivières", $"environ {Km(g.RivieresKm)} de cours"),
+            new(T("eaux"), [
+                new(T("lacs"), g.Lacs == 0 ? T("lacs.aucun") : T("compte", ("n", g.Lacs), ("surface", Km2(g.LacsKm2)))),
+                new(T("rivieres"), T("rivieres.valeur", ("v", Km(g.RivieresKm)))),
             ]),
-            new("Terrains", [.. g.Biomes.Select(b => new MesureDto(Biomes.Noms[(int)b.Biome], Km2(b.Km2), Pourcent(b.Km2 / g.SurfaceCarteKm2)))]),
-            new("Climat (à midi, au milieu de chaque saison)", [
-                .. g.Temperatures.Select(t => new MesureDto(Majuscule(Calendrier.Decomposer(
-                        (long)t.Saison * Calendrier.JoursParSaison * Calendrier.SecondesParJour).NomSaison),
-                    $"{N(t.Min, 0)} à {N(t.Max, 0)} °C", "des sommets aux basses terres du centre")),
-                new("Écart du moment", monde.AnomalieTemperature == 0 ? "aucun" : $"{(monde.AnomalieTemperature > 0 ? "+" : "")}{N(monde.AnomalieTemperature)} °C",
-                    "vague de froid, canicule ou hiver volcanique"),
-                new("Sous-sol", monde.Geologie.Description),
+            new(T("terrains"), [.. g.Biomes.Select(b => new MesureDto(L.T($"biome.{b.Biome}"), Km2(b.Km2), Pourcent(b.Km2 / g.SurfaceCarteKm2)))]),
+            new(T("climat"), [
+                .. g.Temperatures.Select(t => new MesureDto(Majuscule(L.Saison(Calendrier.Decomposer(
+                        (long)t.Saison * Calendrier.JoursParSaison * Calendrier.SecondesParJour).Saison)),
+                    T("temperatures", ("min", N(t.Min, 0)), ("max", N(t.Max, 0))), T("temperatures.aide"))),
+                new(T("ecart"), monde.AnomalieTemperature == 0 ? T("ecart.aucun") : T("degres", ("v", Lib.Signe(monde.AnomalieTemperature))), T("ecart.aide")),
+                new(T("sousSol"), GeologieDto.Decrire(monde.Geologie)),
             ]),
             Population(monde, g, humains, maintenant),
             Marche(g, humains, maintenant),
         };
-        return new CaracteristiquesDto(InfosMonde.ParDefaut.Nom, (uint)monde.Graine, date.ToString(), Echelle.KilometresParCase,
+        return new CaracteristiquesDto(InfosMonde.ParDefaut.Nom, (uint)monde.Graine, L.Date(date), Echelle.KilometresParCase,
             Echelle.MetresParUnite, rubriques, g.Traversee?.Cases ?? []);
     }
 
@@ -117,15 +115,14 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
         var communautes = monde.Communautes().Where(c => c.Active).ToList();
         var terres = communautes.SelectMany(c => VieSociale.Frequentees(c.Territoire)).Distinct().Count();
         var densite = g.TerresKm2 > 0 ? vivants / g.TerresKm2 : 0;
-        return new("Population", [
-            new("Âge du monde", Age(maintenant)),
-            new("Humains vivants", N(vivants, 0)),
-            new("Densité", $"{N(densite * 100, densite * 100 < 1 ? 2 : 1)} pour 100 km²",
-                "les chasseurs-cueilleurs vivent d'ordinaire entre 1 et 100 personnes pour 100 km² (Binford, 2001 ; Kelly, 2013)"),
-            new("Communautés", N(communautes.Count, 0)),
+        return new(T("population"), [
+            new(T("age"), Age(maintenant)),
+            new(T("vivants"), N(vivants, 0)),
+            new(T("densite"), T("densite.valeur", ("v", N(densite * 100, densite * 100 < 1 ? 2 : 1))), T("densite.aide")),
+            new(T("communautes"), N(communautes.Count, 0)),
             terres == 0
-                ? new("Terres parcourues", "aucune encore", "elles apparaissent quand des communautés se forment")
-                : new("Terres parcourues", Km2(Echelle.KilometresCarres(terres)), $"{Pourcent(g.TerresKm2 > 0 ? Echelle.KilometresCarres(terres) / g.TerresKm2 : 0)} des terres du continent"),
+                ? new(T("terres"), T("terres.aucune"), T("terres.aucune.aide"))
+                : new(T("terres"), Km2(Echelle.KilometresCarres(terres)), T("terres.aide", ("part", Pourcent(g.TerresKm2 > 0 ? Echelle.KilometresCarres(terres) / g.TerresKm2 : 0)))),
         ]);
     }
 
@@ -134,34 +131,34 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
         var adultes = humains.Where(h => h.EstVivant && !h.EstEnfant(maintenant)).Select(h => Simulation.Humains.Marche.Vitesse(h, maintenant) * 3.6).ToList();
         var mesures = new List<MesureDto>
         {
-            new("Allure d'un adulte", $"{N(Simulation.Humains.Marche.VitesseAdulte * 3.6)} km/h", "en terrain plat et dégagé (Bohannon et Andrews, 2011) ; chacun a son allure"),
+            new(T("allure"), T("kmh", ("v", N(Simulation.Humains.Marche.VitesseAdulte * 3.6))), T("allure.aide")),
         };
         if (adultes.Count > 0)
         {
-            mesures.Add(new("Adultes du monde, en ce moment", $"{N(adultes.Min())} à {N(adultes.Max())} km/h",
-                $"moyenne {N(adultes.Average())} km/h, selon l'âge, la santé, la fatigue, la grossesse, un bébé porté"));
+            mesures.Add(new(T("adultes"), T("adultes.valeur", ("min", N(adultes.Min())), ("max", N(adultes.Max()))),
+                T("adultes.aide", ("v", N(adultes.Average())))));
         }
-        mesures.Add(new("Terrains", "fougères ×0,85 · conifères ×0,8 · forêt tropicale ×0,6 · marais ×0,5 · neige ×0,45 · gué ×0,4",
-            "facilité de la marche (Soule et Goldman, 1972 ; Tobler, 1993) ; les pentes ralentissent selon la fonction de Tobler"));
+        mesures.Add(new(T("terrains"), T("terrains.marche"), T("terrains.marche.aide")));
         if (g.Traversee is { } t)
         {
-            mesures.Add(new("Traverser le continent", $"{Km(t.Kilometres)} à pied, {Duree(t.Heures)} de marche",
-                $"le plus long trajet, par le chemin le moins pénible, pour un adulte : environ {N(Math.Ceiling(t.Heures / HeuresDeMarcheParJour), 0)} jours à 6 h de marche par jour",
-                t.Cases[0]));
+            mesures.Add(new(T("traverser"), T("traverser.valeur", ("km", Km(t.Kilometres)), ("duree", Duree(t.Heures))),
+                T("traverser.aide", ("n", Math.Ceiling(t.Heures / HeuresDeMarcheParJour))), t.Cases[0]));
         }
-        return new("Marche", mesures);
+        return new(T("marche"), mesures);
     }
 
     private static string Age(long secondes)
     {
         var ans = (int)(secondes / Calendrier.SecondesParAn);
         var saisons = (int)(secondes % Calendrier.SecondesParAn / (Calendrier.JoursParSaison * Calendrier.SecondesParJour));
-        var texte = ans switch { 0 => "", 1 => "1 an", _ => $"{ans} ans" };
-        if (saisons > 0) texte += (texte.Length > 0 ? " et " : "") + (saisons == 1 ? "1 saison" : $"{saisons} saisons");
-        return texte.Length == 0 ? "moins d'une saison" : texte;
+        var texte = ans == 0 ? "" : L.T("duree.ans", ("n", ans));
+        if (saisons > 0) texte = texte.Length > 0 ? L.T("carac.ageEt", ("ans", texte), ("saisons", L.T("carac.saisons", ("n", saisons)))) : L.T("carac.saisons", ("n", saisons));
+        return texte.Length == 0 ? L.T("carac.moinsDUneSaison") : texte;
     }
 
     private static string Majuscule(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
+    private static string T(string cle, params ReadOnlySpan<(string Nom, object? Valeur)> p) => L.T($"carac.{cle}", p);
 }
 
 /// <summary>Un trajet à pied mesuré sur la carte.</summary>
@@ -173,10 +170,11 @@ public sealed record TrajetDto(double Kilometres, double VolDOiseau, double Heur
         if (Geographie.CalculerTrajet(carte, carte.Indice(x1, y1), carte.Indice(x2, y2)) is not { } t) return null;
         var vol = Echelle.Kilometres(x1, y1, x2, y2);
         var heures = t.Heures;
-        var duree = heures < 1 ? $"{Math.Round(heures * 60)} min" : $"{(int)heures} h {(int)Math.Round((heures - (int)heures) * 60):00}";
-        var jours = heures > 6 ? $", soit environ {Echelle.Nombre(Math.Ceiling(heures / 6), 0)} jours à 6 h de marche par jour" : "";
+        var duree = heures < 1 ? L.T("carac.marche.minutes", ("n", Math.Round(heures * 60)))
+            : L.T("carac.marche.heuresMinutes", ("n", (int)heures), ("min", ((int)Math.Round((heures - (int)heures) * 60)).ToString("00", System.Globalization.CultureInfo.InvariantCulture)));
+        var jours = heures > 6 ? L.T("trajet.jours", ("n", Math.Ceiling(heures / 6))) : "";
         return new TrajetDto(Math.Round(t.Kilometres, 2), Math.Round(vol, 2), Math.Round(heures, 2),
-            $"{Echelle.Distance(t.Kilometres)} à pied ({Echelle.Distance(vol)} à vol d'oiseau) : {duree} de marche pour un adulte{jours}.",
+            L.T("trajet.phrase", ("km", L.Distance(t.Kilometres)), ("vol", L.Distance(vol)), ("duree", duree), ("jours", jours)),
             t.Cases);
     }
 }

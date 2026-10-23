@@ -106,8 +106,8 @@ button.lien { background: none; border: none; padding: 0; color: #8cc4ff; cursor
 .journal-panneau .plus { margin: 6px 14px 10px; padding: 3px 8px; border-radius: 6px; border: 1px solid #3a4658; background: #1c2635; color: var(--texte); cursor: pointer; }
 .journal-panneau .plus[hidden] { display: none; }
 .fiche .ame, .fiche .communaute { margin: 4px 0; }
-.lien-hostile, .lien-méfiance { color: #ffb3b3; }
-.lien-très-proche, .lien-ami { color: #b8f0c4; }
+.lien-hostile, .lien-mefiance { color: #ffb3b3; }
+.lien-tresProche, .lien-ami { color: #b8f0c4; }
 .communautes-panneau { right: 12px; top: var(--sous-temps, 290px); bottom: 12px; }
 .communaute-carte { border: 1px solid #2a3850; border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
 .communaute-carte.choisie { border-color: #d9a8ff; }
@@ -117,9 +117,9 @@ button.lien { background: none; border: none; padding: 0; color: #8cc4ff; cursor
 .evenement.humeur { color: #ffd6a8; }
 .evenement.nature { color: #f0d79a; }
 .communaute-carte .alerte, .communaute-carte .titre.disette { color: #ffb347; }
-.relation-alliée { color: #b8f0c4; }
+.relation-alliee { color: #b8f0c4; }
 .relation-rivale, .relation-hostile { color: #ffb3b3; }
-.relation-en { color: #ff8080; font-weight: 600; }
+.relation-en, .relation-guerre { color: #ff8080; font-weight: 600; }
 .graine button.actif { background: #2f6f4a; border-color: #4ac26b; }
 .evenement.pensee, .evenement.journee, .evenement.souvenir { color: var(--discret); }
 

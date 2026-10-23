@@ -34,44 +34,7 @@ public sealed record HumainDto(
     bool Contagieux,
     string? NomLangue = null)
 {
-    private static readonly Dictionary<Activite, string> Activites = new()
-    {
-        [Simulation.Humains.Activite.Repos] = "se repose",
-        [Simulation.Humains.Activite.Dormir] = "dort",
-        [Simulation.Humains.Activite.Boire] = "boit",
-        [Simulation.Humains.Activite.ChercherEau] = "cherche de l'eau",
-        [Simulation.Humains.Activite.Cueillir] = "cueille",
-        [Simulation.Humains.Activite.Chasser] = "chasse",
-        [Simulation.Humains.Activite.ChercherNourriture] = "cherche à manger",
-        [Simulation.Humains.Activite.SAbriter] = "s'abrite",
-        [Simulation.Humains.Activite.ChercherAbri] = "cherche un abri",
-        [Simulation.Humains.Activite.RejoindrePartenaire] = "rejoint son compagnon",
-        [Simulation.Humains.Activite.Explorer] = "explore",
-        [Simulation.Humains.Activite.Mort] = "mort",
-        [Simulation.Humains.Activite.SAccoupler] = "s'accouple",
-        [Simulation.Humains.Activite.SuivreParent] = "suit ses parents",
-        [Simulation.Humains.Activite.PorteParSaMere] = "dans les bras de sa mère",
-        [Simulation.Humains.Activite.VeillerEnfant] = "rejoint son enfant",
-        [Simulation.Humains.Activite.RejoindreProche] = "rejoint un proche",
-        [Simulation.Humains.Activite.EviterRival] = "s'éloigne d'un rival",
-        [Simulation.Humains.Activite.Migrer] = "part avec les siens",
-        [Simulation.Humains.Activite.Raid] = "en raid",
-        [Simulation.Humains.Activite.RentrerDuRaid] = "rentre d'un raid",
-        [Simulation.Humains.Activite.Fuir] = "fuit le danger",
-        [Simulation.Humains.Activite.PartirEnExil] = "part en exil",
-        [Simulation.Humains.Activite.SuivreRavisseur] = "suit son ravisseur",
-        [Simulation.Humains.Activite.Experimenter] = "essaie quelque chose",
-        [Simulation.Humains.Activite.Fabriquer] = "fabrique",
-        [Simulation.Humains.Activite.Veiller] = "entretient le feu",
-        [Simulation.Humains.Activite.Soigner] = "soigne",
-        [Simulation.Humains.Activite.Nager] = "nage",
-        [Simulation.Humains.Activite.ChercherLeFeu] = "va demander le feu",
-        [Simulation.Humains.Activite.Enseigner] = "montre un geste",
-        [Simulation.Humains.Activite.Visiter] = "rend visite à un proche",
-        [Simulation.Humains.Activite.Rassembler] = "rejoint le rassemblement",
-        [Simulation.Humains.Activite.Rentrer] = "rentre chez les siens",
-        [Simulation.Humains.Activite.Demander] = "attend un ouvrage demandé",
-    };
+
 
 
     public static List<HumainDto> Depuis(MondeSimule monde)
@@ -88,15 +51,13 @@ public sealed record HumainDto(
         return new HumainDto(
             h.Id, h.Nom, h.Sexe == Simulation.Humains.Sexe.Femme ? "femme" : "homme", h.PartenaireId, h.Emplacement,
             Math.Round(h.AgeEnAnnees(instant), 1), h.X, h.Y,
-            h.Activite == Simulation.Humains.Activite.RejoindrePartenaire && h.Sexe == Simulation.Humains.Sexe.Homme
-                ? "rejoint sa compagne"
-                : Activites.GetValueOrDefault(h.Activite, "?"), h.EstVivant, h.EstVivant && h.EstMalade(maintenant),
+            L.T($"activite.{h.Activite}", ("g", Lib.G(h))), h.EstVivant, h.EstVivant && h.EstMalade(maintenant),
             Math.Round(h.Faim), Math.Round(h.Soif), Math.Round(h.Fatigue), Math.Round(h.Froid), Math.Round(h.Sante, 1),
-            h.EstVivant ? null : Libelles.Cause(h.CauseDeMort),
+            h.EstVivant ? null : Lib.Cause(h.CauseDeMort),
             h.MereId, h.PereId, h.EstEnceinte,
             h.EstBebe(instant) ? "bébé" : h.EstEnfant(instant) ? "enfant" : "adulte",
             h.EstVivant && h.Memoire.Pensees.Count > 0 ? h.Memoire.Pensees[^1].Texte : null,
-            h.EstVivant && !h.EstBebe(maintenant) ? Libelles.Humeur(h) : null,
+            h.EstVivant && !h.EstBebe(maintenant) ? Lib.Humeur(h) : null,
             h.EstVivant ? h.CommunauteId : 0,
             Math.Round(h.Reserves),
             h.EstVivant ? Math.Round(h.Peur) : 0,

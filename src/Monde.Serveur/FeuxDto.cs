@@ -19,7 +19,7 @@ public sealed record FeuxDto(IReadOnlyList<FeuVueDto> Feux, IReadOnlyList<Reserv
         var feux = foyers.Select(f => new FeuVueDto(f.X, f.Y, f.Couvert))
             .Concat(braises.Select(b => new FeuVueDto(b.X, b.Y, true))).ToList();
         var vues = reserves.Where(r => r.Kg > 0)
-            .Select(r => new ReserveVueDto(r.X, r.Y, r.Sorte == SorteReserve.Eau, Comportement.DecrireReserve(r.Sorte, r.Kg))).ToList();
+            .Select(r => new ReserveVueDto(r.X, r.Y, r.Sorte == SorteReserve.Eau, Lib.Reserve(r.Sorte, r.Kg))).ToList();
         return new FeuxDto(feux, vues);
     }
 }

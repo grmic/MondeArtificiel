@@ -52,39 +52,39 @@ public static class Remarquables
         }
     }
 
-    private static string Qi(double v) => $"{Math.Round(v)} ({Intelligence.Qualifier(v)})";
-    private static string Pluriel(int n, string un, string plusieurs) => n == 1 ? $"1 {un}" : $"{n} {plusieurs}";
+    private static string Qi(double v) => L.T("remarquables.qi", ("v", Math.Round(v)), ("niveau", Lib.Qi(v)));
+    private static string Pluriel(int n, string cle) => L.T($"remarquables.{cle}", ("n", n));
 
     /// <summary>Savoirs trouvés seul (essai, observation, réflexion) : ni imités, ni soufflés par l'Entité.</summary>
     private static int TrouvesSeul(Humain h) => h.Savoirs.Count(s => s.Origine is OrigineSavoir.Essai or OrigineSavoir.Observation or OrigineSavoir.Reflexion);
 
     private static readonly Critere[] Criteres =
     [
-        new("qi", "Intelligence (QI)", true, (h, _) => h.Personnalite.Intelligence.Generale, (_, _, v) => $"QI {Qi(v)}"),
-        new("verbale", "Aptitude verbale", true, (h, _) => h.Personnalite.Intelligence.Verbale, (_, _, v) => Qi(v)),
-        new("spatiale", "Aptitude spatiale", true, (h, _) => h.Personnalite.Intelligence.Spatiale, (_, _, v) => Qi(v)),
-        new("manuelle", "Adresse manuelle", true, (h, _) => h.Personnalite.Intelligence.Manuelle, (_, _, v) => Qi(v)),
-        new("memoire", "Mémoire", true, (h, _) => h.Personnalite.Intelligence.Memoire, (_, _, v) => Qi(v)),
-        new("artistique", "Sens artistique", true, (h, _) => h.Personnalite.Intelligence.Artistique, (_, _, v) => Qi(v)),
-        new("karma", "Karma", true, (h, _) => h.Karma, (_, _, v) => $"karma {(v > 0 ? "+" : "")}{Math.Round(v, 1).ToString(System.Globalization.CultureInfo.GetCultureInfo("fr-FR"))}"),
-        new("croyance", "Croyance en l'invisible", true, (h, _) => h.Croyance, (_, _, v) => $"croyance {Math.Round(v)}/100",
-            (h, _) => h.ChamanDepuis > 0 ? "chaman" : null),
-        new("decouvertes", "Découvertes", false, (h, c) => TrouvesSeul(h) + 0.001 * c.Premieres[h.Id],
-            (h, _, _) => Pluriel(TrouvesSeul(h), "savoir trouvé seul", "savoirs trouvés seul"),
-            (h, c) => c.Premieres[h.Id] > 0 ? $"dont {Pluriel(c.Premieres[h.Id], "première du monde", "premières du monde")}" : null),
-        new("soins", "Soignants", false, (h, _) => h.Gueris + 0.001 * h.Soignes,
-            (h, _, _) => Pluriel(h.Gueris, "malade guéri", "malades guéris"),
-            (h, _) => string.Join(", ", new[] { $"{h.Soignes} soignés", h.GuerisseurDepuis > 0 ? "guérisseur" : null, h.ChamanDepuis > 0 ? "chaman" : null,
-                h.AccouchementsAides > 0 ? Pluriel(h.AccouchementsAides, "accouchement aidé", "accouchements aidés") : null }.Where(x => x is not null))),
-        new("oeuvres", "Œuvres peintes", false, (h, c) => c.Oeuvres[h.Id], (_, _, v) => Pluriel((int)v, "œuvre", "œuvres")),
-        new("descendance", "Descendance", false, (h, c) => c.Enfants[h.Id] + 0.001 * c.PetitsEnfants[h.Id],
-            (h, c, _) => Pluriel(c.Enfants[h.Id], "enfant", "enfants"),
-            (h, c) => c.PetitsEnfants[h.Id] > 0 ? Pluriel(c.PetitsEnfants[h.Id], "petit-enfant", "petits-enfants") : null),
-        new("longevite", "Longévité", false, (h, c) => c.Age(h), (_, _, v) => $"{(int)v} ans"),
-        new("victimes", "Victimes (meurtres, guerres)", false, (h, c) => c.Victimes[h.Id], (_, _, v) => Pluriel((int)v, "victime", "victimes")),
+        new("qi", "qi", true, (h, _) => h.Personnalite.Intelligence.Generale, (_, _, v) => L.T("remarquables.qiValeur", ("v", Qi(v)))),
+        new("verbale", "verbale", true, (h, _) => h.Personnalite.Intelligence.Verbale, (_, _, v) => Qi(v)),
+        new("spatiale", "spatiale", true, (h, _) => h.Personnalite.Intelligence.Spatiale, (_, _, v) => Qi(v)),
+        new("manuelle", "manuelle", true, (h, _) => h.Personnalite.Intelligence.Manuelle, (_, _, v) => Qi(v)),
+        new("memoire", "memoire", true, (h, _) => h.Personnalite.Intelligence.Memoire, (_, _, v) => Qi(v)),
+        new("artistique", "artistique", true, (h, _) => h.Personnalite.Intelligence.Artistique, (_, _, v) => Qi(v)),
+        new("karma", "karma", true, (h, _) => h.Karma, (_, _, v) => L.T("remarquables.karmaValeur", ("v", Lib.Signe(v)))),
+        new("croyance", "croyance", true, (h, _) => h.Croyance, (_, _, v) => L.T("remarquables.croyanceValeur", ("v", Math.Round(v))),
+            (h, _) => h.ChamanDepuis > 0 ? L.T("remarquables.chaman", ("g", Lib.G(h))) : null),
+        new("decouvertes", "decouvertes", false, (h, c) => TrouvesSeul(h) + 0.001 * c.Premieres[h.Id],
+            (h, _, _) => Pluriel(TrouvesSeul(h), "trouvesSeul"),
+            (h, c) => c.Premieres[h.Id] > 0 ? Pluriel(c.Premieres[h.Id], "premieres") : null),
+        new("soins", "soins", false, (h, _) => h.Gueris + 0.001 * h.Soignes,
+            (h, _, _) => Pluriel(h.Gueris, "gueris"),
+            (h, _) => string.Join(L.T("commun.virgule"), new[] { Pluriel(h.Soignes, "soignes"), h.GuerisseurDepuis > 0 ? L.T("remarquables.guerisseur", ("g", Lib.G(h))) : null, h.ChamanDepuis > 0 ? L.T("remarquables.chaman", ("g", Lib.G(h))) : null,
+                h.AccouchementsAides > 0 ? Pluriel(h.AccouchementsAides, "accouchements") : null }.Where(x => x is not null))),
+        new("oeuvres", "oeuvres", false, (h, c) => c.Oeuvres[h.Id], (_, _, v) => Pluriel((int)v, "oeuvresValeur")),
+        new("descendance", "descendance", false, (h, c) => c.Enfants[h.Id] + 0.001 * c.PetitsEnfants[h.Id],
+            (h, c, _) => Pluriel(c.Enfants[h.Id], "enfants"),
+            (h, c) => c.PetitsEnfants[h.Id] > 0 ? Pluriel(c.PetitsEnfants[h.Id], "petitsEnfants") : null),
+        new("longevite", "longevite", false, (h, c) => c.Age(h), (_, _, v) => Pluriel((int)v, "ans")),
+        new("victimes", "victimes", false, (h, c) => c.Victimes[h.Id], (_, _, v) => Pluriel((int)v, "victimesValeur")),
     ];
 
-    public static List<CritereRemarquableDto> ListeCriteres() => Criteres.Select(c => new CritereRemarquableDto(c.Cle, c.Libelle, c.Bas)).ToList();
+    public static List<CritereRemarquableDto> ListeCriteres() => Criteres.Select(c => new CritereRemarquableDto(c.Cle, L.T($"remarquables.critere.{c.Libelle}"), c.Bas)).ToList();
 
     /// <summary>
     /// Les <see cref="Nombre"/> premiers selon <paramref name="cle"/> (les plus bas si <paramref name="bas"/> et si le critère le

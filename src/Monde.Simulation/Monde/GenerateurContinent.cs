@@ -344,8 +344,7 @@ public static class GenerateurContinent
         var visees = placement == ConfigurationMonde.PlacementTous ? rangs.Count : 1;
         if (placement > rangs.Count)
         {
-            throw new InvalidOperationException(
-                $"Cette carte n'a que {rangs.Count} continent{(rangs.Count > 1 ? "s" : "")} : impossible d'y placer les couples sur le continent n° {placement}.");
+            throw new ContinentsInsuffisants(rangs.Count, placement);
         }
         var rangDe = new Dictionary<int, int>();
         for (var r = 0; r < visees; r++) rangDe[rangs[placement == ConfigurationMonde.PlacementTous ? r : placement - 1]] = r;
@@ -528,4 +527,12 @@ public static class GenerateurContinent
         }
         return distance;
     }
+}
+
+/// <summary>La carte a moins de continents que le rang demandé pour le départ des couples.</summary>
+public sealed class ContinentsInsuffisants(int disponibles, int demande)
+    : InvalidOperationException($"Cette carte n'a que {disponibles} continent{(disponibles > 1 ? "s" : "")} : impossible d'y placer les couples sur le continent n° {demande}.")
+{
+    public int Disponibles { get; } = disponibles;
+    public int Demande { get; } = demande;
 }

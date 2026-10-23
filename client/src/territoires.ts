@@ -1,6 +1,7 @@
 import { connexion } from "./connexion";
 import { couleurCommunaute, surfaceDeCases, type Territoires, type VueCarte } from "./carte";
 import { el } from "./fiche";
+import { t } from "./langue";
 
 interface DateArchive {
   secondes: number;
@@ -27,23 +28,23 @@ export class PanneauTerritoires {
     private readonly ouvrirCommunaute: (id: number) => void,
   ) {
     const tete = el("div", "ligne");
-    tete.append(el("strong", undefined, "Terres des communautés"));
+    tete.append(el("strong", undefined, t("territoires.titre")));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
-    fermer.title = "Cacher les terres";
+    fermer.title = t("territoires.cacher");
     fermer.addEventListener("click", () => this.fermer());
     tete.append(fermer);
     this.curseur.type = "range";
     this.curseur.min = "0";
     this.curseur.step = "1";
-    this.curseur.title = "Remonter le temps : les terres au début de chaque saison";
+    this.curseur.title = t("territoires.curseur");
     this.curseur.addEventListener("input", () => {
       this.position = Number(this.curseur.value);
       void this.dessiner();
     });
     const ligne = el("div", "ligne");
     ligne.append(this.curseur, this.etiquette);
-    racine.append(tete, ligne, el("p", "discret", "Terres parcourues dans l'année : ils n'ont pas encore inventé la frontière."), this.legende);
+    racine.append(tete, ligne, el("p", "discret", t("territoires.aide")), this.legende);
   }
 
   get ouvert(): boolean {
@@ -83,12 +84,12 @@ export class PanneauTerritoires {
 
   private async dessiner(): Promise<void> {
     const date = this.position < this.dates.length ? this.dates[this.position] : null;
-    const t = await connexion.invoke<Territoires | null>("Territoires", date?.secondes ?? null).catch(() => null);
+    const terres = await connexion.invoke<Territoires | null>("Territoires", date?.secondes ?? null).catch(() => null);
     if (!this.ouvert) return;
-    this.vue.afficherTerritoires(t, this.choisie);
-    this.etiquette.textContent = !t ? "rien d'archivé" : t.actuel ? `maintenant (${t.date})` : t.date;
+    this.vue.afficherTerritoires(terres, this.choisie);
+    this.etiquette.textContent = !terres ? t("territoires.rien") : terres.actuel ? t("territoires.maintenant", { date: terres.date }) : terres.date;
     this.legende.replaceChildren();
-    for (const c of [...(t?.communautes ?? [])].sort((a, b) => b.membres - a.membres)) {
+    for (const c of [...(terres?.communautes ?? [])].sort((a, b) => b.membres - a.membres)) {
       const li = el("li");
       const [r, g, b] = couleurCommunaute(c.id);
       const pastille = el("span", "pastille");
@@ -97,9 +98,9 @@ export class PanneauTerritoires {
       lien.type = "button";
       lien.addEventListener("click", () => this.ouvrirCommunaute(c.id));
       const cases = c.plages.reduce((n, v, i) => (i % 2 === 1 ? n + v : n), 0);
-      li.append(pastille, lien, ` · ${c.membres} membres · ${surfaceDeCases(cases)}`);
+      li.append(pastille, lien, t("territoires.ligne", { n: c.membres, surface: surfaceDeCases(cases) }));
       this.legende.append(li);
     }
-    if (t && t.communautes.length === 0) this.legende.append(el("li", "discret", "Aucune communauté à cette date."));
+    if (terres && terres.communautes.length === 0) this.legende.append(el("li", "discret", t("territoires.aucune")));
   }
 }

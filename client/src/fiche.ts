@@ -4,6 +4,7 @@ import { connexion } from "./connexion";
 import type { HumainVue } from "./carte";
 import { FormulaireEntite } from "./entite";
 import { FormulaireGeste } from "./gestes";
+import { nombre, t } from "./langue";
 
 interface Evenement {
   id: number;
@@ -39,27 +40,27 @@ interface Intime {
 
 /** Rubriques du jardin secret, dans l'ordre d'affichage. */
 const RUBRIQUES: [string, string][] = [
-  ["intention", "Intentions"],
-  ["amour", "Amour"],
-  ["desir", "Désir"],
-  ["jalousie", "Jalousie"],
-  ["peur", "Peurs"],
-  ["espoir", "Espoirs"],
-  ["joie", "Joies"],
-  ["peine", "Peines"],
-  ["manque", "Manque et nostalgie"],
-  ["opinion", "Ce qu'il pense des autres"],
-  ["image-de-soi", "Ce qu'il pense de lui-même"],
-  ["fierte", "Fierté"],
-  ["culpabilite", "Culpabilité"],
-  ["honte", "Honte"],
-  ["envie", "Envie"],
-  ["souvenir", "Souvenirs"],
-  ["reve", "Rêves"],
-  ["emerveillement", "Émerveillement"],
-  ["ennui", "Ennui"],
-  ["croyance", "Croyances"],
-  ["question", "Questions"],
+  ["intention", "jardin.intention"],
+  ["amour", "jardin.amour"],
+  ["desir", "jardin.desir"],
+  ["jalousie", "jardin.jalousie"],
+  ["peur", "jardin.peur"],
+  ["espoir", "jardin.espoir"],
+  ["joie", "jardin.joie"],
+  ["peine", "jardin.peine"],
+  ["manque", "jardin.manque"],
+  ["opinion", "jardin.opinion"],
+  ["image-de-soi", "jardin.image-de-soi"],
+  ["fierte", "jardin.fierte"],
+  ["culpabilite", "jardin.culpabilite"],
+  ["honte", "jardin.honte"],
+  ["envie", "jardin.envie"],
+  ["souvenir", "jardin.souvenir"],
+  ["reve", "jardin.reve"],
+  ["emerveillement", "jardin.emerveillement"],
+  ["ennui", "jardin.ennui"],
+  ["croyance", "jardin.croyance"],
+  ["question", "jardin.question"],
 ];
 
 interface Ame {
@@ -210,7 +211,7 @@ function lireSections(): Set<string> {
   } catch {
     // Stockage indisponible ou valeur abîmée : on repart des sections par défaut.
   }
-  return new Set(["Besoins", "Humeur"]);
+  return new Set([t("fiche.besoins"), t("fiche.humeur")]);
 }
 
 function enregistrerSections(): void {
@@ -286,18 +287,18 @@ export class PanneauFiche {
   }
 
   /** Attraits, orientation et exclusions (exil, reniement), avec leur raison. */
-  private attraits(corps: HTMLElement, f: Fiche, e: string): void {
+  private attraits(corps: HTMLElement, f: Fiche, g: string): void {
     const a = f.attraits;
-    corps.append(el("h3", undefined, "Attraits et orientation"));
+    corps.append(el("h3", undefined, t("fiche.attraits")));
     const p = el("p", "attraits");
     if (a.impubere) {
-      p.append("Trop jeune : l'attirance et l'orientation s'éveilleront à la puberté.");
+      p.append(t("fiche.tropJeune"));
       corps.append(p);
     } else {
-      p.title = "Beauté relative : selon ce que sa communauté trouve beau. Attractivité : beauté, jeunesse, allure et vigueur.";
-      p.append(`Beauté relative ${a.beaute}/100 · attractivité ${a.attractivite}/100`, el("br"),
-        `Idéal de beauté de son groupe : ${a.ideal}`, el("br"),
-        `Orientation : ${a.orientation} (attirance vers les hommes ${a.versHommes}/100, vers les femmes ${a.versFemmes}/100)`);
+      p.title = t("fiche.beauteAide");
+      p.append(t("fiche.beaute", { beaute: a.beaute, attractivite: a.attractivite }), el("br"),
+        t("fiche.ideal", { ideal: a.ideal }), el("br"),
+        t("fiche.orientation", { orientation: a.orientation, hommes: a.versHommes, femmes: a.versFemmes }));
       if (a.conscience) p.append(` ; ${a.conscience}`);
       corps.append(p);
     }
@@ -305,10 +306,11 @@ export class PanneauFiche {
     const ul = el("ul", "liste exclusions");
     for (const x of a.exclusions) {
       const li = el("li", x.enCours ? "alerte" : "discret");
-      const duree = x.jusqua ? `fin prévue : ${x.jusqua}` : "pour toujours";
-      const qui = x.type === "renié" ? `Renié${e} par ${x.nomPar}` : x.type === "exilé" ? `Chassé${e} de la ${x.nomPar.charAt(0).toLowerCase()}${x.nomPar.slice(1)}` : `Parti${e} de la ${x.nomPar.charAt(0).toLowerCase()}${x.nomPar.slice(1)}`;
-      li.append(`${qui} ${x.raison} (${x.le} ; ${duree})${x.enCours ? "" : ", c'est fini"} `);
-      if (x.evenement > 0) li.append(boutonCause(li, x.evenement, "ce qui s'est passé"));
+      const duree = x.jusqua ? t("fiche.finPrevue", { date: x.jusqua }) : t("fiche.pourToujours");
+      const groupe = { nom: x.nomPar, nomMin: `${x.nomPar.charAt(0).toLowerCase()}${x.nomPar.slice(1)}`, g };
+      const qui = t(x.type === "renié" ? "fiche.renie" : x.type === "exilé" ? "fiche.chasse" : "fiche.parti", groupe);
+      li.append(t(x.enCours ? "fiche.exclusion" : "fiche.exclusionFinie", { qui, raison: x.raison, le: x.le, duree }) + " ");
+      if (x.evenement > 0) li.append(boutonCause(li, x.evenement, t("commun.ceQuiSestPasse")));
       ul.append(li);
     }
     corps.append(ul);
@@ -332,13 +334,13 @@ export class PanneauFiche {
     const titre = el("h2", undefined, h.nom);
     if (f.langage?.nom) {
       const nom = el("span", "nom-langue", ` « ${f.langage.nom} »`);
-      nom.title = `Son nom dans la langue des siens${f.langage.sens ? ` : « ${f.langage.sens} »` : ""}`;
+      nom.title = f.langage.sens ? t("fiche.nomLangueSens", { sens: f.langage.sens }) : t("fiche.nomLangue");
       titre.append(nom);
     }
     tete.append(titre, boutonSuivre("humain", this.id, h.nom));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
-    fermer.title = "Fermer la fiche";
+    fermer.title = t("fiche.fermer");
     fermer.addEventListener("click", () => this.fermer());
     tete.append(fermer);
     r.append(tete);
@@ -351,32 +353,34 @@ export class PanneauFiche {
       b.addEventListener("click", () => retour.aller());
       corps.append(b);
     }
-    const age = h.age < 2 ? `${Math.round(h.age * 12)} mois` : `${Math.floor(h.age)} ans`;
-    const etat = h.vivant ? `${h.activite}${h.malade ? " · malade" : ""}${h.enceinte ? " · enceinte" : ""}` : `mort ${h.causeDeMort ?? ""}`;
-    corps.append(el("p", "resume", `${h.sexe === "femme" ? "Femme" : "Homme"}, ${age} · ${etat}`));
-    if (h.pensee) corps.append(el("p", "pensee", `« ${h.pensee} »`));
+    const g = h.sexe === "femme" ? "f" : "m";
+    const age = h.age < 2 ? t("age.mois", { n: Math.round(h.age * 12) }) : t("age.ans", { n: Math.floor(h.age) });
+    const etat = h.vivant ? `${h.activite}${h.malade ? ` · ${t("fiche.malade", { g })}` : ""}${h.enceinte ? ` · ${t("fiche.enceinte")}` : ""}`
+      : t("fiche.mortDe", { g, cause: h.causeDeMort ?? "" });
+    corps.append(el("p", "resume", t("fiche.resume", { sexe: t(h.sexe === "femme" ? "fiche.femme" : "fiche.homme"), age, etat })));
+    if (h.pensee) corps.append(el("p", "pensee", t("commun.guillemets", { texte: h.pensee })));
     if (f.ame) {
-      corps.append(el("h3", undefined, "Humeur"));
+      corps.append(el("h3", undefined, t("fiche.humeur")));
       const ame = el("p", "ame");
-      ame.append(`Humeur : ${f.ame.etat} (${f.ame.humeur}/100)`);
+      ame.append(t("fiche.humeurValeur", { etat: f.ame.etat, v: f.ame.humeur }));
       if (f.ame.chagrin > 0) {
-        ame.append(` · chagrin ${f.ame.chagrin}/100`);
+        ame.append(" · " + t("fiche.chagrin", { v: f.ame.chagrin }));
         if (f.ame.deuilDe) ame.append(" (", this.lien(f.ame.deuilDe), ")");
       }
-      if (f.ame.colere >= 10) ame.append(` · colère ${f.ame.colere}/100`);
+      if (f.ame.colere >= 10) ame.append(" · " + t("fiche.colere", { v: f.ame.colere }));
       if (f.ame.deprimeDepuis) {
-        ame.append(el("br"), `Déprimé${h.sexe === "femme" ? "e" : ""} depuis ${f.ame.deprimeDepuis}`);
-        if (f.ame.depressionEvenement > 0) ame.append(" ", boutonCause(ame, f.ame.depressionEvenement, "pourquoi ?"));
+        ame.append(el("br"), t("fiche.deprime", { g, date: f.ame.deprimeDepuis }));
+        if (f.ame.depressionEvenement > 0) ame.append(" ", boutonCause(ame, f.ame.depressionEvenement, t("commun.pourquoi")));
       }
-      if (f.ame.raisons.length > 0) ame.append(el("br"), `Ce qui pèse sur son humeur : ${f.ame.raisons.join(" ; ")}.`);
+      if (f.ame.raisons.length > 0) ame.append(el("br"), t("fiche.raisons", { raisons: f.ame.raisons.join(t("fiche.pointVirgule")) }));
       corps.append(ame);
       if (f.ame.rancunes.length > 0) {
-        corps.append(el("h4", undefined, "Rancunes"));
+        corps.append(el("h4", undefined, t("fiche.rancunes")));
         const rancunes = el("ul", "liste");
-        for (const g of f.ame.rancunes) {
+        for (const grief of f.ame.rancunes) {
           const li = el("li");
-          li.append(this.lien(g.id, g.nom), ` — ${g.motif} (${g.intensite}/100) `);
-          if (g.evenement > 0) li.append(boutonCause(li, g.evenement, "ce qui s'est passé"));
+          li.append(this.lien(grief.id, grief.nom), " " + t("fiche.rancune", { motif: grief.motif, v: grief.intensite }) + " ");
+          if (grief.evenement > 0) li.append(boutonCause(li, grief.evenement, t("commun.ceQuiSestPasse")));
           rancunes.append(li);
         }
         corps.append(rancunes);
@@ -386,26 +390,26 @@ export class PanneauFiche {
     if (ep.maladie || ep.peur >= 5 || ep.immunites.length > 0) {
       const p = el("p", "epreuves");
       if (ep.maladie) {
-        p.append(`Porte ${ep.maladie}${h.contagieux ? ", contagieux" : ""}${ep.maladieDepuis ? ` (depuis ${ep.maladieDepuis})` : ""} `);
-        if (ep.maladieEvenement > 0) p.append(boutonCause(p, ep.maladieEvenement, "comment ?"), " ");
+        p.append(t("fiche.porteMaladie", { maladie: ep.maladie }) + (h.contagieux ? t("fiche.contagieux", { g }) : "") + (ep.maladieDepuis ? t("fiche.depuis", { date: ep.maladieDepuis }) : "") + " ");
+        if (ep.maladieEvenement > 0) p.append(boutonCause(p, ep.maladieEvenement, t("commun.comment")), " ");
         p.append(el("br"));
       }
       if (ep.peur >= 5 && ep.peurDe) {
-        p.append(`Peur : ${ep.peur}/100, hanté${h.sexe === "femme" ? "e" : ""} par ${ep.peurDe} `);
-        if (ep.peurEvenement > 0) p.append(boutonCause(p, ep.peurEvenement, "pourquoi ?"));
+        p.append(t("fiche.peur", { v: ep.peur, g, de: ep.peurDe }) + " ");
+        if (ep.peurEvenement > 0) p.append(boutonCause(p, ep.peurEvenement, t("commun.pourquoi")));
         p.append(el("br"));
       }
-      if (ep.immunites.length > 0) p.append(`Immunisé${h.sexe === "femme" ? "e" : ""} contre : ${ep.immunites.join(", ")}`);
+      if (ep.immunites.length > 0) p.append(t("fiche.immunise", { g, liste: ep.immunites.join(t("commun.virgule")) }));
       corps.append(p);
     }
-    this.attraits(corps, f, h.sexe === "femme" ? "e" : "");
+    this.attraits(corps, f, g);
     if (f.communaute) {
       const c = el("p", "communaute");
       const bouton = el("button", "lien", f.communaute.nom);
       bouton.type = "button";
       const id = f.communaute.id;
       bouton.addEventListener("click", () => this.ouvrirCommunaute(id));
-      c.append("Vit dans la ", bouton);
+      c.append(t("fiche.vitDans"), bouton);
       corps.append(c);
     }
 
@@ -413,46 +417,49 @@ export class PanneauFiche {
     const famille = el("p", "famille");
     const ajouter = (libelle: string, ids: number[]) => {
       if (ids.length === 0) return;
-      famille.append(`${libelle} : `);
+      famille.append(t("fiche.libelle", { libelle }));
       ids.forEach((id, i) => {
         if (i > 0) famille.append(", ");
         famille.append(this.lien(id));
       });
       famille.append(el("br"));
     };
-    if (h.mere) ajouter("Parents", [h.mere, h.pere].filter(Boolean));
-    else famille.append(`Couple de départ n° ${h.emplacement} (créé par l'Entité)`, el("br"));
-    ajouter("Compagnon", h.partenaire ? [h.partenaire] : []);
-    ajouter("Enfants", f.enfants);
+    if (h.mere) ajouter(t("fiche.parents"), [h.mere, h.pere].filter(Boolean));
+    else famille.append(t("fiche.coupleDepart", { n: String(h.emplacement) }), el("br"));
+    ajouter(t("fiche.compagnon"), h.partenaire ? [h.partenaire] : []);
+    ajouter(t("fiche.enfants"), f.enfants);
     corps.append(famille);
 
     if (h.vivant) {
-      corps.append(this.jauges("Besoins", { faim: h.faim, soif: h.soif, fatigue: h.fatigue, froid: h.froid, santé: h.sante, réserves: h.reserves }, 100));
+      corps.append(this.jauges(t("fiche.besoins"), {
+        [t("besoin.faim")]: h.faim, [t("besoin.soif")]: h.soif, [t("besoin.fatigue")]: h.fatigue, [t("besoin.froid")]: h.froid,
+        [t("besoin.sante")]: h.sante, [t("besoin.reserves")]: h.reserves,
+      }, 100));
     }
-    corps.append(this.traits("Caractère", f.caractere, 1));
+    corps.append(this.traits(t("fiche.caractere"), f.caractere, 1));
     if (f.portrait.length > 0) corps.append(el("p", "portrait", f.portrait.join(" ")));
-    corps.append(this.traits("Cœur et conscience", f.coeur, 1));
-    corps.append(this.traits("Morale (fondements)", f.morale, 1));
-    corps.append(this.traits("Intelligence (QI, moyenne 100)", f.intelligence, 160));
+    corps.append(this.traits(t("fiche.coeur"), f.coeur, 1));
+    corps.append(this.traits(t("fiche.morale"), f.morale, 1));
+    corps.append(this.traits(t("fiche.intelligence"), f.intelligence, 160));
     const bio = el("p", "discret", Object.entries(f.biologie).map(([k, v]) => `${k} ${v}`).join(" · "));
-    corps.append(el("h3", undefined, "Biologie"), bio);
+    corps.append(el("h3", undefined, t("fiche.biologie")), bio);
 
-    this.savoirs(corps, f.savoirs, h.sexe === "femme" ? "e" : "");
-    corps.append(el("h3", undefined, "Regard de l'Entité"));
+    this.savoirs(corps, f.savoirs, g);
+    corps.append(el("h3", undefined, t("fiche.regardEntite")));
     const regard = el("p", "regard");
-    regard.append(`Karma : ${signe(f.regard.karma)} (${f.regard.karmaMots})`, el("br"),
-      `Croyance en l'invisible : ${f.regard.croyance}/100 (${f.regard.croyanceMots})`);
-    if (f.regard.dernierSigne) regard.append(el("br"), `Dernier signe de l'invisible : ${f.regard.dernierSigne}`);
-    regard.title = "Invisible aux humains. Les actes qui ont changé son karma sont marqués ☯ dans son histoire.";
+    regard.append(t("fiche.karma", { v: signe(f.regard.karma), mots: f.regard.karmaMots }), el("br"),
+      t("fiche.croyanceInvisible", { v: f.regard.croyance, mots: f.regard.croyanceMots }));
+    if (f.regard.dernierSigne) regard.append(el("br"), t("fiche.dernierSigne", { date: f.regard.dernierSigne }));
+    regard.title = t("fiche.regardAide");
     corps.append(regard);
-    corps.append(el("h3", undefined, "Regard sur l'invisible"));
+    corps.append(el("h3", undefined, t("fiche.regardInvisible")));
     const invisible = el("p", "regard");
-    invisible.append(`Croyance : ${f.regard.croyance}/100 (${f.regard.croyanceMots})`, el("br"),
-      `Amour : ${f.regard.amour}/100 (${f.regard.amourMots})`, el("br"),
-      `Crainte : ${f.regard.crainte}/100 (${f.regard.crainteMots})`, el("br"),
-      `Révolte : ${f.regard.revolte}/100 (${f.regard.revolteMots})`);
-    if (f.regard.dernierGeste) invisible.append(el("br"), `Dernier signe vu : ${f.regard.dernierGeste}`);
-    invisible.title = "Ce qu'il éprouve envers l'invisible : l'amour fait obéir de bon gré, la crainte à contrecœur et rend un peu plus honnête, la révolte fait refuser et cesser de prier.";
+    invisible.append(t("fiche.croyance", { v: f.regard.croyance, mots: f.regard.croyanceMots }), el("br"),
+      t("fiche.amour", { v: f.regard.amour, mots: f.regard.amourMots }), el("br"),
+      t("fiche.crainte", { v: f.regard.crainte, mots: f.regard.crainteMots }), el("br"),
+      t("fiche.revolte", { v: f.regard.revolte, mots: f.regard.revolteMots }));
+    if (f.regard.dernierGeste) invisible.append(el("br"), t("fiche.dernierGeste", { date: f.regard.dernierGeste }));
+    invisible.title = t("fiche.invisibleAide");
     corps.append(invisible);
     this.medecine(corps, f.medecine);
     this.feu(corps, f.feu ?? null);
@@ -463,12 +470,12 @@ export class PanneauFiche {
     this.communaute = f.communaute?.id ?? 0;
     this.nomCourant = h.nom;
     if (f.paroles.length > 0) {
-      corps.append(el("h3", undefined, "Paroles de l'Entité"));
+      corps.append(el("h3", undefined, t("fiche.paroles")));
       const ul = el("ul", "liste");
       for (const x of f.paroles.slice(0, 20)) {
         const li = el("li");
-        li.append(el("span", "entite", "✦ "), `${x.date}, ${x.mode} : ${x.texte} `, el("span", "discret", `(${x.reponse})`), " ");
-        if (x.evenement > 0) li.append(boutonCause(li, x.evenement, "ce qui s'est passé"));
+        li.append(el("span", "entite", "✦ "), t("fiche.parole", { date: x.date, mode: x.mode, texte: x.texte }) + " ", el("span", "discret", `(${x.reponse})`), " ");
+        if (x.evenement > 0) li.append(boutonCause(li, x.evenement, t("commun.ceQuiSestPasse")));
         ul.append(li);
       }
       corps.append(ul);
@@ -484,57 +491,57 @@ export class PanneauFiche {
       corps.append(this.geste.bloc);
     }
 
-    corps.append(el("h3", undefined, "Liens"));
+    corps.append(el("h3", undefined, t("fiche.liens")));
     const liens = el("ul", "liste");
     for (const l of f.liens.slice(0, 15)) {
-      const li = el("li", `lien-${l.statut.replace(/\s/g, "-")}`);
-      li.append(this.lien(l.id, l.nom), ` ${l.vivant ? "" : "✝ "}— ${l.statut} (affection ${l.affection}, familiarité ${l.familiarite})`);
+      const li = el("li", `lien-${l.statut}`);
+      li.append(this.lien(l.id, l.nom), ` ${l.vivant ? "" : "✝ "}— ` + t("fiche.lien", { statut: t(`statut.${l.statut}`), affection: l.affection, familiarite: l.familiarite }));
       liens.append(li);
     }
-    if (f.liens.length === 0) liens.append(el("li", "discret", "Ne connaît encore personne."));
-    else if (f.liens.length > 15) liens.append(el("li", "discret", `… et ${f.liens.length - 15} autres.`));
+    if (f.liens.length === 0) liens.append(el("li", "discret", t("fiche.personne")));
+    else if (f.liens.length > 15) liens.append(el("li", "discret", t("fiche.etAutres", { n: f.liens.length - 15 })));
     corps.append(liens);
 
-    corps.append(el("h3", undefined, "Pensées récentes"));
+    corps.append(el("h3", undefined, t("fiche.pensees")));
     const pensees = el("ul", "liste");
     for (const p of f.pensees) {
       const li = el("li");
       li.append(el("span", "date", p.date), ` ${p.texte}`);
       pensees.append(li);
     }
-    if (f.pensees.length === 0) pensees.append(el("li", "discret", "Aucune pour l'instant."));
+    if (f.pensees.length === 0) pensees.append(el("li", "discret", t("fiche.aucunePensee")));
     corps.append(pensees);
 
-    corps.append(el("h3", undefined, "Jardin secret"));
-    if (f.jardin.length === 0) corps.append(el("p", "discret", "Rien de confié pour l'instant."));
+    corps.append(el("h3", undefined, t("fiche.jardin")));
+    if (f.jardin.length === 0) corps.append(el("p", "discret", t("fiche.rienConfie")));
     for (const [cle, titre] of RUBRIQUES) {
       const choses = f.jardin.filter((x) => x.type === cle);
       if (choses.length === 0) continue;
-      corps.append(el("h4", undefined, titre));
+      corps.append(el("h4", undefined, t(titre)));
       const ul = el("ul", "liste jardin");
       for (const x of choses) {
         const li = el("li");
-        li.title = `Force ${x.intensite} sur 100, depuis le ${x.date}`;
+        li.title = t("fiche.force", { v: x.intensite, date: x.date });
         li.append(el("span", "date", x.date), ` ${x.texte} `, el("span", "discret", `(${x.intensite})`));
         if (x.sujet > 0 && x.nomSujet) li.append(" ", this.lien(x.sujet, "→ " + x.nomSujet));
-        if (x.cause > 0) li.append(" ", boutonCause(li, x.cause, "pourquoi ?"));
+        if (x.cause > 0) li.append(" ", boutonCause(li, x.cause, t("commun.pourquoi")));
         ul.append(li);
       }
       corps.append(ul);
     }
 
-    corps.append(el("h3", undefined, "Mémoire"));
+    corps.append(el("h3", undefined, t("fiche.memoire")));
     const lieux = el("ul", "liste");
     for (const l of f.lieux) {
-      lieux.append(el("li", undefined, `${l.type} en (${l.x}, ${l.y}), ${l.visites > 1 ? `${l.visites} visites, ` : ""}vu ${l.vuLe}`));
+      lieux.append(el("li", undefined, t(l.visites > 1 ? "fiche.lieuVisites" : "fiche.lieu", { type: t(`lieu.${l.type}`), x: String(l.x), y: String(l.y), n: l.visites, date: l.vuLe })));
     }
-    if (f.lieux.length === 0) lieux.append(el("li", "discret", "Ne se souvient d'aucun lieu."));
+    if (f.lieux.length === 0) lieux.append(el("li", "discret", t("fiche.aucunLieu")));
     corps.append(lieux);
 
-    corps.append(el("h3", undefined, "Histoire"));
+    corps.append(el("h3", undefined, t("fiche.histoire")));
     const histoire = el("ul", "liste");
     for (const e of f.histoire) histoire.append(ligneEvenement(e));
-    if (f.histoire.length === 0) histoire.append(el("li", "discret", "Rien encore."));
+    if (f.histoire.length === 0) histoire.append(el("li", "discret", t("fiche.rienEncore")));
     corps.append(histoire);
 
     this.sectionner(corps);
@@ -581,7 +588,7 @@ export class PanneauFiche {
       sectionsOuvertes = new Set(ouvrir ? sections.map((s) => s.dataset.titre ?? "") : []);
       enregistrerSections();
     };
-    for (const [texte, ouvrir] of [["tout ouvrir", true], ["tout fermer", false]] as const) {
+    for (const [texte, ouvrir] of [[t("fiche.toutOuvrir"), true], [t("fiche.toutFermer"), false]] as const) {
       const b = el("button", "lien", texte);
       b.type = "button";
       b.addEventListener("click", () => tout(ouvrir));
@@ -605,33 +612,33 @@ export class PanneauFiche {
   }
 
   /** Savoirs (texte, confiance, comment il les a appris et de qui, à qui il les a appris), objets portés, vêtement, nage. */
-  private savoirs(corps: HTMLElement, s: Savoirs, e: string): void {
-    corps.append(el("h3", undefined, "Savoirs et objets"));
+  private savoirs(corps: HTMLElement, s: Savoirs, g: string): void {
+    corps.append(el("h3", undefined, t("fiche.savoirs")));
     const p = el("p", "discret");
-    p.append(s.vetement ? `Vêtu${e} de ${s.vetement}` : `Nu${e}`);
-    if (s.objets.length > 0) p.append(` · porte ${s.objets.join(", ")}`);
-    if (s.nage > 0) p.append(` · nage ${s.nage}/100`);
+    p.append(s.vetement ? t("fiche.vetu", { g, vetement: s.vetement }) : t("fiche.nu", { g }));
+    if (s.objets.length > 0) p.append(" · " + t("fiche.porte", { objets: s.objets.join(t("commun.virgule")) }));
+    if (s.nage > 0) p.append(" · " + t("fiche.nage", { v: s.nage }));
     corps.append(p);
     const ul = el("ul", "liste");
     for (const x of s.savoirs) {
       const li = el("li", x.confiance < 40 ? "discret" : undefined);
-      li.title = `${x.essais} essai${x.essais > 1 ? "s" : ""}, appris le ${x.appriLe}`;
-      li.append(`${x.texte} `, el("span", "discret", `(confiance ${x.confiance} %, ${x.origine}`));
-      if (x.maitre > 0 && x.nomMaitre) li.append(el("span", "discret", " de "), this.lien(x.maitre, x.nomMaitre));
+      li.title = t("fiche.essais", { n: x.essais, date: x.appriLe });
+      li.append(`${x.texte} `, el("span", "discret", t("fiche.confiance", { v: x.confiance, origine: x.origine })));
+      if (x.maitre > 0 && x.nomMaitre) li.append(el("span", "discret", " " + t("fiche.de") + " "), this.lien(x.maitre, x.nomMaitre));
       li.append(el("span", "discret", ")"));
       if (x.eleves && x.eleves.length > 0) {
-        li.append(el("span", "discret", " · l'a appris à "));
+        li.append(el("span", "discret", " · " + t("fiche.aApprisA") + " "));
         x.eleves.slice(0, 6).forEach((o, i) => {
           if (i > 0) li.append(", ");
           li.append(this.lien(o.id, o.nom));
         });
-        if (x.eleves.length > 6) li.append(el("span", "discret", ` et ${x.eleves.length - 6} autres`));
+        if (x.eleves.length > 6) li.append(el("span", "discret", " " + t("fiche.etNAutres", { n: x.eleves.length - 6 })));
       }
-      if (x.origine.includes("Entité")) li.append(el("span", "entite", " ✦"));
-      if (x.evenement > 0) li.append(" ", boutonCause(li, x.evenement, "comment ?"));
+      if (x.origine === t("origineSavoir.Entite")) li.append(el("span", "entite", " ✦"));
+      if (x.evenement > 0) li.append(" ", boutonCause(li, x.evenement, t("commun.comment")));
       ul.append(li);
     }
-    if (s.savoirs.length === 0) ul.append(el("li", "discret", "Ne sait encore rien faire de particulier."));
+    if (s.savoirs.length === 0) ul.append(el("li", "discret", t("fiche.rienFaire")));
     corps.append(ul);
   }
 
@@ -643,36 +650,36 @@ export class PanneauFiche {
   private medecine(corps: HTMLElement, m: Fiche["medecine"]): void {
     const rien = m.soignes === 0 && m.accouchementsAides === 0 && !m.role && !m.desavoueLe && !m.plaie && !m.malediction;
     if (rien) return;
-    corps.append(el("h3", undefined, "Médecine"));
+    corps.append(el("h3", undefined, t("fiche.medecine")));
     const p = el("p", "medecine");
     const lignes: string[] = [];
-    if (m.role) lignes.push(`Rôle : ${m.role} (renommée ${m.renommee}/100)`);
-    if (m.soignes > 0) lignes.push(`Malades et blessés soignés : ${m.soignes} ; guéris : ${m.gueris} ; perdus : ${m.perdus}`);
-    if (m.accouchementsAides > 0) lignes.push(`Accouchements aidés : ${m.accouchementsAides}`);
-    if (m.guerisseurDepuis) lignes.push(`Tenu pour guérisseur depuis le ${m.guerisseurDepuis}`);
-    if (m.chamanDepuis) lignes.push(`Première transe le ${m.chamanDepuis}`);
-    if (m.charlatanDepuis) lignes.push(`Prétend guérir depuis le ${m.charlatanDepuis}`);
-    if (m.desavoueLe) lignes.push(`Désavoué ou démasqué le ${m.desavoueLe}`);
-    if (m.plaie) lignes.push(`Plaie : ${m.plaie}`);
+    if (m.role) lignes.push(t("medecine.role", { role: m.role, v: m.renommee }));
+    if (m.soignes > 0) lignes.push(t("medecine.soignes", { soignes: m.soignes, gueris: m.gueris, perdus: m.perdus }));
+    if (m.accouchementsAides > 0) lignes.push(t("medecine.accouchements", { n: m.accouchementsAides }));
+    if (m.guerisseurDepuis) lignes.push(t("medecine.guerisseur", { date: m.guerisseurDepuis }));
+    if (m.chamanDepuis) lignes.push(t("medecine.transe", { date: m.chamanDepuis }));
+    if (m.charlatanDepuis) lignes.push(t("medecine.charlatan", { date: m.charlatanDepuis }));
+    if (m.desavoueLe) lignes.push(t("medecine.desavoue", { date: m.desavoueLe }));
+    if (m.plaie) lignes.push(t("medecine.plaie", { plaie: m.plaie }));
     if (m.malediction) lignes.push(m.malediction.charAt(0).toUpperCase() + m.malediction.slice(1));
     lignes.forEach((l, i) => {
       if (i > 0) p.append(el("br"));
       p.append(l);
     });
-    p.title = "Les guérisons comptées sont celles que les siens lui attribuent, méritées ou non.";
+    p.title = t("medecine.aide");
     corps.append(p);
   }
 
   /** Section « Feu et réserves » : le feu qu'il porte, s'il est le porteur du feu des siens, ses caches, ce qu'il sait du feu. */
   private feu(corps: HTMLElement, x: Fiche["feu"] | null): void {
     if (!x || !x.porte && !x.porteurDepuis && x.feuxPortes === 0 && x.caches.length === 0 && x.lecons.length === 0) return;
-    corps.append(el("h3", undefined, "Feu et réserves"));
+    corps.append(el("h3", undefined, t("fiche.feu")));
     const p = el("p", "medecine");
     const lignes: string[] = [];
-    if (x.porte) lignes.push(`Porte le feu : ${x.porte}`);
-    if (x.porteurDepuis) lignes.push(`Porteur du feu des siens depuis le ${x.porteurDepuis}`);
-    if (x.feuxPortes > 0) lignes.push(`A porté le feu ${x.feuxPortes} fois jusqu'à un nouveau foyer`);
-    if (x.lecons.length > 0) lignes.push(`Ce qu'il sait du feu : ${x.lecons.join(", ")}`);
+    if (x.porte) lignes.push(t("feu.porte", { objet: x.porte }));
+    if (x.porteurDepuis) lignes.push(t("feu.porteur", { date: x.porteurDepuis }));
+    if (x.feuxPortes > 0) lignes.push(t("feu.portes", { n: x.feuxPortes }));
+    if (x.lecons.length > 0) lignes.push(t("feu.lecons", { liste: x.lecons.join(t("commun.virgule")) }));
     lignes.forEach((l, i) => {
       if (i > 0) p.append(el("br"));
       p.append(l);
@@ -681,25 +688,25 @@ export class PanneauFiche {
     if (x.caches.length > 0) {
       const ul = el("ul", "liste");
       for (const c of x.caches) ul.append(el("li", undefined, c));
-      corps.append(el("h4", undefined, "Ses caches"), ul);
+      corps.append(el("h4", undefined, t("feu.caches")), ul);
     }
   }
 
   /** Section « Rencontres et ouvrages » : sa visite ou son rassemblement, d'où il vient, ce que les siens disent qu'il fait pour eux. */
   private rencontres(corps: HTMLElement, x: Fiche["rencontres"] | null): void {
     if (!x) return;
-    corps.append(el("h3", undefined, "Rencontres et ouvrages"));
+    corps.append(el("h3", undefined, t("fiche.rencontres")));
     const p = el("p", "medecine");
     const lignes: string[] = [];
-    if (x.visite) lignes.push(`En visite : ${x.visite}`);
-    if (x.rassemblement) lignes.push(`Rassemblement : ${x.rassemblement}`);
+    if (x.visite) lignes.push(t("rencontres.visite", { texte: x.visite }));
+    if (x.rassemblement) lignes.push(t("rencontres.rassemblement", { texte: x.rassemblement }));
     if (x.venuDe) lignes.push(x.venuDe.charAt(0).toUpperCase() + x.venuDe.slice(1));
-    if (x.metier) lignes.push(`Les siens disent : ${x.metier}${x.metierDepuis ? `, depuis le ${x.metierDepuis}` : ""}`);
+    if (x.metier) lignes.push(x.metierDepuis ? t("rencontres.metierDepuis", { metier: x.metier, date: x.metierDepuis }) : t("rencontres.metier", { metier: x.metier }));
     const faits: string[] = [];
-    if (x.servisTaille > 0) faits.push(`${x.servisTaille} taillé${x.servisTaille > 1 ? "s" : ""}`);
-    if (x.servisAssemblage > 0) faits.push(`${x.servisAssemblage} assemblé${x.servisAssemblage > 1 ? "s" : ""}`);
-    if (x.servisPeau > 0) faits.push(`${x.servisPeau} vêtement${x.servisPeau > 1 ? "s" : ""} de peau`);
-    if (faits.length > 0) lignes.push(`Ouvrages faits pour d'autres, à leur demande : ${faits.join(", ")}`);
+    if (x.servisTaille > 0) faits.push(t("rencontres.tailles", { n: x.servisTaille }));
+    if (x.servisAssemblage > 0) faits.push(t("rencontres.assembles", { n: x.servisAssemblage }));
+    if (x.servisPeau > 0) faits.push(t("rencontres.peaux", { n: x.servisPeau }));
+    if (faits.length > 0) lignes.push(t("rencontres.ouvrages", { liste: faits.join(t("commun.virgule")) }));
     if (x.attend) lignes.push(x.attend.charAt(0).toUpperCase() + x.attend.slice(1));
     lignes.forEach((l, i) => {
       if (i > 0) p.append(el("br"));
@@ -711,11 +718,11 @@ export class PanneauFiche {
   /** Section « Foi » : sa religion, sa ferveur, son rôle (et d'où vient sa parole, que seule l'Entité sait), ses prières. */
   private foi(corps: HTMLElement, f: Fiche["foi"]): void {
     if (!f || f.religion === 0 && f.prieres.length === 0) return;
-    corps.append(el("h3", undefined, "Foi"));
+    corps.append(el("h3", undefined, t("fiche.foi")));
     const p = el("p", "foi");
-    if (f.nomReligion) p.append(`Religion : ${f.nomReligion}, ferveur ${f.ferveur}/100`);
-    else p.append("Aucune religion");
-    if (f.role) p.append(el("br"), `Rôle : ${f.role}${f.source ? ` (${f.source})` : ""}${f.miracles > 0 ? ` ; miracles attribués : ${f.miracles}` : ""}`);
+    if (f.nomReligion) p.append(t("foi.religion", { nom: f.nomReligion, v: f.ferveur }));
+    else p.append(t("foi.aucune"));
+    if (f.role) p.append(el("br"), t("foi.role", { role: f.role }) + (f.source ? ` (${f.source})` : "") + (f.miracles > 0 ? t("foi.miracles", { n: f.miracles }) : ""));
     corps.append(p);
     const bilan = ligneBilan(f.bilan, false);
     if (bilan) corps.append(bilan);
@@ -729,27 +736,27 @@ export class PanneauFiche {
   /** Section « Langage » : son nom dans sa langue, sa parole, ses mots (avec leur traduction) et les langues qu'il comprend. */
   private langage(corps: HTMLElement, l: Langage | null): void {
     if (!l) return;
-    corps.append(el("h3", undefined, "Langage"));
+    corps.append(el("h3", undefined, t("fiche.langage")));
     const p = el("p", "langage");
     if (l.nom) {
-      p.append(`Nom dans sa langue : « ${l.nom} »${l.sens ? `, qui veut dire « ${l.sens} »` : ""}`);
+      p.append(l.sens ? t("langage.nomSens", { nom: l.nom, sens: l.sens }) : t("langage.nom", { nom: l.nom }));
       if (l.nomPar) {
-        p.append(", donné par ", this.lien(l.nommePar, l.nomPar ?? undefined));
+        p.append(t("langage.donnePar"), this.lien(l.nommePar, l.nomPar ?? undefined));
       }
-      if (l.nommeLe) p.append(` le ${l.nommeLe}`);
+      if (l.nommeLe) p.append(" " + t("langage.le", { date: l.nommeLe }));
       p.append(" ");
-      if (l.nomEvenement > 0) p.append(boutonCause(p, l.nomEvenement, "comment ?"));
+      if (l.nomEvenement > 0) p.append(boutonCause(p, l.nomEvenement, t("commun.comment")));
       p.append(el("br"));
     }
-    p.append(`Parle par ${l.stade} ; connaît ${l.nombreDeMots} mot${l.nombreDeMots > 1 ? "s" : ""}.`);
-    if (l.ordre) p.append(el("br"), `Ordre des mots : ${l.ordre}.`);
-    if (l.comprises.length > 0) p.append(el("br"), `Comprend aussi : ${l.comprises.map((c) => `la langue de la ${c.nom.charAt(0).toLowerCase()}${c.nom.slice(1)} (${c.pourcent} %)`).join(", ")}.`);
+    p.append(t("langage.parle", { stade: l.stade, mots: t("langage.mots", { n: l.nombreDeMots }) }));
+    if (l.ordre) p.append(el("br"), t("langage.ordre", { ordre: l.ordre }));
+    if (l.comprises.length > 0) p.append(el("br"), t("langage.comprend", { liste: l.comprises.map((c) => t("langage.langueDe", { nom: c.nom, nomMin: `${c.nom.charAt(0).toLowerCase()}${c.nom.slice(1)}`, v: c.pourcent })).join(t("commun.virgule")) }));
     corps.append(p);
     if (l.mots.length > 0) {
       const ul = el("ul", "liste mots");
       for (const m of l.mots) {
         const li = el("li");
-        li.append(el("span", "mot", m.forme), ` « ${m.sens} » `, el("span", "discret", `(${m.force}/100${m.nomAuteur ? `, forme due à ${m.nomAuteur}` : ""})`));
+        li.append(el("span", "mot", m.forme), " " + t("commun.guillemets", { texte: m.sens }) + " ", el("span", "discret", m.nomAuteur ? t("langage.forceAuteur", { v: m.force, auteur: m.nomAuteur }) : t("langage.force", { v: m.force })));
         ul.append(li);
       }
       corps.append(ul);
@@ -759,13 +766,13 @@ export class PanneauFiche {
   private formulaireSouffle(): HTMLDetailsElement {
     if (this.souffle) return this.souffle;
     const bloc = el("details", "entite-bloc");
-    bloc.append(el("summary", "entite", "✦ L'Entité souffle une idée…"));
+    bloc.append(el("summary", "entite", t("souffle.titre")));
     const geste = el("select");
     const a = el("select");
     const b = el("select");
     const libelleA = el("span");
     const libelleB = el("span");
-    const bouton = el("button", undefined, "Souffler");
+    const bouton = el("button", undefined, t("souffle.souffler"));
     bouton.type = "button";
     let formes: FormeGeste[] = [];
     let plantes: Choix[] = [];
@@ -791,14 +798,14 @@ export class PanneauFiche {
       const f = formes.find((x) => x.cle === geste.value);
       if (!f) return;
       const plante = f.a.length === 1 && f.a[0].cle === "Plante";
-      libelleA.textContent = plante ? "Quelle plante" : "Quoi";
+      libelleA.textContent = plante ? t("souffle.quellePlante") : t("souffle.quoi");
       remplir(a, plante ? plantes : f.a);
       ligneA.hidden = plante && plantes.length === 0;
       libelleB.textContent = f.liaison ? f.liaison.charAt(0).toUpperCase() + f.liaison.slice(1) : "";
       remplir(b, f.b);
       ligneB.hidden = f.b.length === 0;
       bouton.disabled = plante && plantes.length === 0;
-      this.resultatSouffle.textContent = plante && plantes.length === 0 ? "Aucune plante ne pousse ici." : "";
+      this.resultatSouffle.textContent = plante && plantes.length === 0 ? t("souffle.aucunePlante") : "";
     };
     const charger = async () => {
       if (!this.id) return;
@@ -809,7 +816,7 @@ export class PanneauFiche {
         remplir(geste, formes.map((f) => ({ cle: f.cle, libelle: f.verbe })));
         accorder();
       } catch {
-        this.resultatSouffle.textContent = "Le serveur n'a pas répondu.";
+        this.resultatSouffle.textContent = t("commun.pasDeReponse");
       }
     };
     this.rechargerSouffle = () => void charger();
@@ -832,13 +839,13 @@ export class PanneauFiche {
           espece: plante ? Number(a.value) : 0,
         });
       } catch {
-        this.resultatSouffle.textContent = "L'intuition n'a pas pu être soufflée.";
+        this.resultatSouffle.textContent = t("souffle.echec");
       } finally {
         bouton.disabled = false;
       }
     });
-    bloc.append(ligne(el("span", undefined, "Geste"), geste), ligneA, ligneB, bouton, this.resultatSouffle,
-      el("p", "discret", "Il essaie avec ce qu'il a sous la main. Le journal marquera ce qu'il en tire comme venu de l'Entité."));
+    bloc.append(ligne(el("span", undefined, t("agir.geste")), geste), ligneA, ligneB, bouton, this.resultatSouffle,
+      el("p", "discret", t("souffle.aide")));
     this.souffle = bloc;
     return bloc;
   }
@@ -851,15 +858,15 @@ export class PanneauFiche {
   private traits(titre: string, traits: Trait[], max: number): HTMLElement {
     const bloc = el("div");
     bloc.append(el("h3", undefined, titre));
-    for (const t of traits) {
+    for (const trait of traits) {
       const ligne = el("div", "jauge");
-      ligne.title = t.aide;
-      ligne.append(el("span", "nom", t.nom));
+      ligne.title = trait.aide;
+      ligne.append(el("span", "nom", trait.nom));
       const piste = el("span", "piste");
       const plein = el("span", "plein");
-      plein.style.width = `${Math.round((Math.max(0, Math.min(max, t.valeur)) / max) * 100)}%`;
+      plein.style.width = `${Math.round((Math.max(0, Math.min(max, trait.valeur)) / max) * 100)}%`;
       piste.append(plein);
-      ligne.append(piste, el("span", "valeur", max === 1 ? t.valeur.toFixed(2) : String(Math.round(t.valeur))), el("span", "mots", t.mots));
+      ligne.append(piste, el("span", "valeur", max === 1 ? nombre(trait.valeur, 2) : String(Math.round(trait.valeur))), el("span", "mots", trait.mots));
       bloc.append(ligne);
     }
     return bloc;
@@ -875,7 +882,7 @@ export class PanneauFiche {
       const plein = el("span", "plein");
       plein.style.width = `${Math.round((Math.max(0, Math.min(max, v)) / max) * 100)}%`;
       barre.append(plein);
-      ligne.append(barre, el("span", "valeur", max === 1 ? v.toFixed(2) : String(Math.round(v))));
+      ligne.append(barre, el("span", "valeur", max === 1 ? nombre(v, 2) : String(Math.round(v))));
       bloc.append(ligne);
     }
     return bloc;
@@ -896,7 +903,7 @@ export function definirLiensNoms(resoudre: (nom: string) => number | undefined, 
 
 /** Un nombre signé, à la française : « +2 », « −30 », « +0,5 ». */
 export function signe(v: number): string {
-  const n = Math.abs(v).toLocaleString("fr-FR", { maximumFractionDigits: 1 });
+  const n = nombre(Math.abs(v), 1);
   return v > 0 ? `+${n}` : v < 0 ? `−${n}` : "0";
 }
 
@@ -910,7 +917,7 @@ function texteAvecLiens(e: Evenement): (string | HTMLElement)[] {
     morceaux.push(e.texte.slice(debut, m.index));
     const b = el("button", "nom-humain", m[0]);
     b.type = "button";
-    b.title = `Ouvrir la fiche de ${m[0]}`;
+    b.title = t("fiche.ouvrirDe", { nom: m[0] });
     b.addEventListener("click", (ev) => {
       ev.stopPropagation();
       ouvrirHumain(id);
@@ -928,16 +935,16 @@ export function ligneEvenement(e: Evenement): HTMLElement {
   li.append(el("span", "date", e.date));
   if (e.significatif) li.append(el("span", "etoile", " ★"));
   li.append(" ", ...texteAvecLiens(e));
-  if (e.origine === "entite") li.append(el("span", "entite", " ✦ venu de l'Entité"));
+  if (e.origine === "entite") li.append(el("span", "entite", " " + t("evenement.entite")));
   const karmas: string[] = [];
   if (e.karma) karmas.push(`${nomDeId(e.humain)} ${signe(e.karma)}`);
   if (e.karmaAutre) karmas.push(`${nomDeId(e.autre)} ${signe(e.karmaAutre)}`);
   if (karmas.length > 0) {
-    const k = el("span", "karma", ` ☯ karma : ${karmas.join(", ")}`);
-    k.title = "Regard de l'Entité sur cet acte (invisible aux humains)";
+    const k = el("span", "karma", " " + t("evenement.karma", { liste: karmas.join(t("commun.virgule")) }));
+    k.title = t("evenement.karmaAide");
     li.append(k);
   }
-  if (e.cause > 0) li.append(" ", boutonCause(li, e.cause, "pourquoi ?"));
+  if (e.cause > 0) li.append(" ", boutonCause(li, e.cause, t("commun.pourquoi")));
   return li;
 }
 
@@ -961,7 +968,7 @@ export function boutonCause(parent: HTMLElement, causeId: number, libelle: strin
   if (causesOuvertes.has(causeId)) return blocCause(parent, causeId, causesOuvertes.get(causeId) ?? null, libelle);
   const bouton = el("button", "cause", libelle);
   bouton.type = "button";
-  bouton.title = "Afficher l'événement qui en est la cause";
+  bouton.title = t("cause.aide");
   bouton.addEventListener("click", async (ev) => {
     ev.stopPropagation();
     bouton.disabled = true;
@@ -977,11 +984,11 @@ function blocCause(parent: HTMLElement, causeId: number, cause: Evenement | null
   const bloc = el("div", "chaine-cause");
   if (cause) {
     bloc.append("↳ ", el("span", "date", cause.date), ` ${cause.texte}`);
-    if (cause.cause > 0) bloc.append(" ", boutonCause(bloc, cause.cause, "pourquoi ?"));
+    if (cause.cause > 0) bloc.append(" ", boutonCause(bloc, cause.cause, t("commun.pourquoi")));
   } else {
-    bloc.append("↳ cause introuvable");
+    bloc.append("↳ " + t("cause.introuvable"));
   }
-  const replier = el("button", "cause", "replier");
+  const replier = el("button", "cause", t("cause.replier"));
   replier.type = "button";
   replier.addEventListener("click", (ev) => {
     ev.stopPropagation();

@@ -50,7 +50,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
     };
 
 
-    public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, Calendrier.Decomposer(e.Secondes).ToString(),
+    public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, L.Date(e.Secondes),
         Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, e.Texte,
         e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId, e.Significatif,
         e.Karma, e.KarmaAutre);
@@ -178,10 +178,10 @@ public sealed record FicheDto(
     FeuDto? Feu = null,
     RencontresDto? Rencontres = null)
 {
-    private static string Date(long s) => Calendrier.Decomposer(s).ToString();
+    private static string Date(long s) => L.Date(s);
 
-    private static TraitDto Trait(string nom, double v, string aide) => new(nom, Math.Round(v, 2), Psyche.Niveau(v), aide);
-    private static TraitDto Qi(string nom, double v, string aide) => new(nom, Math.Round(v), Monde.Simulation.Humains.Intelligence.Qualifier(v), aide);
+    private static TraitDto Trait(string cle, double v) => new(L.T($"trait.{cle}"), Math.Round(v, 2), Lib.Niveau(v), L.T($"trait.{cle}.aide"));
+    private static TraitDto Qi(string cle, double v) => new(L.T($"aptitude.{cle}"), Math.Round(v), Lib.Qi(v), L.T($"aptitude.{cle}.aide"));
 
     public static FicheDto? Depuis(ServiceMonde service, int id)
     {
@@ -199,36 +199,36 @@ public sealed record FicheDto(
         return new FicheDto(
             HumainDto.Depuis(h, maintenant),
             [
-                Trait("ouverture", p.Ouverture, "curiosité, imagination, goût du nouveau"),
-                Trait("conscience", p.Conscience, "application, prévoyance"),
-                Trait("extraversion", p.Extraversion, "besoin des autres ; bas : replié sur soi"),
-                Trait("agréabilité", p.Agreabilite, "bienveillance, partage ; bas : méfiant, querelleur"),
-                Trait("névrosisme", p.Nevrosisme, "sensibilité à l'anxiété et à la tristesse"),
-                Trait("transcendance", p.Transcendance, "penchant spirituel et contemplatif ; bas : rationnel, terre à terre"),
-                Trait("charisme", p.Charisme, "déduit : extraversion, calme, chaleur, aisance à communiquer"),
-                Trait("attachement", p.Attachement, "lien avec ses enfants"),
-                Trait("endurance", p.Endurance, "résistance à la fatigue et aux maladies"),
+                Trait("ouverture", p.Ouverture),
+                Trait("conscience", p.Conscience),
+                Trait("extraversion", p.Extraversion),
+                Trait("agreabilite", p.Agreabilite),
+                Trait("nevrosisme", p.Nevrosisme),
+                Trait("transcendance", p.Transcendance),
+                Trait("charisme", p.Charisme),
+                Trait("attachement", p.Attachement),
+                Trait("endurance", p.Endurance),
             ],
             [
-                Qi("générale", i.Generale, "comprendre, raisonner, apprendre"),
-                Qi("verbale", i.Verbale, "communiquer, imiter sons et gestes"),
-                Qi("spatiale", i.Spatiale, "s'orienter, se représenter les lieux"),
-                Qi("manuelle", i.Manuelle, "adresse des mains et du corps"),
-                Qi("mémoire", i.Memoire, "retenir les lieux, oublier moins vite"),
-                Qi("artistique", i.Artistique, "sens des formes, des rythmes, des couleurs"),
+                Qi("generale", i.Generale),
+                Qi("verbale", i.Verbale),
+                Qi("spatiale", i.Spatiale),
+                Qi("manuelle", i.Manuelle),
+                Qi("memoire", i.Memoire),
+                Qi("artistique", i.Artistique),
             ],
             new Dictionary<string, double>
             {
-                ["puberté (ans)"] = Math.Round(b.AgePuberte, 1),
-                ["fin de fertilité (ans)"] = Math.Round(b.AgeFinFertilite, 1),
-                ["fertilité"] = Math.Round(b.Fertilite, 2),
-                ["métabolisme"] = Math.Round(b.Metabolisme, 2),
-                ["allure"] = Math.Round(b.Marche, 2),
-                ["marche (km/h)"] = h.EstVivant && !h.EstBebe(maintenant) ? Math.Round(Marche.Vitesse(h, maintenant) * 3.6, 1) : 0,
+                [L.T("biologie.puberte")] = Math.Round(b.AgePuberte, 1),
+                [L.T("biologie.finFertilite")] = Math.Round(b.AgeFinFertilite, 1),
+                [L.T("biologie.fertilite")] = Math.Round(b.Fertilite, 2),
+                [L.T("biologie.metabolisme")] = Math.Round(b.Metabolisme, 2),
+                [L.T("biologie.allure")] = Math.Round(b.Marche, 2),
+                [L.T("biologie.marche")] = h.EstVivant && !h.EstBebe(maintenant) ? Math.Round(Marche.Vitesse(h, maintenant) * 3.6, 1) : 0,
             },
             h.EstVivant && !h.EstBebe(maintenant)
-                ? new AmeDto(Libelles.Humeur(h), (int)Math.Round(h.Humeur), (int)Math.Round(h.Chagrin), h.DeuilDeId,
-                    h.DeprimeDepuis is { } d ? Date(d) : null, VieSociale.Phrases(h, humains, maintenant),
+                ? new AmeDto(Lib.Humeur(h), (int)Math.Round(h.Humeur), (int)Math.Round(h.Chagrin), h.DeuilDeId,
+                    h.DeprimeDepuis is { } d ? Date(d) : null, Lib.Raisons(h, humains, maintenant),
                     (int)Math.Round(h.Colere),
                     h.Griefs.OrderByDescending(g => g.Intensite)
                         .Select(g => new RancuneDto(g.ContreId, Nom(g.ContreId), Motif(g, Nom), (int)Math.Round(g.Intensite), g.EvenementId))
@@ -251,29 +251,29 @@ public sealed record FicheDto(
             LireEpreuves(h, monde.Pathogenes(), maintenant),
             LireAttraits(h, humains, monde.Communautes(), maintenant),
             [
-                Trait("compassion", p.Moral.Compassion, "vouloir soulager la peine d'autrui"),
-                Trait("empathie émotionnelle", p.Moral.EmpathieEmotionnelle, "ressentir ce que l'autre ressent"),
-                Trait("empathie cognitive", p.Moral.EmpathieCognitive, "comprendre ce que l'autre pense, deviner ses intentions"),
-                Trait("honnêteté-humilité", p.Moral.Honnetete, "sincère, équitable, modeste ; bas : manipulateur, avide, vaniteux"),
-                Trait("psychopathie", p.Moral.Psychopathie, "audace, froideur, impulsivité (modèle triarchique)"),
-                Trait("anxiété affective", p.Moral.AnxieteAffective, "peur d'être abandonné, jalousie"),
-                Trait("évitement affectif", p.Moral.EvitementAffectif, "malaise dans la proximité, indépendance farouche"),
+                Trait("compassion", p.Moral.Compassion),
+                Trait("empathieEmotionnelle", p.Moral.EmpathieEmotionnelle),
+                Trait("empathieCognitive", p.Moral.EmpathieCognitive),
+                Trait("honnetete", p.Moral.Honnetete),
+                Trait("psychopathie", p.Moral.Psychopathie),
+                Trait("anxieteAffective", p.Moral.AnxieteAffective),
+                Trait("evitementAffectif", p.Moral.EvitementAffectif),
             ],
             [
-                Trait("soin", p.Moral.Fondements.Soin, "protéger les faibles, épargner la souffrance"),
-                Trait("équité", p.Moral.Fondements.Equite, "chacun sa part, le tricheur puni"),
-                Trait("loyauté", p.Moral.Fondements.Loyaute, "fidélité au groupe, punir le traître"),
-                Trait("autorité", p.Moral.Fondements.Autorite, "respect de ceux qui mènent et des usages"),
-                Trait("pureté", p.Moral.Fondements.Purete, "dégoût de ce qui souille, sens du sacré"),
+                Trait("soin", p.Moral.Fondements.Soin),
+                Trait("equite", p.Moral.Fondements.Equite),
+                Trait("loyaute", p.Moral.Fondements.Loyaute),
+                Trait("autorite", p.Moral.Fondements.Autorite),
+                Trait("purete", p.Moral.Fondements.Purete),
             ],
             Decrire(h, maintenant),
             SavoirsDto.Depuis(h, humains, monde.Flore),
             ParolesEntite.Recues(h, humains, service, maintenant),
-            new RegardDto(Math.Round(h.Karma, 1), Simulation.Humains.Regard.Dire(h.Karma), (int)Math.Round(h.Croyance), Croyances.Dire(h.Croyance),
+            new RegardDto(Math.Round(h.Karma, 1), Lib.Karma(h.Karma), (int)Math.Round(h.Croyance), Lib.Croyance(h.Croyance),
                 h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null,
-                (int)Math.Round(h.Amour), Regards.Dire(SentimentInvisible.Amour, h.Amour),
-                (int)Math.Round(h.Crainte), Regards.Dire(SentimentInvisible.Crainte, h.Crainte),
-                (int)Math.Round(h.Revolte), Regards.Dire(SentimentInvisible.Revolte, h.Revolte),
+                (int)Math.Round(h.Amour), Lib.Sentiment(SentimentInvisible.Amour, h.Amour, h),
+                (int)Math.Round(h.Crainte), Lib.Sentiment(SentimentInvisible.Crainte, h.Crainte, h),
+                (int)Math.Round(h.Revolte), Lib.Sentiment(SentimentInvisible.Revolte, h.Revolte, h),
                 h.RegardSigneLe > 0 ? Date(h.RegardSigneLe) : null),
             Soins(h, humains, maintenant),
             LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore),
@@ -285,21 +285,26 @@ public sealed record FicheDto(
     private static RencontresDto? LireRencontres(MondeSimule monde, Humain h, IReadOnlyList<Humain> humains)
     {
         var communautes = monde.Communautes();
-        string Nom(int id) => id >= 1 && id <= communautes.Count ? $"{char.ToLowerInvariant(communautes[id - 1].Nom[0])}{communautes[id - 1].Nom[1..]}" : "?";
-        string De(int id) => id >= 1 && id <= communautes.Count ? $"de la {Nom(id)}" : "d'ailleurs";
+        string Nom(int id) => id >= 1 && id <= communautes.Count ? communautes[id - 1].Nom : "?";
+        string NomMin(int id) => Nom(id) is { Length: > 0 } n ? char.ToLowerInvariant(n[0]) + n[1..] : "?";
+        string De(int id) => id >= 1 && id <= communautes.Count ? L.T("rencontre.de", ("nom", Nom(id)), ("nomMin", NomMin(id))) : L.T("rencontre.dAilleurs");
         string? visite = null;
         if (h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count)
         {
             var o = humains[h.VisiteChezId - 1];
-            visite = h.VisiteArriveeLe == 0 ? $"en route pour voir {o.Nom}, {De(o.CommunauteId)}, parti{(h.Sexe == Sexe.Femme ? "e" : "")} le {Date(h.VisiteDepuis)}"
-                : $"chez {o.Nom}, {De(o.CommunauteId)}, depuis le {Date(h.VisiteArriveeLe)}, jusqu'au {Date(h.VisiteJusquA)} environ";
+            visite = h.VisiteArriveeLe == 0
+                ? L.T("rencontre.enRoute", ("nom", o.Nom), ("de", De(o.CommunauteId)), ("date", Date(h.VisiteDepuis)), ("g", Lib.G(h)))
+                : L.T("rencontre.chez", ("nom", o.Nom), ("de", De(o.CommunauteId)), ("depuis", Date(h.VisiteArriveeLe)), ("jusqua", Date(h.VisiteJusquA)));
         }
         string? rassemblement = null;
         if (h.RassemblementId > 0 && monde.Rassemblements() is var rs && h.RassemblementId <= rs.Count && rs[h.RassemblementId - 1] is { Actif: true } r)
-            rassemblement = $"campe avec la {Nom(r.HoteId == h.CommunauteId ? r.InviteeId : r.HoteId)} depuis le {Date(r.Debut)}";
-        var attend = h.DemandeAId >= 1 && h.DemandeAId <= humains.Count ? $"a demandé à {humains[h.DemandeAId - 1].Nom} de lui faire un ouvrage, le {Date(h.DemandeLe)}" : null;
-        var dto = new RencontresDto(visite, rassemblement, h.VenuDeId != 0 ? $"venu{(h.Sexe == Sexe.Femme ? "e" : "")} {De(h.VenuDeId)}" : null,
-            Comportement.Metier(h), h.Specialite != Ouvrage.Aucun ? Date(h.SpecialiteDepuis) : null, h.ServisTaille, h.ServisAssemblage, h.ServisPeau, attend);
+            {
+            var avec = r.HoteId == h.CommunauteId ? r.InviteeId : r.HoteId;
+            rassemblement = L.T("rencontre.campe", ("nom", Nom(avec)), ("nomMin", NomMin(avec)), ("date", Date(r.Debut)));
+        }
+        var attend = h.DemandeAId >= 1 && h.DemandeAId <= humains.Count ? L.T("rencontre.demande", ("nom", humains[h.DemandeAId - 1].Nom), ("date", Date(h.DemandeLe))) : null;
+        var dto = new RencontresDto(visite, rassemblement, h.VenuDeId != 0 ? L.T("rencontre.venu", ("de", De(h.VenuDeId)), ("g", Lib.G(h))) : null,
+            Lib.Metier(h), h.Specialite != Ouvrage.Aucun ? Date(h.SpecialiteDepuis) : null, h.ServisTaille, h.ServisAssemblage, h.ServisPeau, attend);
         return dto is { Visite: null, Rassemblement: null, VenuDe: null, Metier: null, ServisTaille: 0, ServisAssemblage: 0, ServisPeau: 0, Attend: null } ? null : dto;
     }
 
@@ -311,10 +316,11 @@ public sealed record FicheDto(
         var porte = h.Objets.Find(o => o.Matiere is Matiere.Brandon or Matiere.PorteFeu);
         var (_, reserves) = monde.BraisesEtReserves();
         var caches = reserves.Where(r => r.AuteurId == h.Id && r.Kg > 0)
-            .Select(r => $"{Comportement.DecrireReserve(r.Sorte, r.Kg)} en ({r.X}, {r.Y}), {(r.Etat >= 0.8 ? "intacte" : r.Etat >= 0.4 ? "entamée par le temps" : "presque gâtée")}")
+            .Select(r => L.T("cache.phrase", ("reserve", Lib.Reserve(r.Sorte, r.Kg)), ("x", r.X), ("y", r.Y),
+                ("etat", L.T(r.Etat >= 0.8 ? "cache.intacte" : r.Etat >= 0.4 ? "cache.entamee" : "cache.gatee"))))
             .ToList();
-        var lecons = LeconsDuFeu.Where(e => h.Savoirs.Exists(s => s.Effet == e && s.Confiance >= 0.4)).Select(Physique.NomEffet).ToList();
-        return new FeuDto(porte is null ? null : Physique.Nom(porte.Matiere), h.PorteurDuFeuDepuis > 0 ? Date(h.PorteurDuFeuDepuis) : null,
+        var lecons = LeconsDuFeu.Where(e => h.Savoirs.Exists(s => s.Effet == e && s.Confiance >= 0.4)).Select(e => L.T($"effet.{e}")).ToList();
+        return new FeuDto(porte is null ? null : L.T($"matiere.{porte.Matiere}"), h.PorteurDuFeuDepuis > 0 ? Date(h.PorteurDuFeuDepuis) : null,
             h.FeuxPortes, caches, lecons);
     }
 
@@ -322,14 +328,14 @@ public sealed record FicheDto(
     {
         string? plaie = null;
         if (h.EstVivant && Simulation.Humains.Medecine.PlaieOuverte(h, maintenant))
-            plaie = h.PlaieSoin > 0 ? $"plaie soignée (soin {h.PlaieSoin:0.00})" : "plaie ouverte, pas soignée";
+            plaie = h.PlaieSoin > 0 ? L.T("soin.plaieSoignee", ("soin", h.PlaieSoin.ToString("0.00", L.Courante.Nombres))) : L.T("soin.plaieOuverte");
         string? malediction = null;
         if (h.MauditLe > 0)
         {
             var par = h.MauditParId >= 1 && h.MauditParId <= humains.Count ? humains[h.MauditParId - 1].Nom : "?";
-            malediction = $"maudit{(h.Sexe == Sexe.Femme ? "e" : "")} par {par} le {Date(h.MauditLe)} (force {h.MauditForce:0.00})";
+            malediction = L.T("soin.maudit", ("par", par), ("date", Date(h.MauditLe)), ("force", h.MauditForce.ToString("0.00", L.Courante.Nombres)), ("g", Lib.G(h)));
         }
-        return new MedecineDto(h.Soignes, h.Gueris, h.Perdus, h.AccouchementsAides, Simulation.Humains.Medecine.Role(h),
+        return new MedecineDto(h.Soignes, h.Gueris, h.Perdus, h.AccouchementsAides, Lib.Soignant(h),
             (int)Math.Round(100 * Simulation.Humains.Medecine.Renommee(h)),
             h.GuerisseurDepuis > 0 ? Date(h.GuerisseurDepuis) : null, h.ChamanDepuis > 0 ? Date(h.ChamanDepuis) : null,
             h.CharlatanDepuis > 0 ? Date(h.CharlatanDepuis) : null, h.DemasqueLe > 0 ? Date(h.DemasqueLe) : null, plaie, malediction);
@@ -339,26 +345,25 @@ public sealed record FicheDto(
     private static List<string> Decrire(Humain h, long maintenant)
     {
         var m = h.Personnalite.Moral;
-        var e = h.Sexe == Sexe.Femme ? "e" : "";
+        var g = Lib.G(h);
         var phrases = new List<string>();
         if (h.AgeEnAnnees(maintenant) >= 12)
         {
             phrases.Add(m.Style switch
             {
-                StyleAttachement.Secure => $"Attachement sûr : à l'aise dans la proximité, confiant{e} envers ses proches.",
-                StyleAttachement.Evitant => "Attachement évitant : garde ses distances, souffre peu des séparations en apparence.",
-                _ => $"Attachement anxieux : craint d'être abandonné{e}, s'accroche, vite jaloux{(h.Sexe == Sexe.Femme ? "e" : "")}.",
+                StyleAttachement.Secure => L.T("portrait.secure", ("g", g)),
+                StyleAttachement.Evitant => L.T("portrait.evitant", ("g", g)),
+                _ => L.T("portrait.anxieux", ("g", g)),
             });
         }
         if (Psyche.EstPsychopathe(h, maintenant))
-            phrases.Add("Psychopathe : charme de surface, sans remords ni peur ; ment et manipule (moins de 2 % des adultes).");
+            phrases.Add(L.T("portrait.psychopathe", ("g", g)));
         else if (Psyche.Froideur(h.Personnalite) >= 0.5)
-            phrases.Add("Penchant froid : peu touché par la peine des autres, peu scrupuleux.");
+            phrases.Add(L.T("portrait.froid", ("g", g)));
         var f = m.Fondements;
         var ecart = f.Individualisants - f.Liants;
         if (Math.Abs(ecart) >= 0.08)
-            phrases.Add(ecart > 0 ? "Sa morale : d'abord ne pas faire souffrir et être juste."
-                                  : "Sa morale : d'abord la loyauté envers les siens, le respect et la pureté.");
+            phrases.Add(L.T(ecart > 0 ? "portrait.moraleIndividualisante" : "portrait.moraleLiante", ("g", g)));
         return phrases;
     }
 
@@ -373,9 +378,9 @@ public sealed record FicheDto(
             : (e.De >= 1 && e.De <= communautes.Count ? communautes[e.De - 1].Nom : "?");
         return new AttraitsDto(
             (int)Math.Round(Attirance.Beaute(h, ideal, instant)), (int)Math.Round(Attirance.Attractivite(h, ideal, instant)),
-            Attirance.Orienter(h), (int)Math.Round(100 * h.Orientation.VersHommes), (int)Math.Round(100 * h.Orientation.VersFemmes),
-            h.EstEnfant(instant) ? null : Attirance.Conscience(h, tolerance),
-            groupe is null ? "sans communauté : l'idéal commun" : Attirance.DireIdeal(ideal),
+            Lib.Orientation(h), (int)Math.Round(100 * h.Orientation.VersHommes), (int)Math.Round(100 * h.Orientation.VersFemmes),
+            h.EstEnfant(instant) ? null : Lib.Conscience(h, tolerance),
+            groupe is null ? L.T("ideal.sansCommunaute") : Lib.Ideal(ideal),
             h.Exclusions.AsEnumerable().Reverse().Select(e => new ExclusionDto(
                 e.Type switch { TypeExclusion.Famille => "renié", TypeExclusion.Depart => "parti avec un exilé", _ => "exilé" },
                 e.De, Ref(e), Date(e.Le), e.Jusqua == 0 ? null : Date(e.Jusqua), e.Raison, e.Active(maintenant), e.EvenementId)).ToList(),
@@ -384,19 +389,20 @@ public sealed record FicheDto(
 
     private static EpreuvesDto LireEpreuves(Humain h, List<Simulation.Nature.Pathogene> maladies, long maintenant)
     {
-        string NomMaladie(int id) => id >= 1 && id <= maladies.Count ? maladies[id - 1].Nom : "une maladie";
+        string NomMaladie(int id) => id >= 1 && id <= maladies.Count ? maladies[id - 1].Nom : L.T("maladieOrdinaire.Aucune");
         var porteur = h.EstVivant && h.InfectionId != 0;
         // Maladie ordinaire (non contagieuse) : nommée pour l'observateur, l'humain ne sait pas la nommer.
         var ordinaire = !porteur && h.EstVivant && h.EstMalade(maintenant) && h.Maladie != Maladie.Aucune
-            ? Maladies.Fiche(h.Maladie).Nom + " (personne ne sait la nommer)" : null;
+            ? L.T("epreuve.sansNom", ("maladie", Lib.Maladie(h.Maladie))) : null;
         return new EpreuvesDto(
-            porteur ? NomMaladie(h.InfectionId) + (maintenant < h.SymptomesLe ? " (pas encore de signes)" : "") : ordinaire,
+            porteur ? maintenant < h.SymptomesLe ? L.T("epreuve.sansSignes", ("maladie", NomMaladie(h.InfectionId))) : NomMaladie(h.InfectionId) : ordinaire,
             porteur ? Date(h.InfecteLe) : null, porteur ? h.InfectionEvenementId : 0,
             h.Immunites.Where(i => i.Jusqua is null || i.Jusqua > maintenant)
-                .Select(i => $"{NomMaladie(i.PathogeneId)} ({(i.Jusqua is { } j ? $"jusqu'à l'an {Calendrier.Decomposer(j).Annee}" : "à vie")})")
+                .Select(i => i.Jusqua is { } j ? L.T("epreuve.immuniteJusqua", ("maladie", NomMaladie(i.PathogeneId)), ("an", Calendrier.Decomposer(j).Annee.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+                    : L.T("epreuve.immuniteAVie", ("maladie", NomMaladie(i.PathogeneId))))
                 .ToList(),
             h.EstVivant ? (int)Math.Round(h.Peur) : 0,
-            h.EstVivant && h.Peur >= 1 ? Simulation.Nature.TypesCatastrophe.Nom(h.PeurType) : null,
+            h.EstVivant && h.Peur >= 1 ? Lib.Catastrophe(h.PeurType) : null,
             h.EstVivant && h.Peur >= 1 ? h.PeurEvenementId : 0);
     }
 
@@ -427,21 +433,17 @@ public sealed record FicheDto(
 
     private static string Motif(Grief g, Func<int, string> nom) => g.Motif switch
     {
-        MotifGrief.Infidelite => "trahison",
-        MotifGrief.Rival => "rivalité amoureuse",
-        MotifGrief.Coups => "coups",
-        MotifGrief.Moeurs => "amours réprouvées",
-        MotifGrief.Vol => "vol de nourriture",
-        MotifGrief.Trahison => "passé à l'ennemi",
-        _ => g.VictimeId > 0 ? $"a tué {nom(g.VictimeId)}" : "meurtre d'un proche",
+        MotifGrief.Infidelite or MotifGrief.Rival or MotifGrief.Coups or MotifGrief.Moeurs or MotifGrief.Vol or MotifGrief.Trahison => L.T($"motif.{g.Motif}"),
+        _ => g.VictimeId > 0 ? L.T("motif.aTue", ("nom", nom(g.VictimeId))) : L.T("motif.meurtre"),
     };
 
+    /// <summary>Code du lien (le navigateur l'écrit avec la clé statut.&lt;code&gt; et le colore).</summary>
     private static string Statut(Lien l) => l switch
     {
         { Rivaux: true } => "hostile",
-        { Affection: >= 70 } => "très proche",
+        { Affection: >= 70 } => "tresProche",
         { Amis: true } => "ami",
-        { Affection: <= -10 } => "méfiance",
+        { Affection: <= -10 } => "mefiance",
         { Familiarite: >= 30 } => "familier",
         _ => "connaissance",
     };
@@ -475,7 +477,8 @@ public sealed record ExileDto(int Id, string Nom, string Raison, string? Jusqua,
 public sealed record NomDto(string Nom, string? Sens, string Depuis, long Evenement);
 
 /// <summary>Ce qu'une autre communauté est pour celle-ci ; Evenement : ce qui a fait naître la relation ou le pacte.</summary>
-public sealed record RelationDto(int Id, string Nom, string Etat, long Evenement);
+/// <param name="Code">État sans traduction (« alliee », « guerre », « rivale », « hostile », « indifferente ») : le navigateur colore avec lui.</param>
+public sealed record RelationDto(int Id, string Nom, string Etat, string Code, long Evenement);
 
 /// <summary>
 /// Une guerre vue par une communauté : contre qui, quand, combien de raids, ses morts et ceux de l'ennemi, et comment elle a
@@ -516,76 +519,85 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     {
         if (adultes.Count == 0) return null;
         var f = VieSociale.MoraleDe(adultes);
-        string N(double v) => v.ToString("0.00", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
-        var (nom, valeur) = new[] { ("le soin des faibles", f.Soin), ("l'équité", f.Equite), ("la loyauté envers le groupe", f.Loyaute),
-            ("le respect de l'autorité", f.Autorite), ("la pureté", f.Purete) }.MaxBy(x => x.Item2);
-        return $"soin {N(f.Soin)}, équité {N(f.Equite)}, loyauté {N(f.Loyaute)}, autorité {N(f.Autorite)}, pureté {N(f.Purete)} ; on y tient d'abord à {nom}";
+        string N(double v) => v.ToString("0.00", L.Courante.Nombres);
+        var (cle, valeur) = new[] { ("soin", f.Soin), ("equite", f.Equite), ("loyaute", f.Loyaute),
+            ("autorite", f.Autorite), ("purete", f.Purete) }.MaxBy(x => x.Item2);
+        return L.T("morale.phrase", ("soin", N(f.Soin)), ("equite", N(f.Equite)), ("loyaute", N(f.Loyaute)), ("autorite", N(f.Autorite)),
+            ("purete", N(f.Purete)), ("tient", L.T($"morale.tient.{cle}")));
     }
 
     private static List<string> Raconter(Communaute c, List<Communaute> toutes)
     {
         var histoire = new List<string>();
         string Ref(int id) => toutes[id - 1].Nom;
-        if (c.OrigineId > 0) histoire.Add($"Née d'une scission de la {Minuscule(Ref(c.OrigineId))}.");
-        foreach (var f in toutes.Where(x => x.FusionneeDansId == c.Id)) histoire.Add($"A accueilli la {Minuscule(f.Nom)}, qui s'est fondue en elle.");
-        if (c.FusionneeDansId > 0) histoire.Add($"S'est fondue dans la {Minuscule(Ref(c.FusionneeDansId))}.");
-        if (c.Active && c.FusionVersId > 0) histoire.Add($"En route pour rejoindre la {Minuscule(Ref(c.FusionVersId))}.");
-        if (c.Migrations > 0) histoire.Add(c.Migrations == 1 ? "A migré une fois vers de nouvelles terres." : $"A migré {c.Migrations} fois vers de nouvelles terres.");
-        if (c.DisettesSurmontees > 0) histoire.Add(c.DisettesSurmontees == 1 ? "A surmonté une disette." : $"A surmonté {c.DisettesSurmontees} disettes.");
-        foreach (var p in toutes.Where(x => x.HeritiereId == c.Id)) histoire.Add($"Continue la {Minuscule(p.Nom)}, dont elle a gardé les querelles.");
-        if (!c.Active && c.HeritiereId > 0) histoire.Add($"Ses membres ont formé la {Minuscule(Ref(c.HeritiereId))}.");
+        string Phrase(string cle, string nom) => L.T($"histoireCommunaute.{cle}", ("nom", nom), ("nomMin", Minuscule(nom)));
+        if (c.OrigineId > 0) histoire.Add(Phrase("scission", Ref(c.OrigineId)));
+        foreach (var f in toutes.Where(x => x.FusionneeDansId == c.Id)) histoire.Add(Phrase("accueilli", f.Nom));
+        if (c.FusionneeDansId > 0) histoire.Add(Phrase("fondue", Ref(c.FusionneeDansId)));
+        if (c.Active && c.FusionVersId > 0) histoire.Add(Phrase("enRoute", Ref(c.FusionVersId)));
+        if (c.Migrations > 0) histoire.Add(L.T("histoireCommunaute.migrations", ("n", c.Migrations)));
+        if (c.DisettesSurmontees > 0) histoire.Add(L.T("histoireCommunaute.disettes", ("n", c.DisettesSurmontees)));
+        foreach (var p in toutes.Where(x => x.HeritiereId == c.Id)) histoire.Add(Phrase("continue", p.Nom));
+        if (!c.Active && c.HeritiereId > 0) histoire.Add(Phrase("formee", Ref(c.HeritiereId)));
         return histoire;
     }
 
     private static string? DireTemperament(double bellicisme) => bellicisme switch
     {
         < 0 => null,
-        < 0.15 => "pacifique",
-        < 0.35 => "peu portée à la violence",
-        < 0.6 => "prompte à se battre",
-        _ => "guerrière",
+        < 0.15 => L.T("temperament.pacifique"),
+        < 0.35 => L.T("temperament.peuViolente"),
+        < 0.6 => L.T("temperament.prompte"),
+        _ => L.T("temperament.guerriere"),
     };
 
     private static List<string> SituationDeGuerre(Communaute c, List<Communaute> toutes, List<Humain> humains)
     {
         var lignes = new List<string>();
         if (!c.Active) return lignes;
-        string Ref(int id) => Minuscule(toutes[id - 1].Nom);
+        string Ref(int id) => toutes[id - 1].Nom;
         if (c.Raid is { } raid)
         {
             var n = raid.Guerriers.Count;
-            lignes.Add(raid.Retour
-                ? $"{(n == 1 ? "Un guerrier rentre" : $"{n} guerriers rentrent")} d'un raid contre la {Ref(raid.CibleId)}."
-                : $"{(n == 1 ? "Un guerrier est parti" : $"{n} guerriers sont partis")} en raid contre la {Ref(raid.CibleId)}.");
+            lignes.Add(L.T(raid.Retour ? "guerreCommunaute.rentrent" : "guerreCommunaute.partis", ("n", n), ("nom", Ref(raid.CibleId)),
+                ("nomMin", Minuscule(Ref(raid.CibleId)))));
         }
         if (c.SoumiseAId > 0)
         {
-            lignes.Add($"Soumise à la {Ref(c.SoumiseAId)} depuis {Calendrier.Decomposer(c.SoumiseLe)} : elle lui livre une part de sa nourriture.");
+            lignes.Add(L.T("guerreCommunaute.soumise", ("nom", Ref(c.SoumiseAId)), ("nomMin", Minuscule(Ref(c.SoumiseAId))), ("date", L.Date(c.SoumiseLe))));
         }
-        var vassaux = toutes.Where(x => x.Active && x.SoumiseAId == c.Id).Select(x => "la " + Minuscule(x.Nom)).ToList();
-        if (vassaux.Count > 0) lignes.Add($"Reçoit le tribut de {string.Join(", ", vassaux)}.");
+        var vassaux = toutes.Where(x => x.Active && x.SoumiseAId == c.Id)
+            .Select(x => L.T("guerreCommunaute.vassal", ("nom", x.Nom), ("nomMin", Minuscule(x.Nom)))).ToList();
+        if (vassaux.Count > 0) lignes.Add(L.T("guerreCommunaute.tribut", ("vassaux", string.Join(L.T("commun.virgule"), vassaux))));
         return lignes;
     }
 
     private static string IssueVue(Guerre g, int id) => g.Issue switch
     {
-        IssueGuerre.EnCours => "en cours",
-        IssueGuerre.Paix => "paix conclue",
-        IssueGuerre.Soumission => g.VainqueurId == id ? "victoire : l'ennemi s'est soumis" : "défaite : soumission",
-        IssueGuerre.Fuite => g.VainqueurId == id ? "victoire : l'ennemi a fui" : "défaite : fuite au loin",
-        IssueGuerre.Absorption => g.VainqueurId == id ? "victoire : les derniers ennemis ont rejoint le groupe" : "défaite : les derniers sont allés vivre chez le vainqueur",
-        _ => g.VainqueurId == id ? "l'ennemi s'est dispersé" : "le groupe s'est dispersé",
+        IssueGuerre.EnCours => L.T("issueGuerre.enCours"),
+        IssueGuerre.Paix => L.T("issueGuerre.paix"),
+        IssueGuerre.Soumission or IssueGuerre.Fuite or IssueGuerre.Absorption => L.T($"issueGuerre.{g.Issue}.{(g.VainqueurId == id ? "victoire" : "defaite")}"),
+        _ => L.T($"issueGuerre.disperse.{(g.VainqueurId == id ? "victoire" : "defaite")}"),
     };
 
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 
     private static string Etat(EtatRelation e, bool pacte) => e switch
     {
-        EtatRelation.Alliees => pacte ? "alliée par un pacte" : "alliée",
-        EtatRelation.EnGuerre => "en guerre",
-        EtatRelation.Rivales => "rivale pour les terres",
+        EtatRelation.Alliees => L.T(pacte ? "relation.pacte" : "relation.alliee"),
+        EtatRelation.EnGuerre => L.T("relation.guerre"),
+        EtatRelation.Rivales => L.T("relation.rivale"),
+        EtatRelation.Hostiles => L.T("relation.hostile"),
+        _ => L.T("relation.indifferente"),
+    };
+
+    private static string Code(EtatRelation e) => e switch
+    {
+        EtatRelation.Alliees => "alliee",
+        EtatRelation.EnGuerre => "guerre",
+        EtatRelation.Rivales => "rivale",
         EtatRelation.Hostiles => "hostile",
-        _ => "indifférente",
+        _ => "indifferente",
     };
 
     public static List<CommunauteDto> Toutes(ServiceMonde service) => Lister(service, null);
@@ -611,28 +623,28 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                 var x = membres.Count > 0 ? (int)Math.Round(membres.Average(m => m.X)) : 0;
                 var y = membres.Count > 0 ? (int)Math.Round(membres.Average(m => m.Y)) : 0;
                 var adultes = membres.Where(m => !m.EstEnfant(maintenant)).ToList();
-                return new CommunauteDto(c.Id, c.Nom, Calendrier.Decomposer(c.FondeeLe).ToString(),
-                    c.DisperseeLe is { } d ? Calendrier.Decomposer(d).ToString() : null,
+                return new CommunauteDto(c.Id, c.Nom, L.Date(c.FondeeLe),
+                    c.DisperseeLe is { } d ? L.Date(d) : null,
                     c.FigureId, humains[c.FigureId - 1].Nom,
                     membres.Select(m => new MembreDto(m.Id, m.Nom, m.EstBebe(maintenant) ? "bébé" : m.EstEnfant(maintenant) ? "enfant" : "adulte")).ToList(),
                     x, y, c.Rayon, (int)Math.Round(c.Abondance * 100), c.Active && c.Disette,
-                    c.Active && c.DestinationX >= 0 ? Lieux.Vers(c.CentreX, c.CentreY, c.DestinationX, c.DestinationY) : null,
+                    c.Active && c.DestinationX >= 0 ? Lib.Vers(c.CentreX, c.CentreY, c.DestinationX, c.DestinationY) : null,
                     adultes.Count == 0 ? 0 : (int)Math.Round(adultes.Average(m => m.Faim)),
                     adultes.Count == 0 ? 0 : (int)Math.Round(adultes.Average(m => m.Reserves)),
                     relations.Where(r => r.A == c.Id || r.B == c.Id)
                         .Select(r => (Autre: r.A == c.Id ? r.B : r.A, r.Etat, r.EvenementId, r.PacteEvenementId))
-                        .Select(r => new RelationDto(r.Autre, toutes[r.Autre - 1].Nom, Etat(r.Etat, r.PacteEvenementId > 0),
+                        .Select(r => new RelationDto(r.Autre, toutes[r.Autre - 1].Nom, Etat(r.Etat, r.PacteEvenementId > 0), Code(r.Etat),
                             r.PacteEvenementId > 0 ? r.PacteEvenementId : r.EvenementId))
                         .ToList(),
                     c.Usage switch
                     {
-                        UsageFidelite.MalVu => "s'unir hors de son couple y est mal vu",
-                        UsageFidelite.Indifferent => "nul ne s'y offusque qu'on s'unisse hors de son couple",
-                        _ => "pas d'usage établi sur la fidélité",
+                        UsageFidelite.MalVu => L.T("usage.fidelite.malVu"),
+                        UsageFidelite.Indifferent => L.T("usage.fidelite.indifferent"),
+                        _ => L.T("usage.fidelite.aucun"),
                     },
                     c.NomPropre, c.Sens,
-                    c.Noms.Select(n => new NomDto(n.Nom, n.Sens, Calendrier.Decomposer(n.Depuis).ToString(), n.EvenementId)).ToList(),
-                    c.Lexique.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => $"{Idees.Libelle(m.Key, monde.Flore)} : {m.Value}").ToList(),
+                    c.Noms.Select(n => new NomDto(n.Nom, n.Sens, L.Date(n.Depuis), n.EvenementId)).ToList(),
+                    c.Lexique.OrderBy(m => m.Key, StringComparer.Ordinal).Select(m => L.T("mots.ligne", ("sens", Lib.Idee(m.Key, monde.Flore)), ("mot", m.Value))).ToList(),
                     c.Active ? VieSociale.Etendue(VieSociale.Frequentees(c.Territoire), monde.Carte).Length : 0,
                     Raconter(c, toutes),
                     DireTemperament(c.Bellicisme),
@@ -641,37 +653,37 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                         .Select(g =>
                         {
                             var (contre, siens, ennemis) = g.A == c.Id ? (g.B, g.MortsA, g.MortsB) : (g.A, g.MortsB, g.MortsA);
-                            return new GuerreDto(contre, toutes[contre - 1].Nom, Calendrier.Decomposer(g.Debut).ToString(),
-                                g.Fin is { } f ? Calendrier.Decomposer(f).ToString() : null, g.Raids, siens, ennemis,
+                            return new GuerreDto(contre, toutes[contre - 1].Nom, L.Date(g.Debut),
+                                g.Fin is { } f ? L.Date(f) : null, g.Raids, siens, ennemis,
                                 g.Issue == IssueGuerre.EnCours ? null : IssueVue(g, c.Id), g.EvenementId, g.FinEvenementId);
                         }).ToList(),
                     c.Active && c.Projet is { } projet
                         ? new ProjetDto(projet.InstigateurId, humains[projet.InstigateurId - 1].Nom, projet.CibleId, toutes[projet.CibleId - 1].Nom,
-                            projet.Raison, Calendrier.Decomposer(projet.Depuis).ToString(),
+                            projet.Raison, L.Date(projet.Depuis),
                             projet.AlliesSollicites.Select(a => toutes[a - 1].Nom).ToList(), projet.EvenementId,
-                            Calendrier.Decomposer(projet.Debat).ToString())
+                            L.Date(projet.Debat))
                         : null,
                     c.ToleranceMoeurs < 0 ? null : c.UsageMoeurs switch
                     {
-                        UsageMoeurs.Reprouvees => "les amours entre hommes ou entre femmes y sont réprouvées",
-                        UsageMoeurs.Acceptees => "les amours entre hommes ou entre femmes y sont acceptées",
-                        _ => "pas d'usage établi sur les amours entre hommes ou entre femmes",
+                        UsageMoeurs.Reprouvees => L.T("usage.moeurs.reprouvees"),
+                        UsageMoeurs.Acceptees => L.T("usage.moeurs.acceptees"),
+                        _ => L.T("usage.moeurs.aucun"),
                     },
-                    c.ToleranceMoeurs < 0 ? null : Attirance.DireIdeal(c.Ideal),
+                    c.ToleranceMoeurs < 0 ? null : Lib.Ideal(c.Ideal),
                     humains.Where(m => m.EstVivant)
                         .SelectMany(m => m.Exclusions.Where(e => e.Type == TypeExclusion.Communaute && e.De == c.Id && e.Active(maintenant))
-                            .Select(e => new ExileDto(m.Id, m.Nom, e.Raison, e.Jusqua == 0 ? null : Calendrier.Decomposer(e.Jusqua).ToString(), e.EvenementId)))
+                            .Select(e => new ExileDto(m.Id, m.Nom, e.Raison, e.Jusqua == 0 ? null : L.Date(e.Jusqua), e.EvenementId)))
                         .ToList(),
                     DireMorale(adultes),
                     Decouvertes.DeCommunaute(membres),
                     // Moyennes des adultes : le karma (regard de l'Entité) et la croyance en l'invisible.
                     adultes.Count == 0 ? null : Math.Round(adultes.Average(m => m.Karma), 1),
                     adultes.Count == 0 ? null : (int)Math.Round(adultes.Average(m => m.Croyance)),
-                    adultes.Where(m => Simulation.Humains.Medecine.Role(m) is not null)
-                        .Select(m => new SoignantDto(m.Id, m.Nom, Simulation.Humains.Medecine.Role(m)!, m.Gueris, m.Perdus)).ToList(),
-                    Simulation.Humains.Arts.Style(membres.Where(m => !m.EstBebe(maintenant)).ToList(), oeuvres[c.Id]),
+                    adultes.Where(m => Lib.Soignant(m) is not null)
+                        .Select(m => new SoignantDto(m.Id, m.Nom, Lib.Soignant(m)!, m.Gueris, m.Perdus)).ToList(),
+                    Lib.Style(membres.Where(m => !m.EstBebe(maintenant)).ToList(), oeuvres[c.Id]),
                     oeuvres[c.Id].OrderByDescending(o => o.Le).Take(12)
-                        .Select(o => new OeuvreDto(o.Id, o.AuteurId, humains[o.AuteurId - 1].Nom, Calendrier.Decomposer(o.Le).ToString(), o.Description, o.EvenementId))
+                        .Select(o => new OeuvreDto(o.Id, o.AuteurId, humains[o.AuteurId - 1].Nom, L.Date(o.Le), o.Description, o.EvenementId))
                         .ToList(),
                     LangueDto.Depuis(c, toutes, humains, membres, monde.Flore));
             }).ToList();

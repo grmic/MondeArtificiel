@@ -1,6 +1,7 @@
 import { afficherAlertes, alertesAffichees } from "./catastrophes";
 import { connexion } from "./connexion";
 import { el } from "./fiche";
+import { choisirLangue, langue, languesDisponibles, t } from "./langue";
 
 /** Réglages du monde courant et limites, renvoyés par le serveur. Largeur et hauteur en cases. */
 interface Configuration {
@@ -75,15 +76,15 @@ function champ(libelle: string, aide: string, attributs: Record<string, string>)
 export class PanneauConfiguration {
   private readonly corps = el("div", "corps");
   private config: Configuration | null = null;
-  private readonly graine = champ("Graine", "même graine et mêmes réglages : même monde de départ", { min: "0", max: String(GRAINE_MAX), step: "1" });
-  private readonly couples = champ("Couples de départ", "", { step: "1" });
-  private readonly largeur = champ("Largeur de la carte (km)", "", { step: "1" });
-  private readonly hauteur = champ("Hauteur de la carte (km)", "", { step: "1" });
-  private readonly continents = champ("Continents", "séparés par la mer : on ne passe pas de l'un à l'autre à pied", { step: "1" });
+  private readonly graine = champ(t("config.graine"), t("config.graineAide"), { min: "0", max: String(GRAINE_MAX), step: "1" });
+  private readonly couples = champ(t("config.couples"), "", { step: "1" });
+  private readonly largeur = champ(t("config.largeur"), "", { step: "1" });
+  private readonly hauteur = champ(t("config.hauteur"), "", { step: "1" });
+  private readonly continents = champ(t("config.continents"), t("config.continentsAide"), { step: "1" });
   private readonly placement = (() => {
     const ligne = el("label", "reglage");
     const choix = el("select");
-    ligne.append(el("span", "libelle", "Départ des couples"), choix, el("span", "aide", "sur tous les continents : en proportion de leurs terres habitables"));
+    ligne.append(el("span", "libelle", t("config.depart")), choix, el("span", "aide", t("config.departAide")));
     return { ligne, choix };
   })();
   private readonly actuel = el("p");
@@ -97,7 +98,7 @@ export class PanneauConfiguration {
   private readonly coeurs = (() => {
     const ligne = el("label", "reglage");
     const choix = el("select");
-    ligne.append(el("span", "libelle", "Cœurs du processeur"), choix);
+    ligne.append(el("span", "libelle", t("config.coeurs")), choix);
     return { ligne, choix };
   })();
   private readonly messageCoeurs = el("p", "message-config");
@@ -108,8 +109,8 @@ export class PanneauConfiguration {
     curseur.min = "0";
     curseur.max = "100";
     curseur.step = "5";
-    const valeur = el("span", "valeur", "0 %");
-    ligne.append(el("span", "libelle", "Clémence du monde"), curseur, valeur);
+    const valeur = el("span", "valeur", t("commun.pourcent", { v: 0 }));
+    ligne.append(el("span", "libelle", t("config.clemence")), curseur, valeur);
     return { ligne, curseur, valeur };
   })();
   private readonly messageClemence = el("p", "message-config");
@@ -118,8 +119,8 @@ export class PanneauConfiguration {
   private aRestaurer: string | null = null;
   private readonly dialogueCorbeille = el("dialog", "dialogue");
   private aJeter: string | null = null;
-  private readonly titreSauvegardes = el("h3", undefined, "Sauvegardes");
-  private readonly titreNouveau = el("h3", undefined, "Nouveau monde");
+  private readonly titreSauvegardes = el("h3", undefined, t("config.sauvegardes"));
+  private readonly titreNouveau = el("h3", undefined, t("config.nouveauMonde"));
 
   constructor(
     private readonly racine: HTMLElement,
@@ -129,14 +130,14 @@ export class PanneauConfiguration {
     private readonly informer: (texte: string) => void,
   ) {
     const tete = el("div", "tete");
-    tete.append(el("h2", undefined, "Configuration"));
+    tete.append(el("h2", undefined, t("config.titre")));
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.addEventListener("click", () => this.fermer());
     tete.append(fermer);
 
     this.hasard.type = "button";
-    this.hasard.title = "Graine au hasard";
+    this.hasard.title = t("config.graineHasard");
     this.hasard.addEventListener("click", () => {
       this.graine.entree.value = String(Math.floor(Math.random() * (GRAINE_MAX + 1)));
     });
@@ -144,12 +145,12 @@ export class PanneauConfiguration {
 
     const formulaire = el("form", "config");
     const boutons = el("div", "boutons");
-    const apercu = el("button", undefined, "Aperçu de la carte");
+    const apercu = el("button", undefined, t("config.apercu"));
     apercu.type = "submit";
-    const revenir = el("button", undefined, "Revenir au monde actuel");
+    const revenir = el("button", undefined, t("config.revenir"));
     revenir.type = "button";
     revenir.addEventListener("click", () => void this.revenir());
-    const creer = el("button", "danger", "Créer ce monde…");
+    const creer = el("button", "danger", t("config.creer"));
     creer.type = "button";
     creer.addEventListener("click", () => this.demanderCreation());
     boutons.append(apercu, revenir, creer);
@@ -161,7 +162,7 @@ export class PanneauConfiguration {
       void this.apercu();
     });
 
-    const sauver = el("button", undefined, "Sauvegarder maintenant");
+    const sauver = el("button", undefined, t("config.sauvegarder"));
     sauver.type = "button";
     sauver.addEventListener("click", () => void this.sauvegarder());
     const boutonsSauvegarde = el("div", "boutons");
@@ -169,39 +170,42 @@ export class PanneauConfiguration {
     this.construireDialogue();
 
     const etiquetteQuotidien = el("label", "case-config");
-    etiquetteQuotidien.append(this.journalQuotidien, " Journaliser la vie quotidienne");
+    etiquetteQuotidien.append(this.journalQuotidien, ` ${t("config.quotidien")}`);
     this.journalQuotidien.type = "checkbox";
     this.journalQuotidien.addEventListener("change", () => void this.choisirJournalQuotidien(this.journalQuotidien.checked));
     this.coeurs.choix.addEventListener("change", () => void this.choisirCoeurs(Number(this.coeurs.choix.value)));
-    this.clemence.curseur.addEventListener("input", () => (this.clemence.valeur.textContent = `${this.clemence.curseur.value} %`));
+    this.clemence.curseur.addEventListener("input", () => (this.clemence.valeur.textContent = t("commun.pourcent", { v: Number(this.clemence.curseur.value) })));
     this.clemence.curseur.addEventListener("change", () => void this.choisirClemence(Number(this.clemence.curseur.value)));
 
     this.corps.append(
       this.apropos,
-      el("h3", undefined, "Monde actuel"),
+      el("h3", undefined, t("config.langue")),
+      this.choixLangue(),
+      el("p", "discret", t("config.langueAide")),
+      el("h3", undefined, t("config.mondeActuel")),
       this.actuel,
-      el("h3", undefined, "Journal"),
+      el("h3", undefined, t("barre.journal")),
       etiquetteQuotidien,
-      el("p", "discret", "Boire, manger, dormir, se reposer, chercher un abri, aller et venir : décoché, ces gestes ne sont plus notés (ni résumé de la journée, ni pensées qui s'y rapportent). Ce qui touche aux autres reste toujours noté : veiller sur quelqu'un, partager, soigner, consoler, se disputer… Les entrées déjà écrites sont gardées."),
+      el("p", "discret", t("config.quotidienAide")),
       this.messageJournal,
-      el("h3", undefined, "Alertes"),
+      el("h3", undefined, t("config.alertes")),
       this.caseAlertes(),
-      el("p", "discret", "Les catastrophes qui menacent des humains et les phénomènes du ciel s'annoncent en bas de l'écran. Décoché, elles ne s'affichent plus ; la pastille du bouton « Catastrophes » compte toujours les alertes graves, et la pause sur alerte se règle dans le panneau « Temps ». Ce réglage vaut pour ce navigateur."),
-      el("h3", undefined, "Calcul"),
+      el("p", "discret", t("config.alertesAide")),
+      el("h3", undefined, t("config.calcul")),
       this.coeurs.ligne,
-      el("p", "discret", "Un cœur : les humains vivent chaque pas l'un après l'autre, comme jusqu'à la version 0.22.0. Plusieurs cœurs : ils vivent chaque pas en même temps, répartis sur les cœurs ; l'histoire n'est pas la même qu'avec un cœur, mais la même graine redonne le même monde quel que soit leur nombre. Le plus rapide dépend de la machine et du nombre d'humains : comparez la vitesse atteinte. Le changement s'applique au pas suivant."),
+      el("p", "discret", t("config.calculAide")),
       this.messageCoeurs,
-      el("h3", undefined, "Clémence du monde"),
+      el("h3", undefined, t("config.clemence")),
       this.clemence.ligne,
-      el("p", "discret", "Main de l'Entité : la part des risques de maladie (épidémies comprises), d'infection, de mort en couches, de mort des enfants de moins de 5 ans et de mort dans les catastrophes qu'elle écarte. À 0 %, le monde tel quel ; à 100 %, plus personne ne meurt de ces causes. La faim, la soif, le froid, la vieillesse, les guerres et les meurtres ne changent pas. Chaque changement est noté au journal comme un acte de l'Entité ; il s'applique au pas suivant."),
+      el("p", "discret", t("config.clemenceAide")),
       this.messageClemence,
       this.titreSauvegardes,
-      el("p", "discret", "Une sauvegarde garde tout le monde à cet instant. La restaurer remplace le monde actuel, qui est d'abord sauvegardé lui aussi."),
+      el("p", "discret", t("config.sauvegardesAide")),
       boutonsSauvegarde,
       this.messageSauvegardes,
       this.listeSauvegardes,
       this.titreNouveau,
-      el("p", "discret", "Ces réglages sont enregistrés dans la base du monde créé. Une case de la carte mesure 800 m : cette finesse reste fixe, la carte grandit en nombre de cases. Au-delà de 400 km de côté, la simulation ralentit."),
+      el("p", "discret", t("config.nouveauAide")),
       formulaire,
     );
     racine.append(tete, this.corps);
@@ -223,21 +227,21 @@ export class PanneauConfiguration {
   /** Ouvre la fenêtre, et la fait défiler jusqu'aux sauvegardes ou au nouveau monde si demandé. */
   async ouvrir(section?: "sauvegardes" | "nouveau"): Promise<void> {
     this.racine.hidden = false;
-    this.actuel.textContent = "Lecture des réglages…";
+    this.actuel.textContent = t("config.lecture");
     const c = await connexion.invoke<Configuration>("Configuration").catch(() => null);
     if (!c) {
-      this.actuel.textContent = "Le serveur n'a pas répondu.";
+      this.actuel.textContent = t("commun.pasDeReponse");
       return;
     }
     this.config = c;
-    this.apropos.textContent = `Monde artificiel, version ${c.version} · auteur : ${c.auteur}`;
+    this.apropos.textContent = t("config.apropos", { version: c.version, auteur: c.auteur });
     this.journalQuotidien.checked = c.journalQuotidien;
     this.messageJournal.textContent = "";
     this.remplirCoeurs(c);
     this.messageCoeurs.textContent = "";
     this.remplirClemence(c.clemence);
     this.messageClemence.textContent = "";
-    this.actuel.textContent = `Graine ${c.graine} · ${c.couples} couples · ${c.continents} continent${c.continents > 1 ? "s" : ""}${c.origine ? " (réglages d'origine)" : ""}. ${c.resume}`;
+    this.actuel.textContent = `${t("config.graine")} ${c.graine} · ${t("config.nCouples", { n: c.couples })} · ${t("config.nContinents", { n: c.continents })}${c.origine ? ` ${t("config.origine")}` : ""}. ${c.resume}`;
     const km = (cases: number) => Math.round(cases * c.kilometresParCase);
     const bornes = (e: HTMLInputElement, min: number, max: number) => {
       e.min = String(min);
@@ -247,8 +251,8 @@ export class PanneauConfiguration {
     bornes(this.largeur.entree, Math.ceil(c.tailleMin * c.kilometresParCase), Math.floor(c.tailleMax * c.kilometresParCase));
     bornes(this.hauteur.entree, Math.ceil(c.tailleMin * c.kilometresParCase), Math.floor(c.tailleMax * c.kilometresParCase));
     bornes(this.continents.entree, c.continentsMin, c.continentsMax);
-    this.couples.ligne.querySelector(".aide")!.textContent = `${c.couplesMin} à ${c.couplesMax} ; un couple par emplacement, deux humains chacun`;
-    const tailles = `${this.largeur.entree.min} à ${this.largeur.entree.max} km`;
+    this.couples.ligne.querySelector(".aide")!.textContent = t("config.couplesAide", { min: c.couplesMin, max: c.couplesMax });
+    const tailles = t("config.taillesAide", { min: this.largeur.entree.min, max: this.largeur.entree.max });
     this.largeur.ligne.querySelector(".aide")!.textContent = tailles;
     this.hauteur.ligne.querySelector(".aide")!.textContent = tailles;
     this.graine.entree.value = String(c.graine);
@@ -268,13 +272,13 @@ export class PanneauConfiguration {
     const texte = el("p");
     texte.id = "texteRestaurer";
     const menu = el("menu");
-    const annuler = el("button", undefined, "Annuler");
+    const annuler = el("button", undefined, t("commun.annuler"));
     annuler.value = "annuler";
     annuler.autofocus = true;
-    const confirmer = el("button", "danger", "Restaurer");
+    const confirmer = el("button", "danger", t("config.restaurer"));
     confirmer.value = "confirmer";
     menu.append(annuler, confirmer);
-    formulaire.append(el("h2", undefined, "Restaurer cette sauvegarde ?"), texte, menu);
+    formulaire.append(el("h2", undefined, t("config.restaurerQuestion")), texte, menu);
     this.dialogueRestaurer.append(formulaire);
     document.body.append(this.dialogueRestaurer);
     this.dialogueRestaurer.addEventListener("close", () => {
@@ -286,13 +290,13 @@ export class PanneauConfiguration {
     const texteCorbeille = el("p");
     texteCorbeille.id = "texteCorbeille";
     const menuCorbeille = el("menu");
-    const garder = el("button", undefined, "Garder");
+    const garder = el("button", undefined, t("config.garder"));
     garder.value = "annuler";
     garder.autofocus = true;
-    const jeter = el("button", "danger", "Mettre à la corbeille");
+    const jeter = el("button", "danger", t("config.corbeille"));
     jeter.value = "confirmer";
     menuCorbeille.append(garder, jeter);
-    formCorbeille.append(el("h2", undefined, "Mettre cette sauvegarde à la corbeille ?"), texteCorbeille, menuCorbeille);
+    formCorbeille.append(el("h2", undefined, t("config.corbeilleQuestion")), texteCorbeille, menuCorbeille);
     this.dialogueCorbeille.append(formCorbeille);
     document.body.append(this.dialogueCorbeille);
     this.dialogueCorbeille.addEventListener("close", () => {
@@ -304,22 +308,22 @@ export class PanneauConfiguration {
     const c = await connexion.invoke<Configuration>("ChoisirJournalQuotidien", oui).catch(() => null);
     if (!c) {
       this.journalQuotidien.checked = !oui;
-      this.messageJournal.textContent = "Le serveur n'a pas répondu : réglage inchangé.";
+      this.messageJournal.textContent = t("config.reglageInchange");
       return;
     }
     this.journalQuotidien.checked = c.journalQuotidien;
-    this.messageJournal.textContent = c.journalQuotidien ? "La vie quotidienne est maintenant notée." : "La vie quotidienne n'est plus notée.";
+    this.messageJournal.textContent = c.journalQuotidien ? t("config.quotidienOui") : t("config.quotidienNon");
   }
 
   private remplirCoeurs(c: Configuration): void {
-    const options = [el("option", undefined, "Un cœur (l'un après l'autre)")];
+    const options = [el("option", undefined, t("config.unCoeur"))];
     options[0].value = "1";
     for (let n = 2; n < c.coeursMachine; n++) {
-      const o = el("option", undefined, `${n} cœurs en même temps`);
+      const o = el("option", undefined, t("config.nCoeurs", { n }));
       o.value = String(n);
       options.push(o);
     }
-    const tous = el("option", undefined, `Tous les cœurs (${c.coeursMachine}) en même temps`);
+    const tous = el("option", undefined, t("config.tousCoeurs", { n: c.coeursMachine }));
     tous.value = "0";
     options.push(tous);
     this.coeurs.choix.replaceChildren(...options);
@@ -330,12 +334,31 @@ export class PanneauConfiguration {
     const c = await connexion.invoke<Configuration>("ChoisirCoeurs", coeurs).catch(() => null);
     if (!c) {
       if (this.config) this.remplirCoeurs(this.config);
-      this.messageCoeurs.textContent = "Le serveur n'a pas répondu : réglage inchangé.";
+      this.messageCoeurs.textContent = t("config.reglageInchange");
       return;
     }
     this.config = c;
     this.remplirCoeurs(c);
-    this.messageCoeurs.textContent = c.coeurs === 1 ? "Le calcul se fait maintenant sur un cœur." : "Le calcul se fait maintenant sur plusieurs cœurs.";
+    this.messageCoeurs.textContent = c.coeurs === 1 ? t("config.calculUn") : t("config.calculPlusieurs");
+  }
+
+  /** Choix de la langue : les langues présentes sur le serveur, chacune dans sa propre langue ; la page se recharge. */
+  private choixLangue(): HTMLLabelElement {
+    const ligne = el("label", "reglage");
+    const choix = el("select");
+    choix.id = "configLangue";
+    const langues = languesDisponibles().length > 0 ? languesDisponibles() : [{ code: langue(), nom: langue(), part: 1 }];
+    for (const l of langues) {
+      const o = el("option", undefined, l.part < 0.995 ? t("config.langueIncomplete", { nom: l.nom, part: Math.floor(l.part * 100) }) : l.nom);
+      o.value = l.code;
+      choix.append(o);
+    }
+    choix.value = langue();
+    choix.addEventListener("change", () => {
+      if (choix.value !== langue()) choisirLangue(choix.value);
+    });
+    ligne.append(el("span", "libelle", t("config.langueLibelle")), choix);
+    return ligne;
   }
 
   private caseAlertes(): HTMLLabelElement {
@@ -345,25 +368,25 @@ export class PanneauConfiguration {
     c.id = "configAlertes";
     c.checked = alertesAffichees();
     c.addEventListener("change", () => afficherAlertes(c.checked));
-    etiquette.append(c, " Afficher les alertes de catastrophe");
+    etiquette.append(c, ` ${t("config.afficherAlertes")}`);
     return etiquette;
   }
 
   private remplirClemence(clemence: number): void {
     this.clemence.curseur.value = String(clemence);
-    this.clemence.valeur.textContent = `${clemence} %`;
+    this.clemence.valeur.textContent = t("commun.pourcent", { v: clemence });
   }
 
   private async choisirClemence(clemence: number): Promise<void> {
     const c = await connexion.invoke<Configuration>("ChoisirClemence", clemence).catch(() => null);
     if (!c) {
       if (this.config) this.remplirClemence(this.config.clemence);
-      this.messageClemence.textContent = "Le serveur n'a pas répondu : réglage inchangé.";
+      this.messageClemence.textContent = t("config.reglageInchange");
       return;
     }
     this.config = c;
     this.remplirClemence(c.clemence);
-    this.messageClemence.textContent = c.clemence === 0 ? "Le monde reprend toute sa dureté." : `L'Entité écarte maintenant ${c.clemence} % de ces risques.`;
+    this.messageClemence.textContent = c.clemence === 0 ? t("config.clemenceZero") : t("config.clemenceEcarte", { clemence: c.clemence });
   }
 
   private async lireSauvegardes(): Promise<void> {
@@ -373,44 +396,42 @@ export class PanneauConfiguration {
 
   private afficherSauvegardes(liste: Sauvegarde[] | null): void {
     if (!liste) {
-      this.listeSauvegardes.replaceChildren(el("li", "discret", "Le serveur n'a pas répondu."));
+      this.listeSauvegardes.replaceChildren(el("li", "discret", t("commun.pasDeReponse")));
       return;
     }
     if (liste.length === 0) {
-      this.listeSauvegardes.replaceChildren(el("li", "discret", "Aucune sauvegarde pour l'instant."));
+      this.listeSauvegardes.replaceChildren(el("li", "discret", t("config.aucuneSauvegarde")));
       return;
     }
     this.listeSauvegardes.replaceChildren(...liste.map((s) => {
       const li = el("li");
-      li.append(el("span", "date", s.faiteLe), ` ${s.dateMonde} · graine ${s.graine} · ${s.vivants} vivants · ${s.mo} Mo `);
+      li.append(el("span", "date", s.faiteLe), ` ${t("config.sauvegarde", { date: s.dateMonde, graine: String(s.graine), vivants: s.vivants, mo: s.mo })} `);
       if (s.possible) {
-        const b = el("button", "lien", "restaurer");
+        const b = el("button", "lien", t("config.restaurerMin"));
         b.type = "button";
         b.title = s.nom;
         b.addEventListener("click", () => {
           this.aRestaurer = s.nom;
           const texte = this.dialogueRestaurer.querySelector("#texteRestaurer");
           if (texte) {
-            texte.textContent = `Le monde reprend tel qu'il était (${s.dateMonde}, ${s.vivants} humains vivants), en pause. `
-              + "Le monde actuel est d'abord sauvegardé : vous pourrez y revenir depuis cette liste.";
+            texte.textContent = t("config.restaurerTexte", { date: s.dateMonde, vivants: s.vivants });
           }
           this.dialogueRestaurer.returnValue = "";
           this.dialogueRestaurer.showModal();
         });
         li.append(b);
       } else {
-        li.append(el("span", "discret", "(version plus récente ou illisible)"));
+        li.append(el("span", "discret", t("config.illisible")));
       }
       const j = el("button", "lien", "🗑");
       j.type = "button";
-      j.title = "Mettre cette sauvegarde à la corbeille (on peut l'y reprendre tant qu'elle n'est pas vidée)";
-      j.setAttribute("aria-label", "Mettre à la corbeille");
+      j.title = t("config.corbeilleAide");
+      j.setAttribute("aria-label", t("config.corbeille"));
       j.addEventListener("click", () => {
         this.aJeter = s.nom;
         const texte = this.dialogueCorbeille.querySelector("#texteCorbeille");
         if (texte) {
-          texte.textContent = `« ${s.nom} », faite le ${s.faiteLe} (${s.dateMonde}, ${s.vivants} humains vivants, ${s.mo} Mo). `
-            + "Elle part dans la corbeille de l'ordinateur : vous pourrez l'y reprendre tant qu'elle n'est pas vidée. Le monde en cours ne change pas.";
+          texte.textContent = t("config.corbeilleTexte", { nom: s.nom, faite: s.faiteLe, date: s.dateMonde, vivants: s.vivants, mo: s.mo });
         }
         this.dialogueCorbeille.returnValue = "";
         this.dialogueCorbeille.showModal();
@@ -422,35 +443,35 @@ export class PanneauConfiguration {
   }
 
   private async sauvegarder(): Promise<void> {
-    this.messageSauvegardes.textContent = "Sauvegarde…";
+    this.messageSauvegardes.textContent = t("config.sauvegardeEnCours");
     const liste = await connexion.invoke<Sauvegarde[]>("Sauvegarder").catch(() => null);
-    this.messageSauvegardes.textContent = liste ? "Monde sauvegardé." : "La sauvegarde a échoué.";
+    this.messageSauvegardes.textContent = liste ? t("config.sauvegarde.ok") : t("config.sauvegarde.echec");
     this.afficherSauvegardes(liste);
   }
 
   private async mettreALaCorbeille(nom: string): Promise<void> {
-    this.messageSauvegardes.textContent = "Mise à la corbeille…";
+    this.messageSauvegardes.textContent = t("config.corbeilleEnCours");
     try {
       const liste = await connexion.invoke<Sauvegarde[]>("MettreALaCorbeille", nom);
-      this.messageSauvegardes.textContent = `« ${nom} » est dans la corbeille.`;
+      this.messageSauvegardes.textContent = t("config.corbeilleOk", { nom });
       this.afficherSauvegardes(liste);
     } catch (e) {
       const texte = e instanceof Error ? e.message.replace(/^.*HubException: /, "") : "";
-      this.messageSauvegardes.textContent = `Impossible de la mettre à la corbeille${texte ? " : " + texte : "."} Elle est toujours là.`;
+      this.messageSauvegardes.textContent = texte ? t("config.corbeilleEchecRaison", { raison: texte }) : t("config.corbeilleEchec");
       await this.lireSauvegardes();
     }
   }
 
   private async restaurer(nom: string): Promise<void> {
-    this.messageSauvegardes.textContent = "Restauration…";
-    this.informer("Restauration d'une sauvegarde…");
+    this.messageSauvegardes.textContent = t("config.restauration");
+    this.informer(t("config.restaurationInfo"));
     try {
       await connexion.invoke("Restaurer", nom);
-      this.messageSauvegardes.textContent = "Sauvegarde restaurée.";
+      this.messageSauvegardes.textContent = t("config.restauree");
     } catch (e) {
       const raison = e instanceof Error ? e.message.replace(/^.*HubException: /, "") : "";
-      this.messageSauvegardes.textContent = `Impossible : ${raison || "sauvegarde illisible"}`;
-      this.informer("Le monde n'a pas changé.");
+      this.messageSauvegardes.textContent = t("commun.impossible", { raison: raison || t("config.sauvegardeIllisible") });
+      this.informer(t("config.mondeInchange"));
     }
     await this.lireSauvegardes();
   }
@@ -459,11 +480,11 @@ export class PanneauConfiguration {
   private remplirPlacement(voulu: number): void {
     const n = Number(this.continents.entree.value);
     const nombre = Number.isInteger(n) && n >= 1 && n <= 6 ? n : 1;
-    const options: [number, string][] = [[1, nombre === 1 ? "sur le continent" : "sur le plus grand continent"]];
-    for (let k = 2; k <= nombre; k++) options.push([k, `sur le ${k}e continent par la taille`]);
-    if (nombre > 1) options.push([0, "répartis sur tous les continents"]);
-    this.placement.choix.replaceChildren(...options.map(([v, t]) => {
-      const o = el("option", undefined, t);
+    const options: [number, string][] = [[1, nombre === 1 ? t("config.placement.seul") : t("config.placement.plusGrand")]];
+    for (let k = 2; k <= nombre; k++) options.push([k, t("config.placement.rang", { rang: k })]);
+    if (nombre > 1) options.push([0, t("config.placement.tous")]);
+    this.placement.choix.replaceChildren(...options.map(([v, texte]) => {
+      const o = el("option", undefined, texte);
       o.value = String(v);
       return o;
     }));
@@ -488,16 +509,16 @@ export class PanneauConfiguration {
     const entier = (e: HTMLInputElement, nom: string): number | null => {
       const v = Number(e.value);
       if (e.value.trim() === "" || !Number.isInteger(v) || v < Number(e.min) || v > Number(e.max)) {
-        this.message.textContent = `${nom} : un entier entre ${e.min} et ${e.max}.`;
+        this.message.textContent = t("config.entier", { nom, min: e.min, max: e.max });
         return null;
       }
       return v;
     };
-    const graine = entier(this.graine.entree, "Graine");
-    const couples = entier(this.couples.entree, "Couples");
-    const largeur = entier(this.largeur.entree, "Largeur");
-    const hauteur = entier(this.hauteur.entree, "Hauteur");
-    const continents = entier(this.continents.entree, "Continents");
+    const graine = entier(this.graine.entree, t("config.graine"));
+    const couples = entier(this.couples.entree, t("config.champCouples"));
+    const largeur = entier(this.largeur.entree, t("config.champLargeur"));
+    const hauteur = entier(this.hauteur.entree, t("config.champHauteur"));
+    const continents = entier(this.continents.entree, t("config.continents"));
     if (graine === null || couples === null || largeur === null || hauteur === null || continents === null) return null;
     const cases = (km: number) => Math.min(c.tailleMax, Math.max(c.tailleMin, Math.round(km / c.kilometresParCase)));
     const placement = Number(this.placement.choix.value);
@@ -507,19 +528,19 @@ export class PanneauConfiguration {
   private async apercu(): Promise<boolean> {
     const r = this.lire();
     if (!r) return false;
-    this.message.textContent = "Génération de la carte…";
+    this.message.textContent = t("carte.generation");
     const a = await connexion.invoke<Apercu>("ApercuConfiguration", r).catch(() => null);
     if (!a) {
-      this.message.textContent = "Le serveur n'a pas répondu.";
+      this.message.textContent = t("commun.pasDeReponse");
       return false;
     }
     if (!a.possible) {
-      this.message.textContent = `Impossible : ${a.texte}`;
+      this.message.textContent = t("commun.impossible", { raison: a.texte });
       return false;
     }
     const erreur = await this.montrer(r);
     this.apercuAffiche = erreur === null;
-    this.message.textContent = erreur ?? `Aperçu : ${a.texte}`;
+    this.message.textContent = erreur ?? t("config.apercuTexte", { texte: a.texte });
     return erreur === null;
   }
 
@@ -533,9 +554,10 @@ export class PanneauConfiguration {
     if (!r) return;
     const texte = this.dialogue.querySelector("#texteNouveauMonde");
     if (texte) {
-      texte.textContent = `Le monde recommence à l'an 1 avec ${r.couples} couple${r.couples > 1 ? "s" : ""} (graine ${r.graine}, ` +
-        `carte de ${Math.round(r.largeur * (this.config?.kilometresParCase ?? 0.8))} × ${Math.round(r.hauteur * (this.config?.kilometresParCase ?? 0.8))} km, ` +
-        `${r.continents} continent${r.continents > 1 ? "s" : ""}, couples ${this.placement.choix.selectedOptions[0]?.textContent ?? ""}). Toute son histoire est effacée ; une copie de l'ancien monde est gardée dans monde-avant-reinitialisation.db (seule la dernière).`;
+      const km = this.config?.kilometresParCase ?? 0.8;
+      texte.textContent = t("config.recommence", { couples: t("config.nCouples", { n: r.couples }), graine: String(r.graine),
+        largeur: Math.round(r.largeur * km), hauteur: Math.round(r.hauteur * km), continents: t("config.nContinents", { n: r.continents }),
+        placement: this.placement.choix.selectedOptions[0]?.textContent ?? "" });
     }
     this.dialogue.returnValue = "";
     this.dialogue.showModal();
@@ -544,16 +566,16 @@ export class PanneauConfiguration {
   private async creer(): Promise<void> {
     const r = this.lire();
     if (!r) return;
-    this.message.textContent = "Création du monde…";
-    this.informer("Création du nouveau monde…");
+    this.message.textContent = t("config.creation");
+    this.informer(t("config.creationInfo"));
     try {
       await connexion.invoke("CreerMonde", r);
-      this.message.textContent = "Monde créé.";
+      this.message.textContent = t("config.cree");
     } catch (e) {
       // Le serveur renvoie la raison (réglages impossibles) ; rien n'a changé.
       const raison = e instanceof Error ? e.message.replace(/^.*HubException: /, "") : "";
-      this.message.textContent = `Le serveur a refusé : ${raison || "réglages impossibles"}`;
-      this.informer("Le monde n'a pas changé.");
+      this.message.textContent = t("config.refuse", { raison: raison || t("config.reglagesImpossibles") });
+      this.informer(t("config.mondeInchange"));
     }
   }
 }

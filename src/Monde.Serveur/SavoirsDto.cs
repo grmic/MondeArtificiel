@@ -14,14 +14,11 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
 {
     public static string Origine(OrigineSavoir o) => o switch
     {
-        OrigineSavoir.Observation => "en observant la nature",
-        OrigineSavoir.Reflexion => "en réfléchissant",
-        OrigineSavoir.Imitation => "en imitant",
-        OrigineSavoir.Entite => "intuition soufflée par l'Entité",
-        _ => "en essayant",
+        OrigineSavoir.Observation or OrigineSavoir.Reflexion or OrigineSavoir.Imitation or OrigineSavoir.Entite => L.T($"origineSavoir.{o}"),
+        _ => L.T("origineSavoir.Essai"),
     };
 
-    private static string Etat(Objet o) => o.Usure <= 0.4 ? " (usé)" : o.Qualite >= 0.7 ? " (bien fait)" : "";
+    private static string Etat(Objet o) => o.Usure <= 0.4 ? L.T("objet.use") : o.Qualite >= 0.7 ? L.T("objet.bienFait") : "";
 
     public static SavoirsDto Depuis(Humain h, IReadOnlyList<Humain> humains, Flore flore)
     {
@@ -33,15 +30,18 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
             h.Savoirs.OrderByDescending(s => s.Confiance).ThenBy(s => s.AppriLe)
                 .Select(s => new SavoirDto(Physique.Decrire(s, s.Espece > 0 ? Majuscule(flore.Get(s.Espece).Nom) : null),
                     (int)Math.Round(100 * s.Confiance), Origine(s.Origine), s.MaitreId, Nom(s.MaitreId),
-                    Calendrier.Decomposer(s.AppriLe).ToString(), s.Essais, s.EvenementId, Eleves(s)))
+                    L.Date(s.AppriLe), s.Essais, s.EvenementId, Eleves(s)))
                 .ToList(),
             h.Objets.Select(o => o.Matiere == Matiere.Carcasse
-                ? $"de la viande{(o.Plein ? " fumée" : "")} ({Math.Max(1, Math.Round(100 * o.Qualite))} kg){(o.Usure <= 0.4 ? ", qui commence à se gâter" : "")}"
-                : Physique.Nom(o) + (o.Plein ? o.Matiere switch { Matiere.Calebasse => " pleine d'eau", Matiere.Peau => " nouée en outre, pleine d'eau", _ => "" } : "")
+                ? L.T(o.Plein ? "objet.viandeFumee" : "objet.viande", ("n", Math.Max(1, Math.Round(100 * o.Qualite)))) + (o.Usure <= 0.4 ? L.T("objet.seGate") : "")
+                : NomObjet(o) + (o.Plein ? o.Matiere switch { Matiere.Calebasse => L.T("objet.pleineDEau"), Matiere.Peau => L.T("objet.outrePleine"), _ => "" } : "")
                   + Etat(o)).ToList(),
-            h.Vetement is { } v ? (v.Matiere == Matiere.Peau ? "une peau de bête" : "des feuilles") + Etat(v) : null,
+            h.Vetement is { } v ? (v.Matiere == Matiere.Peau ? L.T("vetement.peau") : L.T("vetement.feuilles")) + Etat(v) : null,
             (int)Math.Round(100 * h.Nage));
     }
+
+    /// <summary>Nom d'un objet porté ; un objet assemblé garde la description de ses pièces (en français, comme les savoirs).</summary>
+    public static string NomObjet(Objet o) => o.Matiere == Matiere.Assemblage ? Physique.Nom(o) : L.T($"matiere.{o.Matiere}");
 
     private static string Majuscule(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 }
@@ -76,6 +76,10 @@ public sealed record DemandeIntuition(int Humain, string Geste, string A, string
 
 public static class Decouvertes
 {
+    /// <summary>Nom d'une découverte dans la chronologie, comme <see cref="Physique.NomDecouverte"/> : une seule roue et plusieurs roues sont deux trouvailles.</summary>
+    public static string NomDecouverte(Effet e, string? pieces) => e == Effet.RouleSurAxe && Lois.Structure(pieces) == "axe:1"
+        ? L.T("decouverte.brouette") : L.T($"effet.{e}");
+
     public static List<DecouverteDto> Chronologie(ServiceMonde service)
     {
         var monde = service.Monde;
@@ -83,8 +87,8 @@ public static class Decouvertes
         var (_, _, decouvertes) = monde.Installations();
         var detenteurs = humains.Where(h => h.EstVivant).SelectMany(h => h.Savoirs.Select(s => s.Effet).Distinct())
             .GroupBy(e => e).ToDictionary(g => g.Key, g => g.Count());
-        return decouvertes.OrderBy(d => d.Le).Select(d => new DecouverteDto(Calendrier.Decomposer(d.Le).ToString(), d.Le,
-            Physique.NomDecouverte(d.Effet, d.Pieces), d.HumainId, d.HumainId >= 1 && d.HumainId <= humains.Count ? humains[d.HumainId - 1].Nom : "?",
+        return decouvertes.OrderBy(d => d.Le).Select(d => new DecouverteDto(L.Date(d.Le), d.Le,
+            NomDecouverte(d.Effet, d.Pieces), d.HumainId, d.HumainId >= 1 && d.HumainId <= humains.Count ? humains[d.HumainId - 1].Nom : "?",
             SavoirsDto.Origine(d.Origine), d.EvenementId, detenteurs.GetValueOrDefault(d.Effet))).ToList();
     }
 
@@ -105,7 +109,7 @@ public static class Decouvertes
             var premiere = points.Count == 0 ? (int)(monde.Secondes / Calendrier.SecondesParAn + 1) : (int)points[0].Annee;
             if (premiere > 1)
                 points.InsertRange(0, service.Depot.ReconstituerProgres(premiere, brutes).Select(m => new PointProgresDto(m.Annee, m.Savoirs, true)));
-            marques = brutes.Select(m => new MarqueProgresDto(1 + m.Secondes / (double)Calendrier.SecondesParAn, Calendrier.Decomposer(m.Secondes).ToString(),
+            marques = brutes.Select(m => new MarqueProgresDto(1 + m.Secondes / (double)Calendrier.SecondesParAn, L.Date(m.Secondes),
                 m.Evenement, m.Perdu, m.Texte, m.Cause)).ToList();
         }
         var maintenant = monde.Secondes;
@@ -126,14 +130,13 @@ public static class Decouvertes
         var (_, humains) = monde.InstantaneHumains();
         static ChoixDto Option(Geste g, Matiere m) => new(m.ToString(), m switch
         {
-            Matiere.Aucune when g == Geste.Approcher => "ses mains",
-            Matiere.Eau when g == Geste.Nager => "l'eau profonde",
-            Matiere.Aucune when Physique.SansSeconde(g) is { } sol => sol,
-            Matiere.Assemblage => "son outil emmanché",
-            Matiere.Plante => "une plante",
-            _ => Physique.Nom(m),
+            Matiere.Aucune when g == Geste.Approcher => L.T("intuition.sesMains"),
+            Matiere.Eau when g == Geste.Nager => L.T("intuition.eauProfonde"),
+            Matiere.Aucune when Physique.SansSeconde(g) is not null => L.T("intuition.leSol"),
+            Matiere.Assemblage => L.T("intuition.outilEmmanche"),
+            _ => L.T($"matiere.{m}"),
         });
-        var gestes = Physique.Formes.Select(f => new FormeGesteDto(f.Geste.ToString(), f.Verbe, f.Liaison,
+        var gestes = Physique.Formes.Select(f => new FormeGesteDto(f.Geste.ToString(), L.T($"forme.{f.Geste}"), f.Liaison is null ? null : L.T($"forme.{f.Geste}.liaison"),
             f.A.Select(m => Option(f.Geste, m)).ToList(), f.B.Select(m => Option(f.Geste, m)).ToList())).ToList();
         var plantes = humain >= 1 && humain <= humains.Count
             ? monde.Flore.Sur(monde.Carte.BiomeEn(humains[humain - 1].X, humains[humain - 1].Y))
@@ -146,5 +149,5 @@ public static class Decouvertes
     public static List<string> DeCommunaute(IReadOnlyList<Humain> membres) =>
         membres.SelectMany(m => m.Savoirs.Where(s => s.Confiance >= 0.4 && s.Effet is not (Effet.Rien or Effet.Tiedeur)).Select(s => s.Effet).Distinct())
             .GroupBy(e => e).OrderByDescending(g => g.Count()).ThenBy(g => g.Key)
-            .Select(g => $"{Physique.NomEffet(g.Key)} ({g.Count()} sur {membres.Count})").ToList();
+            .Select(g => L.T("savoirs.partage", ("effet", L.T($"effet.{g.Key}")), ("n", g.Count()), ("total", membres.Count))).ToList();
 }

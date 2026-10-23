@@ -59,7 +59,7 @@ public sealed record CarteDto(
     double MetresParUnite)
 {
     public static CarteDto Depuis(Carte carte) => new(
-        (uint)carte.Graine, carte.Largeur, carte.Hauteur, Carte.NiveauMer, Simulation.Monde.Biomes.Noms,
+        (uint)carte.Graine, carte.Largeur, carte.Hauteur, Carte.NiveauMer, [.. Enum.GetValues<Biome>().Select(b => L.T($"biome.{b}"))],
         carte.Biomes, carte.Altitudes, carte.Gibier, carte.Plantes, carte.Emplacements,
         Simulation.Nature.Echelle.KilometresParCase, Simulation.Nature.Echelle.MetresParUnite);
 }
