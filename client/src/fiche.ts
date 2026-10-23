@@ -125,6 +125,9 @@ interface Fiche {
   } | null;
   /** Le feu qu'il porte, s'il est le porteur du feu, ses caches et ses leçons du feu (absent d'un serveur plus ancien). */
   feu?: { porte: string | null; porteurDepuis: string | null; feuxPortes: number; caches: string[]; lecons: string[] } | null;
+  /** Visite, rassemblement, communauté d'origine, métier et ouvrages faits pour d'autres (absent d'un serveur plus ancien). */
+  rencontres?: { visite: string | null; rassemblement: string | null; venuDe: string | null; metier: string | null; metierDepuis: string | null;
+    servisTaille: number; servisAssemblage: number; servisPeau: number; attend: string | null } | null;
 }
 
 /** Un mot et sa traduction. */
@@ -453,6 +456,7 @@ export class PanneauFiche {
     corps.append(invisible);
     this.medecine(corps, f.medecine);
     this.feu(corps, f.feu ?? null);
+    this.rencontres(corps, f.rencontres ?? null);
     this.foi(corps, f.foi);
     this.langage(corps, f.langage);
     if (h.vivant) corps.append(this.formulaireSouffle());
@@ -679,6 +683,29 @@ export class PanneauFiche {
       for (const c of x.caches) ul.append(el("li", undefined, c));
       corps.append(el("h4", undefined, "Ses caches"), ul);
     }
+  }
+
+  /** Section « Rencontres et ouvrages » : sa visite ou son rassemblement, d'où il vient, ce que les siens disent qu'il fait pour eux. */
+  private rencontres(corps: HTMLElement, x: Fiche["rencontres"] | null): void {
+    if (!x) return;
+    corps.append(el("h3", undefined, "Rencontres et ouvrages"));
+    const p = el("p", "medecine");
+    const lignes: string[] = [];
+    if (x.visite) lignes.push(`En visite : ${x.visite}`);
+    if (x.rassemblement) lignes.push(`Rassemblement : ${x.rassemblement}`);
+    if (x.venuDe) lignes.push(x.venuDe.charAt(0).toUpperCase() + x.venuDe.slice(1));
+    if (x.metier) lignes.push(`Les siens disent : ${x.metier}${x.metierDepuis ? `, depuis le ${x.metierDepuis}` : ""}`);
+    const faits: string[] = [];
+    if (x.servisTaille > 0) faits.push(`${x.servisTaille} taillé${x.servisTaille > 1 ? "s" : ""}`);
+    if (x.servisAssemblage > 0) faits.push(`${x.servisAssemblage} assemblé${x.servisAssemblage > 1 ? "s" : ""}`);
+    if (x.servisPeau > 0) faits.push(`${x.servisPeau} vêtement${x.servisPeau > 1 ? "s" : ""} de peau`);
+    if (faits.length > 0) lignes.push(`Ouvrages faits pour d'autres, à leur demande : ${faits.join(", ")}`);
+    if (x.attend) lignes.push(x.attend.charAt(0).toUpperCase() + x.attend.slice(1));
+    lignes.forEach((l, i) => {
+      if (i > 0) p.append(el("br"));
+      p.append(l);
+    });
+    corps.append(p);
   }
 
   /** Section « Foi » : sa religion, sa ferveur, son rôle (et d'où vient sa parole, que seule l'Entité sait), ses prières. */

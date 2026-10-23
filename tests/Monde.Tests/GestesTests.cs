@@ -118,8 +118,11 @@ public sealed class GestesTests : IDisposable
     public void UneGuerisonCachee_Guerit_SansQuePersonneNeVoieDeSigne()
     {
         int id = 0;
+        var signesAvant = new Dictionary<int, long>();
         var (monde, etat) = Monde(e =>
         {
+            // Le monde de base a pu montrer des signes à certains, avant le geste.
+            foreach (var x in e.Humains!) signesAvant[x.Id] = x.RegardSigneLe;
             var h = Adulte(e);
             id = h.Id;
             h.Maladie = Maladie.Pneumonie;
@@ -129,7 +132,7 @@ public sealed class GestesTests : IDisposable
         Assert.Contains("guérit", texte);
         var (maintenant, humains) = monde.InstantaneHumains();
         Assert.False(humains[id - 1].EstMalade(maintenant));
-        Assert.All(humains, h => Assert.Equal(0, h.RegardSigneLe));
+        Assert.All(humains, h => Assert.Equal(signesAvant[h.Id], h.RegardSigneLe));
         Assert.All(humains, h => Assert.Equal(50, h.Amour));
         // Rien à guérir : le geste n'a pas lieu.
         Assert.Contains("ni maladie", monde.Agir(GesteEntite.Guerir, id, ManiereGeste.Voix, 0, 0, 0));

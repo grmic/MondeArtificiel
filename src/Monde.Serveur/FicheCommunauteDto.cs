@@ -53,7 +53,19 @@ public sealed record PersonneDto(int Id, string Nom, string Detail);
 
 /// <summary>Territoire, nourriture et santé.</summary>
 public sealed record VieCommunauteDto(int Huttes, int Foyers, IReadOnlyList<PersonneDto> Malades, int MortsDeMaladie, IReadOnlyList<CatastropheDto> Catastrophes,
-    IReadOnlyList<PersonneDto> Captifs, FeuReservesDto? Feu = null);
+    IReadOnlyList<PersonneDto> Captifs, FeuReservesDto? Feu = null, RencontresCommunauteDto? Rencontres = null);
+
+/// <summary>
+/// Les rencontres et les métiers d'une communauté : ceux que les siens disent spécialistes (et combien d'ouvrages ils ont faits pour
+/// d'autres), ses rassemblements avec d'autres groupes (du plus récent au plus ancien), ses membres en visite ailleurs, ses visiteurs,
+/// et ceux qui sont venus d'une autre communauté.
+/// </summary>
+public sealed record RencontresCommunauteDto(IReadOnlyList<PersonneDto> Specialistes, IReadOnlyList<RassemblementDto> Rassemblements,
+    IReadOnlyList<PersonneDto> EnVisite, IReadOnlyList<PersonneDto> Visiteurs, IReadOnlyList<PersonneDto> VenusDAilleurs);
+
+/// <summary>Un rassemblement avec une autre communauté : quand, avec qui, combien de jours, et ce qui s'y est passé.</summary>
+public sealed record RassemblementDto(string Debut, int Autre, string NomAutre, bool Hote, int Jours, bool EnCours, int Participants, int Cadeaux,
+    int Appris, int Couples, long Evenement, long Bilan);
 
 /// <summary>
 /// Le feu et les réserves d'une communauté : braises qui couvent, combien savent allumer, son porteur du feu, ses réserves
@@ -123,7 +135,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
     {
         RoleReligieux.Prophete => h.Sexe == Sexe.Femme ? "prophétesse" : "prophète",
         RoleReligieux.Pretre => h.Sexe == Sexe.Femme ? "gardienne des rites" : "gardien des rites",
-        _ => null,
+        _ => Comportement.Metier(h),
     };
 
     private static string AgeEnMots(long duree)
@@ -364,7 +376,30 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var captifs = membres.Where(h => h.CaptifDe != 0)
             .Select(h => new PersonneDto(h.Id, h.Nom, h.CaptifDe <= humains.Count ? $"{Enleve(h)} par {humains[h.CaptifDe - 1].Nom}" : Enleve(h))).ToList();
         return new VieCommunauteDto(huttes.Count(h => Proche(h.X, h.Y)), foyers.Count(f => Proche(f.X, f.Y)), malades, mortsMaladie, catastrophes, captifs,
-            CalculerFeu(service, c, membres, maintenant, Proche));
+            CalculerFeu(service, c, membres, maintenant, Proche), CalculerRencontres(service, c, humains, membres, maintenant));
+    }
+
+    private static RencontresCommunauteDto CalculerRencontres(ServiceMonde service, Communaute c, List<Humain> humains, List<Humain> membres, long maintenant)
+    {
+        var communautes = service.Monde.Communautes();
+        string NomDe(int id) => id >= 1 && id <= communautes.Count ? communautes[id - 1].Nom : "?";
+        var specialistes = membres.Where(h => h.Specialite != Ouvrage.Aucun)
+            .Select(h => new PersonneDto(h.Id, h.Nom, $"{Comportement.Metier(h)} ({h.Servis(h.Specialite)} ouvrage{(h.Servis(h.Specialite) > 1 ? "s" : "")} pour d'autres)")).ToList();
+        var rassemblements = service.Monde.Rassemblements().Where(r => r.HoteId == c.Id || r.InviteeId == c.Id).OrderByDescending(r => r.Id).Take(20)
+            .Select(r =>
+            {
+                var autre = r.HoteId == c.Id ? r.InviteeId : r.HoteId;
+                var fin = r.FiniLe > 0 ? r.FiniLe : maintenant;
+                return new RassemblementDto(Calendrier.Decomposer(r.Debut).ToString(), autre, NomDe(autre), r.HoteId == c.Id,
+                    Math.Max(1, (int)Math.Round((fin - r.Debut) / (double)Calendrier.SecondesParJour)), r.Actif, r.Participants, r.Cadeaux, r.Appris, r.Couples,
+                    r.EvenementId, r.BilanEvenementId);
+            }).ToList();
+        string Chez(Humain h) => h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count ? humains[h.VisiteChezId - 1] is var o ? $"chez {o.Nom}, de la {Minuscule(NomDe(o.CommunauteId))}" : "" : "";
+        var enVisite = membres.Where(h => h.VisiteChezId != 0).Select(h => new PersonneDto(h.Id, h.Nom, h.VisiteArriveeLe == 0 ? $"en route, {Chez(h)}" : Chez(h))).ToList();
+        var visiteurs = humains.Where(h => h.EstVivant && h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count && humains[h.VisiteChezId - 1].CommunauteId == c.Id)
+            .Select(h => new PersonneDto(h.Id, h.Nom, $"de la {Minuscule(NomDe(h.CommunauteId))}, chez {humains[h.VisiteChezId - 1].Nom}")).ToList();
+        var venus = membres.Where(h => h.VenuDeId != 0).Select(h => new PersonneDto(h.Id, h.Nom, $"venu{(h.Sexe == Sexe.Femme ? "e" : "")} de la {Minuscule(NomDe(h.VenuDeId))}")).ToList();
+        return new RencontresCommunauteDto(specialistes, rassemblements, enVisite, visiteurs, venus);
     }
 
     private static FeuReservesDto CalculerFeu(ServiceMonde service, Communaute c, List<Humain> membres, long maintenant, Func<int, int, bool> proche)

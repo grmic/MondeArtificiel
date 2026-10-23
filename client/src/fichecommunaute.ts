@@ -38,6 +38,12 @@ interface FicheCommunaute {
       braises: number; saventAllumer: number; adultes: number; porteur: { id: number; nom: string; valeur: number } | null; joursDeVivres: number;
       reserves: string[]; idee: string | null; incendies: CatastropheResume[];
     } | null;
+    /** Spécialistes, rassemblements, visites et membres venus d'ailleurs (absent d'un serveur plus ancien). */
+    rencontres?: {
+      specialistes: Personne[]; enVisite: Personne[]; visiteurs: Personne[]; venusDAilleurs: Personne[];
+      rassemblements: { debut: string; autre: number; nomAutre: string; hote: boolean; jours: number; enCours: boolean; participants: number;
+        cadeaux: number; appris: number; couples: number; evenement: number; bilan: number }[];
+    } | null;
   };
   foi: {
     croyance: number | null; religions: string[]; porteurs: { id: number; nom: string; role: string; source: string | null; miracles: number }[];
@@ -553,6 +559,38 @@ export class PanneauFicheCommunaute {
     }
   }
 
+  /** Ceux qu'on vient voir pour un ouvrage, les rassemblements avec d'autres groupes, les visites, ceux qui sont venus d'ailleurs. */
+  private rencontres(s: HTMLElement, x: NonNullable<FicheCommunaute["vie"]["rencontres"]>): void {
+    const personnes = (titre: string, liste: Personne[]): void => {
+      if (liste.length === 0) return;
+      const p = el("p", undefined, `${titre} : `);
+      liste.forEach((y, i) => {
+        if (i > 0) p.append(", ");
+        p.append(this.lienHumain(y.id, y.nom), ` (${y.detail})`);
+      });
+      s.append(p);
+    };
+    personnes("Ceux qu'on vient voir pour un ouvrage", x.specialistes);
+    personnes("En visite ailleurs", x.enVisite);
+    personnes("Visiteurs", x.visiteurs);
+    personnes("Venus d'une autre communauté", x.venusDAilleurs);
+    if (x.rassemblements.length > 0) {
+      s.append(el("h4", undefined, "Rassemblements"));
+      const ul = el("ul", "liste");
+      for (const r of x.rassemblements) {
+        const faits = [`${r.participants} présents`];
+        if (r.cadeaux > 0) faits.push(`${r.cadeaux} cadeau${r.cadeaux > 1 ? "x" : ""}`);
+        if (r.appris > 0) faits.push(`${r.appris} geste${r.appris > 1 ? "s" : ""} appris de l'autre groupe`);
+        if (r.couples > 0) faits.push(`${r.couples} couple${r.couples > 1 ? "s" : ""} formé${r.couples > 1 ? "s" : ""}`);
+        const li = el("li", undefined, `${r.debut} · ${r.hote ? "reçoit" : "chez"} la ${r.nomAutre.charAt(0).toLowerCase()}${r.nomAutre.slice(1)}, ${r.jours} jour${r.jours > 1 ? "s" : ""}${r.enCours ? " (en cours)" : ""} · ${faits.join(", ")} `);
+        if (r.bilan > 0) li.append(boutonCause(li, r.bilan, "bilan"));
+        else if (r.evenement > 0) li.append(boutonCause(li, r.evenement, "pourquoi ?"));
+        ul.append(li);
+      }
+      s.append(ul);
+    }
+  }
+
   private vie(f: FicheCommunaute): HTMLDetailsElement {
     const s = this.section("Terres, nourriture et santé");
     const c = f.base;
@@ -564,6 +602,7 @@ export class PanneauFicheCommunaute {
       s.append(el("p", undefined, `Abris : ${v.huttes} hutte${v.huttes > 1 ? "s" : ""} · ${v.foyers} feu${v.foyers > 1 ? "x" : ""} allumé${v.foyers > 1 ? "s" : ""} sur ses terres${v.feu && v.feu.braises > 0 ? ` · ${v.feu.braises} braise${v.feu.braises > 1 ? "s" : ""} qui couve${v.feu.braises > 1 ? "nt" : ""}` : ""}.`));
     }
     if (v.feu) this.feu(s, v.feu);
+    if (v.rencontres) this.rencontres(s, v.rencontres);
     if (v.malades.length > 0) {
       const p = el("p", undefined, "Malades : ");
       v.malades.forEach((x, i) => {

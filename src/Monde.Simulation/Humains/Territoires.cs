@@ -98,9 +98,15 @@ public sealed partial class VieSociale
             if (!membres.TryGetValue(c.Id, out var groupe)) continue;
             var adultes = groupe.Where(h => !h.EstEnfant(maintenant)).ToList();
             if (adultes.Count == 0) continue;
-            c.CentreX = (int)Math.Round(adultes.Average(h => h.X));
-            c.CentreY = (int)Math.Round(adultes.Average(h => h.Y));
-            c.Rayon = Math.Clamp(adultes.Max(h => Math.Max(Math.Abs(h.X - c.CentreX), Math.Abs(h.Y - c.CentreY))), 3, 15);
+            // Le camp reste où vivent ceux qui sont restés : ceux qui campent chez un autre groupe ou rendent visite à un proche
+            // ne le déplacent pas. S'ils sont tous partis, il ne bouge pas.
+            var auCamp = adultes.Where(h => h.VisiteChezId == 0 && !h.Rentrer && (h.RassemblementId == 0 || RassemblementDe(h)?.HoteId == c.Id)).ToList();
+            if (auCamp.Count > 0)
+            {
+                c.CentreX = (int)Math.Round(auCamp.Average(h => h.X));
+                c.CentreY = (int)Math.Round(auCamp.Average(h => h.Y));
+                c.Rayon = Math.Clamp(auCamp.Max(h => Math.Max(Math.Abs(h.X - c.CentreX), Math.Abs(h.Y - c.CentreY))), 3, 15);
+            }
             // Les terres où le groupe cherche sa nourriture débordent un peu de l'endroit où il vit.
             c.Abondance = nature.Abondance(c.CentreX, c.CentreY, c.Rayon + 3);
             var reserves = adultes.Average(h => h.Reserves);
@@ -112,6 +118,7 @@ public sealed partial class VieSociale
             c.DestinationX = c.DestinationY = -1;
         }
         Relier(humains, actives, membres, maintenant);
+        Rencontres(humains, actives, membres, maintenant);
         Guerroyer(humains, actives, membres, maintenant);
         Exiler(humains, actives, membres, maintenant);
         Identites(humains, communautes, membres, carte, maintenant);

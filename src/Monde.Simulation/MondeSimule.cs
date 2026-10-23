@@ -71,6 +71,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Savoirs vivants au début de chaque année, dans le monde et dans chaque communauté.</summary>
     public IReadOnlyList<MesureSavoirs>? Progres { get; init; }
 
+    /// <summary>Rassemblements de deux communautés, du premier au dernier.</summary>
+    public IReadOnlyList<Rassemblement>? Rassemblements { get; init; }
+
     /// <summary>Images peintes sur la roche.</summary>
     public IReadOnlyList<Oeuvre>? Oeuvres { get; init; }
 
@@ -174,6 +177,7 @@ public sealed class MondeSimule
         _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros, Carte = carte };
         _social.ChargerGuerres(etat.Guerres ?? []);
         _social.ChargerRelations(etat.Relations ?? []);
+        _social.ChargerRassemblements(etat.Rassemblements ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
         Flore = new Flore(etat.Graine);
         _social.Flore = Flore;
@@ -257,6 +261,7 @@ public sealed class MondeSimule
                     Communautes = _communautes.Select(c => c.Copier()).ToList(),
                     Pluies = _ecosysteme.Pluies.ToArray(),
                     Relations = _social.Relations,
+                    Rassemblements = _social.Rassemblements.Select(r => r.Copier()).ToList(),
                     Offenses = _social.Offenses,
                     ArchivesNonEnregistrees = _archivesNonEnregistrees.ToList(),
                     Catastrophes = _catastrophes.EnMemoire,
@@ -433,6 +438,12 @@ public sealed class MondeSimule
     public List<Communaute> Communautes()
     {
         lock (_verrou) return _communautes.Select(c => c.Copier()).ToList();
+    }
+
+    /// <summary>Rassemblements de communautés, du premier au dernier (copies).</summary>
+    public List<Rassemblement> Rassemblements()
+    {
+        lock (_verrou) return _social.Rassemblements.Select(r => r.Copier()).ToList();
     }
 
     /// <summary>Relations entre communautés qui ne sont pas indifférentes.</summary>
@@ -730,6 +741,8 @@ public sealed class MondeSimule
             _comportement.GaterLesReserves(_humains, _secondes);
             _comportement.IdeesDesReserves(_humains, _secondes);
             _social.Parler(_humains, _communautes, Carte, _secondes);
+            _social.Visites(_humains, _secondes);
+            _social.JourDeRassemblement(_humains, _secondes);
             if (_pas / PasParJour % VieSociale.JoursEntreRegroupements == 0)
             {
                 _social.Regrouper(_humains, _communautes, _secondes, _noms);

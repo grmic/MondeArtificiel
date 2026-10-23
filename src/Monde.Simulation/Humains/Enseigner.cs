@@ -28,7 +28,8 @@ public sealed partial class Comportement
     {
         if (h.Savoirs.Count == 0 || h.AgeEnAnnees(_maintenant) < 9 || h.Humeur < 25 || h.CaptifDe > 0) return false;
         var p = h.Personnalite;
-        var patience = (0.3 + 0.35 * p.Conscience + 0.35 * p.Agreabilite) * (0.5 + p.Moral.EmpathieCognitive);
+        // Celui que les siens disent spécialiste montre plus volontiers : s'il mourait sans élève, son geste mourrait avec lui.
+        var patience = (0.3 + 0.35 * p.Conscience + 0.35 * p.Agreabilite) * (0.5 + p.Moral.EmpathieCognitive) * (h.Specialite != Ouvrage.Aucun ? 1.5 : 1);
         if (alea.Reel() >= 0.004 * patience) return false;
 
         // L'élève : quelqu'un d'éveillé sur la même case, ses enfants d'abord, puis ceux qu'il aime, puis les curieux.
@@ -97,7 +98,7 @@ public sealed partial class Comportement
             var sien = eleve.Savoirs.Find(x => x.Meme(s.Geste, s.A, s.B, s.Effet, s.Espece, s.Symptome) && x.Pieces == s.Pieces);
             if (sien is not null && (!difficile || sien.Succes * 2 > s.Succes)) continue;
             if (!Montrable(h, s)) continue;
-            var poids = (difficile ? 2 : 1) * (s.Effet == Effet.Poison ? 2 : 1) * (sien is null ? 1 : 0.5) * (0.5 + alea.Reel());
+            var poids = (difficile ? 2 : 1) * (s.Effet == Effet.Poison ? 2 : 1) * (sien is null ? 1 : 0.5) * (Fait(h.Specialite, s) ? 2 : 1) * (0.5 + alea.Reel());
             if (poids <= meilleur) continue;
             (choix, meilleur) = (s, poids);
         }

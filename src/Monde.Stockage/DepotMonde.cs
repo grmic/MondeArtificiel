@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 33;
+    public const int VersionSchema = 34;
 
     private readonly string _connexion;
 
@@ -582,6 +582,8 @@ public sealed partial class DepotMonde
         // Version 32 : garder le feu, feux de camp, réserves d'eau et de nourriture.
         if (actuelle < 32) MigrerVersion32(connexion, transaction);
         if (actuelle < 33) MigrerVersion33(connexion, transaction);
+        // Version 34 : visites, rassemblements, savoirs venus d'ailleurs, ouvrages demandés et spécialistes.
+        if (actuelle < 34) MigrerVersion34(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -645,7 +647,8 @@ public sealed partial class DepotMonde
                    karma, croyance, croyance_signe, croyance_notee,
                    soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement, ancienne_communaute, religion, ferveur, religion_depuis, role, source_prophete, role_depuis, miracles, prie_le, communaute_naissance,
                    amour, crainte, revolte, regard_signe, fecondite_entite, fecondite_jusqua,
-                   feux_portes, porteur_du_feu_depuis, feu_demande_le
+                   feux_portes, porteur_du_feu_depuis, feu_demande_le,
+                   visite_chez, visite_depuis, visite_arrivee, visite_jusqua, visite_evenement, visite_le, rassemblement, rentrer, venu_de, demande_a, demande_ouvrage, demande_le, servis_taille, servis_assemblage, servis_peau, specialite, specialite_depuis
             FROM humains ORDER BY id;
             """;
         var humains = new List<Humain>();
@@ -750,6 +753,23 @@ public sealed partial class DepotMonde
                     FeuxPortes = lecteur.GetInt32(lecteur.GetOrdinal("feux_portes")),
                     PorteurDuFeuDepuis = lecteur.GetInt64(lecteur.GetOrdinal("porteur_du_feu_depuis")),
                     FeuDemandeLe = lecteur.GetInt64(lecteur.GetOrdinal("feu_demande_le")),
+                    VisiteChezId = lecteur.GetInt32(lecteur.GetOrdinal("visite_chez")),
+                    VisiteDepuis = lecteur.GetInt64(lecteur.GetOrdinal("visite_depuis")),
+                    VisiteArriveeLe = lecteur.GetInt64(lecteur.GetOrdinal("visite_arrivee")),
+                    VisiteJusquA = lecteur.GetInt64(lecteur.GetOrdinal("visite_jusqua")),
+                    VisiteEvenementId = lecteur.GetInt64(lecteur.GetOrdinal("visite_evenement")),
+                    VisiteLe = lecteur.GetInt64(lecteur.GetOrdinal("visite_le")),
+                    RassemblementId = lecteur.GetInt32(lecteur.GetOrdinal("rassemblement")),
+                    Rentrer = lecteur.GetInt32(lecteur.GetOrdinal("rentrer")) != 0,
+                    VenuDeId = lecteur.GetInt32(lecteur.GetOrdinal("venu_de")),
+                    DemandeAId = lecteur.GetInt32(lecteur.GetOrdinal("demande_a")),
+                    DemandeOuvrage = (Ouvrage)lecteur.GetInt32(lecteur.GetOrdinal("demande_ouvrage")),
+                    DemandeLe = lecteur.GetInt64(lecteur.GetOrdinal("demande_le")),
+                    ServisTaille = lecteur.GetInt32(lecteur.GetOrdinal("servis_taille")),
+                    ServisAssemblage = lecteur.GetInt32(lecteur.GetOrdinal("servis_assemblage")),
+                    ServisPeau = lecteur.GetInt32(lecteur.GetOrdinal("servis_peau")),
+                    Specialite = (Ouvrage)lecteur.GetInt32(lecteur.GetOrdinal("specialite")),
+                    SpecialiteDepuis = lecteur.GetInt64(lecteur.GetOrdinal("specialite_depuis")),
                     FeconditeJusqua = lecteur.GetInt64(lecteur.GetOrdinal("fecondite_jusqua")),
                 });
                 var h = humains[^1];
@@ -784,6 +804,8 @@ public sealed partial class DepotMonde
         if (reserves.Count > 0) etat = etat with { Reserves = reserves };
         var progres = LireProgres(commande);
         if (progres.Count > 0) etat = etat with { Progres = progres };
+        var rassemblements = LireRassemblements(commande);
+        if (rassemblements.Count > 0) etat = etat with { Rassemblements = rassemblements };
         if (oeuvres.Count > 0) etat = etat with { Oeuvres = oeuvres };
         if (foyers.Count > 0) etat = etat with { Foyers = foyers };
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };
@@ -1081,7 +1103,8 @@ public sealed partial class DepotMonde
                     karma, croyance, croyance_signe, croyance_notee,
                     soignes, gueris, perdus, accouchements_aides, guerisseur_depuis, chaman_depuis, transe_le, charlatan_depuis, demasque_le, soigneur, soigneur_le, plaie_le, plaie_soin, maudit_le, maudit_par, maudit_force, maudit_evenement, ancienne_communaute, religion, ferveur, religion_depuis, role, source_prophete, role_depuis, miracles, prie_le, communaute_naissance,
                     amour, crainte, revolte, regard_signe, fecondite_entite, fecondite_jusqua,
-                    feux_portes, porteur_du_feu_depuis, feu_demande_le)
+                    feux_portes, porteur_du_feu_depuis, feu_demande_le,
+                    visite_chez, visite_depuis, visite_arrivee, visite_jusqua, visite_evenement, visite_le, rassemblement, rentrer, venu_de, demande_a, demande_ouvrage, demande_le, servis_taille, servis_assemblage, servis_peau, specialite, specialite_depuis)
                 VALUES ($id, $nom, $sexe, $partenaire, $emplacement, $naissance,
                     $curiosite, $prudence, $sociabilite, $endurance, $adresse,
                     $x, $y, $faim, $soif, $fatigue, $froid, $sante, $activite,
@@ -1098,7 +1121,8 @@ public sealed partial class DepotMonde
                     $karma, $croyance, $croyance_signe, $croyance_notee,
                     $soignes, $gueris, $perdus, $accouchements_aides, $guerisseur_depuis, $chaman_depuis, $transe_le, $charlatan_depuis, $demasque_le, $soigneur, $soigneur_le, $plaie_le, $plaie_soin, $maudit_le, $maudit_par, $maudit_force, $maudit_evenement, $ancienne_communaute, $religion, $ferveur, $religion_depuis, $role, $source_prophete, $role_depuis, $miracles, $prie_le, $communaute_naissance,
                     $amour, $crainte, $revolte, $regard_signe, $fecondite_entite, $fecondite_jusqua,
-                    $feux_portes, $porteur_du_feu_depuis, $feu_demande_le);
+                    $feux_portes, $porteur_du_feu_depuis, $feu_demande_le,
+                    $visite_chez, $visite_depuis, $visite_arrivee, $visite_jusqua, $visite_evenement, $visite_le, $rassemblement, $rentrer, $venu_de, $demande_a, $demande_ouvrage, $demande_le, $servis_taille, $servis_assemblage, $servis_peau, $specialite, $specialite_depuis);
                 """;
             string[] noms = ["$id", "$nom", "$sexe", "$partenaire", "$emplacement", "$naissance",
                 "$curiosite", "$prudence", "$sociabilite", "$endurance", "$adresse",
@@ -1116,7 +1140,8 @@ public sealed partial class DepotMonde
                 "$karma", "$croyance", "$croyance_signe", "$croyance_notee",
                 "$soignes", "$gueris", "$perdus", "$accouchements_aides", "$guerisseur_depuis", "$chaman_depuis", "$transe_le", "$charlatan_depuis", "$demasque_le", "$soigneur", "$soigneur_le", "$plaie_le", "$plaie_soin", "$maudit_le", "$maudit_par", "$maudit_force", "$maudit_evenement", "$ancienne_communaute", "$religion", "$ferveur", "$religion_depuis", "$role", "$source_prophete", "$role_depuis", "$miracles", "$prie_le", "$communaute_naissance",
                 "$amour", "$crainte", "$revolte", "$regard_signe", "$fecondite_entite", "$fecondite_jusqua",
-                "$feux_portes", "$porteur_du_feu_depuis", "$feu_demande_le"];
+                "$feux_portes", "$porteur_du_feu_depuis", "$feu_demande_le",
+                "$visite_chez", "$visite_depuis", "$visite_arrivee", "$visite_jusqua", "$visite_evenement", "$visite_le", "$rassemblement", "$rentrer", "$venu_de", "$demande_a", "$demande_ouvrage", "$demande_le", "$servis_taille", "$servis_assemblage", "$servis_peau", "$specialite", "$specialite_depuis"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
             foreach (var h in humains)
@@ -1154,6 +1179,7 @@ public sealed partial class DepotMonde
                     h.ReligionId, h.Ferveur, h.ReligionDepuis, (int)h.Role, (int)h.SourceProphete, h.RoleDepuis, h.Miracles, h.PrieLe, h.CommunauteNaissance,
                     h.Amour, h.Crainte, h.Revolte, h.RegardSigneLe, h.FeconditeEntite, h.FeconditeJusqua,
                     h.FeuxPortes, h.PorteurDuFeuDepuis, h.FeuDemandeLe,
+                    h.VisiteChezId, h.VisiteDepuis, h.VisiteArriveeLe, h.VisiteJusquA, h.VisiteEvenementId, h.VisiteLe, h.RassemblementId, h.Rentrer ? 1 : 0, h.VenuDeId, h.DemandeAId, (int)h.DemandeOuvrage, h.DemandeLe, h.ServisTaille, h.ServisAssemblage, h.ServisPeau, (int)h.Specialite, h.SpecialiteDepuis,
                 ];
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
@@ -1170,6 +1196,7 @@ public sealed partial class DepotMonde
         if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Braises is not null || etat.Reserves is not null) EnregistrerFeuxEtReserves(connexion, transaction, etat);
         if (etat.Progres is not null) EnregistrerProgres(connexion, transaction, etat.Progres);
+        if (etat.Rassemblements is not null) EnregistrerRassemblements(connexion, transaction, etat.Rassemblements);
         if (etat.Religions is not null || etat.Prieres is not null || etat.LieuxSacres is not null || etat.Propheties is not null)
             EnregistrerCultes(connexion, transaction, etat);
         if (etat.EffetsEntite is not null || etat.SouvenirsEntite is not null) EnregistrerGestes(connexion, transaction, etat);

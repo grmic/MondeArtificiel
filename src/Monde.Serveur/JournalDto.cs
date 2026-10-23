@@ -137,6 +137,13 @@ public sealed record MedecineDto(int Soignes, int Gueris, int Perdus, int Accouc
 /// </summary>
 public sealed record FeuDto(string? Porte, string? PorteurDepuis, int FeuxPortes, IReadOnlyList<string> Caches, IReadOnlyList<string> Lecons);
 
+/// <summary>
+/// Ses rencontres et ses ouvrages : la visite en cours (ou le rassemblement), la communauté d'où il est venu, ce que les siens disent
+/// qu'il fait pour eux, les ouvrages qu'il a faits pour d'autres, et celui à qui il a demandé un ouvrage.
+/// </summary>
+public sealed record RencontresDto(string? Visite, string? Rassemblement, string? VenuDe, string? Metier, string? MetierDepuis,
+    int ServisTaille, int ServisAssemblage, int ServisPeau, string? Attend);
+
 /// <summary>Un soignant d'une communauté : guérisseur, chaman ou charlatan.</summary>
 public sealed record SoignantDto(int Id, string Nom, string Role, int Gueris, int Perdus);
 
@@ -168,7 +175,8 @@ public sealed record FicheDto(
     MedecineDto Medecine,
     LangageDto? Langage = null,
     FoiDto? Foi = null,
-    FeuDto? Feu = null)
+    FeuDto? Feu = null,
+    RencontresDto? Rencontres = null)
 {
     private static string Date(long s) => Calendrier.Decomposer(s).ToString();
 
@@ -270,7 +278,29 @@ public sealed record FicheDto(
             Soins(h, humains, maintenant),
             LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore),
             Religions.Foi(service, h, humains),
-            LireFeu(monde, h));
+            LireFeu(monde, h),
+            LireRencontres(monde, h, humains));
+    }
+
+    private static RencontresDto? LireRencontres(MondeSimule monde, Humain h, IReadOnlyList<Humain> humains)
+    {
+        var communautes = monde.Communautes();
+        string Nom(int id) => id >= 1 && id <= communautes.Count ? $"{char.ToLowerInvariant(communautes[id - 1].Nom[0])}{communautes[id - 1].Nom[1..]}" : "?";
+        string De(int id) => id >= 1 && id <= communautes.Count ? $"de la {Nom(id)}" : "d'ailleurs";
+        string? visite = null;
+        if (h.VisiteChezId >= 1 && h.VisiteChezId <= humains.Count)
+        {
+            var o = humains[h.VisiteChezId - 1];
+            visite = h.VisiteArriveeLe == 0 ? $"en route pour voir {o.Nom}, {De(o.CommunauteId)}, parti{(h.Sexe == Sexe.Femme ? "e" : "")} le {Date(h.VisiteDepuis)}"
+                : $"chez {o.Nom}, {De(o.CommunauteId)}, depuis le {Date(h.VisiteArriveeLe)}, jusqu'au {Date(h.VisiteJusquA)} environ";
+        }
+        string? rassemblement = null;
+        if (h.RassemblementId > 0 && monde.Rassemblements() is var rs && h.RassemblementId <= rs.Count && rs[h.RassemblementId - 1] is { Actif: true } r)
+            rassemblement = $"campe avec la {Nom(r.HoteId == h.CommunauteId ? r.InviteeId : r.HoteId)} depuis le {Date(r.Debut)}";
+        var attend = h.DemandeAId >= 1 && h.DemandeAId <= humains.Count ? $"a demandé à {humains[h.DemandeAId - 1].Nom} de lui faire un ouvrage, le {Date(h.DemandeLe)}" : null;
+        var dto = new RencontresDto(visite, rassemblement, h.VenuDeId != 0 ? $"venu{(h.Sexe == Sexe.Femme ? "e" : "")} {De(h.VenuDeId)}" : null,
+            Comportement.Metier(h), h.Specialite != Ouvrage.Aucun ? Date(h.SpecialiteDepuis) : null, h.ServisTaille, h.ServisAssemblage, h.ServisPeau, attend);
+        return dto is { Visite: null, Rassemblement: null, VenuDe: null, Metier: null, ServisTaille: 0, ServisAssemblage: 0, ServisPeau: 0, Attend: null } ? null : dto;
     }
 
     private static readonly Effet[] LeconsDuFeu =

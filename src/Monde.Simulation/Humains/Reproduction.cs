@@ -226,6 +226,7 @@ public sealed partial class Comportement
             a.PartenaireId = b.Id;
             b.PartenaireId = a.Id;
             Noter(maintenant, TypeEvenement.Union, femme, homme, $"{femme.Nom} et {homme.Nom} forment un nouveau couple.", accouplement);
+            Social?.CoupleNe(a, b);
             VieSociale.Rejouir(a, 10);
             VieSociale.Rejouir(b, 10);
         }

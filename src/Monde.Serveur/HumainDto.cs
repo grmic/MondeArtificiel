@@ -67,6 +67,10 @@ public sealed record HumainDto(
         [Simulation.Humains.Activite.Nager] = "nage",
         [Simulation.Humains.Activite.ChercherLeFeu] = "va demander le feu",
         [Simulation.Humains.Activite.Enseigner] = "montre un geste",
+        [Simulation.Humains.Activite.Visiter] = "rend visite à un proche",
+        [Simulation.Humains.Activite.Rassembler] = "rejoint le rassemblement",
+        [Simulation.Humains.Activite.Rentrer] = "rentre chez les siens",
+        [Simulation.Humains.Activite.Demander] = "attend un ouvrage demandé",
     };
 
 

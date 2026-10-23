@@ -81,11 +81,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <paramref name="autre"/> (voir <see cref="Regard"/>).
     /// </summary>
     private long Noter(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause = 0, bool significatif = false,
-        double karma = 0, double karmaAutre = 0)
+        double karma = 0, double karmaAutre = 0, int autreCommunaute = 0)
     {
         var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte)
         {
-            Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif,
+            Id = Numeros.Suivant(), CauseId = cause, Significatif = significatif, AutreCommunauteId = autreCommunaute,
             Karma = Regard.Juger(h, karma, maintenant, autre), KarmaAutre = Regard.Juger(autre, karmaAutre, maintenant, h),
         };
         Journal.Add(e);
@@ -626,6 +626,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             Avancer(h, enfant.X, enfant.Y, Activite.VeillerEnfant);
             return;
         }
+        // En visite chez un proche, au camp d'un rassemblement, ou sur le chemin du retour.
+        if (AllerAilleurs(h, tous, out var ailleurs)) return;
+        // Un ouvrage demandé à plus habile que soi, qu'on attend ; un ouvrage qu'on vous demande.
+        if (AttendreSonOuvrage(h, tous) || Servir(h, tous)) return;
         if (h.Desir >= SeuilDesir && ChercherAccouplement(h, partenaire, tous, maintenant)) return;
 
         // Un exilé quitte les terres de ceux qui l'ont chassé.
@@ -638,7 +642,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             Avancer(h, Math.Clamp(h.X + 10 * dx, 0, carte.Largeur - 1), Math.Clamp(h.Y + 10 * dy, 0, carte.Hauteur - 1), Activite.PartirEnExil);
             if (h.CibleX >= 0) return;
         }
-        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) > 2 + (1 - p.Sociabilite) * 8
+        if (!ailleurs && partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) > 2 + (1 - p.Sociabilite) * 8
             && !Bannissement.Separes(h, partenaire, maintenant))
         {
             _autre = partenaire;
@@ -655,7 +659,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (h.CibleX >= 0) return;
         }
         // Une communauté en disette part vers de meilleures terres : sa figure et la plupart des membres suivent le mouvement.
-        if (Social?.CommunauteDe(h) is { DestinationX: >= 0 } groupe
+        if (!ailleurs && Social?.CommunauteDe(h) is { DestinationX: >= 0 } groupe
             && Distance(h.X, h.Y, groupe.DestinationX, groupe.DestinationY) > 2 && h.Consigne(Parole.ResteIci, maintenant) is null
             && (h.Activite == Activite.Migrer || alea.Reel() < (h.Id == groupe.FigureId ? 0.8 : 0.5)))
         {
@@ -664,21 +668,22 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (h.CibleX >= 0) return;
         }
         // Les sociables vont retrouver ceux qu'ils aiment ; c'est ainsi que les groupes se forment.
-        if (!abattu && (h.Activite == Activite.RejoindreProche || alea.Reel() < 0.1 + 0.4 * p.Extraversion)
+        if (!abattu && !ailleurs && (h.Activite == Activite.RejoindreProche || alea.Reel() < 0.1 + 0.4 * p.Extraversion)
             && ProcheARejoindre(h, tous) is { } proche && !Bannissement.Separes(h, proche, maintenant))
         {
             _autre = proche;
             Avancer(h, proche.X, proche.Y, Activite.RejoindreProche);
             return;
         }
-        if (!abattu && AllerVoirLeFeu(h)) return;
-        if (ApporterViande(h, tous)) return;
+        if (!abattu && !ailleurs && AllerVoirLeFeu(h)) return;
+        if (!ailleurs && ApporterViande(h, tous)) return;
+        if (DemanderUnOuvrage(h, tous)) return;
         if (Outiller(h, tous)) return;
         if (Assembler(h, tous)) return;
         if (AvoirUneIdee(h, tous)) return;
         if (Enseigner(h, tous)) return;
         if (Experimenter(h, tous)) return;
-        if (alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
+        if (!ailleurs && alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
         {
             Explorer(h);
         }

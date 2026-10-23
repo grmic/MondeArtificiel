@@ -360,13 +360,20 @@ public sealed partial class Comportement
         // Un savoir banal (le feu chauffe, le bois frotté tiédit) n'est pas noté chez chacun : seulement la première fois au monde.
         // Un chant, un rythme, une danse, la parure d'ocre appris des autres : cela se fait à chaque veillée.
         var banal = e is Effet.Chaleur or Effet.Tiedeur || origine == OrigineSavoir.Imitation && e is Effet.Etincelle or Effet.Chant or Effet.Rythme or Effet.Danse or Effet.Ocre;
+        // Appris d'un autre groupe, ou de quelqu'un venu d'ailleurs, alors que personne des siens ne le savait : le savoir entre
+        // dans sa communauté, et le journal dit d'où il vient.
+        var venu = premier || retrouve || maitre is null || e is Effet.Chaleur or Effet.Tiedeur ? null : VenuDAilleurs(h, maitre, e, structure, tous);
+        if (maitre is not null && h.RassemblementId != 0 && maitre.RassemblementId == h.RassemblementId && maitre.CommunauteId != h.CommunauteId)
+            Social?.ApprisAuRassemblement(h.RassemblementId);
         long id = 0;
-        if (premier || retrouve || !banal)
+        if (premier || retrouve || !banal || venu is not null)
         {
             var texte = premier ? $"Première fois au monde : {comment} {h.Nom} comprend : « {description} »"
                 : retrouve ? $"Savoir retrouvé (plus personne ne le savait) : {comment} {h.Nom} comprend : « {description} »"
+                : venu is not null ? $"{venu.Value.Texte} {comment} {h.Nom} comprend : « {description} »"
                 : $"{comment} {h.Nom} comprend : « {description} »";
-            id = Noter(_maintenant, TypeEvenement.Decouverte, h, maitre, texte, significatif: premier || retrouve, karmaAutre: karmaMaitre);
+            id = Noter(_maintenant, TypeEvenement.Decouverte, h, maitre, texte, significatif: premier || retrouve || venu is not null, karmaAutre: karmaMaitre,
+                autreCommunaute: venu?.Source ?? 0);
         }
         h.Savoirs.Add(nouveau with { EvenementId = id });
         if (premier)
@@ -383,6 +390,34 @@ public sealed partial class Comportement
             Jardin.Confier(h, TypeIntime.Question, 0, Question(nouveau), 30 + 30 * h.Personnalite.Ouverture, id, _maintenant, $"savoir:{(int)e}:{espece}{(pieces.Length > 0 ? ":" + pieces : "")}");
         }
         return id;
+    }
+
+    /// <summary>
+    /// Un savoir qui entre dans la communauté de <paramref name="h"/> : appris d'un membre d'un autre groupe (en visite, au
+    /// rassemblement, chez des voisins), ou de quelqu'un des siens venu d'ailleurs, alors qu'aucun autre des siens ne le sait.
+    /// Renvoie la phrase qui le dit et la communauté d'où il vient, ou null.
+    /// </summary>
+    private (string Texte, int Source)? VenuDAilleurs(Humain h, Humain maitre, Effet e, string structure, IReadOnlyList<Humain> tous)
+    {
+        if (h.CommunauteId == 0 || Social is not { } social || social.CommunauteDe(h) is not { } siens) return null;
+        var etranger = maitre.CommunauteId != 0 && maitre.CommunauteId != h.CommunauteId;
+        var source = etranger ? maitre.CommunauteId
+            : maitre.CommunauteId == h.CommunauteId && maitre.VenuDeId != 0 && maitre.VenuDeId != h.CommunauteId ? maitre.VenuDeId : 0;
+        if (source == 0 || source > social.Communautes.Count) return null;
+        foreach (var o in tous.Vivants())
+        {
+            if (!o.EstVivant || o.Id == h.Id || o.Id == maitre.Id || o.CommunauteId != h.CommunauteId) continue;
+            if (o.Savoirs.Exists(s => s.Effet == e && s.Espece == 0 && Lois.Structure(s.Pieces) == structure)) return null;
+        }
+        var (nh, ns) = (Minuscule(siens.Nom), Minuscule(social.Communautes[source - 1].Nom));
+        var ou = h.VisiteChezId == maitre.Id ? $", chez qui {Il(h)} était en visite"
+            : maitre.VisiteChezId == h.Id ? $", venu{E(maitre)} lui rendre visite"
+            : h.RassemblementId != 0 && h.RassemblementId == maitre.RassemblementId ? " au rassemblement des deux groupes"
+            : "";
+        var texte = etranger
+            ? $"La {nh} l'apprend de la {ns} : {h.Nom} l'a vu faire à {maitre.Nom}{ou}."
+            : $"{maitre.Nom}, venu{E(maitre)} de la {ns}, apporte ce savoir à la {nh}.";
+        return (texte, source);
     }
 
     /// <summary>Ce qu'il s'est passé, dit simplement.</summary>
@@ -496,13 +531,30 @@ public sealed partial class Comportement
                             * (h.GuerisseurDepuis > 0 && e is Effet.Soulagement or Effet.Pansement ? 1.6 : 1)
                             // Un mot commun pour la chose montrée aide à comprendre ce qu'on regarde.
                             * (Langues.Partagent(h, o, espece > 0 ? Idees.Plante(espece) : Idees.Savoir(e)) ? 1.4 : 1)
-                            * prestige;
+                            * prestige * Mefiance(o, h);
             // Comprendre un geste compliqué demande de l'intelligence et de l'adresse.
             var difficile = Difficile(e, pieces) ? 0.5 + 0.5 * Ingeniosite(o) : 1;
             if (alea.Reel() >= 0.35 * attention * difficile) continue;
             Retenir(o, g, a, b, e, espece, mal, OrigineSavoir.Imitation, h.Id, tous, pieces: pieces, heritage: Heritage(o, modele, e, pieces, false));
             VieSociale.Gratitude(o, h, 0.5);
         }
+    }
+
+    /// <summary>
+    /// Ce qu'on accorde au geste d'un autre groupe : celui d'un allié se regarde comme celui des siens ; celui d'un inconnu avec
+    /// un peu de réserve, celui d'un rival ou d'un ennemi avec méfiance (on imite moins volontiers ceux qu'on ne tient pas pour
+    /// siens : Buttelmann et al., 2013 ; Wood et al., 2013).
+    /// </summary>
+    private double Mefiance(Humain spectateur, Humain modele)
+    {
+        if (spectateur.CommunauteId == 0 || modele.CommunauteId == 0 || spectateur.CommunauteId == modele.CommunauteId || Social is not { } social) return 1;
+        return social.RelationEntre(spectateur.CommunauteId, modele.CommunauteId) switch
+        {
+            EtatRelation.Alliees => 1,
+            EtatRelation.Indifferentes => 0.85,
+            EtatRelation.Rivales => 0.6,
+            _ => 0.35,
+        };
     }
 
     /// <summary>Gestes qu'il faut de l'intelligence et de l'adresse pour comprendre : le feu par friction, la pointe durcie, l'éclat qui découpe, le trou percé, l'objet assemblé.</summary>

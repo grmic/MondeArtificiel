@@ -53,6 +53,26 @@ public enum Activite : byte
     ChercherLeFeu = 29,
     /// <summary>Montrer exprès un geste à quelqu'un, guider sa main.</summary>
     Enseigner = 30,
+    /// <summary>Aller voir un proche qui vit dans une autre communauté, et rester quelques jours auprès de lui.</summary>
+    Visiter = 31,
+    /// <summary>Rejoindre le camp où deux communautés se rassemblent, et y rester.</summary>
+    Rassembler = 32,
+    /// <summary>Rentrer chez les siens après une visite ou un rassemblement.</summary>
+    Rentrer = 33,
+    /// <summary>Aller demander à celui qui fait mieux que soi de faire un objet pour soi, et attendre qu'il l'ait fait.</summary>
+    Demander = 34,
+}
+
+/// <summary>Ce que les siens viennent demander à quelqu'un de faire pour eux, parce qu'il le fait mieux qu'eux.</summary>
+public enum Ouvrage : byte
+{
+    Aucun = 0,
+    /// <summary>Tailler un éclat, une pointe, la durcir au feu.</summary>
+    Taille = 1,
+    /// <summary>Assembler une arme ou une hache : une pierre liée à un manche.</summary>
+    Assemblage = 2,
+    /// <summary>Faire d'une peau un vêtement.</summary>
+    Peau = 3,
 }
 
 public enum CauseDeMort : byte
@@ -409,6 +429,51 @@ public sealed class Humain
 
     /// <summary>Dernière fois qu'il est allé demander le feu à des voisins (0 : jamais).</summary>
     public long FeuDemandeLe { get; set; }
+
+    /// <summary>
+    /// Proche d'une autre communauté chez qui il est en visite (0 : aucun), quand il est parti, quand il est arrivé (0 : en route),
+    /// jusqu'à quand il compte rester (en route : combien de temps), et l'événement de son départ. Une fois l'heure passée, il rentre (voir <see cref="Rentrer"/>).
+    /// </summary>
+    public int VisiteChezId { get; set; }
+    public long VisiteDepuis { get; set; }
+    public long VisiteArriveeLe { get; set; }
+    public long VisiteJusquA { get; set; }
+    public long VisiteEvenementId { get; set; }
+
+    /// <summary>Fin de sa dernière visite (0 : jamais) : on ne repart pas sitôt rentré.</summary>
+    public long VisiteLe { get; set; }
+
+    /// <summary>Rassemblement de deux communautés auquel il prend part (0 : aucun).</summary>
+    public int RassemblementId { get; set; }
+
+    /// <summary>Après une visite ou un rassemblement, il rentre vers le camp des siens.</summary>
+    public bool Rentrer { get; set; }
+
+    /// <summary>Communauté d'où il est venu vivre dans la sienne (conjoint venu d'ailleurs, captive, exilé recueilli ; 0 : aucune).</summary>
+    public int VenuDeId { get; set; }
+
+    /// <summary>Celui à qui il est allé demander un ouvrage (0 : personne), lequel, et depuis quand il attend.</summary>
+    public int DemandeAId { get; set; }
+    public Ouvrage DemandeOuvrage { get; set; }
+    public long DemandeLe { get; set; }
+
+    /// <summary>Ouvrages qu'il a faits pour d'autres, à leur demande.</summary>
+    public int ServisTaille { get; set; }
+    public int ServisAssemblage { get; set; }
+    public int ServisPeau { get; set; }
+
+    /// <summary>Ce que les siens disent qu'il fait pour eux (Aucun : rien), et depuis quand.</summary>
+    public Ouvrage Specialite { get; set; }
+    public long SpecialiteDepuis { get; set; }
+
+    /// <summary>Ouvrages faits pour d'autres, de cette sorte.</summary>
+    public int Servis(Ouvrage o) => o switch
+    {
+        Ouvrage.Taille => ServisTaille,
+        Ouvrage.Assemblage => ServisAssemblage,
+        Ouvrage.Peau => ServisPeau,
+        _ => 0,
+    };
 
     /// <summary>Inconfort cumulé depuis le début de la journée (faim, soif, froid, maladie), pour l'humeur.</summary>
     public double InconfortDuJour { get; set; }

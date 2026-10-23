@@ -667,6 +667,9 @@ public sealed partial class VieSociale(Alea alea)
         foreach (var h in membres) parent[h.Id] = h.Id;
         // Les guerriers partis en raid restent membres de leur groupe, même loin du camp.
         var enRaid = communautes.Where(c => c.Active && c.Raid is not null).SelectMany(c => c.Raid!.Guerriers).ToHashSet();
+        // Celui qui rend visite à un proche, campe avec un autre groupe ou en revient reste des siens, et n'entre pas chez ses hôtes.
+        var ailleurs = membres.Where(h => h.VisiteChezId != 0 || h.RassemblementId != 0 || h.Rentrer).Select(h => h.Id).ToHashSet();
+        var campent = Rassemblements.Where(r => r.Actif).Select(r => Paire(r.HoteId, r.InviteeId)).ToHashSet();
         // Un groupe en guerre se serre les coudes : la menace commune renforce la cohésion du groupe (Bauer et al., 2016).
         var actifs = communautes.Where(c => c.Active).Select(c => c.Id).ToList();
         var enGuerre = actifs.Where(a => actifs.Any(b => b != a && RelationEntre(a, b) == EtatRelation.EnGuerre)).ToHashSet();
@@ -692,10 +695,14 @@ public sealed partial class VieSociale(Alea alea)
                 var autre = humains[l.Id - 1];
                 if (autre.EstEnfant(maintenant) || Bannissement.Separes(h, autre, maintenant)) continue;
                 var dejaEnsemble = h.CommunauteId != 0 && h.CommunauteId == autre.CommunauteId;
+                var invite = ailleurs.Contains(h.Id) || ailleurs.Contains(autre.Id);
+                if (invite && !dejaEnsemble) continue;
+                // Deux groupes qui campent ensemble restent deux groupes, même pour ceux qui n'y sont venus que pour suivre un proche.
+                if (!dejaEnsemble && h.CommunauteId != 0 && autre.CommunauteId != 0 && campent.Contains(Paire(h.CommunauteId, autre.CommunauteId))) continue;
                 // Une communauté vit ensemble : des amis qui vivent loin l'un de l'autre n'en font pas une. Mais celui qui
                 // s'est éloigné depuis peu des siens reste des leurs.
                 if (Math.Max(Math.Abs(h.X - autre.X), Math.Abs(h.Y - autre.Y)) > DistanceCommunaute
-                    && !enRaid.Contains(h.Id) && !enRaid.Contains(autre.Id)
+                    && !enRaid.Contains(h.Id) && !enRaid.Contains(autre.Id) && !invite
                     && !(dejaEnsemble && maintenant - l.Derniere <= AbsenceToleree(h, autre, l))) continue;
                 // Tant que la guerre dure, on ne passe pas chez l'ennemi, même par amitié.
                 if (h.CommunauteId != autre.CommunauteId && h.CommunauteId != 0 && autre.CommunauteId != 0
@@ -859,6 +866,7 @@ public sealed partial class VieSociale(Alea alea)
         {
             var avant = anciens[h.Id];
             var apres = nouvelles.GetValueOrDefault(h.Id);
+            var perdue = h.AncienneCommunauteId;
             h.CommunauteId = apres;
             if (apres != 0) h.AncienneCommunauteId = 0;
             else if (avant != 0) h.AncienneCommunauteId = avant;
@@ -870,6 +878,9 @@ public sealed partial class VieSociale(Alea alea)
             {
                 var arrivee = Noter(maintenant, TypeEvenement.Communaute, h, null, $"{h.Nom} rejoint la {Minuscule(communautes[apres - 1].Nom)}{Avec(h)}{AgeSiEnfant(h, maintenant)}.",
                     communaute: apres, autreCommunaute: avant);
+                // Il apporte ce qu'il savait faire chez les siens d'avant (voir Comportement.VenuDAilleurs).
+                var origine = avant != 0 ? avant : perdue;
+                h.VenuDeId = origine != apres ? origine : 0;
                 if (avant != 0 && communautes[avant - 1].Active && !h.EstEnfant(maintenant)
                     && RelationEntre(avant, apres) is EtatRelation.Rivales or EtatRelation.Hostiles)
                     Trahir(h, communautes[avant - 1], communautes[apres - 1], membres, arrivee, maintenant);
