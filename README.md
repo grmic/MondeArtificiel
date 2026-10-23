@@ -4,6 +4,8 @@ Simulation d'une communauté humaine née d'un mythe fondateur. Application clie
 
 Version 0.29.3 (affichée dans « Configuration »), auteur : MicG.
 
+![Un monde à l'an 108 : 5 198 humains répartis en communautés sur quatre îles, avec la fenêtre du temps et la courbe de démographie](docs/capture-an108.png)
+
 ## Prérequis
 
 - SDK .NET 10
