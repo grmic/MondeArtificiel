@@ -1,3 +1,4 @@
+using Monde.Simulation.Recits;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.Extensions.DependencyInjection;
@@ -59,7 +60,7 @@ public sealed class GestesTests : IDisposable
 
         var texte = monde.Agir(GesteEntite.FrapperDeMort, cible.Id, ManiereGeste.Cachee, (int)FormeMort.Foudre, 0, 0);
 
-        Assert.Contains("mort", texte);
+        Assert.Contains("mort", texte.Texte);
         var (_, humains) = monde.InstantaneHumains();
         Assert.Equal(CauseDeMort.Foudre, humains[cible.Id - 1].CauseDeMort);
         Assert.All(humains, h => Assert.Equal(karmas[h.Id], h.Karma));
@@ -129,13 +130,13 @@ public sealed class GestesTests : IDisposable
             h.MaladeJusqua = e.Secondes + 30 * Jour;
         });
         var texte = monde.Agir(GesteEntite.Guerir, id, ManiereGeste.Cachee, 0, 0, 0);
-        Assert.Contains("guérit", texte);
+        Assert.Contains("guérit", texte.Texte);
         var (maintenant, humains) = monde.InstantaneHumains();
         Assert.False(humains[id - 1].EstMalade(maintenant));
         Assert.All(humains, h => Assert.Equal(signesAvant[h.Id], h.RegardSigneLe));
         Assert.All(humains, h => Assert.Equal(50, h.Amour));
         // Rien à guérir : le geste n'a pas lieu.
-        Assert.Contains("ni maladie", monde.Agir(GesteEntite.Guerir, id, ManiereGeste.Voix, 0, 0, 0));
+        Assert.Contains("ni maladie", monde.Agir(GesteEntite.Guerir, id, ManiereGeste.Voix, 0, 0, 0).Texte);
     }
 
     [Fact]
@@ -189,9 +190,9 @@ public sealed class GestesTests : IDisposable
     public void Regard_MonteMoinsQuandIlEstFort_EtLaRevolteSApaise()
     {
         var h = VitesseTests.Humain(2);
-        Regards.Ajouter(h, SentimentInvisible.Crainte, 20, "test", 0, Calendrier.SecondesParAn * 30);
+        Regards.Ajouter(h, SentimentInvisible.Crainte, 20, Recit.Seul("cro.raconte"), 0, Calendrier.SecondesParAn * 30);
         Assert.Equal(20, h.Crainte, 6);
-        Regards.Ajouter(h, SentimentInvisible.Crainte, 20, "test", 0, Calendrier.SecondesParAn * 30);
+        Regards.Ajouter(h, SentimentInvisible.Crainte, 20, Recit.Seul("cro.raconte"), 0, Calendrier.SecondesParAn * 30);
         Assert.Equal(36, h.Crainte, 6);
         Assert.Equal(1, Regards.Retenue(h));
         h.Croyance = 100;
@@ -211,11 +212,11 @@ public sealed class GestesTests : IDisposable
     {
         var h = VitesseTests.Humain(1);
         Assert.Empty(Regards.Changements(h));
-        Regards.Ajouter(h, SentimentInvisible.Revolte, 55, "l'invisible a frappé Ana sans raison", 0, Calendrier.SecondesParAn * 30);
+        Regards.Ajouter(h, SentimentInvisible.Revolte, 55, Recit.Seul("cro.raconte"), 0, Calendrier.SecondesParAn * 30);
         var (s, texte) = Assert.Single(Regards.Changements(h));
         Assert.Equal(SentimentInvisible.Revolte, s);
-        Assert.Contains("se révolte contre l'invisible", texte);
-        Assert.Contains("sans raison", texte);
+        Assert.Contains("se révolte contre l'invisible", texte.Texte);
+        Assert.Contains("prodige", texte.Texte);
         Assert.Empty(Regards.Changements(h));
     }
 

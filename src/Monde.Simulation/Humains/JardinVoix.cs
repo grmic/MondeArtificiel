@@ -877,12 +877,12 @@ public static partial class Jardin
         if (texte is null) return;
         Confier(h, TypeIntime.Reve, mort?.Id ?? 0, texte, 25 + (cauchemar ? 25 : 10) + 20 * p.Ouverture, cause, maintenant, "reve");
         if (mort is not null && texte.Texte.Contains(mort.Nom))
-            Croyances.Ajouter(h, 1.5 * (0.3 + p.Transcendance), $"{Il(h)} a revu {mort.Nom} en rêve", cause, maintenant);
+            Croyances.Ajouter(h, 1.5 * (0.3 + p.Transcendance), new Recit("cro.reveMort", ("h", h), ("m", mort)), cause, maintenant);
         // Le rêve d'un mort qui revient : de là peut naître l'idée que les morts vivent ailleurs (Tylor, 1871).
         if (mort is not null && texte.Texte.Contains("veille sur moi") && Tirer(h, "croyance:morts", semaine, 0.5 * p.Transcendance))
         {
             Confier(h, TypeIntime.Croyance, 0, Recit.Seul("jv.rever.croyanceMorts"), 30 + 60 * p.Transcendance, cause, maintenant, "croyance:morts");
-            Croyances.Ajouter(h, 6, $"{mort.Nom} est revenu{E(mort)} le voir la nuit : les morts ne s'en vont pas", cause, maintenant, signe: true);
+            Croyances.Ajouter(h, 6, new Recit("cro.mortRevient", ("m", mort)), cause, maintenant, signe: true);
         }
     }
 

@@ -12,7 +12,7 @@ namespace Monde.Simulation.Recits;
 /// l'entrée <c>_grammaire</c>, les élisions (« de Ana » devient « d'Ana »), les contractions (« de le feu » devient
 /// « du feu ») et la façon de lier une liste de noms.
 /// <para>
-/// Dans un texte, <c>{x}</c> écrit le paramètre x, <c>{^x}</c> l'écrit avec une majuscule, et <c>{x:a|b}</c> choisit
+/// Dans un texte, <c>{x}</c> écrit le paramètre x, <c>{^x}</c> l'écrit avec une majuscule, <c>{_x}</c> avec une minuscule, et <c>{x:a|b}</c> choisit
 /// une forme d'après x : selon son genre si x est un humain ou un groupe (masculin|féminin), selon le pluriel si x est
 /// un nombre (dans l'ordre des formes de la langue, « # » valant le nombre), selon sa valeur si x est vrai ou faux
 /// (faux|vrai), selon le genre du nom qu'il écrit si x est un récit (entrée <c>clé.g</c> : « f » pour le féminin).
@@ -155,7 +155,8 @@ public sealed partial class Langue
             texte.Append(modele, i, debut - i);
             var dedans = modele.AsSpan(debut + 1, fin - debut - 1);
             var majuscule = dedans.Length > 0 && dedans[0] == '^';
-            if (majuscule) dedans = dedans[1..];
+            var minuscule = dedans.Length > 0 && dedans[0] == '_';
+            if (majuscule || minuscule) dedans = dedans[1..];
             var deuxPoints = dedans.IndexOf(':');
             var nom = deuxPoints < 0 ? dedans : dedans[..deuxPoints];
             var trouve = false;
@@ -165,6 +166,7 @@ public sealed partial class Langue
                 trouve = true;
                 var morceau = deuxPoints < 0 ? Ecrire(v) : Forme(v, dedans[(deuxPoints + 1)..]);
                 if (majuscule) morceau = Majuscule(morceau);
+                else if (minuscule) morceau = Minuscule(morceau);
                 if (deuxPoints < 0)
                 {
                     morceau = Contracter(texte, morceau);
@@ -243,6 +245,8 @@ public sealed partial class Langue
     private static bool Voyelle(char c) => "AEIOUÀÂÉÈÊËÎÏÔÛÙaeiouàâéèêëîïôûù".Contains(c);
 
     public static string Majuscule(string s) => s.Length == 0 || char.IsUpper(s[0]) ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
+    public static string Minuscule(string s) => s.Length == 0 || char.IsLower(s[0]) ? s : char.ToLowerInvariant(s[0]) + s[1..];
 
     /// <summary>Une valeur écrite dans cette langue.</summary>
     public string Ecrire(object? v) => v switch

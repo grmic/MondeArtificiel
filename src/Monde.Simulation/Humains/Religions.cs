@@ -72,13 +72,16 @@ public sealed partial class Comportement
 
     // ───────────── Naître, adhérer, se détacher ─────────────
 
-    private string TexteDogme(Precepte p, int param) => p switch
+    /// <summary>Le précepte, gardé en récit encodé (voir <see cref="RecitDogme"/>).</summary>
+    private string TexteDogme(Precepte p, int param) => RecitDogme(p, param).Encoder();
+
+    private Recit RecitDogme(Precepte p, int param) => p switch
     {
-        Precepte.Interdit when param >= 1 && Flore is not null && param <= Flore.Especes.Count => $"Il ne faut pas manger {Flore.Get(param).Nom}.",
+        Precepte.Interdit when param >= 1 && Flore is not null && param <= Flore.Especes.Count => new Recit("precepte.interdit", ("pl", Flore.Get(param).Dit)),
         Precepte.GuerreSainte when param > 0 && Social is not null && param <= Social.Communautes.Count
-            => $"Il faut combattre la {Social.Communautes[param - 1].Nom.ToLowerInvariant()}.",
-        Precepte.Chatiment when param == 1 => "L'invisible punit ceux qui tuent.",
-        Precepte.Chatiment => "L'invisible punit ceux qui volent.",
+            => new Recit("precepte.combattre", ("c", Social.Communautes[param - 1])),
+        Precepte.Chatiment when param == 1 => Recits.Recit.Seul("precepte.tuer"),
+        Precepte.Chatiment => Recits.Recit.Seul("precepte.voler"),
         _ => Cultes.Dire(p),
     };
 
@@ -113,7 +116,7 @@ public sealed partial class Comportement
     private static double ChanceDeDeformer(Humain h) => 0.35 * (1 - Math.Clamp((h.Personnalite.Intelligence.Verbale - 55) / 90, 0, 1));
 
     /// <summary>Une religion naît autour de <paramref name="f"/>, avec son nom dans la langue des siens.</summary>
-    private Religion Fonder(Humain f, NaissanceReligion naissance, List<Dogme> dogmes, string annonce, long cause, long maintenant, int parent = 0)
+    private Religion Fonder(Humain f, NaissanceReligion naissance, List<Dogme> dogmes, Recit annonce, long cause, long maintenant, int parent = 0)
     {
         var cultes = Cultes!;
         var c = Social?.CommunauteDe(f);
@@ -122,14 +125,14 @@ public sealed partial class Comportement
         while (cultes.Religions.Exists(r => r.Nom == nom)) nom += Langues.Forger(sons, alea, 1);
         var sens = naissance switch
         {
-            NaissanceReligion.Ancetres => "ceux qui veillent",
-            NaissanceReligion.Schisme => $"la voie de {f.Nom}",
-            _ => $"la parole de {f.Nom}",
+            NaissanceReligion.Ancetres => Recits.Recit.Seul("religion.sens.veillent"),
+            NaissanceReligion.Schisme => new Recit("religion.sens.voie", ("f", f)),
+            _ => new Recit("religion.sens.parole", ("f", f)),
         };
-        var id = Noter(maintenant, TypeEvenement.Religion, f, null, $"{annonce} Ainsi naît le {nom} (« {sens} »).", cause, significatif: true);
+        var id = Noter(maintenant, TypeEvenement.Religion, f, null, new Recit("rel.naissance", ("a", annonce), ("nom", nom), ("sens", sens)), cause, significatif: true);
         var religion = new Religion
         {
-            Id = cultes.Religions.Count + 1, Nom = nom, Sens = sens, FondateurId = f.Id, FondeeLe = maintenant, Naissance = naissance,
+            Id = cultes.Religions.Count + 1, Nom = nom, Sens = sens.Encoder(), FondateurId = f.Id, FondeeLe = maintenant, Naissance = naissance,
             EvenementId = id, ParentId = parent, CommunauteId = c?.Id ?? 0,
             Dogmes = [.. dogmes.Select(d => d with { EvenementId = d.EvenementId == 0 ? id : d.EvenementId })],
         };
@@ -152,16 +155,16 @@ public sealed partial class Comportement
         if (r.Dogmes.Exists(d => d.Precepte == p && d.Parametre == param)) return false;
         // Un seul lieu sacré compte : le premier.
         if (p == Precepte.LieuSacre && r.Enseigne(Precepte.LieuSacre)) return false;
-        var texte = TexteDogme(p, param);
+        var dit = RecitDogme(p, param);
         var grave = p is Precepte.SacrificeHumain or Precepte.GuerreSainte or Precepte.Colere;
         var id = auteur is null
             ? cause
             : Noter(maintenant, TypeEvenement.Religion, auteur, null, origine switch
             {
-                OrigineDogme.Coincidence or OrigineDogme.Catastrophe => $"Les fidèles du {r.Nom} y voient un signe, et croient désormais : « {texte} »",
-                _ => $"{auteur.Nom} enseigne aux fidèles du {r.Nom} : « {texte} »",
+                OrigineDogme.Coincidence or OrigineDogme.Catastrophe => new Recit("rel.dogme.signe", ("r", r.Nom), ("d", dit)),
+                _ => new Recit("rel.dogme.enseigne", ("h", auteur), ("r", r.Nom), ("d", dit)),
             }, cause, significatif: grave);
-        r.Dogmes.Add(new Dogme(p, param, origine, texte, maintenant, id));
+        r.Dogmes.Add(new Dogme(p, param, origine, dit.Encoder(), maintenant, id));
         return true;
     }
 
@@ -180,7 +183,7 @@ public sealed partial class Comportement
             if (h.Role == RoleReligieux.Prophete) h.Ferveur = Math.Max(h.Ferveur, 0.5);
             if (h.Ferveur >= 0.08) continue;
             var r = Cultes!.Religions[h.ReligionId - 1];
-            Noter(maintenant, TypeEvenement.Religion, h, null, $"{h.Nom} se détache du {r.Nom} : {Il(h)} n'y croit plus guère.");
+            Noter(maintenant, TypeEvenement.Religion, h, null, new Recit("rel.detache", ("h", h), ("r", r.Nom)));
             h.ReligionId = 0;
             h.Ferveur = 0;
             if (h.Role == RoleReligieux.Pretre) (h.Role, h.RoleDepuis) = (RoleReligieux.Aucun, 0);
@@ -239,13 +242,13 @@ public sealed partial class Comportement
             }
         }
         var jardin = h.Memoire.Jardin;
-        string annonce;
+        Recit annonce;
         switch (source)
         {
             case SourceProphete.Entite:
                 Ajouter(Precepte.Createur, 0, OrigineDogme.Entite);
                 Transmettre();
-                annonce = $"{h.Nom} se lève parmi les siens : {Il(h)} dit porter la parole de celle qui les a faits.";
+                annonce = new Recit("rel.prophete.entite", ("h", h));
                 break;
             case SourceProphete.Visionnaire:
                 if (jardin.Exists(x => x.Cle is "croyance:entite" or "croyance:presence")) Ajouter(Precepte.Createur, 0, OrigineDogme.Inventee);
@@ -256,14 +259,14 @@ public sealed partial class Comportement
                 if (p.Agreabilite > 0.6) Ajouter(alea.Reel() < 0.5 ? Precepte.Partager : Precepte.Pardonner, 0, OrigineDogme.Inventee);
                 if (alea.Reel() < 0.5) Ajouter(Precepte.Priere, 0, OrigineDogme.Inventee);
                 if (alea.Reel() < 0.4) Ajouter(Precepte.Prophetie, 0, OrigineDogme.Inventee);
-                annonce = $"Habité{E(h)} par ses visions, {h.Nom} se met à parler au nom de l'invisible.";
+                annonce = new Recit("rel.prophete.visions", ("h", h));
                 break;
             default:
                 Ajouter(Precepte.Createur, 0, OrigineDogme.Inventee);
                 Ajouter(Precepte.NourrirLeProphete, 0, OrigineDogme.Inventee);
                 Ajouter(Precepte.Offrandes, 0, OrigineDogme.Inventee);
                 Ajouter(Precepte.Prophetie, 0, OrigineDogme.Inventee);
-                annonce = $"{h.Nom} prétend parler au nom de l'invisible, pour être écouté{E(h)} et nourri{E(h)}.";
+                annonce = new Recit("rel.prophete.imposteur", ("h", h));
                 break;
         }
         if (dogmes.Count == 0) Ajouter(Precepte.Priere, 0, OrigineDogme.Inventee);
@@ -396,7 +399,7 @@ public sealed partial class Comportement
                         else if (pr.SourceProphete == SourceProphete.Imposteur && po.Moral.EmpathieCognitive > 0.7 && Croyances.Analytique(o) > 0.5
                                  && alea.Reel() < 0.002)
                         {
-                            Noter(maintenant, TypeEvenement.Religion, o, pr, $"{o.Nom} voit clair dans le jeu de {pr.Nom}, qui parle au nom de l'invisible pour se faire nourrir.");
+                            Noter(maintenant, TypeEvenement.Religion, o, pr, new Recit("rel.demasque", ("o", o), ("p", pr)));
                             Social?.ChangerAffection(o, pr, -15, maintenant);
                         }
                         else if (alea.Reel() < 0.003 * (1 - recept) * (1 - po.Agreabilite)) Social?.ChangerAffection(o, pr, -2, maintenant);
@@ -409,11 +412,11 @@ public sealed partial class Comportement
     {
         var avant = Cultes!.Get(o.ReligionId);
         var texte = avant is null
-            ? $"{o.Nom} se met à suivre le {r.Nom}, convaincu{E(o)} par {par.Nom}."
-            : $"{o.Nom} quitte le {avant.Nom} pour suivre le {r.Nom}, convaincu{E(o)} par {par.Nom}.";
+            ? new Recit("rel.convertit", ("o", o), ("r", r.Nom), ("p", par))
+            : new Recit("rel.convertit.quitte", ("o", o), ("avant", avant.Nom), ("r", r.Nom), ("p", par));
         var id = Noter(maintenant, TypeEvenement.Religion, o, par, texte, r.EvenementId);
         Adherer(o, r, 0.3 + 0.3 * alea.Reel(), maintenant);
-        Croyances.Ajouter(o, 5, $"{par.Nom} l'a convaincu{E(o)}", id, maintenant);
+        Croyances.Ajouter(o, 5, new Recit("cro.convaincu", ("p", par), ("o", o)), id, maintenant);
         Social?.ChangerAffection(o, par, 5, maintenant);
         if (r.Enseigne(Precepte.Createur))
             Confier(o, TypeIntime.Croyance, par.Id, Recits.Recit.Seul("js.religion.entite"), 30 + 40 * o.Ferveur, id, maintenant, "croyance:entite");
@@ -427,7 +430,7 @@ public sealed partial class Comportement
         if (Cultes!.Propheties.Exists(p => p.ProphetId == h.Id)) return;
         var c = Social?.CommunauteDe(h);
         var (x, y) = c is null ? (h.X, h.Y) : (c.CentreX, c.CentreY);
-        var id = Noter(maintenant, TypeEvenement.Religion, h, null, $"{h.Nom} annonce aux siens qu'un grand malheur va frapper.", cause, significatif: true);
+        var id = Noter(maintenant, TypeEvenement.Religion, h, null, new Recit("rel.annonce", ("h", h)), cause, significatif: true);
         // Un malheur annoncé est attendu bientôt : passé quelques mois, on n'y voit plus la prophétie.
         var duree = vraie ? 90 : 120;
         Cultes.Propheties.Add(new Prophetie(h.Id, r.Id, x, y, maintenant, maintenant + (long)(duree * Calendrier.SecondesParJour), id, vraie));
@@ -463,7 +466,7 @@ public sealed partial class Comportement
         var r = Cultes!.Religions[p.ReligionId - 1];
         if (prophete.EstVivant) prophete.Miracles++;
         var id = Noter(maintenant, TypeEvenement.Religion, prophete, null,
-            $"Le malheur annoncé par {prophete.Nom} est venu ({venue.NomFrancais}) : ceux qui l'ont entendu{E(prophete)} se souviennent de sa parole.",
+            new Recit("rel.prophetie.venue", ("p", prophete), ("k", Recits.Recit.Relire(venue.Nom))),
             p.EvenementId, significatif: true);
         var convertis = 0;
         foreach (var h in vivants)
@@ -472,18 +475,18 @@ public sealed partial class Comportement
             if (h.ReligionId == r.Id)
             {
                 h.Ferveur = Math.Min(1, h.Ferveur + 0.15);
-                Croyances.Ajouter(h, 8, $"le malheur annoncé par {prophete.Nom} est venu", id, maintenant, signe: true);
+                Croyances.Ajouter(h, 8, new Recit("cro.prophetie", ("p", prophete)), id, maintenant, signe: true);
             }
             else if (!h.EstEnfant(maintenant) && alea.Reel() < 0.25 * (0.15 + 0.85 * h.Croyance / 100))
             {
                 Adherer(h, r, 0.4 + 0.3 * alea.Reel(), maintenant);
-                Croyances.Ajouter(h, 10, $"le malheur annoncé par {prophete.Nom} est venu", id, maintenant, signe: true);
+                Croyances.Ajouter(h, 10, new Recit("cro.prophetie", ("p", prophete)), id, maintenant, signe: true);
                 convertis++;
             }
         }
         if (convertis > 0)
             Noter(maintenant, TypeEvenement.Religion, prophete, null,
-                $"{(convertis == 1 ? "Une personne se met" : $"{convertis} personnes se mettent")} à suivre le {r.Nom}.", id);
+                new Recit("rel.prophetie.convertis", ("n", convertis), ("r", r.Nom)), id);
     }
 
     private void Dementir(Prophetie p, List<Humain> vivants, IReadOnlyList<Humain> tous, long maintenant)
@@ -506,8 +509,9 @@ public sealed partial class Comportement
                 detournes++;
             }
         }
-        Noter(maintenant, TypeEvenement.Religion, prophete, null, $"Le malheur annoncé par {prophete.Nom} n'est pas venu"
-            + (ardents + detournes == 0 ? "." : $" : {ardents} fidèle{(ardents > 1 ? "s" : "")} n'en croi{(ardents > 1 ? "ent" : "t")} que plus fort, {detournes} doute{(detournes > 1 ? "nt" : "")}."),
+        Noter(maintenant, TypeEvenement.Religion, prophete, null, ardents + detournes == 0
+            ? new Recit("rel.prophetie.dementie", ("p", prophete))
+            : new Recit("rel.prophetie.dementie.fideles", ("p", prophete), ("a", new Recit("rel.ardents", ("n", ardents))), ("d", new Recit("rel.doutent", ("n", detournes)))),
             p.EvenementId);
     }
 
@@ -530,7 +534,7 @@ public sealed partial class Comportement
             var dogmes = new List<Dogme> { new(Precepte.Ancetres, 0, OrigineDogme.Reve, TexteDogme(Precepte.Ancetres, 0), maintenant, 0) };
             if (alea.Reel() < 0.5) dogmes.Add(new Dogme(Precepte.Offrandes, 0, OrigineDogme.Inventee, TexteDogme(Precepte.Offrandes, 0), maintenant, 0));
             var r = Fonder(f, NaissanceReligion.Ancetres, dogmes,
-                $"Dans la {c.Nom.ToLowerInvariant()}, on se met à honorer les morts, qui reviennent la nuit veiller sur les vivants.", 0, maintenant);
+                new Recit("rel.culteMorts", ("c", c)), 0, maintenant);
             foreach (var h in reveurs) if (h.Id != f.Id) Adherer(h, r, 0.35 + 0.35 * h.Croyance / 100, maintenant);
         }
     }
@@ -538,16 +542,18 @@ public sealed partial class Comportement
     // ───────────── Rites ─────────────
 
     /// <summary>Gestes inventés pour prier, selon ce que font les siens (arts, morts, lieux).</summary>
+    /// <remarks>Gardés en récit encodé (voir <see cref="Recits.Recit.Encoder"/>).</remarks>
     private string InventerGestes(Religion r, List<Humain> groupe)
     {
-        string[] postures = ["à genoux", "debout, les bras levés", "assis en cercle", "prosternés", "en se balançant d'avant en arrière"];
-        var vers = r.Enseigne(Precepte.Ancetres) ? "auprès des morts"
-            : alea.Reel() < 0.5 ? (alea.Reel() < 0.5 ? "face au soleil levant" : "face au couchant") : "autour du feu";
-        var art = groupe.Any(h => Humains.Arts.Connait(h, Effet.Danse)) ? ", en dansant"
-            : groupe.Any(h => Humains.Arts.Connait(h, Effet.Chant)) ? ", en chantant"
-            : groupe.Any(h => Humains.Arts.Connait(h, Effet.Rythme)) ? ", au son des rythmes" : "";
-        var ocre = groupe.Any(h => Humains.Arts.Connait(h, Effet.Ocre)) && alea.Reel() < 0.5 ? ", le visage peint d'ocre" : "";
-        return $"{postures[alea.Entier(postures.Length)]} {vers}{art}{ocre}";
+        string[] postures = ["genoux", "brasLeves", "cercle", "prosternes", "balancer"];
+        var vers = r.Enseigne(Precepte.Ancetres) ? "morts"
+            : alea.Reel() < 0.5 ? (alea.Reel() < 0.5 ? "levant" : "couchant") : "feu";
+        var art = groupe.Any(h => Humains.Arts.Connait(h, Effet.Danse)) ? "danse"
+            : groupe.Any(h => Humains.Arts.Connait(h, Effet.Chant)) ? "chant"
+            : groupe.Any(h => Humains.Arts.Connait(h, Effet.Rythme)) ? "rythmes" : "aucun";
+        var ocre = groupe.Any(h => Humains.Arts.Connait(h, Effet.Ocre)) && alea.Reel() < 0.5 ? "ocre" : "aucun";
+        return new Recit("rite.gestes", ("p", Recits.Recit.Seul($"rite.posture.{postures[alea.Entier(postures.Length)]}")),
+            ("v", Recits.Recit.Seul($"rite.vers.{vers}")), ("a", Recits.Recit.Seul($"rite.art.{art}")), ("o", Recits.Recit.Seul($"rite.ocre.{ocre}"))).Encoder();
     }
 
     /// <summary>
@@ -564,7 +570,7 @@ public sealed partial class Comportement
         if (r.Gestes is null)
         {
             r.Gestes = InventerGestes(r, groupe);
-            Noter(maintenant, TypeEvenement.Religion, meneur, null, $"Pour la première fois, les fidèles du {r.Nom} se rassemblent et prient {r.Gestes}.",
+            Noter(maintenant, TypeEvenement.Religion, meneur, null, new Recit("rel.rite.premier", ("r", r.Nom), ("g", Recits.Recit.Relire(r.Gestes))),
                 r.EvenementId, significatif: true);
         }
         var lieu = Cultes!.Lieux.Find(l => l.ReligionId == r.Id && Distance(l.X, l.Y, c.CentreX, c.CentreY) <= c.Rayon + 3);
@@ -586,19 +592,19 @@ public sealed partial class Comportement
         if (_rites.GetValueOrDefault((r.Id, c.Id), -1) != saison)
         {
             _rites[(r.Id, c.Id)] = saison;
-            var bete = "";
+            var bete = false;
             if (r.Enseigne(Precepte.SacrificeAnimal))
             {
                 var prises = Ecosysteme.Prelever(ecosysteme.Gibier, carte.Indice(meneur.X, meneur.Y), 1 + alea.Entier(3));
                 if (prises > 0)
                 {
-                    bete = ", et offrent une bête, dont ils partagent la viande";
+                    bete = true;
                     foreach (var h in groupe) h.Faim = Math.Max(0, h.Faim - 10);
                 }
             }
             Noter(maintenant, TypeEvenement.Religion, meneur, null,
-                $"Les fidèles du {r.Nom} de la {c.Nom.ToLowerInvariant()} ({groupe.Count}) se rassemblent et prient {r.Gestes}"
-                + (lieu is not null ? ", au lieu sacré" : "") + (offrandes ? ", et offrent une part de leur nourriture" : "") + bete + ".", r.EvenementId);
+                new Recit("rel.rite", ("r", r.Nom), ("c", c), ("n", groupe.Count), ("g", Recits.Recit.Relire(r.Gestes)),
+                    ("lieu", lieu is not null), ("offrandes", offrandes), ("bete", bete)), r.EvenementId);
             NourrirLeProphete(r, groupe, maintenant);
         }
         Vivre(r, groupe, maintenant);
@@ -621,7 +627,7 @@ public sealed partial class Comportement
                 affame.Faim = Math.Max(0, affame.Faim - don);
                 donneur.Faim += 0.7 * don;
                 VieSociale.Gratitude(donneur, affame, 0.4);
-                Noter(maintenant, TypeEvenement.Partage, donneur, affame, $"Comme le veut sa foi, {donneur.Nom} partage sa nourriture avec {affame.Nom}.", karma: Regard.Partage);
+                Noter(maintenant, TypeEvenement.Partage, donneur, affame, new Recit("rel.partage", ("h", donneur), ("x", affame)), karma: Regard.Partage);
             }
         }
         if (r.Enseigne(Precepte.Soigner))
@@ -632,7 +638,7 @@ public sealed partial class Comportement
             {
                 malade.Sante = Math.Min(100, malade.Sante + 3 + 4 * soignant.Personnalite.Moral.Compassion);
                 Social?.ChangerAffection(malade, soignant, 4, maintenant);
-                Noter(maintenant, TypeEvenement.Entraide, soignant, malade, $"Comme le veut sa foi, {soignant.Nom} veille sur {malade.Nom}.", karma: Regard.Veiller);
+                Noter(maintenant, TypeEvenement.Entraide, soignant, malade, new Recit("rel.soigne", ("h", soignant), ("x", malade)), karma: Regard.Veiller);
             }
         }
     }
@@ -646,7 +652,7 @@ public sealed partial class Comportement
         foreach (var d in donneurs) d.Faim = Math.Min(100, d.Faim + 5);
         prophete.Faim = Math.Max(0, prophete.Faim - 8 * donneurs.Count);
         prophete.Reserves = Math.Min(100, prophete.Reserves + 2 * donneurs.Count);
-        Noter(maintenant, TypeEvenement.Religion, prophete, null, $"Les fidèles du {r.Nom} nourrissent {prophete.Nom}, qui porte la parole.",
+        Noter(maintenant, TypeEvenement.Religion, prophete, null, new Recit("rel.nourrir", ("r", r.Nom), ("p", prophete)),
             karma: prophete.SourceProphete == SourceProphete.Imposteur ? Regard.Tromper : 0);
     }
 
@@ -661,7 +667,7 @@ public sealed partial class Comportement
         choisi.Role = RoleReligieux.Pretre;
         choisi.RoleDepuis = maintenant;
         var id = Noter(maintenant, TypeEvenement.Religion, choisi, null,
-            $"{choisi.Nom} devient {(choisi.Sexe == Sexe.Femme ? "la gardienne" : "le gardien")} des rites du {r.Nom} dans la {c.Nom.ToLowerInvariant()}.", r.EvenementId);
+            new Recit("rel.pretre", ("h", choisi), ("r", r.Nom), ("c", c)), r.EvenementId);
         Confier(choisi, TypeIntime.Fierte, 0, Recits.Recit.Seul("js.religion.pretre"), 40 + 40 * choisi.Ferveur, id, maintenant, "image:pretre");
     }
 
@@ -688,9 +694,9 @@ public sealed partial class Comportement
             var tirage = alea.Reel();
             if (tueur && tirage < 0.15)
             {
-                var id = Noter(maintenant, TypeEvenement.Religion, figure, prophete, $"{figure.Nom} ne supporte plus que {prophete.Nom} parle au nom de l'invisible.",
+                var id = Noter(maintenant, TypeEvenement.Religion, figure, prophete, new Recit("rel.oppose.tue", ("f", figure), ("p", prophete)),
                     r.EvenementId, significatif: true);
-                Tuer(prophete, maintenant, CauseDeMort.Meurtre, $"{figure.Nom} tue {prophete.Nom}, qui parlait au nom de l'invisible.", id, figure, Regard.Meurtre);
+                Tuer(prophete, maintenant, CauseDeMort.Meurtre, new Recit("rel.meurtre", ("f", figure), ("p", prophete)), id, figure, Regard.Meurtre);
                 foreach (var f in fideles)
                 {
                     f.Ferveur = Math.Min(1, f.Ferveur + 0.2);
@@ -700,9 +706,9 @@ public sealed partial class Comportement
             else if (part < 0.5 && tirage < 0.45)
             {
                 var duree = (long)((1 + 4 * alea.Reel()) * Calendrier.SecondesParAn);
-                var raison = $"parce qu'{Il(prophete)} parle au nom de l'invisible";
+                var raison = new Recit("rel.exil.raison", ("p", prophete)).Encoder();
                 var id = Noter(maintenant, TypeEvenement.Exclusion, prophete, figure,
-                    $"Poussée par {figure.Nom}, la {c.Nom.ToLowerInvariant()} chasse {prophete.Nom}, qui parlait au nom de l'invisible.", r.EvenementId, significatif: true);
+                    new Recit("rel.chasse", ("f", figure), ("c", c), ("p", prophete)), r.EvenementId, significatif: true);
                 prophete.Exclusions.Add(new Exclusion(TypeExclusion.Communaute, c.Id, maintenant, maintenant + duree, id, raison));
                 Confier(prophete, TypeIntime.Peine, figure.Id, new Recit("js.religion.chasse", ("g", prophete)), 50, id, maintenant, $"exil:{c.Id}");
                 foreach (var f in fideles) f.Ferveur = Math.Min(1, f.Ferveur + 0.05);
@@ -711,7 +717,7 @@ public sealed partial class Comportement
             {
                 Social?.ChangerAffection(figure, prophete, -10, maintenant);
                 Social?.ChangerAffection(prophete, figure, -5, maintenant);
-                Noter(maintenant, TypeEvenement.Religion, figure, prophete, $"{figure.Nom} s'oppose à {prophete.Nom}, qui parle au nom de l'invisible.", r.EvenementId);
+                Noter(maintenant, TypeEvenement.Religion, figure, prophete, new Recit("rel.oppose", ("f", figure), ("p", prophete)), r.EvenementId);
                 foreach (var f in fideles) f.Ferveur = Math.Min(1, f.Ferveur + 0.02);
             }
         }
@@ -841,16 +847,16 @@ public sealed partial class Comportement
             if (voix > 0) pour += voix; else contre -= voix;
         }
         var proposition = Noter(maintenant, TypeEvenement.Religion, meneur, victime,
-            $"Pour apaiser la colère de l'invisible, {meneur.Nom} veut lui offrir la vie de {victime.Nom}{(captif ? ", le captif" + (victime.Sexe == Sexe.Femme ? "e" : "") : "")}.",
+            new Recit(captif ? "rel.sacrifice.captif" : "rel.sacrifice", ("m", meneur), ("v", victime)),
             r.EvenementId, significatif: true);
         if (pour <= contre)
         {
-            Noter(maintenant, TypeEvenement.Religion, meneur, victime, $"Les siens refusent : {victime.Nom} aura la vie sauve.", proposition, significatif: true);
+            Noter(maintenant, TypeEvenement.Religion, meneur, victime, new Recit("rel.sacrifice.refus", ("v", victime)), proposition, significatif: true);
             foreach (var m in membres) if (m.Id != meneur.Id && m.Personnalite.Moral.Fondements.Soin > 0.5) Social?.ChangerAffection(m, meneur, -8, maintenant);
             Confier(victime, TypeIntime.Peur, meneur.Id, new Recit("js.sacrifice.peur", ("x", meneur)), 70, proposition, maintenant, $"sacrifice:{meneur.Id}");
             return;
         }
-        Tuer(victime, maintenant, CauseDeMort.Sacrifice, $"{victime.Nom} est offert{E(victime)} en sacrifice à l'invisible par {meneur.Nom}.", proposition, meneur, Regard.Sacrifier);
+        Tuer(victime, maintenant, CauseDeMort.Sacrifice, new Recit("rel.sacrifice.mort", ("v", victime), ("m", meneur)), proposition, meneur, Regard.Sacrifier);
         AjouterDogme(r, Precepte.SacrificeHumain, 0, OrigineDogme.Inventee, null, victime.MortEvenementId, maintenant);
         foreach (var m in membres)
         {
@@ -893,7 +899,7 @@ public sealed partial class Comportement
             if (!dogmes.Exists(d => d.Precepte == neuf)) dogmes.Add(new Dogme(neuf, 0, OrigineDogme.Inventee, TexteDogme(neuf, 0), maintenant, 0));
             var ancienneFerveur = chef.Ferveur;
             var branche = Fonder(chef, NaissanceReligion.Schisme, dogmes,
-                $"{chef.Nom} se sépare du {r.Nom}{(meneur is not null ? $" et de {meneur.Nom}" : "")} : une partie des fidèles {(chef.Sexe == Sexe.Femme ? "la" : "le")} suit.",
+                meneur is not null ? new Recit("rel.schisme.meneur", ("h", chef), ("r", r.Nom), ("m", meneur)) : new Recit("rel.schisme", ("h", chef), ("r", r.Nom)),
                 r.EvenementId, maintenant, r.Id);
             branche.Gestes = r.Gestes;
             chef.Ferveur = Math.Max(ancienneFerveur, 0.8);
@@ -935,7 +941,7 @@ public sealed partial class Comportement
             if (n > 0) continue;
             r.EteinteLe = maintenant;
             var f = _tous[r.FondateurId - 1];
-            Noter(maintenant, TypeEvenement.Religion, f, null, $"Plus personne ne suit le {r.Nom} (« {r.Sens} ») : cette croyance s'éteint.", r.EvenementId, significatif: true);
+            Noter(maintenant, TypeEvenement.Religion, f, null, new Recit("rel.eteinte", ("r", r.Nom), ("sens", Recits.Recit.Relire(r.Sens))), r.EvenementId, significatif: true);
         }
     }
 }

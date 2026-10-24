@@ -51,18 +51,28 @@ public sealed partial class Comportement
     /// <summary>Celui que le croyant prie, dans la langue de l'observateur (« celle qui les a faits », « les morts », « l'invisible »).</summary>
     private Recit InvisibleRecit(Humain h) => Recits.Recit.Seul(Invisible(h) switch
     {
-        "celle qui les a faits" => "js.priere.qui.createur",
-        "les morts" => "js.priere.qui.morts",
+        Prie.Createur => "js.priere.qui.createur",
+        Prie.Morts => "js.priere.qui.morts",
         _ => "js.priere.qui.invisible",
     });
 
+    /// <summary>Celui que le croyant prie, tel que le dit le récit (« celle qui les a faits »).</summary>
+    private Recit InvisibleDit(Humain h) => Recits.Recit.Seul(Invisible(h) switch
+    {
+        Prie.Createur => "pri.qui.createur",
+        Prie.Morts => "pri.qui.morts",
+        _ => "pri.qui.invisible",
+    });
+
+    private enum Prie : byte { Invisible, Createur, Morts }
+
     /// <summary>Celui que le croyant prie, selon ce que lui ont appris les siens.</summary>
-    private string Invisible(Humain h)
+    private Prie Invisible(Humain h)
     {
         var r = Cultes?.Get(h.ReligionId);
-        if (r is not null && r.Enseigne(Precepte.Createur)) return "celle qui les a faits";
-        if (r is not null && r.Enseigne(Precepte.Ancetres)) return "les morts";
-        return h.Memoire.Jardin.Exists(x => x.Cle == "croyance:entite") ? "celle qui les a faits" : "l'invisible";
+        if (r is not null && r.Enseigne(Precepte.Createur)) return Prie.Createur;
+        if (r is not null && r.Enseigne(Precepte.Ancetres)) return Prie.Morts;
+        return h.Memoire.Jardin.Exists(x => x.Cle == "croyance:entite") ? Prie.Createur : Prie.Invisible;
     }
 
     /// <summary>
@@ -191,29 +201,30 @@ public sealed partial class Comportement
         _ => 0.4,
     };
 
-    private string TextePriere(Humain h, Priere p, Humain? x)
+    private Recit TextePriere(Humain h, Priere p, Humain? x)
     {
-        var qui = Invisible(h);
-        var maniere = Cultes?.Get(h.ReligionId)?.Gestes is { } g ? $" (à la façon des fidèles : {g})" : "";
-        var malheur = Catastrophes?.Trouver(p.Parametre)?.NomFrancais is { Length: > 0 } nom ? $"ce malheur ({char.ToLowerInvariant(nom[0])}{nom[1..]})" : "le malheur";
-        return p.Sujet switch
+        var qui = InvisibleDit(h);
+        var maniere = Cultes?.Get(h.ReligionId)?.Gestes is { } g ? new Recit("pri.maniere", ("g", Recits.Recit.Relire(g))) : Recits.Recit.Seul("pri.maniere.aucune");
+        var malheur = Catastrophes?.Trouver(p.Parametre)?.Nom is { Length: > 0 } nom ? new Recit("pri.ceMalheur", ("k", Recits.Recit.Relire(nom))) : Recits.Recit.Seul("pri.leMalheur");
+        var cle = p.Sujet switch
         {
-            SujetPriere.Guerison when x is null => $"{h.Nom} supplie {qui} de {(h.Sexe == Sexe.Femme ? "la" : "le")} guérir{maniere}.",
-            SujetPriere.Guerison => $"{h.Nom} supplie {qui} de sauver {x.Nom}{maniere}.",
-            SujetPriere.Nourriture => $"Affamé{E(h)}, {h.Nom} supplie {qui} de lui donner à manger{maniere}.",
-            SujetPriere.Pluie => $"{h.Nom} prie {qui} de faire revenir la pluie{maniere}.",
-            SujetPriere.Accalmie => $"{h.Nom} supplie {qui} d'arrêter {malheur}{maniere}.",
-            SujetPriere.Enfant => $"{h.Nom} prie {qui} de lui donner un enfant{maniere}.",
-            SujetPriere.Protection => $"{h.Nom} prie {qui} de protéger les siens de la guerre{maniere}.",
+            SujetPriere.Guerison when x is null => "pri.guerir",
+            SujetPriere.Guerison => "pri.sauver",
+            SujetPriere.Nourriture => "pri.manger",
+            SujetPriere.Pluie => "pri.pluie",
+            SujetPriere.Accalmie => "pri.accalmie",
+            SujetPriere.Enfant => "pri.enfant",
+            SujetPriere.Protection => "pri.protection",
             SujetPriere.Vengeance => p.Parametre switch
             {
-                VengeanceMort => $"{h.Nom} prie {qui} de faire mourir {x?.Nom}{maniere}.",
-                VengeanceLesSiens => $"{h.Nom} prie {qui} de frapper {x?.Nom} et les siens{maniere}.",
-                _ => $"{h.Nom} prie {qui} de faire souffrir {x?.Nom}{maniere}.",
+                VengeanceMort => "pri.mourir",
+                VengeanceLesSiens => "pri.lesSiens",
+                _ => "pri.souffrir",
             },
-            SujetPriere.Amour => $"{h.Nom} prie {qui} que {x?.Nom} l'aime{maniere}.",
-            _ => $"{h.Nom} remercie {qui}{maniere}.",
+            SujetPriere.Amour => "pri.amour",
+            _ => "pri.merci",
         };
+        return new Recit(cle, ("h", h), ("qui", qui), ("x", x), ("k", malheur), ("m", maniere));
     }
 
     /// <summary>
@@ -237,7 +248,7 @@ public sealed partial class Comportement
             var h = tous[p.HumainId - 1];
             if (!h.EstVivant)
             {
-                (p.Issue, p.IssueLe, p.Conclusion) = (IssuePriere.SansReponse, maintenant, "mort avant de voir la réponse");
+                (p.Issue, p.IssueLe, p.Conclusion) = (IssuePriere.SansReponse, maintenant, new Recit("pri.fin.mort", ("h", h)).Encoder());
                 continue;
             }
             var x = p.CibleId > 0 ? tous[p.CibleId - 1] : null;
@@ -276,7 +287,7 @@ public sealed partial class Comportement
     private void Exauce(Humain h, Priere p, Humain? x, IssuePriere issue, long maintenant, long cause = 0)
     {
         (p.Issue, p.IssueLe) = (issue, maintenant);
-        p.Conclusion = p.Sujet == SujetPriere.Vengeance ? "l'invisible a frappé pour lui" : "sa prière a été entendue";
+        p.Conclusion = (p.Sujet == SujetPriere.Vengeance ? new Recit("pri.fin.frappe", ("h", h)) : Recits.Recit.Seul("pri.fin.entendue")).Encoder();
         var pe = h.Personnalite;
         // Une coïncidence conforte un peu ; un vrai prodige (l'Entité) bouleverse.
         var gain = (issue == IssuePriere.ExauceeParEntite ? 6 + 10 * p.Ferveur : 1.5 + 3 * p.Ferveur) * (p.Forte ? 1.5 : 1);
@@ -285,25 +296,25 @@ public sealed partial class Comportement
         {
             var texte = p.Sujet switch
             {
-                SujetPriere.Guerison when x is not null => $"{x.Nom} guérit : {h.Nom} croit que sa prière a été entendue.",
-                SujetPriere.Guerison => $"{h.Nom} guérit, et croit que sa prière a été entendue.",
-                SujetPriere.Nourriture => $"{h.Nom} a de nouveau à manger, et croit que sa prière a été entendue.",
-                SujetPriere.Pluie => $"La pluie revient : {h.Nom} croit que sa prière a été entendue.",
-                SujetPriere.Accalmie => $"Le malheur a cessé : {h.Nom} croit que sa prière a été entendue.",
-                SujetPriere.Enfant => $"{h.Nom} attend un enfant, et croit que sa prière a été entendue.",
-                SujetPriere.Protection => $"Les siens sont saufs : {h.Nom} croit que sa prière a été entendue.",
-                SujetPriere.Vengeance when x is { EstVivant: false } => $"{x.Nom} est mort{E(x)} : {h.Nom} croit que l'invisible l'a frappé{E(x)} pour {Soi(h)}.",
-                SujetPriere.Vengeance => $"Le malheur frappe {x?.Nom} : {h.Nom} croit que l'invisible l'a fait pour {Soi(h)}.",
-                SujetPriere.Amour => $"{x?.Nom} se tourne vers {h.Nom}, qui croit que sa prière a été entendue.",
-                _ => $"{h.Nom} croit que sa prière a été entendue.",
+                SujetPriere.Guerison when x is not null => "pri.exauce.guerit",
+                SujetPriere.Guerison => "pri.exauce.gueri",
+                SujetPriere.Nourriture => "pri.exauce.manger",
+                SujetPriere.Pluie => "pri.exauce.pluie",
+                SujetPriere.Accalmie => "pri.exauce.accalmie",
+                SujetPriere.Enfant => "pri.exauce.enfant",
+                SujetPriere.Protection => "pri.exauce.protection",
+                SujetPriere.Vengeance when x is { EstVivant: false } => "pri.exauce.mort",
+                SujetPriere.Vengeance => "pri.exauce.malheur",
+                SujetPriere.Amour => "pri.exauce.amour",
+                _ => "pri.exauce",
             };
-            id = Noter(maintenant, TypeEvenement.Religion, h, x, texte, p.EvenementId != 0 ? p.EvenementId : cause);
+            id = Noter(maintenant, TypeEvenement.Religion, h, x, new Recit(texte, ("h", h), ("x", x)), p.EvenementId != 0 ? p.EvenementId : cause);
         }
-        Croyances.Ajouter(h, gain, $"{Il(h)} croit que sa prière a été entendue", id, maintenant, signe: true);
+        Croyances.Ajouter(h, gain, new Recit("cro.entendue", ("h", h)), id, maintenant, signe: true);
         // Être entendu fait aimer l'invisible (moins pour une vengeance), un peu plus chez les esprits agréables.
         if (p.Sujet != SujetPriere.Vengeance)
             Regards.Ajouter(h, SentimentInvisible.Amour, 0.8 * gain * (0.6 + 0.8 * pe.Agreabilite) * (0.4 + 0.6 * h.Croyance / 100),
-                $"{Il(h)} croit que sa prière a été entendue", id, maintenant, signe: true);
+                new Recit("cro.entendue", ("h", h)), id, maintenant, signe: true);
         h.Ferveur = Math.Min(1, h.Ferveur + 0.1 * (1 - h.Ferveur));
         Confier(h, TypeIntime.Croyance, p.CibleId, p.Sujet == SujetPriere.Vengeance ? new Recit("js.priere.frappe", ("x", x)) : new Recit("js.priere.entendu", ("g", h)),
             30 + 50 * p.Ferveur, id, maintenant, "croyance:priere");
@@ -322,7 +333,7 @@ public sealed partial class Comportement
             {
                 Id = Cultes.ProchainePriere++, HumainId = h.Id, Le = maintenant, Sujet = SujetPriere.Remerciement, CibleId = p.CibleId,
                 Ferveur = p.Ferveur, ReligionId = h.ReligionId, Jusqua = maintenant, Issue = IssuePriere.Rendue, IssueLe = maintenant,
-                Conclusion = $"{Il(h)} rend grâce",
+                Conclusion = new Recit("pri.fin.grace", ("h", h)).Encoder(),
             });
         }
     }
@@ -340,32 +351,34 @@ public sealed partial class Comportement
         if (alea.Reel() < 0.2 + 0.7 * c)
         {
             // Les raisons qu'on se donne : selon ce que croient les siens, et selon son caractère.
+            Recit raison;
             if (religion?.Enseigne(Precepte.Colere) == true)
             {
-                p.Conclusion = "l'invisible est en colère contre les siens";
+                raison = Recits.Recit.Seul("pri.fin.colere");
                 h.Ferveur = Math.Min(1, h.Ferveur + 0.05);
             }
             else if (h.Personnalite.Nevrosisme > 0.55)
             {
-                p.Conclusion = $"{Il(h)} n'a pas assez prié";
+                raison = new Recit("pri.fin.pasAssez", ("h", h));
                 h.Ferveur = Math.Min(1, h.Ferveur + 0.08);
                 Confier(h, TypeIntime.Culpabilite, 0, Recits.Recit.Seul("js.priere.faute"), 20 + 40 * h.Personnalite.Nevrosisme, p.EvenementId, maintenant, "priere:faute");
             }
-            else p.Conclusion = "l'invisible avait ses raisons";
+            else raison = Recits.Recit.Seul("pri.fin.raisons");
+            p.Conclusion = raison.Encoder();
             if (p.Forte)
                 Noter(maintenant, TypeEvenement.Religion, h, x, perdu && x is not null
-                    ? $"{x.Nom} est mort{E(x)} malgré les prières de {h.Nom}, qui se dit que {p.Conclusion}."
-                    : $"La prière de {h.Nom} est restée sans réponse ; {Il(h)} se dit que {p.Conclusion}.", p.EvenementId);
+                    ? new Recit("pri.perdu.raison", ("x", x), ("h", h), ("r", raison))
+                    : new Recit("pri.vain.raison", ("h", h), ("r", raison)), p.EvenementId);
             return;
         }
-        p.Conclusion = $"{Il(h)} doute";
+        p.Conclusion = new Recit("pri.fin.doute", ("h", h)).Encoder();
         var perte = (2 + 6 * p.Ferveur) * (p.Forte ? 1.5 : 1) * (perdu ? 1.5 : 1);
         var id = p.EvenementId;
         if (p.Forte)
             id = Noter(maintenant, TypeEvenement.Religion, h, x, perdu && x is not null
-                ? $"{x.Nom} est mort{E(x)} malgré les prières de {h.Nom}, qui doute désormais de l'invisible."
-                : $"La prière de {h.Nom} est restée sans réponse : {Il(h)} doute.", p.EvenementId);
-        Croyances.Ajouter(h, -perte, perdu ? "ses prières n'ont sauvé personne" : "ses prières sont restées sans réponse", id, maintenant);
+                ? new Recit("pri.perdu.doute", ("x", x), ("h", h))
+                : new Recit("pri.vain.doute", ("h", h)), p.EvenementId);
+        Croyances.Ajouter(h, -perte, Recits.Recit.Seul(perdu ? "cro.prieresVaines" : "cro.sansReponse"), id, maintenant);
         h.Ferveur = Math.Max(0, h.Ferveur - 0.1);
         if (perdu && x is not null)
             Confier(h, TypeIntime.Question, x.Id, new Recit("js.priere.mort", ("x", x)), 30 + 50 * p.Ferveur, id, maintenant, "question:priere");
@@ -375,24 +388,24 @@ public sealed partial class Comportement
     /// L'Entité exauce une prière en attente : ce qu'elle fait dépend de ce qu'on demandait. Renvoie, en mots, ce qui s'est
     /// passé (ou pourquoi elle ne peut l'être).
     /// </summary>
-    public string Exaucer(int priereId, IReadOnlyList<Humain> tous, long maintenant)
+    public Recit Exaucer(int priereId, IReadOnlyList<Humain> tous, long maintenant)
     {
         _maintenant = maintenant;
         _tous = tous;
-        if (Cultes?.Priere(priereId) is not { } p) return "Cette prière n'existe pas (ou plus).";
-        if (p.Issue != IssuePriere.EnAttente) return "Cette prière n'attend plus de réponse.";
-        if (p.Refus != RefusPriere.Aucun) return "Tu as refusé cette prière.";
+        if (Cultes?.Priere(priereId) is not { } p) return Recits.Recit.Seul("pri.r.inconnue");
+        if (p.Issue != IssuePriere.EnAttente) return Recits.Recit.Seul("pri.r.close");
+        if (p.Refus != RefusPriere.Aucun) return Recits.Recit.Seul("pri.r.refusee");
         if (p.CommunauteId != 0) return ExaucerEnsemble(p, tous, maintenant);
         var h = tous[p.HumainId - 1];
-        if (!h.EstVivant) return $"{h.Nom} est mort{E(h)}.";
+        if (!h.EstVivant) return new Recit("ent.r.mort", ("h", h));
         var x = p.CibleId > 0 ? tous[p.CibleId - 1] : null;
-        string texte;
+        Recit texte;
         switch (p.Sujet)
         {
             case SujetPriere.Guerison:
             {
                 var m = x ?? h;
-                if (!m.EstVivant) return $"{m.Nom} est mort{E(m)}.";
+                if (!m.EstVivant) return new Recit("ent.r.mort", ("h", m));
                 m.MaladeJusqua = Math.Min(m.MaladeJusqua, maintenant);
                 if (m.InfectionId != 0)
                 {
@@ -401,7 +414,7 @@ public sealed partial class Comportement
                 }
                 m.PlaieLe = 0;
                 m.Sante = Math.Max(m.Sante, 85);
-                texte = $"Le mal quitte {m.Nom} d'un coup : {Il(m)} guérit.";
+                texte = new Recit("ges.gueri", ("h", m));
                 break;
             }
             case SujetPriere.Nourriture:
@@ -411,28 +424,28 @@ public sealed partial class Comportement
                 var i = carte.Indice(h.X, h.Y);
                 ecosysteme.Gibier[i] = (ushort)Math.Min(ushort.MaxValue, ecosysteme.Gibier[i] + 2000);
                 ecosysteme.Plantes[i] = (ushort)Math.Min(ushort.MaxValue, ecosysteme.Plantes[i] + 2000);
-                texte = $"Des bêtes et des fruits en abondance, là où se tient {h.Nom} : {Il(h)} mange enfin.";
+                texte = new Recit("pri.don.manger", ("h", h));
                 break;
             }
             case SujetPriere.Pluie:
                 ecosysteme.Pluies[(int)p.Parametre] = Math.Max(ecosysteme.Pluies[(int)p.Parametre], 1.15);
-                texte = $"La pluie tombe enfin sur les terres de {h.Nom}.";
+                texte = new Recit("pri.don.pluie", ("h", h));
                 break;
             case SujetPriere.Accalmie:
                 if (Catastrophes is null || !Catastrophes.Apaiser(p.Parametre, tous as List<Humain> ?? [.. tous], maintenant))
-                    return "Ce malheur a déjà cessé.";
-                texte = $"Le malheur cesse d'un coup, comme {h.Nom} l'a demandé.";
+                    return Recits.Recit.Seul("pri.r.malheurFini");
+                texte = new Recit("pri.don.accalmie", ("h", h));
                 break;
             case SujetPriere.Enfant:
             {
                 var compagnon = Vivant(tous, h.PartenaireId);
                 if (h.Sexe != Sexe.Femme || h.EstEnceinte || compagnon is null || !h.EstFecond(maintenant))
-                    return $"{h.Nom} ne peut pas concevoir maintenant.";
+                    return new Recit("pri.r.concevoir", ("h", h));
                 var jours = Math.Clamp(JoursDeGrossesseMoyens + Biologie.Normale(alea) * EcartJoursDeGrossesse, 230, 300);
                 h.EnceinteDepuis = maintenant;
                 h.TermeGrossesse = maintenant + (long)(jours * Calendrier.SecondesParJour);
                 h.PereEnfantId = compagnon.Id;
-                texte = $"{h.Nom} porte un enfant de {compagnon.Nom}. Elle ne le sait pas encore.";
+                texte = new Recit("pri.don.enfant", ("h", h), ("x", compagnon));
                 break;
             }
             case SujetPriere.Protection:
@@ -450,28 +463,28 @@ public sealed partial class Comportement
                     }
                     else if (ennemi != 0 && o.CommunauteId == ennemi) o.Peur = Math.Min(100, o.Peur + 40);
                 }
-                texte = $"Une force invisible garde les siens de {h.Nom}, et l'ennemi est saisi de crainte.";
+                texte = new Recit("pri.don.protection", ("h", h));
                 break;
             }
             case SujetPriere.Vengeance:
             {
-                if (x is not { EstVivant: true }) return "Celui qu'il fallait frapper est déjà mort.";
+                if (x is not { EstVivant: true }) return Recits.Recit.Seul("pri.r.dejaMort");
                 x.Maladie = Maladie.Dysenterie;
                 x.MaladeJusqua = maintenant + (long)((10 + 20 * alea.Reel()) * Calendrier.SecondesParJour);
                 x.Sante = Math.Min(x.Sante, 50);
-                texte = $"Un mal soudain s'abat sur {x.Nom}.";
+                texte = new Recit("pri.don.vengeance", ("x", x));
                 break;
             }
             case SujetPriere.Amour:
-                if (x is not { EstVivant: true }) return "Celui qu'il fallait toucher est mort.";
+                if (x is not { EstVivant: true }) return Recits.Recit.Seul("pri.r.mort");
                 Inspirer(x, h, passion: true, orientation: false, tous, maintenant);
-                texte = $"Le cœur de {x.Nom} se tourne vers {h.Nom}.";
+                texte = new Recit("pri.don.amour", ("x", x), ("h", h));
                 break;
             default:
-                return "Un remerciement n'attend rien.";
+                return Recits.Recit.Seul("pri.r.merci");
         }
-        var id = NoterEntite(maintenant, TypeEvenement.Religion, h, x, $"L'Entité exauce la prière de {h.Nom}. {texte}", p.EvenementId, significatif: true);
+        var id = NoterEntite(maintenant, TypeEvenement.Religion, h, x, new Recit("pri.exaucee", ("h", h), ("t", texte)), p.EvenementId, significatif: true);
         Exauce(h, p, x, IssuePriere.ExauceeParEntite, maintenant, id);
-        return $"Exaucée : {texte}";
+        return new Recit("pri.r.exaucee", ("t", texte));
     }
 }

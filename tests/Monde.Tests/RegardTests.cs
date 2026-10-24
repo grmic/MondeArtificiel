@@ -1,3 +1,4 @@
+using Monde.Simulation.Recits;
 using Monde.Simulation;
 using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
@@ -110,16 +111,16 @@ public sealed class RegardTests
         var c = new Comportement(Carte, new Ecosysteme(Carte), new Alea(1)) { Social = new VieSociale(new Alea(1)) };
         c.Croire([h], Maintenant);
         Assert.DoesNotContain(c.Journal, e => e.Type == TypeEvenement.Croyance);
-        Croyances.Ajouter(h, 20, "une vision", 77, Maintenant, signe: true);
+        Croyances.Ajouter(h, 20, Recit.Seul("cro.raconte"), 77, Maintenant, signe: true);
         Assert.Equal(5 + 20 * 0.95, h.Croyance, 6);
         Assert.Equal(Maintenant, h.CroyanceSigneLe);
         c.Croire([h], Maintenant);
         var e = Assert.Single(c.Journal, x => x.Type == TypeEvenement.Croyance);
         Assert.Equal(77, e.CauseId);
-        Assert.Contains("croit davantage en l'invisible (24/100) : une vision", e.Texte);
+        Assert.Contains("croit davantage en l'invisible (24/100) : on lui a raconté le prodige", e.Texte);
 
         var croyant = Humain(2, croyance: 90);
-        Assert.True(Croyances.Ajouter(croyant, 20, "x", 0, Maintenant) < 3);
+        Assert.True(Croyances.Ajouter(croyant, 20, Recit.Seul("cro.raconte"), 0, Maintenant) < 3);
     }
 
     [Fact]

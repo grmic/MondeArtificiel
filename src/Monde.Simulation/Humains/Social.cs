@@ -620,7 +620,7 @@ public sealed partial class VieSociale(Alea alea)
             {
                 Noter(maintenant, TypeEvenement.Humeur, h, mort, new Recit("j.pleure", ("h", h), ("p", ParenteR(h, mort))), mort.MortEvenementId);
                 // Penser à la mort pousse à croire qu'il y a autre chose (Jong et al., 2012) : d'autant plus que le deuil est lourd.
-                Croyances.Ajouter(h, k / 25 * (0.3 + p.Transcendance), $"la mort de {Parente(h, mort)}", mort.MortEvenementId, maintenant);
+                Croyances.Ajouter(h, k / 25 * (0.3 + p.Transcendance), new Recit("cro.deuil", ("p", ParenteR(h, mort))), mort.MortEvenementId, maintenant);
                 Jardin.Pleurer(h, mort, k, maintenant);
             }
             // La perte d'un très proche peut changer durablement (Jeronimus et al., 2014).

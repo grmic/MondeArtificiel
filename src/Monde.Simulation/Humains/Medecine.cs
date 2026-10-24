@@ -116,16 +116,6 @@ public static class Medecine
     /// <summary>Sait soigner une plaie (lavage ou feuilles), assez pour le faire.</summary>
     public static bool SaitPanser(Humain h) => h.Savoirs.Exists(s => s.Effet == Effet.Pansement && s.Confiance >= 0.4);
 
-    /// <summary>Le rôle de soignant que les siens lui donnent (ou qu'il usurpe), pour l'observateur.</summary>
-    public static string? Role(Humain h)
-    {
-        var e = h.Sexe == Sexe.Femme;
-        var roles = new List<string>();
-        if (h.GuerisseurDepuis > 0) roles.Add(e ? "guérisseuse" : "guérisseur");
-        if (h.ChamanDepuis > 0) roles.Add(e ? "chamane" : "chaman");
-        if (h.CharlatanDepuis > 0) roles.Add(e ? "charlatane (prétend guérir)" : "charlatan (prétend guérir)");
-        return roles.Count == 0 ? null : string.Join(", ", roles);
-    }
 }
 
 public sealed partial class Comportement
@@ -232,10 +222,10 @@ public sealed partial class Comportement
         long id = 0;
         if (panseur.Id != blesse.Id)
         {
-            var gestes = string.Join(", ", techniques.Select(t => t == Matiere.Eau ? "la lave" : "la presse et la couvre de feuilles"));
-            id = Noter(_maintenant, TypeEvenement.Entraide, panseur, blesse,
-                $"{panseur.Nom} soigne la plaie de {blesse.Nom} : {Il(panseur)} {gestes}"
-                + (plante is null ? "." : $", et y écrase {Flore.Get(plante.Espece).Nom}."), karma: Regard.Panser);
+            var gestes = new Liste(techniques.Select(t => (object?)Recits.Recit.Seul(t == Matiere.Eau ? "med.panse.lave" : "med.panse.feuilles")).ToList(), virgules: true);
+            id = Noter(_maintenant, TypeEvenement.Entraide, panseur, blesse, plante is null
+                ? new Recit("med.panse", ("s", panseur), ("b", blesse), ("g", gestes))
+                : new Recit("med.panse.plante", ("s", panseur), ("b", blesse), ("g", gestes), ("pl", Flore.Get(plante.Espece).Dit)), karma: Regard.Panser);
             MarquerSoin(panseur, blesse);
             Medecine.Placebo(blesse, panseur, false);
             VieSociale.Gratitude(panseur, blesse, 2);
@@ -310,7 +300,7 @@ public sealed partial class Comportement
         if (remede is not null)
         {
             Noter(_maintenant, TypeEvenement.Entraide, s, h,
-                $"{s.Nom}, appelé{E(s)} au chevet de {h.Nom}, lui donne {Flore.Get(remede.Espece).Nom}, qu'{Il(s)} croit bonne contre {Physique.Mal(mal)}.",
+                new Recit("med.remede", ("s", s), ("h", h), ("pl", Flore.Get(remede.Espece).Dit), ("mal", Physique.Mal(mal))),
                 karma: Regard.Remede);
             Medecine.Placebo(h, s, false);
             PrendreRemede(h, remede.Espece, remede.Geste, mal, s.Id, tous, OrigineSavoir.Imitation);
@@ -328,11 +318,11 @@ public sealed partial class Comportement
             s.Faim -= part;
             h.Faim = Math.Min(100, h.Faim + part / 2);
             Noter(_maintenant, TypeEvenement.Medecine, s, h,
-                $"{s.Nom} pose les mains sur {h.Nom}, murmure des paroles et souffle sur son mal, puis se fait donner à manger.", karma: Regard.Tromper);
+                new Recit("med.charlatan.soin", ("s", s), ("h", h)), karma: Regard.Tromper);
         }
         else
         {
-            Noter(_maintenant, TypeEvenement.Medecine, s, h, $"{s.Nom} pose les mains sur {h.Nom} et murmure des paroles contre son mal.", karma: Regard.Remede);
+            Noter(_maintenant, TypeEvenement.Medecine, s, h, new Recit("med.mains", ("s", s), ("h", h)), karma: Regard.Remede);
         }
         Medecine.Placebo(h, s, false);
     }
@@ -345,39 +335,37 @@ public sealed partial class Comportement
     {
         var especes = Flore.Sur(carte.BiomeEn(s.X, s.Y));
         var vision = s.Savoirs.Where(x => x.Effet == Effet.Visions && especes.Any(e => e.Numero == x.Espece)).Select(x => Flore.Get(x.Espece)).FirstOrDefault();
-        string moyen;
-        if (vision is not null) moyen = $"après avoir mâché {vision.Nom}";
+        Recit moyen;
+        if (vision is not null) moyen = new Recit("med.transe.plante", ("pl", vision.Dit));
         // Le rythme sans fin et la danse jusqu'à l'épuisement mènent aussi à la transe (Neher, 1962 ; Katz, 1982, chez les San).
-        else if (Humains.Arts.Connait(s, Effet.Rythme)) moyen = "au son d'un rythme frappé sans fin";
+        else if (Humains.Arts.Connait(s, Effet.Rythme)) moyen = Recits.Recit.Seul("med.transe.rythme");
         else if (Humains.Arts.Connait(s, Effet.Danse))
         {
-            moyen = "en dansant jusqu'à l'épuisement";
+            moyen = Recits.Recit.Seul("med.transe.danse");
             s.Fatigue = Math.Min(100, s.Fatigue + 30);
         }
         else if (s.Faim >= 40)
         {
-            moyen = "après des jours de jeûne";
+            moyen = Recits.Recit.Seul("med.transe.jeune");
             s.Faim = Math.Min(100, s.Faim + 10);
         }
         else
         {
-            moyen = "après une nuit sans sommeil";
+            moyen = Recits.Recit.Seul("med.transe.veille");
             s.Fatigue = Math.Min(100, s.Fatigue + 40);
         }
         var premiere = s.ChamanDepuis == 0;
         var premiereAuMonde = premiere && tous.All(o => o.ChamanDepuis == 0);
-        var lui = h.Sexe == Sexe.Femme ? "la" : "le";
         var id = Noter(_maintenant, TypeEvenement.Medecine, s, h,
-            $"{s.Nom} entre en transe au chevet de {h.Nom}, {moyen} : {Il(s)} tremble, parle d'une voix qui n'est plus la sienne et dit chasser ce qui {lui} ronge."
-            + (premiereAuMonde ? " C'est la première transe au monde." : premiere ? $" C'est sa première transe." : ""),
+            new Recit(premiereAuMonde ? "med.transe.monde" : premiere ? "med.transe.premiere" : "med.transe", ("s", s), ("h", h), ("m", moyen)),
             significatif: premiereAuMonde, karma: Regard.Remede);
         if (premiere) s.ChamanDepuis = Math.Max(1, _maintenant);
         s.TranseLe = Math.Max(1, _maintenant);
-        Croyances.Ajouter(s, 4, "les esprits lui ont parlé en transe", id, _maintenant, signe: true);
+        Croyances.Ajouter(s, 4, Recits.Recit.Seul("cro.transe"), id, _maintenant, signe: true);
         foreach (var o in tous.Vivants())
         {
             if (o.Id == s.Id || !o.EstVivant || o.X != s.X || o.Y != s.Y || o.EstBebe(_maintenant)) continue;
-            Croyances.Ajouter(o, 3 * (0.3 + o.Personnalite.Transcendance), $"a vu {s.Nom} en transe", id, _maintenant, signe: true);
+            Croyances.Ajouter(o, 3 * (0.3 + o.Personnalite.Transcendance), new Recit("cro.transeVue", ("s", s)), id, _maintenant, signe: true);
         }
         Jardin.Confier(s, TypeIntime.Croyance, h.Id, new Recit("js.transe", ("x", h)),
             40 + 40 * s.Personnalite.Transcendance, id, _maintenant, $"transe:{h.Id}");
@@ -391,12 +379,8 @@ public sealed partial class Comportement
     internal void Maudire(Humain s, Humain t)
     {
         var f = Math.Clamp((t.Croyance - 30) / 70 * (0.5 + t.Personnalite.Nevrosisme), 0, 1);
-        var (lui, e) = t.Sexe == Sexe.Femme ? ("elle", "e") : ("lui", "");
-        var suite = f < 0.05
-            ? $" {t.Nom}, qui ne croit guère aux esprits, hausse les épaules."
-            : $" {t.Nom}, qui croit aux esprits, en est saisi{e} d'effroi.";
         // Maudire, c'est souhaiter qu'il dépérisse : presque un souhait de mort (gravité 0,7), mais déjà un acte.
-        var id = Noter(_maintenant, TypeEvenement.Medecine, s, t, $"{s.Nom} maudit {t.Nom} : {Il(s)} appelle sur {lui} les esprits et le mal.{suite}",
+        var id = Noter(_maintenant, TypeEvenement.Medecine, s, t, new Recit(f < 0.05 ? "med.maudit.hausse" : "med.maudit.effroi", ("s", s), ("t", t)),
             karma: Regard.Intention(s, t, 0.7, 0, malediction: true, _maintenant));
         Jardin.Confier(s, TypeIntime.Intention, t.Id, new Recit("js.maudire", ("x", t)), 30 + 40 * (1 - s.Personnalite.Moral.Compassion), id, _maintenant, $"maudire:{t.Id}");
         Social?.ChangerAffection(t, s, -15, _maintenant);
@@ -414,11 +398,10 @@ public sealed partial class Comportement
     private void Delivrer(Humain t, Humain? soignant, IReadOnlyList<Humain> tous)
     {
         var s = t.MauditParId >= 1 && t.MauditParId <= tous.Count ? tous[t.MauditParId - 1] : null;
-        var de = s is null ? "" : $" de {s.Nom}";
         if (soignant is null)
-            Noter(_maintenant, TypeEvenement.Medecine, t, s, $"La peur de {t.Nom} reflue : la malédiction{de} ne l'atteint plus.", t.MauditEvenementId);
+            Noter(_maintenant, TypeEvenement.Medecine, t, s, s is null ? new Recit("med.delivre", ("t", t)) : new Recit("med.delivre.de", ("t", t), ("s", s)), t.MauditEvenementId);
         else
-            Noter(_maintenant, TypeEvenement.Medecine, soignant, t, $"{soignant.Nom} chasse la malédiction{de} qui pesait sur {t.Nom}.", t.MauditEvenementId,
+            Noter(_maintenant, TypeEvenement.Medecine, soignant, t, s is null ? new Recit("med.chasse", ("x", soignant), ("t", t)) : new Recit("med.chasse.de", ("x", soignant), ("t", t), ("s", s)), t.MauditEvenementId,
                 karma: Regard.Remede);
         t.MauditLe = 0;
         t.MauditParId = 0;
@@ -560,7 +543,7 @@ public sealed partial class Comportement
             if (alea.Reel() >= chance) continue;
             h.CharlatanDepuis = Math.Max(1, maintenant);
             var id = Noter(maintenant, TypeEvenement.Medecine, h, null,
-                $"{h.Nom} se met à prétendre savoir guérir les malades, sans rien en savoir : on nourrit et l'on respecte ceux qui soignent.");
+                new Recit("med.charlatan", ("h", h)));
             Jardin.Confier(h, TypeIntime.Intention, 0, new Recit("js.charlatan", ("g", h)),
                 30 + 40 * (1 - h.Personnalite.Moral.Honnetete), id, maintenant, "charlatan");
         }
@@ -579,15 +562,13 @@ public sealed partial class Comportement
             var moyenne = membres.Average(h => h.Gueris);
             foreach (var o in membres)
             {
-                var (un, il) = o.Sexe == Sexe.Femme ? ("une guérisseuse", "elle") : ("un guérisseur", "il");
                 if (o.GuerisseurDepuis == 0 && (o.DemasqueLe == 0 || maintenant - o.DemasqueLe > 3 * Calendrier.SecondesParAn)
                     && o.Gueris >= 4 && Medecine.Taux(o) >= 0.6 && o.Gueris >= 3 * moyenne + 1)
                 {
                     var premier = tous.All(x => x.GuerisseurDepuis == 0);
                     o.GuerisseurDepuis = Math.Max(1, maintenant);
                     Noter(maintenant, TypeEvenement.Medecine, o, null,
-                        $"Les siens tiennent désormais {o.Nom} pour {un} : des malades qu'{il} a soignés, {o.Gueris} ont guéri et {o.Perdus} sont morts."
-                        + (premier ? " C'est le premier guérisseur au monde." : ""), significatif: premier);
+                        new Recit(premier ? "med.guerisseur.premier" : "med.guerisseur", ("h", o), ("g", o.Gueris), ("m", o.Perdus)), significatif: premier);
                     continue;
                 }
                 var charlatan = o.CharlatanDepuis > 0;
@@ -596,7 +577,7 @@ public sealed partial class Comportement
                 if (charlatan)
                 {
                     Noter(maintenant, TypeEvenement.Medecine, o, null,
-                        $"Les siens démasquent {o.Nom} : trop de ceux qu'{il} prétendait guérir sont morts ({o.Perdus} sur {o.Soignes}). On ne {(il == "elle" ? "la" : "le")} nourrit plus pour ses soins.");
+                        new Recit("med.demasque", ("h", o), ("m", o.Perdus), ("n", o.Soignes)));
                     foreach (var m in membres)
                         if (m.Id != o.Id) Social?.ChangerAffection(m, o, -8, maintenant);
                     Jardin.Retirer(o, "charlatan");
@@ -604,7 +585,7 @@ public sealed partial class Comportement
                 else
                 {
                     Noter(maintenant, TypeEvenement.Medecine, o, null,
-                        $"Les siens cessent de croire aux soins de {o.Nom} : {o.Perdus} de ses malades sont morts, {o.Gueris} ont guéri.");
+                        new Recit("med.desavoue", ("h", o), ("m", o.Perdus), ("g", o.Gueris)));
                 }
                 o.CharlatanDepuis = 0;
                 o.GuerisseurDepuis = 0;

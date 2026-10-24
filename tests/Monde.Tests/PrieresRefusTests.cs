@@ -56,12 +56,12 @@ public sealed class PrieresRefusTests : IDisposable
         var (monde, p) = Attendre(p => p.CommunauteId == 0);
         var texte = monde.Refuser(p.Id, signe: false);
 
-        Assert.StartsWith("Refusée en secret", texte);
+        Assert.StartsWith("Refusée en secret", texte.Texte);
         var apres = monde.Prieres().First(x => x.Id == p.Id);
         Assert.Equal((IssuePriere.EnAttente, RefusPriere.Cache), (apres.Issue, apres.Refus));
-        Assert.Equal("Tu as refusé cette prière.", monde.Exaucer(p.Id));
-        Assert.Equal("Tu as déjà refusé cette prière.", monde.Refuser(p.Id, signe: true));
-        Assert.Equal("Cette prière n'existe pas (ou plus).", monde.Refuser(-1, signe: false));
+        Assert.Equal("Tu as refusé cette prière.", monde.Exaucer(p.Id).Texte);
+        Assert.Equal("Tu as déjà refusé cette prière.", monde.Refuser(p.Id, signe: true).Texte);
+        Assert.Equal("Cette prière n'existe pas (ou plus).", monde.Refuser(-1, signe: false).Texte);
         // Passé son temps, elle se conclut sans l'Entité (pas entendue, ou arrivée d'elle-même) et reste marquée refusée.
         monde.AvancerDe((p.Jusqua - monde.Etat.Secondes) + 2 * Jour);
         var fin = monde.Prieres().FirstOrDefault(x => x.Id == p.Id);
@@ -78,12 +78,12 @@ public sealed class PrieresRefusTests : IDisposable
         var (monde, p) = Attendre(p => p.CommunauteId == 0);
         var texte = monde.Refuser(p.Id, signe: true);
 
-        Assert.StartsWith("Refusée par un signe", texte);
+        Assert.StartsWith("Refusée par un signe", texte.Texte);
         var apres = monde.Prieres().First(x => x.Id == p.Id);
         Assert.Equal((IssuePriere.Refusee, RefusPriere.Signe), (apres.Issue, apres.Refus));
         Assert.NotNull(apres.Conclusion);
         Assert.Contains(monde.Etat.JournalNonEnregistre!, e => e.Origine == Origine.Entite && e.Texte.Contains("refuse la prière"));
-        Assert.Equal("Cette prière n'attend plus de réponse.", monde.Exaucer(p.Id));
+        Assert.Equal("Cette prière n'attend plus de réponse.", monde.Exaucer(p.Id).Texte);
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public sealed class PrieresRefusTests : IDisposable
         Assert.True(p.Forte);
         Assert.Contains(monde.Etat.JournalNonEnregistre!, e => e.Id == p.EvenementId && e.Significatif && e.Texte.Contains("prie ensemble"));
         var texte = monde.Exaucer(p.Id);
-        Assert.StartsWith("Exaucée", texte);
+        Assert.StartsWith("Exaucée", texte.Texte);
         Assert.Equal(IssuePriere.ExauceeParEntite, monde.Prieres().First(x => x.Id == p.Id).Issue);
     }
 

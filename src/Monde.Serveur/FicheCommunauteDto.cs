@@ -435,7 +435,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var c = communautes[id - 1];
         var parts = membres.Where(h => h.ReligionId >= 1 && h.ReligionId <= religions.Count).GroupBy(h => h.ReligionId)
             .OrderByDescending(g => g.Count())
-            .Select(g => L.T("foi.part", ("nom", religions[g.Key - 1].Nom), ("sens", religions[g.Key - 1].Sens), ("n", g.Count()), ("pourcent", Math.Round(100.0 * g.Count() / membres.Count))))
+            .Select(g => L.T("foi.part", ("nom", religions[g.Key - 1].Nom), ("sens", L.Garde(religions[g.Key - 1].Sens)), ("n", g.Count()), ("pourcent", Math.Round(100.0 * g.Count() / membres.Count))))
             .ToList();
         var sans = membres.Count(h => h.ReligionId == 0);
         if (parts.Count > 0 && sans > 0) parts.Add(L.T("foi.sans", ("n", sans), ("pourcent", Math.Round(100.0 * sans / membres.Count))));
@@ -445,7 +445,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
                 h.Role == RoleReligieux.Prophete ? L.T($"sourceProphete.{h.SourceProphete}") : null, h.Miracles, null, true)).ToList();
         var proches = c.Active
             ? lieux.Where(l => Math.Max(Math.Abs(l.X - c.CentreX), Math.Abs(l.Y - c.CentreY)) <= c.Rayon + 5)
-                .Select(l => l.ReligionId >= 1 && l.ReligionId <= religions.Count ? L.T("foi.lieu", ("raison", l.Raison), ("religion", religions[l.ReligionId - 1].Nom)) : l.Raison).ToList()
+                .Select(l => l.ReligionId >= 1 && l.ReligionId <= religions.Count ? L.T("foi.lieu", ("raison", L.Garde(l.Raison)), ("religion", religions[l.ReligionId - 1].Nom)) : L.Garde(l.Raison)!).ToList()
             : [];
         var ids = membres.Select(h => h.Id).ToHashSet();
         var prieres = Serveur.Religions.Prieres(service, enAttente: false, limite: 1000)
@@ -460,7 +460,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             _ => L.T($"gesteEntite.{e.Geste}"),
         } + L.T("effetEntite.fin", ("date", L.Date(e.Fin)))).ToList();
         var recits = souvenirs.Where(s => s.CommunauteId == id).OrderByDescending(s => s.Le).Take(20)
-            .Select(s => new SouvenirDto(L.Date(s.Le), s.Texte, s.Bienfait, (int)Math.Round(s.Force), s.Faute switch
+            .Select(s => new SouvenirDto(L.Date(s.Le), L.Garde(s.Texte)!, s.Bienfait, (int)Math.Round(s.Force), s.Faute switch
             {
                 Gestes.FauteVol => L.T("faute.vol"),
                 Gestes.FauteMeurtre => L.T("faute.meurtre"),

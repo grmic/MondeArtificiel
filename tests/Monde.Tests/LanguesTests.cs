@@ -43,7 +43,7 @@ public sealed partial class LanguesTests
     };
 
     /// <summary>« {x} », « {^x} » (avec majuscule) ou « {x:forme|forme} » (forme choisie selon x : genre, nombre, oui/non).</summary>
-    [GeneratedRegex(@"\{\^?(\w+)(:[^{}]*)?\}")]
+    [GeneratedRegex(@"\{[\^_]?(\w+)(:[^{}]*)?\}")]
     private static partial Regex Accolade();
 
     /// <summary>
@@ -297,7 +297,6 @@ public sealed partial class LanguesTests
             Assert.Equal(Attirance.Orienter(h), Lib.Orientation(h));
             foreach (var tolerance in new[] { 0.2, 0.8 }) Assert.Equal(Attirance.Conscience(h, tolerance), Lib.Conscience(h, tolerance));
             Assert.Equal(Comportement.Metier(h), Lib.Metier(h));
-            Assert.Equal(Simulation.Humains.Medecine.Role(h), Lib.Soignant(h));
             if (!h.EstVivant) continue;
             Assert.Equal(VieSociale.Phrases(h, humains, maintenant), Lib.Raisons(h, humains, maintenant));
             foreach (var autre in humains.Where(a => a.Id != h.Id && (a.MereId == h.Id || a.PereId == h.Id || h.MereId == a.Id

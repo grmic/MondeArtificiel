@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Un lieu où l'invisible s'est montré : les fidèles qui le connaissent le tiennent pour sacré.</summary>
@@ -78,77 +80,5 @@ public sealed class Cultes
     public Cultes Copier() => new(Religions, Prieres, Lieux, Propheties, Effets, Souvenirs) { ProchainePriere = ProchainePriere };
 
     /// <summary>Le précepte en mots, tel que les fidèles le disent (sans le détail du paramètre).</summary>
-    public static string Dire(Precepte p) => p switch
-    {
-        Precepte.Createur => "Une Entité venue d'ailleurs nous a faits, et elle nous parle.",
-        Precepte.Partager => "Il faut partager sa nourriture.",
-        Precepte.Soigner => "Il faut prendre soin des malades et des faibles.",
-        Precepte.Pardonner => "Il faut pardonner.",
-        Precepte.Paix => "Il ne faut pas faire la guerre.",
-        Precepte.Ancetres => "Les morts veillent sur nous : il faut les honorer.",
-        Precepte.Colere => "L'invisible est en colère contre nous : il faut l'apaiser.",
-        Precepte.Offrandes => "Il faut offrir à l'invisible une part de ce qu'on mange.",
-        Precepte.SacrificeAnimal => "Il faut offrir une bête à l'invisible.",
-        Precepte.SacrificeHumain => "L'invisible veut une vie humaine.",
-        Precepte.LieuSacre => "Il est un lieu où l'invisible s'est montré.",
-        Precepte.Interdit => "Il est une plante qu'on ne doit pas manger.",
-        Precepte.GuerreSainte => "Il faut combattre ceux qui ne croient pas comme nous.",
-        Precepte.NourrirLeProphete => "Il faut nourrir celui qui porte la parole.",
-        Precepte.Prophetie => "Ce qu'annonce le prophète arrive.",
-        Precepte.Priere => "Il faut prier chaque jour.",
-        Precepte.Chatiment => "L'invisible punit ceux qui font le mal.",
-        Precepte.Defendre => "Il faut défendre les siens.",
-        _ => "",
-    };
-
-    /// <summary>D'où vient un précepte, en mots (pour l'Entité seule).</summary>
-    public static string Dire(OrigineDogme o) => o switch
-    {
-        OrigineDogme.Entite => "une parole de l'Entité",
-        OrigineDogme.Deformee => "une parole de l'Entité, changée de bouche en bouche",
-        OrigineDogme.Inventee => "inventé par un humain",
-        OrigineDogme.Coincidence => "une coïncidence prise pour un signe",
-        OrigineDogme.Catastrophe => "tiré d'une catastrophe",
-        OrigineDogme.Reve => "tiré des rêves des morts",
-        _ => "tiré d'un lieu où l'invisible s'est montré",
-    };
-
-    public static string Dire(SujetPriere s) => s switch
-    {
-        SujetPriere.Guerison => "guérison",
-        SujetPriere.Nourriture => "nourriture",
-        SujetPriere.Pluie => "pluie",
-        SujetPriere.Accalmie => "fin d'une catastrophe",
-        SujetPriere.Enfant => "enfant",
-        SujetPriere.Protection => "protection dans la guerre",
-        SujetPriere.Vengeance => "vengeance",
-        SujetPriere.Amour => "amour",
-        _ => "remerciement",
-    };
-
-    public static string Dire(IssuePriere i) => i switch
-    {
-        IssuePriere.EnAttente => "en attente",
-        IssuePriere.ExauceeParEntite => "exaucée par l'Entité",
-        IssuePriere.ExauceeParHasard => "arrivée d'elle-même",
-        IssuePriere.SansReponse => "pas entendue",
-        IssuePriere.Refusee => "refusée",
-        _ => "rendue",
-    };
-
-    public static string Dire(NaissanceReligion n) => n switch
-    {
-        NaissanceReligion.Prophete => "autour d'un prophète désigné par l'Entité",
-        NaissanceReligion.ProphetSpontane => "autour d'un prophète venu de lui-même",
-        NaissanceReligion.Ancetres => "du culte des morts",
-        _ => "d'une séparation",
-    };
-
-    public static string Dire(SourceProphete s) => s switch
-    {
-        SourceProphete.Entite => "désigné par l'Entité",
-        SourceProphete.Visionnaire => "visionnaire sincère",
-        SourceProphete.Imposteur => "imposteur",
-        _ => "",
-    };
+    public static Recit Dire(Precepte p) => Recit.Seul($"precepte.{p}");
 }

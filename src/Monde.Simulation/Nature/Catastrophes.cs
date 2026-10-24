@@ -569,7 +569,7 @@ public sealed partial class Catastrophes
         {
             // Ce qui terrifie et dépasse l'entendement fait chercher une main derrière le monde (Norenzayan et Hansen, 2006).
             if (h.PeurEvenementId != c.Id)
-                Croyances.Ajouter(h, Math.Min(6, gain / 15) * (0.3 + h.Personnalite.Transcendance), $"{TypesCatastrophe.Nom(c.Type)} l'a effrayé{(h.Sexe == Sexe.Femme ? "e" : "")}",
+                Croyances.Ajouter(h, Math.Min(6, gain / 15) * (0.3 + h.Personnalite.Transcendance), new Recit("cro.catastrophe", ("c", Recits.Recit.Seul($"catastropheNom.{c.Type}")), ("h", h)),
                     c.Id, maintenant);
             h.PeurEvenementId = c.Id;
             h.PeurType = c.Type;

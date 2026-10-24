@@ -94,18 +94,17 @@ public sealed partial class Comportement
             // Une prière commune se garde plus longtemps qu'une prière seule : tous attendent, et le guide y tient.
             Jusqua = maintenant + (long)(JoursDAttente(sujet) * Patience(guide, vital: true) * Calendrier.SecondesParJour),
         };
-        var groupe = Minuscule(c.Nom);
-        var objet = sujet switch
+        var objet = Recits.Recit.Seul(sujet switch
         {
-            SujetPriere.Nourriture => "que le gibier et les fruits reviennent",
-            SujetPriere.Pluie => "que la pluie revienne",
-            SujetPriere.Protection => "que la guerre finisse et que les siens soient saufs",
-            SujetPriere.Guerison => "que le mal quitte les siens",
-            SujetPriere.Accalmie => "que le malheur cesse",
-            _ => "son aide",
-        };
+            SujetPriere.Nourriture => "pric.objet.nourriture",
+            SujetPriere.Pluie => "pric.objet.pluie",
+            SujetPriere.Protection => "pric.objet.protection",
+            SujetPriere.Guerison => "pric.objet.guerison",
+            SujetPriere.Accalmie => "pric.objet.accalmie",
+            _ => "pric.objet.aide",
+        });
         priere.EvenementId = Noter(maintenant, TypeEvenement.Religion, guide, null,
-            $"La {groupe} prie ensemble {Invisible(guide)}, conduite par {guide.Nom} : {fideles.Count} des siens demandent {objet}.", significatif: true);
+            new Recit("pric.prie", ("c", c), ("qui", InvisibleDit(guide)), ("h", guide), ("n", fideles.Count), ("o", objet)), significatif: true);
         Cultes.Prieres.Add(priere);
         foreach (var o in fideles)
         {
@@ -123,7 +122,7 @@ public sealed partial class Comportement
         var membres = tous.Vivants().Where(h => h.EstVivant && h.CommunauteId == p.CommunauteId && !h.EstEnfant(maintenant)).ToList();
         if (c is not { Active: true } || membres.Count == 0)
         {
-            (p.Issue, p.IssueLe, p.Conclusion) = (IssuePriere.SansReponse, maintenant, "le groupe s'est dispersé");
+            (p.Issue, p.IssueLe, p.Conclusion) = (IssuePriere.SansReponse, maintenant, Recits.Recit.Seul("pric.fin.disperse").Encoder());
             return;
         }
         var arrive = p.Sujet switch
@@ -141,17 +140,17 @@ public sealed partial class Comportement
 
     private void ExauceEnsemble(Priere p, Communaute c, List<Humain> membres, IssuePriere issue, long maintenant, long cause = 0)
     {
-        (p.Issue, p.IssueLe, p.Conclusion) = (issue, maintenant, "la communauté croit avoir été entendue");
+        (p.Issue, p.IssueLe, p.Conclusion) = (issue, maintenant, Recits.Recit.Seul("pric.fin.entendue").Encoder());
         var guide = _tous[p.HumainId - 1];
         var id = Noter(maintenant, TypeEvenement.Religion, guide, null,
-            $"Ce que la {Minuscule(c.Nom)} demandait est arrivé : les siens croient que leur prière commune a été entendue.",
+            new Recit("pric.exauce", ("c", c)),
             p.EvenementId != 0 ? p.EvenementId : cause, significatif: true);
         var gain = issue == IssuePriere.ExauceeParEntite ? 5 + 8 * p.Ferveur : 1.5 + 3 * p.Ferveur;
         foreach (var o in membres)
         {
             if (o.Croyance < CroyancePourParticiper) continue;
-            Croyances.Ajouter(o, gain, "la prière commune a été entendue", id, maintenant, signe: true);
-            Regards.Ajouter(o, SentimentInvisible.Amour, 0.6 * gain * (0.6 + 0.8 * o.Personnalite.Agreabilite), "la prière commune a été entendue", id, maintenant, signe: true);
+            Croyances.Ajouter(o, gain, Recits.Recit.Seul("cro.communeEntendue"), id, maintenant, signe: true);
+            Regards.Ajouter(o, SentimentInvisible.Amour, 0.6 * gain * (0.6 + 0.8 * o.Personnalite.Agreabilite), Recits.Recit.Seul("cro.communeEntendue"), id, maintenant, signe: true);
         }
         if (guide.EstVivant && guide.Role == RoleReligieux.Prophete) guide.Miracles++;
     }
@@ -162,28 +161,27 @@ public sealed partial class Comportement
         var guide = _tous[p.HumainId - 1];
         var doutent = 0;
         var id = Noter(maintenant, TypeEvenement.Religion, guide, null,
-            $"La prière commune de la {Minuscule(c.Nom)} n'a pas été entendue.", p.EvenementId, significatif: true);
+            new Recit("pric.vaine", ("c", c)), p.EvenementId, significatif: true);
         foreach (var o in membres)
         {
             if (o.Croyance < CroyancePourParticiper) continue;
             // Comme pour une prière seule : le fervent se trouve une raison, le tiède doute (Festinger et al., 1956).
             if (alea.Reel() < 0.2 + 0.7 * o.Croyance / 100) continue;
             doutent++;
-            Croyances.Ajouter(o, -(1 + 4 * p.Ferveur), "la prière commune n'a pas été entendue", id, maintenant);
+            Croyances.Ajouter(o, -(1 + 4 * p.Ferveur), Recits.Recit.Seul("cro.communeVaine"), id, maintenant);
             o.Ferveur = Math.Max(0, o.Ferveur - 0.05);
         }
-        p.Conclusion = doutent == 0 ? "les siens se disent que l'invisible avait ses raisons" : $"{doutent} des siens doutent";
+        p.Conclusion = (doutent == 0 ? Recits.Recit.Seul("pric.fin.raisons") : new Recit("pric.fin.doutent", ("n", doutent))).Encoder();
     }
 
     /// <summary>L'Entité exauce une prière collective : ce qu'elle fait dépend de ce que le groupe demandait.</summary>
-    private string ExaucerEnsemble(Priere p, IReadOnlyList<Humain> tous, long maintenant)
+    private Recit ExaucerEnsemble(Priere p, IReadOnlyList<Humain> tous, long maintenant)
     {
         var c = Social is { } s && p.CommunauteId <= s.Communautes.Count ? s.Communautes[p.CommunauteId - 1] : null;
         var membres = tous.Vivants().Where(h => h.EstVivant && h.CommunauteId == p.CommunauteId).ToList();
-        if (c is not { Active: true } || membres.Count == 0) return "Cette communauté n'existe plus.";
+        if (c is not { Active: true } || membres.Count == 0) return Recits.Recit.Seul("pric.r.disparue");
         var guide = tous[p.HumainId - 1];
-        var groupe = Minuscule(c.Nom);
-        string texte;
+        Recit texte;
         switch (p.Sujet)
         {
             case SujetPriere.Nourriture:
@@ -193,24 +191,24 @@ public sealed partial class Comportement
                     ecosysteme.Plantes[i] = (ushort)Math.Min(ushort.MaxValue, ecosysteme.Plantes[i] + 2000);
                 }
                 foreach (var h in membres) h.Faim = Math.Min(h.Faim, 20);
-                texte = $"Des bêtes et des fruits en abondance sur les terres de la {groupe} : les siens mangent enfin.";
+                texte = new Recit("pric.don.manger", ("c", c));
                 break;
             case SujetPriere.Pluie:
                 ecosysteme.Pluies[(int)p.Parametre] = Math.Max(ecosysteme.Pluies[(int)p.Parametre], 1.15);
-                texte = $"La pluie tombe enfin sur les terres de la {groupe}.";
+                texte = new Recit("pric.don.pluie", ("c", c));
                 break;
             case SujetPriere.Accalmie:
-                if (Catastrophes is null || !Catastrophes.Apaiser(p.Parametre, tous as List<Humain> ?? [.. tous], maintenant)) return "Ce malheur a déjà cessé.";
-                texte = $"Le malheur cesse d'un coup, comme la {groupe} l'a demandé.";
+                if (Catastrophes is null || !Catastrophes.Apaiser(p.Parametre, tous as List<Humain> ?? [.. tous], maintenant)) return Recits.Recit.Seul("pri.r.malheurFini");
+                texte = new Recit("pric.don.accalmie", ("c", c));
                 break;
             case SujetPriere.Guerison:
                 foreach (var h in membres.Where(h => h.InfectionId != 0)) GuerirDeTout(h, maintenant);
-                texte = $"Le mal quitte d'un coup les malades de la {groupe}.";
+                texte = new Recit("pric.don.guerison", ("c", c));
                 break;
             case SujetPriere.Protection:
             {
                 var guerre = Social!.Guerres.FirstOrDefault(g => g.Id == p.Parametre);
-                if (guerre is not { Fin: null }) return "Cette guerre est déjà finie.";
+                if (guerre is not { Fin: null }) return Recits.Recit.Seul("pric.r.paix");
                 var ennemi = guerre.A == c.Id ? guerre.B : guerre.A;
                 foreach (var o in tous.Vivants())
                 {
@@ -222,32 +220,32 @@ public sealed partial class Comportement
                     }
                     else if (o.CommunauteId == ennemi) o.Peur = Math.Min(100, o.Peur + 40);
                 }
-                texte = $"Une force invisible garde la {groupe}, et l'ennemi est saisi de crainte.";
+                texte = new Recit("pric.don.protection", ("c", c));
                 break;
             }
             default:
-                return "Cette prière ne demande rien que l'Entité puisse accomplir.";
+                return Recits.Recit.Seul("pric.r.rien");
         }
-        var id = NoterEntite(maintenant, TypeEvenement.Religion, guide, null, $"L'Entité exauce la prière commune de la {groupe}. {texte}", p.EvenementId, significatif: true);
+        var id = NoterEntite(maintenant, TypeEvenement.Religion, guide, null, new Recit("pric.exaucee", ("c", c), ("t", texte)), p.EvenementId, significatif: true);
         ExauceEnsemble(p, c, membres.Where(h => !h.EstEnfant(maintenant)).ToList(), IssuePriere.ExauceeParEntite, maintenant, id);
-        return $"Exaucée : {texte}";
+        return new Recit("pri.r.exaucee", ("t", texte));
     }
 
     /// <summary>
     /// L'Entité refuse une prière en attente, en secret ou par un signe. Renvoie, en mots, ce qui s'est passé, ou pourquoi
     /// elle ne peut être refusée.
     /// </summary>
-    public string Refuser(int priereId, bool signe, IReadOnlyList<Humain> tous, long maintenant)
+    public Recit Refuser(int priereId, bool signe, IReadOnlyList<Humain> tous, long maintenant)
     {
         _maintenant = maintenant;
         _tous = tous;
-        if (Cultes?.Priere(priereId) is not { } p) return "Cette prière n'existe pas (ou plus).";
-        if (p.Issue != IssuePriere.EnAttente) return "Cette prière n'attend plus de réponse.";
-        if (p.Refus != RefusPriere.Aucun) return "Tu as déjà refusé cette prière.";
+        if (Cultes?.Priere(priereId) is not { } p) return Recits.Recit.Seul("pri.r.inconnue");
+        if (p.Issue != IssuePriere.EnAttente) return Recits.Recit.Seul("pri.r.close");
+        if (p.Refus != RefusPriere.Aucun) return Recits.Recit.Seul("pri.r.dejaRefusee");
         if (!signe)
         {
             p.Refus = RefusPriere.Cache;
-            return "Refusée en secret : rien ne change pour ceux qui prient ; ils attendront, puis concluront que rien n'est venu.";
+            return Recits.Recit.Seul("pri.r.secret");
         }
         p.Refus = RefusPriere.Signe;
         (p.Issue, p.IssueLe) = (IssuePriere.Refusee, maintenant);
@@ -258,18 +256,18 @@ public sealed partial class Comportement
         {
             var c = Social!.Communautes[p.CommunauteId - 1];
             var id = NoterEntite(maintenant, TypeEvenement.Religion, guide, null,
-                $"L'Entité refuse la prière commune de la {Minuscule(c.Nom)} : la même nuit, tous rêvent qu'on leur dit non.", p.EvenementId, significatif: true);
+                new Recit("pric.refus", ("c", c)), p.EvenementId, significatif: true);
             var membres = tous.Vivants().Where(h => h.EstVivant && h.CommunauteId == p.CommunauteId && !h.EstEnfant(maintenant)).ToList();
             var revoltes = membres.Count(o => o.Croyance >= CroyancePourParticiper && !SIncliner(o, p, id, maintenant));
-            p.Conclusion = revoltes == 0 ? "les siens s'inclinent" : $"{revoltes} des siens s'aigrissent";
-            return $"Refusée par un signe : les membres de la {Minuscule(c.Nom)} l'ont tous rêvé.";
+            p.Conclusion = (revoltes == 0 ? Recits.Recit.Seul("pric.fin.inclinent") : new Recit("pric.fin.aigrissent", ("n", revoltes))).Encoder();
+            return new Recit("pric.r.signe", ("c", c));
         }
-        var maniere = guide.Croyance >= 50 ? "une voix" : "un rêve";
-        var evt = NoterEntite(maintenant, TypeEvenement.Religion, guide, x, $"L'Entité refuse la prière de {guide.Nom} : {maniere} lui fait comprendre que ce sera non.",
+        var maniere = Gestes.NomManiere(guide.Croyance >= 50 ? ManiereGeste.Voix : ManiereGeste.Reve);
+        var evt = NoterEntite(maintenant, TypeEvenement.Religion, guide, x, new Recit("pri.refus", ("h", guide), ("m", maniere)),
             p.EvenementId, significatif: p.Forte);
         var incline = SIncliner(guide, p, evt, maintenant);
-        p.Conclusion = incline ? $"{Il(guide)} s'incline" : $"{Il(guide)} s'aigrit";
-        return $"Refusée par un signe : {guide.Nom} {(incline ? "s'incline" : "s'aigrit")}.";
+        p.Conclusion = new Recit(incline ? "pri.fin.incline" : "pri.fin.aigrit", ("h", guide)).Encoder();
+        return new Recit(incline ? "pri.r.incline" : "pri.r.aigrit", ("h", guide));
     }
 
     /// <summary>
@@ -279,18 +277,18 @@ public sealed partial class Comportement
     /// </summary>
     private bool SIncliner(Humain h, Priere p, long cause, long maintenant)
     {
-        Croyances.Ajouter(h, 3, "l'invisible lui a fait savoir son refus", cause, maintenant, signe: true);
+        Croyances.Ajouter(h, 3, Recits.Recit.Seul("cro.refus"), cause, maintenant, signe: true);
         var pe = h.Personnalite;
         var incline = alea.Reel() < (0.2 + 0.6 * h.Croyance / 100) * (0.6 + 0.6 * pe.Agreabilite) * (1.2 - 0.4 * pe.Nevrosisme);
         var enjeu = p.Forte ? 1.5 : 1;
         if (incline)
         {
-            Regards.Ajouter(h, SentimentInvisible.Crainte, 6 * enjeu, "l'invisible a dit non", cause, maintenant, signe: true);
+            Regards.Ajouter(h, SentimentInvisible.Crainte, 6 * enjeu, Recits.Recit.Seul("reg.non"), cause, maintenant, signe: true);
             Confier(h, TypeIntime.Croyance, 0, Recits.Recit.Seul("js.refus.croyance"), 30 + 30 * p.Ferveur, cause, maintenant, "croyance:refus");
         }
         else
         {
-            Regards.Ajouter(h, SentimentInvisible.Revolte, 10 * enjeu * (0.5 + pe.Nevrosisme), "l'invisible a dit non", cause, maintenant, signe: true);
+            Regards.Ajouter(h, SentimentInvisible.Revolte, 10 * enjeu * (0.5 + pe.Nevrosisme), Recits.Recit.Seul("reg.non"), cause, maintenant, signe: true);
             Confier(h, TypeIntime.Question, 0, Recits.Recit.Seul("js.refus.question"), 30 + 40 * p.Ferveur, cause, maintenant, "question:refus");
         }
         if (p.Sujet == SujetPriere.Vengeance)

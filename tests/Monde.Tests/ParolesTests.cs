@@ -63,7 +63,7 @@ public sealed class ParolesTests
         List<Humain> tous = [h, f];
         var avant = Attirance.Desir(h, f, IdealBeaute.ParDefaut, Maintenant);
         var texte = c.Inspirer(h, f, passion: true, orientation: false, tous, Maintenant);
-        Assert.Contains("passion", texte);
+        Assert.Contains("passion", texte.Texte);
         Assert.True(Attirance.Desir(h, f, IdealBeaute.ParDefaut, Maintenant) > avant + 0.1 || Attirance.Desir(h, f, IdealBeaute.ParDefaut, Maintenant) >= 0.99);
         Assert.Contains(c.Journal, e => e.Origine == Origine.Entite && e.Texte.Contains("passion pour H2"));
         Assert.Contains(h.Memoire.Jardin, x => x.Type == TypeIntime.Amour && x.SujetId == 2);

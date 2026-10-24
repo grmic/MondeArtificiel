@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Un mot que connaît un humain : l'idée, sa forme (sons ou signe), sa force dans sa mémoire, et qui l'a inventé.</summary>
@@ -153,6 +155,15 @@ public static class Idees
     public static string Savoir(Effet e) => $"savoir:{(int)e}";
     public static string Plante(int espece) => $"plante:{espece}";
 
+    /// <summary>L'idée, à écrire dans la langue de l'observateur (un récit, ou le mot tel quel s'il est inconnu).</summary>
+    public static object Dit(string idee, Flore? flore = null)
+    {
+        if (Libelles.ContainsKey(idee)) return Recits.Recit.Seul($"idee.{idee}");
+        if (idee.StartsWith("savoir:", StringComparison.Ordinal) && int.TryParse(idee[7..], out var e)) return Physique.NomEffet((Effet)e);
+        if (idee.StartsWith("plante:", StringComparison.Ordinal) && int.TryParse(idee[7..], out var p) && flore is not null) return flore.Get(p).Dit;
+        return idee;
+    }
+
     /// <summary>L'idée en français.</summary>
     public static string Libelle(string idee, Flore? flore = null)
     {
@@ -272,6 +283,18 @@ public static class Langues
 
     /// <summary>Le mot tel que l'observateur le lit : « kasha », ou [signe : …].</summary>
     public static string Dire(string forme, bool signe) => signe ? $"[signe : {DireSigne(forme)}]" : forme;
+
+    /// <summary>Le mot à écrire dans la langue de l'observateur : la forme inventée, ou la description du signe (clés <c>signe.*</c>).</summary>
+    public static object Dit(string forme, bool signe)
+    {
+        if (!signe) return forme;
+        var p = forme.Split('.');
+        return p.Length == 3 && int.TryParse(p[0], out var m) && int.TryParse(p[1], out var v) && int.TryParse(p[2], out var l)
+               && m >= 0 && m < Mains.Length && v >= 0 && v < Mouvements.Length && l >= 0 && l < Lieux.Length
+            ? new Recit("langue.signe", ("signe", new Recit("langue.signeDecrit", ("main", Recit.Seul($"signe.main.{m}")),
+                ("mouvement", Recit.Seul($"signe.mouvement.{v}")), ("lieu", Recit.Seul($"signe.lieu.{l}")))))
+            : new Recit("langue.signe", ("signe", forme));
+    }
 
     /// <summary>Un enfant qui apprend le mot le dit un peu autrement : un son changé (ou un trait du signe).</summary>
     public static string Deformer(string forme, bool signe, Sons sons, Alea alea)
@@ -487,7 +510,7 @@ public sealed partial class VieSociale
             if (tous.All(o => o.Id == s.Id || o.StadeParole < 2))
             {
                 Noter(maintenant, TypeEvenement.Langage, s, l,
-                    $"Première fois au monde : {s.Nom} dit deux mots d'un coup à {l.Nom}, et {l.Nom} comprend. On ne parle plus seulement par mots isolés.",
+                    new Recit("lang.deuxMots", ("s", s), ("l", l)),
                     significatif: true);
             }
         }
@@ -499,8 +522,7 @@ public sealed partial class VieSociale
             if (tous.All(o => o.Id == s.Id || o.StadeParole < 3))
             {
                 Noter(maintenant, TypeEvenement.Langage, s, null,
-                    $"Première fois au monde : {s.Nom}, encore enfant, met toujours les mots dans le même ordre : {Langues.DireOrdre(s.Ordre)}. "
-                    + "Une grammaire naît.", significatif: true);
+                    new Recit("lang.grammaire", ("s", s), ("o", Recits.Recit.Seul($"ordreMots.{s.Ordre}"))), significatif: true);
             }
         }
         var ageL = Age(l, maintenant);
@@ -561,12 +583,12 @@ public sealed partial class VieSociale
         var pris = humains.Vivants().Where(o => o.EstVivant && o.CommunauteId == c.Id && o.NomLangue is not null).Select(o => o.NomLangue!).ToHashSet(StringComparer.OrdinalIgnoreCase);
         while (pris.Contains(nom)) nom += Langues.Forger(sons, alea, 1);
         nom = char.ToUpperInvariant(nom[0]) + nom[1..];
-        var sens = Idees.Libelle(idee, Flore);
+        var sens = Idees.Dit(idee, Flore);
         var texte = parrain.Id == h.MereId
-            ? $"{parrain.Nom} appelle {(bebe ? "son enfant" : $"{(h.Sexe == Sexe.Femme ? "sa fille" : "son fils")}")} {h.Nom} « {nom} », qui veut dire « {sens} »."
-            : $"{parrain.Nom} donne un nom à {h.Nom} dans la langue de la {Minuscule(c.Nom)} : « {nom} », qui veut dire « {sens} ».";
+            ? new Recit(bebe ? "lang.nom.bebe" : "lang.nom.enfant", ("p", parrain), ("h", h), ("nom", nom), ("sens", sens))
+            : new Recit("lang.nom", ("p", parrain), ("h", h), ("c", c), ("nom", nom), ("sens", sens));
         var id = Noter(maintenant, TypeEvenement.Langage, parrain, h, texte);
-        (h.NomLangue, h.NomSens, h.NomLangueLe, h.NomParId, h.NomEvenementId) = (nom, sens, maintenant, parrain.Id, id);
+        (h.NomLangue, h.NomSens, h.NomLangueLe, h.NomParId, h.NomEvenementId) = (nom, sens is Recit r ? r.Encoder() : (string)sens, maintenant, parrain.Id, id);
     }
 
     /// <summary>
@@ -658,7 +680,7 @@ public sealed partial class VieSociale
                 // Noté une fois par personne et par langue, même s'il la perd de vue puis la retrouve.
                 if (!_bilinguesNotes.Add((h.Id, autre))) break;
                 Noter(maintenant, TypeEvenement.Langage, h, null,
-                    $"{h.Nom} parle aussi la langue de la {Minuscule(c.Nom)} : {(h.Sexe == Sexe.Femme ? "elle" : "il")} peut servir d'interprète entre les siens et eux.",
+                    new Recit("lang.interprete", ("h", h), ("c", c)),
                     communaute: h.CommunauteId, autreCommunaute: c.Id);
                 break;
             }
@@ -684,7 +706,7 @@ public sealed partial class VieSociale
         if (mere is null) return;
         var cible = groupe.Find(h => h.Id == c.FigureId) ?? groupe[0];
         Noter(maintenant, TypeEvenement.Langage, cible, null,
-            $"Le parler de la {Minuscule(c.Nom)} s'est tant éloigné de celui de la {Minuscule(mere.Nom)} qu'on ne se comprend plus : c'est désormais une langue à part.",
+            new Recit("lang.separee", ("c", c), ("m", mere)),
             communaute: c.Id, autreCommunaute: mere.Id);
     }
 
@@ -768,8 +790,7 @@ public sealed partial class VieSociale
             var premier = c.HistoireLangue.First(x => x.Type == ChangementMot.Adopte && x.AuteurId > 0);
             var mondial = courantsAvant == 0 && communautes.All(o => o.Id == c.Id || o.ParoleLe == 0);
             Noter(maintenant, TypeEvenement.Langage, cible, null,
-                (mondial ? "Première fois au monde : des humains ont un mot pour une chose de tous les jours. " : "")
-                + $"La {Minuscule(c.Nom)} a son premier mot en usage : « {Langues.Dire(premier.Forme, premier.Signe)} », qui veut dire « {Idees.Libelle(premier.Idee, Flore)} ».",
+                new Recit(mondial ? "lang.premierMot.monde" : "lang.premierMot", ("c", c), ("dit", Langues.Dit(premier.Forme, premier.Signe)), ("sens", Idees.Dit(premier.Idee, Flore))),
                 premier.EvenementId, communaute: c.Id, significatif: mondial);
         }
         foreach (var palier in new[] { 10, 25, 50, 100, 200 })
@@ -778,7 +799,7 @@ public sealed partial class VieSociale
             if (c.PalierMots < palier && apres >= palier)
             {
                 c.PalierMots = palier;
-                Noter(maintenant, TypeEvenement.Langage, cible, null, $"La langue de la {Minuscule(c.Nom)} compte désormais {palier} mots.", communaute: c.Id);
+                Noter(maintenant, TypeEvenement.Langage, cible, null, new Recit("lang.palier", ("c", c), ("n", palier)), communaute: c.Id);
             }
         }
     }
@@ -792,17 +813,17 @@ public sealed partial class VieSociale
     private void Historiser(Communaute c, string idee, string forme, string? ancienne, bool signe, int auteur, ChangementMot type, int source, long maintenant,
         List<Humain> groupe)
     {
-        var sens = Idees.Libelle(idee, Flore);
-        var dit = Langues.Dire(forme, signe);
+        var sens = Idees.Dit(idee, Flore);
+        var dit = Langues.Dit(forme, signe);
         var qui = auteur > 0 && groupe.Find(h => h.Id == auteur) is { } a ? a : groupe.Find(h => h.Id == c.FigureId) ?? groupe[0];
-        var nom = $"Les membres de la {Minuscule(c.Nom)}";
         var texte = type switch
         {
-            ChangementMot.Adopte => $"{nom} disent désormais « {dit} » pour « {sens} »" + (auteur > 0 && qui.Id == auteur ? $", un mot de {qui.Nom}." : "."),
-            ChangementMot.Deforme => $"{nom} ne disent plus « {Langues.Dire(ancienne!, signe)} » mais « {dit} » pour « {sens} » : le mot a changé dans la bouche des enfants.",
-            ChangementMot.Emprunte when source > 0 && Communautes.Count >= source => $"{nom} ont pris à la {Minuscule(Communautes[source - 1].Nom)} son mot pour « {sens} » : « {dit} ».",
-            ChangementMot.Oublie => $"{nom} n'ont plus de mot pour « {sens} » : « {dit} » est oublié.",
-            _ => $"{nom} disent désormais « {dit} » pour « {sens} », à la place de « {Langues.Dire(ancienne!, signe)} ».",
+            ChangementMot.Adopte when auteur > 0 && qui.Id == auteur => new Recit("lang.mot.de", ("c", c), ("dit", dit), ("sens", sens), ("h", qui)),
+            ChangementMot.Adopte => new Recit("lang.mot", ("c", c), ("dit", dit), ("sens", sens)),
+            ChangementMot.Deforme => new Recit("lang.mot.deforme", ("c", c), ("avant", Langues.Dit(ancienne!, signe)), ("dit", dit), ("sens", sens)),
+            ChangementMot.Emprunte when source > 0 && Communautes.Count >= source => new Recit("lang.mot.emprunte", ("c", c), ("autre", Communautes[source - 1]), ("sens", sens), ("dit", dit)),
+            ChangementMot.Oublie => new Recit("lang.mot.oublie", ("c", c), ("sens", sens), ("dit", dit)),
+            _ => new Recit("lang.mot.remplace", ("c", c), ("dit", dit), ("sens", sens), ("avant", Langues.Dit(ancienne!, signe))),
         };
         var id = Noter(maintenant, TypeEvenement.Mots, qui, null, texte, communaute: c.Id);
         c.HistoireLangue.Add(new HistoireMot(idee, forme, ancienne, signe, maintenant, auteur, type, source, id));
@@ -823,14 +844,14 @@ public sealed partial class VieSociale
         if (stade >= 2 && c.CombinaisonLe == 0)
         {
             c.CombinaisonLe = maintenant;
-            Noter(maintenant, TypeEvenement.Langage, cible, null, $"Dans la {Minuscule(c.Nom)}, on assemble désormais les mots deux à deux pour dire davantage.",
+            Noter(maintenant, TypeEvenement.Langage, cible, null, new Recit("lang.combinaison", ("c", c)),
                 communaute: c.Id);
         }
         if (stade >= 3 && c.OrdreLe == 0)
         {
             c.OrdreLe = maintenant;
             Noter(maintenant, TypeEvenement.Langage, cible, null,
-                $"La langue de la {Minuscule(c.Nom)} a désormais un ordre des mots, fixé par ses enfants : {Langues.DireOrdre(ordre)}.", communaute: c.Id);
+                new Recit("lang.ordre", ("c", c), ("o", Recits.Recit.Seul($"ordreMots.{ordre}"))), communaute: c.Id);
         }
         c.Stade = (byte)stade;
         c.Ordre = stade >= 3 ? ordre : OrdreMots.Aucun;

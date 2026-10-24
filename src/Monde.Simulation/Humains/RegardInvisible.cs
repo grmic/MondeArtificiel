@@ -58,7 +58,7 @@ public static class Regards
     /// Fait bouger un sentiment de <paramref name="h"/> envers l'invisible. Une hausse compte moins quand il est déjà fort.
     /// Renvoie le changement réel.
     /// </summary>
-    public static double Ajouter(Humain h, SentimentInvisible s, double delta, string raison, long cause, long maintenant, bool signe = false)
+    public static double Ajouter(Humain h, SentimentInvisible s, double delta, Recit raison, long cause, long maintenant, bool signe = false)
     {
         if (Tour.Autrui(h))
         {
@@ -78,7 +78,7 @@ public static class Regards
     }
 
     /// <summary>Garde ce qui a le plus fait bouger le regard, pour le dire quand il change d'une dizaine.</summary>
-    private static void Retenir(Humain h, double d, string raison, long cause)
+    private static void Retenir(Humain h, double d, Recit raison, long cause)
     {
         if (Math.Abs(d) > h.RegardPoussee) (h.RegardPoussee, h.RegardRaison, h.RegardCause) = (Math.Abs(d), raison, cause);
     }
@@ -130,8 +130,8 @@ public static class Regards
             var dc = (crainte / poids - c) * f;
             a += da;
             c += dc;
-            Retenir(h, da, da > 0 ? "les siens aiment l'invisible" : "les siens n'aiment guère l'invisible", 0);
-            Retenir(h, dc, dc > 0 ? "les siens craignent l'invisible" : "les siens ne craignent guère l'invisible", 0);
+            Retenir(h, da, Recit.Seul(da > 0 ? "reg.siensAiment" : "reg.siensAimentGuere"), 0);
+            Retenir(h, dc, Recit.Seul(dc > 0 ? "reg.siensCraignent" : "reg.siensCraignentGuere"), 0);
         }
         if (maintenant - h.RegardSigneLe > Calendrier.SecondesParAn)
         {
@@ -141,7 +141,7 @@ public static class Regards
             var dc = -c * (1 - Math.Pow(0.5, 1 / (360 * 3 * t * (0.6 + 0.8 * p.Nevrosisme))));
             a += da;
             c += dc;
-            Retenir(h, Math.Min(da, dc), "aucun signe de l'invisible depuis longtemps", 0);
+            Retenir(h, Math.Min(da, dc), Recit.Seul("cro.aucunSigne"), 0);
         }
         h.Amour = Math.Clamp(a, 0, 100);
         h.Crainte = Math.Clamp(c, 0, 100);
@@ -151,13 +151,13 @@ public static class Regards
             var demiVie = 180 * Math.Exp(1.5 * (p.Nevrosisme - 0.5) - 2 * (p.Agreabilite - 0.5));
             var dr = -h.Revolte * (1 - Math.Pow(0.5, 1 / demiVie));
             h.Revolte = Math.Max(0, h.Revolte + dr);
-            Retenir(h, dr, "sa colère contre l'invisible s'apaise", 0);
+            Retenir(h, dr, Recit.Seul("reg.apaise"), 0);
             if (h.Revolte < 0.5) h.Revolte = 0;
         }
     }
 
     /// <summary>Textes des changements d'une dizaine (amour, crainte, révolte), ou rien.</summary>
-    internal static IEnumerable<(SentimentInvisible Sentiment, string Texte)> Changements(Humain h)
+    internal static IEnumerable<(SentimentInvisible Sentiment, Recit Texte)> Changements(Humain h)
     {
         foreach (var s in new[] { SentimentInvisible.Amour, SentimentInvisible.Crainte, SentimentInvisible.Revolte })
         {
@@ -171,14 +171,14 @@ public static class Regards
             if (Math.Floor(note / 10) == Math.Floor(apres / 10) || Math.Abs(apres - note) < 3) continue;
             var monte = apres > note;
             var n = (int)Math.Round(apres);
-            var raison = h.RegardRaison is { } r ? " : " + r : "";
-            var texte = s switch
+            var (cle, cleRaison) = s switch
             {
-                SentimentInvisible.Amour => monte ? $"{h.Nom} aime davantage l'invisible ({n}/100){raison}." : $"{h.Nom} aime moins l'invisible ({n}/100){raison}.",
-                SentimentInvisible.Crainte => monte ? $"{h.Nom} craint davantage l'invisible ({n}/100){raison}." : $"{h.Nom} craint moins l'invisible ({n}/100){raison}.",
-                _ when monte && apres >= 50 && note < 50 => $"{h.Nom} se révolte contre l'invisible et le maudit ({n}/100){raison}.",
-                _ => monte ? $"{h.Nom} en veut davantage à l'invisible ({n}/100){raison}." : $"{h.Nom} en veut moins à l'invisible ({n}/100){raison}.",
+                SentimentInvisible.Amour => monte ? ("reg.aimePlus", "reg.aimePlus.r") : ("reg.aimeMoins", "reg.aimeMoins.r"),
+                SentimentInvisible.Crainte => monte ? ("reg.craintPlus", "reg.craintPlus.r") : ("reg.craintMoins", "reg.craintMoins.r"),
+                _ when monte && apres >= 50 && note < 50 => ("reg.revolte", "reg.revolte.r"),
+                _ => monte ? ("reg.enVeutPlus", "reg.enVeutPlus.r") : ("reg.enVeutMoins", "reg.enVeutMoins.r"),
             };
+            var texte = h.RegardRaison is { } r ? new Recit(cleRaison, ("h", h), ("n", n), ("r", r)) : new Recit(cle, ("h", h), ("n", n));
             Noter(h, s, apres);
             yield return (s, texte);
         }
@@ -260,7 +260,7 @@ public sealed partial class Comportement
         }
         var (faute, culpabilite) = bienfait ? (Gestes.FauteAucune, 0.0) : cible is not null ? (FauteDe(cible, tous), 0.0) : Culpabilite(communaute, tous, maintenant);
         var reputation = cible is null || bienfait ? 0 : Reputation(cible, tous, maintenant);
-        var nom = cible?.Nom ?? (Social?.Communautes.FirstOrDefault(c => c.Id == communaute)?.Nom is { } n ? "la " + Minuscule(n) : "les siens");
+        object nom = cible ?? (object?)Social?.Communautes.FirstOrDefault(c => c.Id == communaute) ?? Recit.Seul("reg.lesSiens");
         // Un bienfait fait à un fidèle, ou à une communauté qui suit une religion, la fait suivre de ceux qui l'ont vu.
         var (porteuse, par) = bienfait ? Porteuse(cible, communaute, tous, maintenant) : (null, null);
         int merite = 0, injuste = 0;
@@ -277,19 +277,17 @@ public sealed partial class Comportement
         // Ce qu'on en dit, au journal.
         var porteur = cible ?? vecu[0].Qui;
         var vus = vecu.Count(v => v.Qui.Id != cible?.Id);
-        var jugement = bienfait ? "on y voit un bienfait de l'invisible"
-            : merite >= injuste ? "la plupart y voient un châtiment mérité"
-            : "la plupart le trouvent injuste";
+        var jugement = Recit.Seul(bienfait ? "reg.jugement.bienfait" : merite >= injuste ? "reg.jugement.merite" : "reg.jugement.injuste");
         Noter(maintenant, TypeEvenement.Croyance, porteur, cible is null ? null : porteur,
-            $"{Majuscule(Gestes.NomManiere(maniere))} : {vus} témoin{(vus > 1 ? "s" : "")}, {touches.Count} à le savoir ; {jugement}.", annonce);
+            new Recit("reg.temoins", ("m", Gestes.NomManiere(maniere)), ("n", vus), ("savent", touches.Count), ("j", jugement)), annonce);
         if (communaute != 0 && Cultes is { } cultes)
         {
             var texte = (geste, cible) switch
             {
-                (_, { } x) => $"{Gestes.Nom(geste)} : {x.Nom}, avec {Gestes.NomManiere(maniere)}",
-                _ => $"{Gestes.Nom(geste)} sur les siens, avec {Gestes.NomManiere(maniere)}",
+                (_, { } x) => new Recit("reg.souvenir", ("g", Gestes.Nom(geste)), ("x", x), ("m", Gestes.NomManiere(maniere))),
+                _ => new Recit("reg.souvenir.siens", ("g", Gestes.Nom(geste)), ("m", Gestes.NomManiere(maniere))),
             };
-            cultes.Souvenirs.Add(new SouvenirEntite(communaute, texte, maintenant, bienfait, Math.Round(60 * ampleur, 1), annonce, faute));
+            cultes.Souvenirs.Add(new SouvenirEntite(communaute, texte.Encoder(), maintenant, bienfait, Math.Round(60 * ampleur, 1), annonce, faute));
         }
     }
 
@@ -401,37 +399,37 @@ public sealed partial class Comportement
     /// Ce que <paramref name="o"/> ressent de ce qu'il a vu ou appris (force <paramref name="a"/>, 0 à 1) : sa croyance monte (même
     /// l'incrédule, un peu, devant un signe), puis amour, crainte ou révolte selon le jugement <paramref name="m"/> et son caractère.
     /// </summary>
-    private void Ressentir(Humain o, GesteEntite geste, ManiereGeste maniere, Humain? cible, string nom, bool bienfait, double m, double a, bool direct,
+    private void Ressentir(Humain o, GesteEntite geste, ManiereGeste maniere, Humain? cible, object nom, bool bienfait, double m, double a, bool direct,
         long cause, long maintenant)
     {
         var p = o.Personnalite;
         var autorite = p.Moral.Fondements.Autorite;
         var soi = cible?.Id == o.Id;
         var proche = cible is not null && !soi && (Famille(o, cible) || o.AffectionPour(cible.Id) >= 40);
-        var vu = direct ? $"{Il(o)} a vu {Gestes.NomManiere(maniere)}" : "on lui a raconté le prodige";
+        var vu = direct ? new Recit("cro.aVu", ("h", o), ("m", Gestes.NomManiere(maniere))) : Recit.Seul("cro.raconte");
         Croyances.Ajouter(o, (direct ? 10 : 4) * a, vu, cause, maintenant, signe: direct);
         // Le sentiment suit la croyance : qui n'y croit guère ne ressent qu'à moitié.
         a *= 0.4 + 0.6 * o.Croyance / 100;
         if (bienfait)
         {
-            Regards.Ajouter(o, SentimentInvisible.Amour, 15 * a * (0.6 + 0.8 * p.Agreabilite), soi ? "l'invisible l'a béni" : $"l'invisible a béni {nom}", cause, maintenant, direct);
+            Regards.Ajouter(o, SentimentInvisible.Amour, 15 * a * (0.6 + 0.8 * p.Agreabilite), soi ? new Recit("reg.beniSoi", ("h", o)) : new Recit("reg.beni", ("x", nom)), cause, maintenant, direct);
             if (direct && a >= 0.4) Confier(o, TypeIntime.Croyance, cible?.Id ?? 0, Recits.Recit.Seul(soi ? "js.regard.bienfait.soi" : "js.regard.bienfait"), 30 + 40 * a, cause, maintenant, "regard:bienfait");
             return;
         }
         if (m >= 0)
         {
             Regards.Ajouter(o, SentimentInvisible.Crainte, 15 * a * (0.4 + 0.6 * m) * (0.6 + 0.5 * p.Nevrosisme + 0.5 * autorite),
-                soi ? "l'invisible l'a puni" : $"l'invisible a puni {nom}", cause, maintenant, direct);
+                soi ? new Recit("reg.puniSoi", ("h", o)) : new Recit("reg.puni", ("x", nom)), cause, maintenant, direct);
             if (direct && a >= 0.4)
                 Confier(o, TypeIntime.Peur, cible?.Id ?? 0, Recits.Recit.Seul(soi ? "js.regard.chatiment.soi" : "js.regard.chatiment"),
                     30 + 40 * a, cause, maintenant, "regard:chatiment");
             return;
         }
         var injuste = -m;
-        Regards.Ajouter(o, SentimentInvisible.Crainte, 8 * a * (0.6 + 0.8 * p.Nevrosisme), $"l'invisible a frappé {nom}", cause, maintenant, direct);
-        Regards.Ajouter(o, SentimentInvisible.Amour, -15 * a * injuste * (1.3 - 0.6 * autorite), $"l'invisible a frappé {nom} sans raison", cause, maintenant);
+        Regards.Ajouter(o, SentimentInvisible.Crainte, 8 * a * (0.6 + 0.8 * p.Nevrosisme), new Recit("reg.frappe", ("x", nom)), cause, maintenant, direct);
+        Regards.Ajouter(o, SentimentInvisible.Amour, -15 * a * injuste * (1.3 - 0.6 * autorite), new Recit("reg.frappeInjuste", ("x", nom)), cause, maintenant);
         var revolte = 20 * a * injuste * Math.Max(0.1, 1.6 - p.Agreabilite - 0.6 * autorite) * (proche || soi ? 1.5 : 1);
-        Regards.Ajouter(o, SentimentInvisible.Revolte, revolte, $"l'invisible a frappé {nom} sans raison", cause, maintenant);
+        Regards.Ajouter(o, SentimentInvisible.Revolte, revolte, new Recit("reg.frappeInjuste", ("x", nom)), cause, maintenant);
         if (direct && a >= 0.4 || proche)
             Confier(o, TypeIntime.Question, cible?.Id ?? 0, cible is null || soi
                 ? Recits.Recit.Seul("js.regard.injuste.nous")

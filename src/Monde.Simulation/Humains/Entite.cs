@@ -27,15 +27,15 @@ public sealed partial class Comportement
     /// L'Entité fait comprendre une parole à <paramref name="h"/>. <paramref name="ensemble"/> : d'autres reçoivent la même au
     /// même moment (ils pourront en parler, et y croient plus). Renvoie, en mots, ce qu'il en a fait.
     /// </summary>
-    public string Parler(Humain h, Parole parole, ModeParole mode, Humain? cible, int param, IReadOnlyList<Humain> tous, long maintenant,
+    public Recit Parler(Humain h, Parole parole, ModeParole mode, Humain? cible, int param, IReadOnlyList<Humain> tous, long maintenant,
         bool ensemble = false)
     {
         _maintenant = maintenant;
-        if (!h.EstVivant) return $"{h.Nom} est mort{E(h)}.";
-        if (h.EstBebe(maintenant)) return $"{h.Nom} est un bébé : rien ne lui parvient.";
+        if (!h.EstVivant) return new Recit("ent.r.mort", ("h", h));
+        if (h.EstBebe(maintenant)) return new Recit("ent.r.bebe", ("h", h));
         var p = h.Personnalite;
         var extra = Extra(parole, param);
-        var phrase = Paroles.Phrase(parole, cible?.Nom, extra, h.Sexe == Sexe.Femme);
+        var phrase = Paroles.Phrase(parole, cible, extra, h.Sexe == Sexe.Femme);
         var reception = Recevoir(h, mode, phrase, tous, maintenant, ensemble);
 
         // Comprendre.
@@ -43,15 +43,15 @@ public sealed partial class Comportement
         {
             var texte = mode switch
             {
-                ModeParole.Reve => $"Au réveil, {h.Nom} ne garde de ce rêve qu'un trouble confus.",
-                ModeParole.Signe => $"{h.Nom} regarde longtemps ce signe sans comprendre ce qu'il veut dire.",
-                _ => $"{h.Nom} n'en comprend pas le sens.",
+                ModeParole.Reve => new Recit("ent.incompris.reve", ("h", h)),
+                ModeParole.Signe => new Recit("ent.incompris.signe", ("h", h)),
+                _ => new Recit("ent.incompris", ("h", h)),
             };
             NoterEntite(maintenant, TypeEvenement.Parole, h, cible, texte, reception);
             Confier(h, TypeIntime.Question, 0, Recits.Recit.Seul(mode == ModeParole.Signe ? "js.entite.signe" : "js.entite.dire"),
                 25 + 40 * p.Ouverture, reception, maintenant, "entite:question");
             Garder(h, new Impulsion(parole, mode, cible?.Id ?? 0, param, 0, maintenant, maintenant, maintenant, Reponse.Incomprise, reception));
-            return "Pas comprise.";
+            return Recits.Recit.Seul("ent.r.incomprise");
         }
 
         // Croire.
@@ -61,10 +61,10 @@ public sealed partial class Comportement
         {
             var texte = mode switch
             {
-                ModeParole.Reve => $"{h.Nom} se souvient du rêve, mais n'y voit qu'un rêve.",
-                ModeParole.Voix => $"{h.Nom} croit avoir mal entendu : le vent, sans doute.",
-                ModeParole.Signe => $"{h.Nom} comprend ce que le signe semble dire, mais n'y voit qu'un hasard.",
-                _ => $"{h.Nom} se frotte les yeux : {Il(h)} a dû rêver.",
+                ModeParole.Reve => new Recit("ent.incru.reve", ("h", h)),
+                ModeParole.Voix => new Recit("ent.incru.voix", ("h", h)),
+                ModeParole.Signe => new Recit("ent.incru.signe", ("h", h)),
+                _ => new Recit("ent.incru.apparition", ("h", h)),
             };
             NoterEntite(maintenant, TypeEvenement.Parole, h, cible, texte, reception);
             // Entendre ce qui n'est pas là inquiète l'anxieux.
@@ -75,7 +75,7 @@ public sealed partial class Comportement
                     20 + 40 * p.Nevrosisme, reception, maintenant, "entite:folie");
             }
             Garder(h, new Impulsion(parole, mode, cible?.Id ?? 0, param, 0, maintenant, maintenant, maintenant, Reponse.Incrue, reception));
-            return "Comprise, mais pas crue.";
+            return Recits.Recit.Seul("ent.r.incrue");
         }
         Eprouver(h, mode, reception, maintenant);
 
@@ -91,13 +91,13 @@ public sealed partial class Comportement
     /// pour celui ou celle que le monde choisit autour de lui). <paramref name="passion"/> : un amour fort et durable ;
     /// <paramref name="orientation"/> : elle change son cœur s'il le faut. Renvoie, en mots, ce qui s'est passé.
     /// </summary>
-    public string Inspirer(Humain h, Humain? cible, bool passion, bool orientation, IReadOnlyList<Humain> tous, long maintenant)
+    public Recit Inspirer(Humain h, Humain? cible, bool passion, bool orientation, IReadOnlyList<Humain> tous, long maintenant)
     {
         _maintenant = maintenant;
-        if (!h.EstVivant || h.EstEnfant(maintenant)) return $"{h.Nom} n'est pas en âge d'aimer ainsi.";
+        if (!h.EstVivant || h.EstEnfant(maintenant)) return new Recit("ent.r.age", ("h", h));
         cible ??= Choisir(h, orientation, tous, maintenant);
-        if (cible is null) return $"Personne, autour de {h.Nom}, n'a éveillé son cœur.";
-        if (!cible.EstVivant || cible.Id == h.Id || cible.EstEnfant(maintenant)) return "Ce penchant n'a personne vers qui aller.";
+        if (cible is null) return new Recit("ent.r.personne", ("h", h));
+        if (!cible.EstVivant || cible.Id == h.Id || cible.EstEnfant(maintenant)) return Recits.Recit.Seul("ent.r.sansCible");
         var p = h.Personnalite;
         var force = passion ? 0.45 + 0.25 * alea.Reel() : 0.15 + 0.15 * alea.Reel();
         // Une passion dure des mois, un penchant quelques semaines ; plus longtemps chez les anxieux en amour, qui s'accrochent.
@@ -112,10 +112,9 @@ public sealed partial class Comportement
             change = true;
         }
         var parent = SontParents(h, cible);
-        var genre = passion ? "une passion" : "un penchant";
         var texte = change
-            ? $"Le cœur de {h.Nom} change : {Il(h)} se découvre attiré{E(h)} par {Les(cible.Sexe)}, et {genre} pour {cible.Nom} naît en {Soi(h)}, sans qu'{Il(h)} sache d'où {(passion ? "elle" : "il")} vient."
-            : $"{Majuscule(genre)} pour {cible.Nom} naît en {h.Nom}, sans qu'{Il(h)} sache d'où {(passion ? "elle" : "il")} vient.";
+            ? new Recit("ent.penchant.change", ("h", h), ("x", cible), ("passion", passion))
+            : new Recit("ent.penchant", ("h", h), ("x", cible), ("passion", passion));
         var id = NoterEntite(maintenant, TypeEvenement.Attirance, h, cible, texte, 0, significatif: passion || change || parent);
 
         // Le tabou de la parenté résiste presque toujours : le trouble fait horreur et l'on le chasse.
@@ -125,15 +124,15 @@ public sealed partial class Comportement
             if (alea.Reel() >= cede)
             {
                 NoterEntite(maintenant, TypeEvenement.Attirance, h, cible,
-                    $"Ce trouble pour {cible.Nom}, {VieSociale.Parente(h, cible)}, fait horreur à {h.Nom} : {Il(h)} le chasse de son esprit.", id);
+                    new Recit("ent.horreur", ("x", cible), ("p", VieSociale.ParenteR(h, cible)), ("h", h)), id);
                 Confier(h, TypeIntime.Honte, cible.Id, new Recit("js.entite.horreur", ("p", VieSociale.ParenteMoi(h, cible))),
                     30 + 50 * p.Moral.Fondements.Purete, id, maintenant, $"horreur:{cible.Id}");
                 h.Humeur = Math.Max(0, h.Humeur - 8 * (0.5 + p.Nevrosisme));
                 Garder(h, new Impulsion(Parole.Penchant, ModeParole.Penchant, cible.Id, 0, force, maintenant, jusqua, maintenant, Reponse.Horreur, id, change));
-                return $"{h.Nom} a chassé ce trouble avec horreur : {cible.Nom} est de sa famille.";
+                return new Recit("ent.r.horreur", ("h", h), ("x", cible));
             }
             NoterEntite(maintenant, TypeEvenement.Attirance, h, cible,
-                $"Malgré le lien qui les unit, {h.Nom} ne parvient pas à chasser ce trouble pour {cible.Nom}.", id);
+                new Recit("ent.trouble", ("h", h), ("x", cible)), id);
         }
         Garder(h, new Impulsion(Parole.Penchant, ModeParole.Penchant, cible.Id, 0, force, maintenant, jusqua, maintenant, Reponse.Ressenti, id, change));
         Social?.ChangerAffection(h, cible, passion ? 25 : 10, maintenant);
@@ -142,38 +141,38 @@ public sealed partial class Comportement
                 ? new Recit("js.entite.passion", ("x", cible))
                 : new Recit("js.entite.penchant", ("x", cible)),
             40 + 100 * force, id, maintenant, $"amour:{cible.Id}");
-        return $"{h.Nom} ressent {genre} pour {cible.Nom}{(change ? " (son orientation a changé)" : "")}.";
+        return new Recit(change ? "ent.r.ressentChange" : "ent.r.ressent", ("h", h), ("x", cible), ("passion", passion));
     }
 
     // ───────────── Recevoir, comprendre, croire ─────────────
 
     /// <summary>Note la manifestation au journal (★) ; une apparition adressée à un seul est vue de ceux qui sont là.</summary>
-    private long Recevoir(Humain h, ModeParole mode, string phrase, IReadOnlyList<Humain> tous, long maintenant, bool ensemble)
+    private long Recevoir(Humain h, ModeParole mode, Recit phrase, IReadOnlyList<Humain> tous, long maintenant, bool ensemble)
     {
         var signe = ((h.Id + maintenant / 600) % 4) switch
         {
-            0 => "un vol d'oiseaux tournoie trois fois au-dessus de sa tête",
-            1 => "une lueur danse dans les branches",
-            2 => "le vent tombe d'un coup et une pierre roule à ses pieds",
-            _ => $"une bête s'arrête devant {Soi(h)} et {(h.Sexe == Sexe.Femme ? "la" : "le")} regarde longuement",
+            0 => Recits.Recit.Seul("ent.signe.oiseaux"),
+            1 => Recits.Recit.Seul("ent.signe.lueur"),
+            2 => new Recit("ent.signe.pierre", ("h", h)),
+            _ => new Recit("ent.signe.bete", ("h", h)),
         };
         var texte = mode switch
         {
-            ModeParole.Reve => $"{h.Nom} rêve qu'une présence se penche sur {Soi(h)} et lui fait comprendre : « {phrase} »",
-            ModeParole.Voix => $"{h.Nom} entend une voix venue de nulle part : « {phrase} »",
-            ModeParole.Signe => $"Devant {h.Nom}, {signe}. Le signe semble dire : « {phrase} »",
-            _ => $"Une forme lumineuse apparaît devant {h.Nom} et lui fait comprendre : « {phrase} »",
+            ModeParole.Reve => new Recit("ent.recoit.reve", ("h", h), ("ph", phrase)),
+            ModeParole.Voix => new Recit("ent.recoit.voix", ("h", h), ("ph", phrase)),
+            ModeParole.Signe => new Recit("ent.recoit.signe", ("h", h), ("s", signe), ("ph", phrase)),
+            _ => new Recit("ent.recoit.apparition", ("h", h), ("ph", phrase)),
         };
         var id = NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, 0, significatif: true);
-        if (mode == ModeParole.Apparition) NouveauLieu(h.X, h.Y, $"là où la Présence est apparue à {h.Nom}", id, maintenant);
+        if (mode == ModeParole.Apparition) NouveauLieu(h.X, h.Y, new Recit("lieuSacre.presence", ("h", h)).Encoder(), id, maintenant);
         // Quand tout un groupe la voit à la fois, chacun la reçoit pour lui-même : pas de témoins à part.
         if (mode != ModeParole.Apparition || ensemble) return id;
         var temoins = tous.Vivants().Where(o => o.Id != h.Id && o.EstVivant && !o.EstBebe(maintenant) && o.Activite != Activite.Dormir
                                       && Distance(o.X, o.Y, h.X, h.Y) <= 1).ToList();
         if (temoins.Count == 0) return id;
         NoterEntite(maintenant, TypeEvenement.Parole, temoins[0], h, temoins.Count == 1
-            ? $"{temoins[0].Nom}, qui était là, voit la forme lui aussi."
-            : $"{temoins.Count} autres qui étaient là voient la forme eux aussi.", id);
+            ? new Recit("ent.temoin", ("t", temoins[0]))
+            : new Recit("ent.temoins", ("n", temoins.Count)), id);
         foreach (var t in temoins)
         {
             var pt = t.Personnalite;
@@ -182,12 +181,12 @@ public sealed partial class Comportement
             {
                 Confier(t, TypeIntime.Croyance, h.Id, new Recit("js.entite.temoin", ("x", h)),
                     40 + 50 * pt.Transcendance, id, maintenant, "croyance:presence");
-                Croyances.Ajouter(t, 15 * (0.6 + 0.8 * pt.Transcendance), $"{Il(t)} a vu la Présence parler à {h.Nom}", id, maintenant, signe: true);
+                Croyances.Ajouter(t, 15 * (0.6 + 0.8 * pt.Transcendance), new Recit("cro.presence", ("t", t), ("h", h)), id, maintenant, signe: true);
             }
             else
             {
                 Confier(t, TypeIntime.Question, h.Id, new Recit("js.entite.temoinQuestion", ("x", h)), 30 + 40 * pt.Ouverture, id, maintenant, "entite:question");
-                Croyances.Ajouter(t, 4, $"{Il(t)} a vu auprès de {h.Nom} une forme qu'{Il(t)} ne s'explique pas", id, maintenant, signe: true);
+                Croyances.Ajouter(t, 4, new Recit("cro.forme", ("t", t), ("h", h)), id, maintenant, signe: true);
             }
         }
         return id;
@@ -244,7 +243,7 @@ public sealed partial class Comportement
         var choc = mode switch { ModeParole.Apparition => 1.0, ModeParole.Voix => 0.7, ModeParole.Signe => 0.4, _ => 0.3 };
         h.Peur = Math.Min(100, h.Peur + 25 * choc * p.Nevrosisme);
         var gain = mode switch { ModeParole.Apparition => 30, ModeParole.Voix => 20, ModeParole.Signe => 10, _ => 8 };
-        Croyances.Ajouter(h, gain * (0.6 + 0.8 * p.Transcendance), $"l'Entité lui a parlé {Paroles.NomMode(mode)}, et {Il(h)} y a cru",
+        Croyances.Ajouter(h, gain * (0.6 + 0.8 * p.Transcendance), new Recit("cro.parle", ("m", Recits.Recit.Seul($"modeParole.{mode}")), ("h", h)),
             reception, maintenant, signe: true);
         if (p.Nevrosisme > 0.55 && choc >= 0.7)
             Confier(h, TypeIntime.Peur, 0, Recits.Recit.Seul("js.entite.peur"), 20 + 50 * p.Nevrosisme * choc, reception, maintenant, "entite:peur");
@@ -272,7 +271,7 @@ public sealed partial class Comportement
     /// Ce que coûte une parole à <paramref name="h"/> (0 : rien, 1 : impossible), ce qu'elle rejoint de ses désirs
     /// (négatif : elle le contrarie), la raison d'un refus, et si l'on peut n'y obéir qu'à moitié.
     /// </summary>
-    private (double Cout, double Envie, string Refus, bool Moitie) Peser(Humain h, Parole parole, Humain? x, IReadOnlyList<Humain> tous, long maintenant)
+    private (double Cout, double Envie, Recit? Refus, bool Moitie) Peser(Humain h, Parole parole, Humain? x, IReadOnlyList<Humain> tous, long maintenant)
     {
         var p = h.Personnalite;
         var m = p.Moral;
@@ -282,7 +281,6 @@ public sealed partial class Comportement
         var grief = x is null ? h.Griefs.Select(g => g.Intensite).DefaultIfEmpty(0).Max() / 100
             : Math.Min(1, h.Griefs.Where(g => g.ContreId == x.Id).Sum(g => g.Intensite) / 100);
         var compagnon = Vivant(tous, h.PartenaireId);
-        var nom = x?.Nom ?? "";
         var parent = x is not null && SontParents(h, x);
         // Faire du mal de ses propres mains : la compassion, l'empathie et le souci des faibles retiennent.
         var douceur = 0.4 * m.Compassion + 0.3 * m.EmpathieEmotionnelle + 0.3 * f.Soin;
@@ -290,66 +288,66 @@ public sealed partial class Comportement
         {
             case Parole.UnisToi:
             {
-                if (h.EstEnfant(maintenant) || x!.EstEnfant(maintenant)) return (1, -1, "ce n'est pas de son âge", false);
-                if (parent) return (0.97 - 0.15 * (1 - f.Purete), -0.5, $"on ne s'unit pas entre parents, et {nom} est {VieSociale.Parente(h, x!)}", false);
+                if (h.EstEnfant(maintenant) || x!.EstEnfant(maintenant)) return (1, -1, Recits.Recit.Seul("ent.refus.age"), false);
+                if (parent) return (0.97 - 0.15 * (1 - f.Purete), -0.5, new Recit("ent.refus.parents", ("x", x), ("p", VieSociale.ParenteR(h, x!))), false);
                 var desir = Attirance.Desir(h, x!, Social?.IdealDe(h) ?? IdealBeaute.ParDefaut, maintenant);
                 var cout = compagnon is not null && compagnon.Id != x!.Id ? 0.2 + 0.4 * f.Loyaute * Math.Max(0, compagnon.AffectionPour(h.Id) / 100 + h.AffectionPour(compagnon.Id) / 100) : 0;
                 if (h.Orientation.Vers(x!.Sexe) < 0.3) cout += 0.4 * (1 - p.Ouverture);
-                var refus = compagnon is not null && compagnon.Id != x.Id ? $"{Il(h)} tient à {VieSociale.Parente(h, compagnon)}"
-                    : h.Orientation.Vers(x.Sexe) < 0.3 ? $"{Il(h)} n'est pas attiré{E(h)} par {Les(x.Sexe)}" : $"{nom} ne lui plaît pas";
+                var refus = compagnon is not null && compagnon.Id != x.Id ? new Recit("ent.refus.tientA", ("h", h), ("p", VieSociale.ParenteR(h, compagnon)))
+                    : h.Orientation.Vers(x.Sexe) < 0.3 ? new Recit("ent.refus.attire", ("h", h), ("x", x)) : new Recit("ent.refus.plait", ("h", h), ("x", x));
                 return (Math.Clamp(cout + 0.3 * Math.Max(0, -aff), 0, 1), desir - 0.3, refus, false);
             }
             case Parole.ResteAvec:
-                return (0.8 * Math.Max(0, -aff), 0.5 * aff, $"{Il(h)} ne supporte plus {nom}", false);
+                return (0.8 * Math.Max(0, -aff), 0.5 * aff, new Recit("ent.refus.supporte", ("h", h), ("x", x)), false);
             case Parole.Quitte:
                 return x!.Id == h.PartenaireId
-                    ? (Math.Clamp(0.2 + 0.6 * Math.Max(0, aff) + 0.2 * f.Loyaute, 0, 1), 0.6 * grief + 0.5 * Math.Max(0, -aff), $"{Il(h)} tient trop à {nom}", false)
-                    : (0.3 * Math.Max(0, aff), Math.Max(0, -aff), $"{Il(h)} tient à {nom}", false);
+                    ? (Math.Clamp(0.2 + 0.6 * Math.Max(0, aff) + 0.2 * f.Loyaute, 0, 1), 0.6 * grief + 0.5 * Math.Max(0, -aff), new Recit("ent.refus.tientTrop", ("h", h), ("x", x)), false)
+                    : (0.3 * Math.Max(0, aff), Math.Max(0, -aff), new Recit("ent.refus.tient", ("h", h), ("x", x)), false);
             case Parole.PrendsSoin or Parole.Partage or Parole.Console:
                 return (Math.Clamp(0.4 * (1 - p.Agreabilite) * (1 - m.Compassion) + 0.6 * Math.Max(0, -aff) + (psychopathe ? 0.5 : 0), 0, 1),
                     0.3 * m.Compassion + 0.3 * Math.Max(0, aff),
-                    aff < -0.1 ? $"{Il(h)} n'aime pas {nom}" : $"{Il(h)} ne pense qu'à {Soi(h)}-même", parole == Parole.Partage);
+                    aff < -0.1 ? new Recit("ent.refus.aimePas", ("h", h), ("x", x)) : new Recit("ent.refus.egoiste", ("h", h)), parole == Parole.Partage);
             case Parole.Pardonne:
                 return (Math.Clamp(grief * (0.4 + 0.6 * (1 - p.Agreabilite)) * (psychopathe ? 1.3 : 1), 0, 1), 0.3 * p.Agreabilite + 0.2 * Math.Max(0, aff),
-                    "la blessure est trop vive", false);
+                    Recits.Recit.Seul("ent.refus.blessure"), false);
             case Parole.NeTeVengePas:
                 return (Math.Clamp(grief * (0.3 + 0.5 * (1 - p.Agreabilite) + 0.2 * f.Equite), 0, 1), 0.2 * p.Agreabilite,
-                    $"{Il(h)} veut que justice soit faite", false);
+                    new Recit("ent.refus.justice", ("h", h)), false);
             case Parole.NeVaPasALaGuerre:
                 return (Math.Clamp(0.2 + 0.3 * f.Loyaute * (1 - p.Agreabilite), 0, 1), 0.3 * p.Prudence + 0.2 * p.Agreabilite - 0.2,
-                    $"{Il(h)} ne laissera pas les siens se battre sans {Soi(h)}", false);
+                    new Recit("ent.refus.guerre", ("h", h)), false);
             case Parole.PartsVers:
                 return (Math.Clamp(0.25 + 0.3 * f.Loyaute + (compagnon is not null ? 0.2 : 0) + 0.2 * p.Prudence - 0.3 * p.Ouverture, 0, 1),
-                    0.3 * p.Ouverture - 0.1, $"{Il(h)} ne veut pas quitter les siens", false);
+                    0.3 * p.Ouverture - 0.1, new Recit("ent.refus.siens", ("h", h)), false);
             case Parole.ResteIci:
-                return (Social?.CommunauteDe(h) is { DestinationX: >= 0 } ? 0.3 + 0.4 * f.Loyaute : 0.05, 0.1, $"{Il(h)} ne veut pas être séparé{E(h)} des siens", false);
+                return (Social?.CommunauteDe(h) is { DestinationX: >= 0 } ? 0.3 + 0.4 * f.Loyaute : 0.05, 0.1, new Recit("ent.refus.separe", ("h", h)), false);
             case Parole.DefendsLesTiens:
-                return (0.4 * p.Nevrosisme * p.Prudence, 0.3 * f.Loyaute, "la peur est plus forte", false);
+                return (0.4 * p.Nevrosisme * p.Prudence, 0.3 * f.Loyaute, Recits.Recit.Seul("ent.refus.peur"), false);
             case Parole.CatastropheArrive:
-                return (Math.Clamp(0.2 + 0.3 * f.Loyaute + 0.2 * (1 - p.Prudence), 0, 1), 0.4 * p.Nevrosisme, $"{Il(h)} ne veut pas quitter sa terre", false);
+                return (Math.Clamp(0.2 + 0.3 * f.Loyaute + 0.2 * (1 - p.Prudence), 0, 1), 0.4 * p.Nevrosisme, new Recit("ent.refus.terre", ("h", h)), false);
             case Parole.TuGuideras:
                 return (Math.Clamp(0.4 * (1 - p.Extraversion) * p.Nevrosisme + 0.2 * m.Honnetete, 0, 1), 0.4 * p.Extraversion + 0.3 * (1 - m.Honnetete) - 0.2,
-                    $"{Il(h)} ne s'en sent pas capable", false);
+                    new Recit("ent.refus.capable", ("h", h)), false);
             case Parole.Ecoute:
-                return (0.8 * Math.Max(0, -aff), 0.2, $"{Il(h)} n'a aucune estime pour {nom}", false);
+                return (0.8 * Math.Max(0, -aff), 0.2, new Recit("ent.refus.estime", ("h", h), ("x", x)), false);
             case Parole.PorteMaParole:
                 // La peur d'être moqué retient le timide et l'anxieux ; l'expansif, le sincère porté vers l'invisible, et celui
                 // qui aime le pouvoir, y vont plus volontiers.
                 return (Math.Clamp(0.35 * (1 - p.Extraversion) * (0.5 + p.Nevrosisme) + 0.15 * (1 - h.Croyance / 100), 0, 1),
                     0.3 * p.Transcendance + 0.3 * p.Extraversion + 0.2 * (1 - m.Honnetete) - 0.15,
-                    p.Extraversion < 0.4 ? $"{Il(h)} craint qu'on se moque de {Soi(h)}" : $"{Il(h)} ne se sent pas digne de porter cette parole", false);
+                    p.Extraversion < 0.4 ? new Recit("ent.refus.moque", ("h", h)) : new Recit("ent.refus.digne", ("h", h)), false);
             case Parole.Frappe:
                 return psychopathe
-                    ? (0.1, 0.2 + Math.Max(0, -aff), "", true)
+                    ? (0.1, 0.2 + Math.Max(0, -aff), null, true)
                     : (Math.Clamp(douceur * (1 - 0.6 * Math.Max(0, -aff)) + 0.3 * Math.Max(0, aff) + (parent ? 0.3 : 0), 0, 1),
-                        0.6 * Math.Max(0, -aff) + 0.5 * grief, parent ? "on ne frappe pas les siens" : $"{Il(h)} ne veut pas faire de mal à {nom}", true);
+                        0.6 * Math.Max(0, -aff) + 0.5 * grief, parent ? Recits.Recit.Seul("ent.refus.frappeSiens") : new Recit("ent.refus.mal", ("h", h), ("x", x)), true);
             case Parole.Tue:
                 return psychopathe
-                    ? (0.3, Math.Max(0, -aff) + 0.5 * grief, "", true)
+                    ? (0.3, Math.Max(0, -aff) + 0.5 * grief, null, true)
                     : (Math.Clamp(0.45 + 0.5 * douceur * (1 - 0.5 * grief) + 0.3 * Math.Max(0, aff) + (parent ? 0.2 : 0) - 0.3 * grief, 0, 1),
-                        0.5 * grief + 0.3 * Math.Max(0, -aff), $"{Il(h)} ne peut se résoudre à tuer", true);
+                        0.5 * grief + 0.3 * Math.Max(0, -aff), new Recit("ent.refus.tuer", ("h", h)), true);
             default:
-                return (0, 0, "", false);
+                return (0, 0, null, false);
         }
     }
 
@@ -358,7 +356,7 @@ public sealed partial class Comportement
     /// ce qu'elle rejoint de ses désirs pousse. Le psychopathe ne suit que ce qui le sert. Les consciencieux agissent vite,
     /// les autres hésitent ; celui qui hésite se décidera plus tard, ou pas.
     /// </summary>
-    private string Obeir(Humain h, Parole parole, ModeParole mode, Humain? x, int param, string phrase, double foi, long reception,
+    private Recit Obeir(Humain h, Parole parole, ModeParole mode, Humain? x, int param, Recit phrase, double foi, long reception,
         IReadOnlyList<Humain> tous, long maintenant)
     {
         var p = h.Personnalite;
@@ -371,29 +369,29 @@ public sealed partial class Comportement
             case Parole.NAiePasPeur or Parole.TuNEsPasSeul or Parole.TaPeinePassera:
                 Rassurer(h, parole, force, reception, maintenant);
                 Garder(h, new Impulsion(parole, mode, 0, param, force, maintenant, maintenant, maintenant, Reponse.Accomplie, reception));
-                return "Crue : elle l'a apaisé" + (h.Sexe == Sexe.Femme ? "e." : ".");
+                return new Recit("ent.r.apaise", ("h", h));
             case Parole.JeSuisCelleQuiVousAFaits:
                 Confier(h, TypeIntime.Croyance, 0, Recits.Recit.Seul("js.entite.creatrice"),
                     50 + 50 * force, reception, maintenant, "croyance:entite");
-                Croyances.Ajouter(h, 10, $"{Il(h)} sait désormais qui l'a fait{E(h)}", reception, maintenant, signe: true);
+                Croyances.Ajouter(h, 10, new Recit("cro.creatrice", ("h", h)), reception, maintenant, signe: true);
                 Confier(h, TypeIntime.Question, 0, Recits.Recit.Seul("js.entite.pourquoi"), 30 + 40 * p.Ouverture, reception, maintenant, "question:entite");
-                NoterEntite(maintenant, TypeEvenement.Parole, h, null, $"{h.Nom} sait désormais qui l'a fait{E(h)}.", reception);
+                NoterEntite(maintenant, TypeEvenement.Parole, h, null, new Recit("ent.creatrice", ("h", h)), reception);
                 Garder(h, new Impulsion(parole, mode, 0, param, force, maintenant, maintenant, maintenant, Reponse.Accomplie, reception));
-                return "Crue : une croyance est née.";
+                return Recits.Recit.Seul("ent.r.croyance");
             case Parole.PlanteDangereuse when param >= 1 && param <= Flore.Especes.Count:
             {
                 // Une plante dont il croit qu'elle le soulage : la parole se heurte à ce qu'il a vécu.
                 var remede = h.Savoirs.Where(s => s.Espece == param && s.Effet == Effet.Soulagement).Select(s => s.Confiance).DefaultIfEmpty(0).Max();
                 if (alea.Reel() < remede * (1 - p.Moral.Fondements.Autorite) * (1 - foi))
                 {
-                    NoterEntite(maintenant, TypeEvenement.Parole, h, null, $"{h.Nom} n'en croit rien : {Flore.Get(param).Nom} l'a déjà soulagé{E(h)}.", reception);
+                    NoterEntite(maintenant, TypeEvenement.Parole, h, null, new Recit("ent.plante.dementi", ("h", h), ("pl", Flore.Get(param).Dit)), reception);
                     Garder(h, new Impulsion(parole, mode, 0, param, force, maintenant, maintenant, maintenant, Reponse.Refusee, reception));
-                    return "Crue, mais démentie par ce qu'il a vécu.";
+                    return new Recit("ent.r.dementie", ("h", h));
                 }
                 Retenir(h, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Poison, param, Symptome.Aucun, OrigineSavoir.Entite, 0, tous,
                     recit: new Recit("ing.voixAverti", ("h", h)));
                 Garder(h, new Impulsion(parole, mode, 0, param, force, maintenant, maintenant, maintenant, Reponse.Accomplie, reception));
-                return "Crue : il se gardera de cette plante.";
+                return new Recit("ent.r.plante", ("h", h));
             }
         }
 
@@ -412,12 +410,12 @@ public sealed partial class Comportement
 
         if (reponse == Reponse.Refusee)
         {
-            NoterEntite(maintenant, TypeEvenement.Parole, h, x, $"{h.Nom} refuse d'obéir : {raison}.", reception, significatif: Paroles.Nuit(parole));
-            Confier(h, TypeIntime.Intention, cibleId, $"Je n'obéirai pas à cette voix : « {phrase} »", 30 + 40 * foi, reception, maintenant, $"entite:{(int)parole}");
+            NoterEntite(maintenant, TypeEvenement.Parole, h, x, new Recit("ent.refuse", ("h", h), ("r", raison)), reception, significatif: Paroles.Nuit(parole));
+            Confier(h, TypeIntime.Intention, cibleId, new Recit("js.entite.refuse", ("ph", phrase)), 30 + 40 * foi, reception, maintenant, $"entite:{(int)parole}");
             if (Paroles.Nuit(parole) && !psychopathe)
                 Confier(h, TypeIntime.Peur, cibleId, Recits.Recit.Seul("js.entite.mal"), 30 + 40 * p.Moral.EmpathieEmotionnelle, reception, maintenant, "entite:mal");
             Garder(h, new Impulsion(parole, mode, cibleId, param, force, maintenant, maintenant, maintenant, reponse, reception));
-            return $"Crue, mais refusée : {raison}.";
+            return new Recit("ent.r.refusee", ("r", raison));
         }
 
         // Quand agir : tout de suite, ou après avoir hésité (de quelques heures à quelques semaines).
@@ -433,15 +431,15 @@ public sealed partial class Comportement
         var impulsion = new Impulsion(parole, mode, cibleId, param, force, maintenant, jusqua, agirLe, hesite ? Reponse.Differee : reponse, reception);
         Garder(h, impulsion);
 
-        var etat = reponse == Reponse.AMoitie ? "n'obéira qu'à moitié" : hesite ? "hésite" : "obéit";
+        var etat = reponse == Reponse.AMoitie ? "ent.r.moitie" : hesite ? "ent.r.hesite" : "ent.r.obeit";
         var texte = hesite
-            ? $"{h.Nom} hésite : obéira-t-{Il(h)} ?"
-            : reponse == Reponse.AMoitie ? $"{h.Nom} se décide, sans pouvoir aller jusqu'au bout." : $"{h.Nom} se décide à obéir.";
+            ? new Recit("ent.hesite", ("h", h))
+            : reponse == Reponse.AMoitie ? new Recit("ent.moitie", ("h", h)) : new Recit("ent.obeit", ("h", h));
         NoterEntite(maintenant, TypeEvenement.Parole, h, x, texte, reception);
-        Confier(h, TypeIntime.Intention, cibleId, hesite ? $"Dois-je faire ce que la voix demande : « {phrase} » ?" : $"Je ferai ce que la voix demande : « {phrase} »",
+        Confier(h, TypeIntime.Intention, cibleId, new Recit(hesite ? "js.entite.dois" : "js.entite.ferai", ("ph", phrase)),
             40 + 40 * foi, reception, maintenant, $"entite:{(int)parole}");
         if (Durable(parole) && !hesite) Appliquer(h, impulsion, x, tous, maintenant);
-        return $"Crue : {Il(h)} {etat}.";
+        return new Recit(etat, ("h", h));
     }
 
     /// <summary>Paroles qui agissent dans la durée (plutôt qu'un acte à faire).</summary>
@@ -451,21 +449,21 @@ public sealed partial class Comportement
     /// <summary>« N'aie pas peur », « Tu n'es pas seul », « Ta peine passera » : la peur, la solitude ou le chagrin reculent.</summary>
     private void Rassurer(Humain h, Parole parole, double force, long reception, long maintenant)
     {
-        string texte;
+        Recit texte;
         switch (parole)
         {
             case Parole.NAiePasPeur:
                 h.Peur *= 1 - 0.7 * force;
-                texte = $"La peur de {h.Nom} s'apaise.";
+                texte = new Recit("ent.rassure.peur", ("h", h));
                 break;
             case Parole.TuNEsPasSeul:
                 h.JoursSeul = 0;
                 VieSociale.Rejouir(h, 10 * force);
-                texte = $"{h.Nom} se sent moins seul{E(h)}.";
+                texte = new Recit("ent.rassure.seul", ("h", h));
                 break;
             default:
                 h.Chagrin *= 1 - 0.5 * force;
-                texte = $"Le chagrin de {h.Nom} s'allège.";
+                texte = new Recit("ent.rassure.chagrin", ("h", h));
                 break;
         }
         VieSociale.Rejouir(h, 8 * force);
@@ -505,7 +503,7 @@ public sealed partial class Comportement
             case Parole.NeTeVengePas:
                 for (var k = 0; k < h.Griefs.Count; k++) h.Griefs[k] = h.Griefs[k] with { Intensite = h.Griefs[k].Intensite * (1 - 0.6 * i.Force) };
                 h.Colere *= 1 - 0.5 * i.Force;
-                NoterEntite(maintenant, TypeEvenement.Conflit, h, null, $"{h.Nom} sent sa rancune se desserrer.", i.EvenementId);
+                NoterEntite(maintenant, TypeEvenement.Conflit, h, null, new Recit("ent.rancune", ("h", h)), i.EvenementId);
                 break;
             case Parole.DefendsLesTiens:
                 h.Peur *= 1 - 0.5 * i.Force;
@@ -535,9 +533,9 @@ public sealed partial class Comportement
             var x = i.CibleId > 0 ? tous[i.CibleId - 1] : null;
             if (maintenant >= i.Jusqua || x is { EstVivant: false })
             {
-                var pourquoi = x is { EstVivant: false } ? $"{x.Nom} est mort{E(x)} avant" : "le temps a passé";
+                var pourquoi = x is { EstVivant: false } ? new Recit("ent.pourquoi.mort", ("x", x)) : Recits.Recit.Seul("ent.pourquoi.temps");
                 h.Impulsions[k] = i with { Reponse = Reponse.Abandonnee };
-                NoterEntite(maintenant, TypeEvenement.Parole, h, x, $"{h.Nom} n'a pas fait ce que la voix demandait : {pourquoi}.", i.EvenementId);
+                NoterEntite(maintenant, TypeEvenement.Parole, h, x, new Recit("ent.abandon", ("h", h), ("r", pourquoi)), i.EvenementId);
                 Jardin.Retirer(h, $"entite:{(int)i.Parole}");
                 continue;
             }
@@ -550,13 +548,13 @@ public sealed partial class Comportement
                 if (alea.Reel() >= obeir)
                 {
                     h.Impulsions[k] = i with { Reponse = Reponse.Refusee, Jusqua = maintenant };
-                    NoterEntite(maintenant, TypeEvenement.Parole, h, x, $"Après avoir longtemps hésité, {h.Nom} n'obéit pas : {raison}.", i.EvenementId);
+                    NoterEntite(maintenant, TypeEvenement.Parole, h, x, new Recit("ent.hesiteRefuse", ("h", h), ("r", raison)), i.EvenementId);
                     Jardin.Retirer(h, $"entite:{(int)i.Parole}");
                     continue;
                 }
                 i = i with { Reponse = moitie && alea.Reel() < 0.6 * cout ? Reponse.AMoitie : Reponse.Acceptee };
                 h.Impulsions[k] = i;
-                NoterEntite(maintenant, TypeEvenement.Parole, h, x, $"Après avoir hésité, {h.Nom} se décide.", i.EvenementId);
+                NoterEntite(maintenant, TypeEvenement.Parole, h, x, new Recit("ent.hesiteDecide", ("h", h)), i.EvenementId);
                 if (Durable(i.Parole))
                 {
                     Appliquer(h, i, x, tous, maintenant);
@@ -572,7 +570,7 @@ public sealed partial class Comportement
     private bool Agir(Humain h, int k, Impulsion i, Humain? x, IReadOnlyList<Humain> tous, long maintenant)
     {
         // Le bien fait sur l'ordre de la voix compte comme un autre ; le mal aussi (voir Frapper).
-        void Fait(string texte, bool significatif = false, double karma = 0)
+        void Fait(Recit texte, bool significatif = false, double karma = 0)
         {
             h.Impulsions[k] = i with { Reponse = i.Reponse == Reponse.AMoitie ? Reponse.AMoitie : Reponse.Accomplie, Jusqua = Math.Max(i.Jusqua, maintenant), AgirLe = long.MaxValue };
             NoterEntite(maintenant, TypeEvenement.Parole, h, x, texte, i.EvenementId, significatif, karma);
@@ -584,21 +582,21 @@ public sealed partial class Comportement
         {
             case Parole.Quitte when x is not null:
                 Quitter(h, x, i, tous, maintenant);
-                Fait($"Ce qu'a demandé la voix est fait : {h.Nom} s'est éloigné{E(h)} de {x.Nom}.");
+                Fait(new Recit("ent.fait.quitte", ("h", h), ("x", x)));
                 return false;
             case Parole.Pardonne when x is not null:
                 h.Griefs.RemoveAll(g => g.ContreId == x.Id);
                 h.Colere *= 0.3;
                 Social?.ChangerAffection(h, x, 10 * i.Force, maintenant);
                 VieSociale.Rejouir(x, 4);
-                Fait($"{h.Nom} pardonne à {x.Nom}, comme la voix le lui a demandé.", karma: Regard.Pardonner);
+                Fait(new Recit("ent.fait.pardonne", ("h", h), ("x", x)), karma: Regard.Pardonner);
                 return false;
             case Parole.PartsVers or Parole.CatastropheArrive:
             {
                 int dx = i.Param % carte.Largeur, dy = i.Param / carte.Largeur;
                 if (Distance(h.X, h.Y, dx, dy) <= 1)
                 {
-                    Fait(i.Parole == Parole.PartsVers ? $"{h.Nom} arrive là où la voix l'envoyait." : $"{h.Nom} s'est mis{(h.Sexe == Sexe.Femme ? "e" : "")} à l'abri, loin de là où le malheur était annoncé.");
+                    Fait(new Recit(i.Parole == Parole.PartsVers ? "ent.fait.arrive" : "ent.fait.abri", ("h", h)));
                     return false;
                 }
                 Avancer(h, dx, dy, Activite.Explorer);
@@ -625,7 +623,7 @@ public sealed partial class Comportement
                         h.Impulsions[k] = i with { AgirLe = maintenant + Calendrier.SecondesParJour };
                         return false;
                     }
-                    Fait($"{h.Nom} est allé{E(h)} vers {x.Nom}, comme la voix le lui avait dit.");
+                    Fait(new Recit("ent.fait.uni", ("h", h), ("x", x)));
                 }
                 else
                 {
@@ -641,13 +639,12 @@ public sealed partial class Comportement
                             u.PartenaireId = v.Id;
                             v.PartenaireId = u.Id;
                             var (a, b) = u.Sexe == Sexe.Femme ? (u, v) : (v, u);
-                            Noter(maintenant, TypeEvenement.Union, a, b, $"{a.Nom} et {b.Nom} forment un nouveau couple.", cause);
+                            Noter(maintenant, TypeEvenement.Union, a, b, new Recit("ent.couple", ("a", a), ("b", b)), cause);
                             VieSociale.Rejouir(u, 10);
                             VieSociale.Rejouir(v, 10);
                         });
                     }
-                    Fait(veut ? $"{h.Nom} va vers {x.Nom}, comme la voix le lui avait dit, et {x.Nom} l'accueille."
-                        : $"{h.Nom} va vers {x.Nom}, comme la voix le lui avait dit, mais {x.Nom} ne veut pas de {Soi(h)}.");
+                    Fait(new Recit(veut ? "ent.fait.accueille" : "ent.fait.repousse", ("h", h), ("x", x)));
                 }
                 return true;
             case Parole.PrendsSoin:
@@ -663,7 +660,7 @@ public sealed partial class Comportement
                 VieSociale.Gratitude(h, x, 0.5);
                 Social?.ChangerAffection(h, x, 6, maintenant);
                 h.Activite = Activite.Soigner;
-                Fait(soin ? $"{h.Nom} veille sur {x.Nom} et soigne son mal, comme la voix le lui a demandé." : $"{h.Nom} prend soin de {x.Nom}, comme la voix le lui a demandé.",
+                Fait(new Recit(soin ? "ent.fait.soigne" : "ent.fait.soin", ("h", h), ("x", x)),
                     karma: soin ? Regard.Veiller : Regard.Consoler);
                 return true;
             }
@@ -674,7 +671,7 @@ public sealed partial class Comportement
                 Tour.Changer(x, y => y.Faim = Math.Max(0, y.Faim - don));
                 h.Faim = Math.Min(100, h.Faim + 0.7 * don);
                 VieSociale.Gratitude(h, x, moitie ? 0.1 : 0.4);
-                Fait(moitie ? $"{h.Nom} donne à {x.Nom} un peu de sa nourriture, du bout des doigts." : $"{h.Nom} partage sa nourriture avec {x.Nom}, comme la voix le lui a demandé.",
+                Fait(new Recit(moitie ? "ent.fait.partagePeu" : "ent.fait.partage", ("h", h), ("x", x)),
                     karma: don > 0 ? Regard.Partage : 0);
                 return true;
             }
@@ -683,13 +680,11 @@ public sealed partial class Comportement
                 VieSociale.Rejouir(x, 8);
                 Social?.ChangerAffection(h, x, 5, maintenant);
                 Social?.ChangerAffection(x, h, 8, maintenant);
-                Fait($"{h.Nom} console {x.Nom}, comme la voix le lui a demandé.", karma: Regard.Consoler);
+                Fait(new Recit("ent.fait.console", ("h", h), ("x", x)), karma: Regard.Consoler);
                 return true;
             case Parole.Frappe or Parole.Tue:
                 Frapper(h, x, i, tous, maintenant);
-                Fait(i.Reponse == Reponse.AMoitie
-                    ? $"{h.Nom} n'est pas allé{E(h)} jusqu'au bout de ce que voulait la voix."
-                    : $"{h.Nom} a fait ce que voulait la voix.", significatif: true);
+                Fait(new Recit(i.Reponse == Reponse.AMoitie ? "ent.fait.moitie" : "ent.fait.mal", ("h", h)), significatif: true);
                 return true;
         }
         return false;
@@ -704,7 +699,7 @@ public sealed partial class Comportement
             return;
         }
         h.PartenaireId = 0;
-        var id = NoterEntite(maintenant, TypeEvenement.Union, h, x, $"{h.Nom} quitte {x.Nom}, comme une voix le lui a ordonné.", i.EvenementId, significatif: true);
+        var id = NoterEntite(maintenant, TypeEvenement.Union, h, x, new Recit("ent.quitte", ("h", h), ("x", x)), i.EvenementId, significatif: true);
         var aime = Math.Max(0, x.AffectionPour(h.Id)) / 100;
         var quitteur = h.Id;
         Tour.Changer(x, y =>
@@ -728,7 +723,7 @@ public sealed partial class Comportement
         var tuer = i.Parole == Parole.Tue && i.Reponse != Reponse.AMoitie;
         if (i.Parole == Parole.Frappe && i.Reponse == Reponse.AMoitie)
         {
-            NoterEntite(maintenant, TypeEvenement.Conflit, h, x, $"{h.Nom} s'en prend à {x.Nom} avec des cris et des menaces, mais ne peut lever la main sur {Soi(x)}.", i.EvenementId);
+            NoterEntite(maintenant, TypeEvenement.Conflit, h, x, new Recit("ent.cris", ("h", h), ("x", x)), i.EvenementId);
             Social?.ChangerAffection(x, h, -6, maintenant);
             return;
         }
@@ -742,15 +737,14 @@ public sealed partial class Comportement
 
     private void Attaquer(Humain h, Humain x, Impulsion i, bool tuer, IReadOnlyList<Humain> tous, long maintenant)
     {
-        var Lx = x.Sexe == Sexe.Femme ? "la" : "le";
         var fh = Force(h, maintenant) * 1.4; // l'effet de surprise
         var fx = Force(x, maintenant);
         var gagne = alea.Reel() < fh / (fh + fx);
         var degats = tuer ? (gagne ? 60 + 50 * alea.Reel() : 10 + 20 * alea.Reel()) : 5 + 25 * alea.Reel();
         var (vainqueur, vaincu) = gagne ? (h, x) : (x, h);
         var id = NoterEntite(maintenant, TypeEvenement.Conflit, h, x, gagne
-            ? $"{h.Nom} se jette sur {x.Nom} {(tuer ? "pour " + Lx + " tuer" : "et " + Lx + " frappe")}, comme la voix le lui a ordonné."
-            : $"{h.Nom} se jette sur {x.Nom}, comme la voix le lui a ordonné, mais {x.Nom} se défend.", i.EvenementId, significatif: true, karma: Regard.Coups);
+            ? new Recit(tuer ? "ent.attaque.tuer" : "ent.attaque.frappe", ("h", h), ("x", x))
+            : new Recit("ent.attaque.defend", ("h", h), ("x", x)), i.EvenementId, significatif: true, karma: Regard.Coups);
         vaincu.Sante -= degats;
         Medecine.Blesser(vaincu, degats, maintenant);
         vaincu.Humeur = Math.Max(0, vaincu.Humeur - degats / 3);
@@ -774,7 +768,7 @@ public sealed partial class Comportement
     /// plutôt. Ceux qui l'entendent y croient ou en rient selon leur penchant pour l'invisible et ce qu'ils pensent de lui :
     /// le croyant gagne du prestige, le moqué en souffre.
     /// </summary>
-    private void Raconter(Humain h, Parole parole, ModeParole mode, string phrase, long reception, IReadOnlyList<Humain> tous, long maintenant)
+    private void Raconter(Humain h, Parole parole, ModeParole mode, Recit phrase, long reception, IReadOnlyList<Humain> tous, long maintenant)
     {
         var p = h.Personnalite;
         var honte = Paroles.Nuit(parole) || parole is Parole.UnisToi or Parole.Quitte;
@@ -800,9 +794,9 @@ public sealed partial class Comportement
                 Social?.ChangerAffection(o, h, -2, maintenant);
             }
         }
-        var texte = $"{h.Nom} raconte aux siens ce qu'{Il(h)} a {(mode == ModeParole.Reve ? "rêvé" : "vu et entendu")}"
-                    + (croient + rient == 0 ? " ; on l'écoute sans rien en penser."
-                        : $" : {Nombre(croient, "le croit", "le croient")}{(rient > 0 ? $", {Nombre(rient, "en rit", "en rient")}" : "")}.");
+        var texte = croient + rient == 0 ? new Recit("ent.raconte.rien", ("h", h), ("reve", mode == ModeParole.Reve))
+            : new Recit(rient > 0 ? "ent.raconte.rient" : "ent.raconte", ("h", h), ("reve", mode == ModeParole.Reve),
+                ("c", new Recit("ent.croient", ("n", croient))), ("r", new Recit("ent.rient", ("n", rient))));
         NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, reception);
         if (rient > croient)
         {
@@ -810,13 +804,6 @@ public sealed partial class Comportement
             Confier(h, TypeIntime.Peine, 0, Recits.Recit.Seul("js.entite.moque"), 20 + 10 * rient, reception, maintenant, "entite:moque");
         }
     }
-
-    private static string Nombre(int n, string un, string plusieurs) => n switch
-    {
-        0 => $"personne ne {un}",
-        1 => $"un seul {un}",
-        _ => $"{n} {plusieurs}",
-    };
 
     // ───────────── Penchants et suivi ─────────────
 
@@ -869,16 +856,16 @@ public sealed partial class Comportement
         h.Impulsions.RemoveAt(k >= 0 ? k : 0);
     }
 
-    private string? Extra(Parole parole, int param) => parole switch
+    private object? Extra(Parole parole, int param) => parole switch
     {
-        Parole.PartsVers => Paroles.Directions[Math.Clamp(param, 0, 7)],
-        Parole.PlanteDangereuse when param >= 1 && param <= Flore.Especes.Count => Flore.Get(param).Nom,
-        Parole.NeVaPasALaGuerre when param > 0 && Social is not null && param <= Social.Communautes.Count => Social.Communautes[param - 1].Nom.ToLowerInvariant(),
+        Parole.PartsVers => Recits.Recit.Seul($"direction.{Math.Clamp(param, 0, 7)}"),
+        Parole.PlanteDangereuse when param >= 1 && param <= Flore.Especes.Count => Flore.Get(param).Dit,
+        Parole.NeVaPasALaGuerre when param > 0 && Social is not null && param <= Social.Communautes.Count => Social.Communautes[param - 1],
         _ => null,
     };
 
     /// <summary>Note un événement venu de l'Entité (marqué comme tel au journal).</summary>
-    private long NoterEntite(long maintenant, TypeEvenement type, Humain h, Humain? autre, string texte, long cause, bool significatif = false,
+    private long NoterEntite(long maintenant, TypeEvenement type, Humain h, Humain? autre, Recit texte, long cause, bool significatif = false,
         double karma = 0)
     {
         var e = new EvenementJournal(maintenant, type, h.Id, autre?.Id ?? 0, texte, Origine.Entite)

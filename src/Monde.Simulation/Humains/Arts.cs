@@ -320,7 +320,7 @@ public sealed partial class Comportement
                 Jardin.Confier(o, souvenir.Type, souvenir.SujetId, new Recit("js.raconte", ("s", s), ("fond", fond)), souvenir.Intensite * (0.4 + 0.3 * o.Personnalite.Ouverture),
                     id, _maintenant, cle);
                 if (souvenir.Type == TypeIntime.Croyance)
-                    Croyances.Ajouter(o, 1 + 2 * o.Personnalite.Transcendance, $"ce que {s.Nom} a raconté à la veillée", id, _maintenant);
+                    Croyances.Ajouter(o, 1 + 2 * o.Personnalite.Transcendance, new Recit("cro.veillee", ("s", s)), id, _maintenant);
             }
         }
     }
@@ -415,7 +415,7 @@ public sealed partial class Comportement
                 Jardin.Confier(h, TypeIntime.Question, auteur?.Id ?? 0, question, 15 + 30 * p.Ouverture * (0.5 + Humains.Arts.Aptitude(h)),
                     o.EvenementId, _maintenant, $"oeuvre:{o.Id}");
                 if (o.Motif is MotifPeint.Entite or MotifPeint.Morts)
-                    Croyances.Ajouter(h, 1 + 2 * p.Transcendance, "une image de l'invisible peinte sur la roche", o.EvenementId, _maintenant);
+                    Croyances.Ajouter(h, 1 + 2 * p.Transcendance, Recits.Recit.Seul("cro.peinture"), o.EvenementId, _maintenant);
                 if (Humains.Arts.Connait(h, Effet.Ocre) && !h.Savoirs.Exists(s => s.Effet == Effet.Peinture)
                     && alea.Reel() < 0.05 * (0.2 + Humains.Arts.Aptitude(h)) * (0.5 + p.Ouverture))
                     Retenir(h, Geste.Peindre, Matiere.Ocre, Matiere.Aucune, Effet.Peinture, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous);

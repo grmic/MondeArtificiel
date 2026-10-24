@@ -149,6 +149,9 @@ public sealed class Recit : IEquatable<Recit>
         return i < 0 ? null : Lire(s[1..i], s[(i + 1)..]);
     }
 
+    /// <summary>Une chaîne gardée, comme paramètre d'un récit : le récit qu'elle encode, ou la phrase déjà écrite (mondes d'avant).</summary>
+    public static object? Relire(string? s) => Decoder(s) ?? (object?)s;
+
     /// <summary>Une chaîne gardée (récit encodé ou phrase déjà écrite), en français.</summary>
     public static string EnFrancais(string? s) => Decoder(s)?.Texte ?? s ?? "";
 

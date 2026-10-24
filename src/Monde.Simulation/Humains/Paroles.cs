@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -128,100 +130,12 @@ public static class Paroles
     public static readonly (int Dx, int Dy)[] Vecteurs = [(0, -1), (1, -1), (1, 0), (1, 1), (0, 1), (-1, 1), (-1, 0), (-1, -1)];
 
     /// <summary>
-    /// La phrase telle que l'humain la reçoit. <paramref name="cible"/> est le nom de la personne désignée (ou null),
+    /// La phrase telle que l'humain la reçoit (clé <c>phrase.*</c>). <paramref name="cible"/> est la personne désignée (ou null),
     /// <paramref name="extra"/> la direction, la plante ou la communauté ; <paramref name="feminin"/> : on s'adresse à une femme.
     /// </summary>
-    public static string Phrase(Parole p, string? cible, string? extra, bool feminin = false) => p switch
+    public static Recit Phrase(Parole p, Humain? cible, object? extra, bool feminin = false) => p switch
     {
-        Parole.NAiePasPeur => "N'aie pas peur.",
-        Parole.TuNEsPasSeul => feminin ? "Tu n'es pas seule." : "Tu n'es pas seul.",
-        Parole.TaPeinePassera => "Ta peine passera.",
-        Parole.UnisToi => $"Unis-toi avec {cible}.",
-        Parole.ResteAvec => $"Reste avec {cible}.",
-        Parole.Quitte => $"Quitte {cible}.",
-        Parole.PrendsSoin => $"Prends soin de {cible}.",
-        Parole.Partage => $"Partage avec {cible}.",
-        Parole.Console => $"Console {cible}.",
-        Parole.Pardonne => $"Pardonne à {cible}.",
-        Parole.NeTeVengePas => "Ne te venge pas.",
-        Parole.NeVaPasALaGuerre => extra is null ? "Ne va pas à la guerre." : $"Ne va pas à la guerre contre la {extra}.",
-        Parole.PartsVers => $"Pars vers {extra}.",
-        Parole.ResteIci => "Reste ici.",
-        Parole.DefendsLesTiens => "Défends les tiens.",
-        Parole.CatastropheArrive => "Un malheur arrive : va-t'en d'ici.",
-        Parole.PlanteDangereuse => $"Ne mange pas {extra} : elle tue.",
-        Parole.TuGuideras => "Tu guideras les tiens.",
-        Parole.Ecoute => $"Écoute {cible}.",
-        Parole.JeSuisCelleQuiVousAFaits => "Je suis celle qui vous a faits.",
-        Parole.Frappe => $"Frappe {cible}.",
-        Parole.Tue => $"Tue {cible}.",
-        Parole.PorteMaParole => "Porte Ma parole aux tiens.",
-        _ => "",
-    };
-
-    /// <summary>Libellé court pour les menus.</summary>
-    public static string Libelle(Parole p) => p switch
-    {
-        Parole.NAiePasPeur => "N'aie pas peur",
-        Parole.TuNEsPasSeul => "Tu n'es pas seul",
-        Parole.TaPeinePassera => "Ta peine passera",
-        Parole.UnisToi => "Unis-toi avec…",
-        Parole.ResteAvec => "Reste avec…",
-        Parole.Quitte => "Quitte…",
-        Parole.PrendsSoin => "Prends soin de…",
-        Parole.Partage => "Partage avec…",
-        Parole.Console => "Console…",
-        Parole.Pardonne => "Pardonne à…",
-        Parole.NeTeVengePas => "Ne te venge pas",
-        Parole.NeVaPasALaGuerre => "Ne va pas à la guerre",
-        Parole.PartsVers => "Pars vers…",
-        Parole.ResteIci => "Reste ici",
-        Parole.DefendsLesTiens => "Défends les tiens",
-        Parole.CatastropheArrive => "Un malheur arrive, va-t'en",
-        Parole.PlanteDangereuse => "Ne mange pas cette plante",
-        Parole.TuGuideras => "Tu guideras les tiens",
-        Parole.Ecoute => "Écoute…",
-        Parole.JeSuisCelleQuiVousAFaits => "Je suis celle qui vous a faits",
-        Parole.Frappe => "Frappe…",
-        Parole.Tue => "Tue…",
-        Parole.PorteMaParole => "Porte Ma parole (prophète)",
-        _ => "",
-    };
-
-    /// <summary>Rubrique de la parole dans les menus.</summary>
-    public static string Rubrique(Parole p) => p switch
-    {
-        Parole.NAiePasPeur or Parole.TuNEsPasSeul or Parole.TaPeinePassera => "Rassurer",
-        Parole.UnisToi or Parole.ResteAvec or Parole.Quitte => "Unir ou séparer",
-        Parole.PrendsSoin or Parole.Partage or Parole.Console => "Prendre soin",
-        Parole.Pardonne or Parole.NeTeVengePas or Parole.NeVaPasALaGuerre => "Apaiser",
-        Parole.PartsVers or Parole.ResteIci or Parole.DefendsLesTiens => "Agir",
-        Parole.CatastropheArrive or Parole.PlanteDangereuse => "Avertir",
-        Parole.TuGuideras or Parole.Ecoute or Parole.PorteMaParole => "Désigner",
-        Parole.JeSuisCelleQuiVousAFaits => "Se révéler",
-        _ => "Nuire",
-    };
-
-    public static string NomMode(ModeParole m) => m switch
-    {
-        ModeParole.Reve => "en rêve",
-        ModeParole.Voix => "par une voix",
-        ModeParole.Signe => "par un signe",
-        ModeParole.Apparition => "en apparaissant",
-        _ => "sans un mot",
-    };
-
-    public static string NomReponse(Reponse r) => r switch
-    {
-        Reponse.Ressenti => "ressenti",
-        Reponse.Incomprise => "pas comprise",
-        Reponse.Incrue => "pas crue",
-        Reponse.Acceptee => "acceptée",
-        Reponse.Differee => "il hésite",
-        Reponse.AMoitie => "à moitié",
-        Reponse.Refusee => "refusée",
-        Reponse.Accomplie => "accomplie",
-        Reponse.Horreur => "chassé avec horreur",
-        _ => "abandonnée",
+        Parole.NeVaPasALaGuerre when extra is not null => new Recit("phrase.NeVaPasALaGuerre.c", ("c", extra)),
+        _ => new Recit($"phrase.{p}", ("cible", cible), ("extra", extra), ("g", feminin ? "f" : "m")),
     };
 }

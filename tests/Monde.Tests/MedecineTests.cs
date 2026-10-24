@@ -150,7 +150,7 @@ public sealed class MedecineTests
         Assert.True(temoin.Croyance > 11, $"{temoin.Croyance}");
         Assert.Equal(Maintenant, temoin.CroyanceSigneLe);
         Assert.True(malade.Peur < 60, $"{malade.Peur}");
-        Assert.Equal("chamane", Medecine.Role(chaman));
+        Assert.Equal("chamane", Monde.Serveur.Lib.Soignant(chaman));
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public sealed class MedecineTests
         charlatan.Soignes = 5;
         charlatan.Gueris = 2;
         charlatan.Perdus = 3;
-        Assert.Equal("charlatane (prétend guérir)", Medecine.Role(charlatan));
+        Assert.Equal("charlatane (prétend guérir)", Monde.Serveur.Lib.Soignant(charlatan));
         c.Soins(tous, Maintenant);
         Assert.Equal(Maintenant, tous[0].GuerisseurDepuis);
         Assert.Contains(c.Journal, e => e.Texte.StartsWith("Les siens tiennent désormais H1 pour une guérisseuse") && e.Significatif);

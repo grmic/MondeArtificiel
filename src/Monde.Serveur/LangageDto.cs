@@ -30,7 +30,7 @@ public sealed record LangageDto(string Stade, string? Nom, string? Sens, string?
                 if (part >= 20) comprises.Add(new LangueCompriseDto(c.Id, L.Communaute(c.Nom), part));
             }
         }
-        return new LangageDto(L.T($"stade.{Math.Clamp(h.StadeParole, 0, 3)}"), h.NomLangue, h.NomSens,
+        return new LangageDto(L.T($"stade.{Math.Clamp(h.StadeParole, 0, 3)}"), h.NomLangue, L.Garde(h.NomSens),
             h.NomLangueLe > 0 ? L.Date(h.NomLangueLe) : null, h.NomParId, Nom(h.NomParId), h.NomEvenementId,
             h.Vocabulaire.Count,
             h.Vocabulaire.OrderByDescending(m => m.Force).Take(40)

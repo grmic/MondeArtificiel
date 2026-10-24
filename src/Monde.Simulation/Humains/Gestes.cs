@@ -1,6 +1,8 @@
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Ce que l'Entité peut faire à un humain (les quatre premiers) ou à une communauté (les autres).</summary>
@@ -73,21 +75,7 @@ public static class Gestes
     public static bool EstBienfait(GesteEntite g) => g is GesteEntite.Guerir or GesteEntite.RendreFecond or GesteEntite.SortirDeFamine
         or GesteEntite.ArreterEpidemie or GesteEntite.Fecondite or GesteEntite.Benir;
 
-    public static string Nom(GesteEntite g) => g switch
-    {
-        GesteEntite.FrapperDeMort => "Frapper de mort",
-        GesteEntite.RendreMalade => "Rendre malade",
-        GesteEntite.Guerir => "Guérir",
-        GesteEntite.RendreFecond => "Rendre fécond(e)",
-        GesteEntite.Epidemie => "Épidémie",
-        GesteEntite.Calamite => "Calamité",
-        GesteEntite.Famine => "Famine",
-        GesteEntite.SortirDeFamine => "Sortir de la famine",
-        GesteEntite.ArreterEpidemie => "Arrêter une épidémie",
-        GesteEntite.Fecondite => "Fécondité",
-        GesteEntite.Benir => "Bénir",
-        _ => "",
-    };
+    public static Recit Nom(GesteEntite g) => Recit.Seul($"gesteEntite.{g}");
 
     /// <summary>Bornes de la durée en jours (0 : sans durée).</summary>
     public static (double Min, double Max) Jours(GesteEntite g) => g switch
@@ -108,21 +96,9 @@ public static class Gestes
         _ => (0, 0),
     };
 
-    public static string NomManiere(ManiereGeste m) => m switch
-    {
-        ManiereGeste.Foudre => "la foudre",
-        ManiereGeste.Voix => "une voix",
-        ManiereGeste.Apparition => "une apparition",
-        ManiereGeste.Reve => "un rêve",
-        _ => "caché",
-    };
+    public static Recit NomManiere(ManiereGeste m) => Recit.Seul($"maniere.{m}");
 
-    public static string NomForme(FormeMort f) => f switch
-    {
-        FormeMort.Foudre => "la foudre",
-        FormeMort.MalSoudain => "un mal soudain",
-        _ => "dans son sommeil",
-    };
+    public static Recit NomForme(FormeMort f) => Recit.Seul($"formeMort.{f}");
 
     /// <summary>Code d'une maladie choisie : 1 à 99, une maladie ordinaire ; 100 + n, la maladie contagieuse n ; 0, une maladie nouvelle.</summary>
     public const int Contagieuse = 100;
@@ -152,12 +128,12 @@ public sealed partial class Comportement
     /// <see cref="Gestes.Contagieuse"/>) ; <paramref name="force"/> et <paramref name="jours"/> : pour la fécondité. Renvoie, en
     /// mots, ce qui s'est passé.
     /// </summary>
-    public string AgirSur(Humain h, GesteEntite geste, ManiereGeste maniere, int param, double force, double jours, IReadOnlyList<Humain> tous, long maintenant)
+    public Recit AgirSur(Humain h, GesteEntite geste, ManiereGeste maniere, int param, double force, double jours, IReadOnlyList<Humain> tous, long maintenant)
     {
         _maintenant = maintenant;
         _tous = tous;
-        if (!h.EstVivant) return $"{h.Nom} est mort{E(h)}.";
-        string texte;
+        if (!h.EstVivant) return new Recit("ent.r.mort", ("h", h));
+        Recit? texte;
         long annonce;
         switch (geste)
         {
@@ -166,35 +142,35 @@ public sealed partial class Comportement
                 var forme = (FormeMort)Math.Clamp(param, 0, 2);
                 // La foudre se voit toujours ; une mort dans le sommeil, jamais.
                 maniere = forme switch { FormeMort.Foudre => ManiereGeste.Foudre, FormeMort.Sommeil => ManiereGeste.Cachee, _ => maniere };
-                annonce = NoterGeste(maintenant, h, $"✦ L'Entité frappe {h.Nom} de mort ({Gestes.NomForme(forme)}{Signe(maniere, forme)}).");
+                annonce = NoterGeste(maintenant, h, new Recit("ges.mort", ("h", h), ("f", Gestes.NomForme(forme)), ("s", Signe(maniere, forme))));
                 var (cause, mort) = forme switch
                 {
-                    FormeMort.Foudre => (CauseDeMort.Foudre, $"{h.Nom} est frappé{E(h)} par la foudre tombée d'un ciel sans nuage, à {AgeEnMots(h, maintenant)}."),
-                    FormeMort.MalSoudain => (CauseDeMort.MortSubite, $"{h.Nom} s'effondre d'un coup, emporté{E(h)} par un mal soudain, à {AgeEnMots(h, maintenant)}."),
-                    _ => (CauseDeMort.Sommeil, $"{h.Nom} ne se réveille pas : {Il(h)} est mort{E(h)} dans son sommeil, à {AgeEnMots(h, maintenant)}."),
+                    FormeMort.Foudre => (CauseDeMort.Foudre, new Recit("ges.mort.foudre", ("h", h), ("age", AgeEnMots(h, maintenant)))),
+                    FormeMort.MalSoudain => (CauseDeMort.MortSubite, new Recit("ges.mort.soudain", ("h", h), ("age", AgeEnMots(h, maintenant)))),
+                    _ => (CauseDeMort.Sommeil, new Recit("ges.mort.sommeil", ("h", h), ("age", AgeEnMots(h, maintenant)))),
                 };
                 // Les témoins et les proches sont cherchés avant la mort (après, il n'est plus là où il était).
                 var vecu = Temoins(h, maniere, tous, maintenant);
                 Tuer(h, maintenant, cause, mort, annonce);
                 FaireSavoir(geste, maniere, h, h.CommunauteId, vecu, false, 1, annonce, tous, maintenant);
-                return $"{h.Nom} est mort{E(h)} ({Gestes.NomForme(forme)}).";
+                return new Recit("ges.r.mort", ("h", h), ("f", Gestes.NomForme(forme)));
             }
             case GesteEntite.RendreMalade:
             {
-                annonce = NoterGeste(maintenant, h, $"✦ L'Entité rend {h.Nom} malade{Signe(maniere)}.");
+                annonce = NoterGeste(maintenant, h, new Recit("ges.malade", ("h", h), ("s", Signe(maniere))));
                 texte = Contaminer(h, param, annonce, maintenant);
-                if (texte.Length == 0) return $"{h.Nom} est déjà malade de ce mal.";
+                if (texte is null) return new Recit("ges.r.dejaMalade", ("h", h));
                 FaireSavoir(geste, maniere, h, h.CommunauteId, Temoins(h, maniere, tous, maintenant), false, 0.6, annonce, tous, maintenant);
                 return texte;
             }
             case GesteEntite.Guerir:
             {
-                if (!Souffrant(h, maintenant)) return $"{h.Nom} n'a ni maladie ni blessure.";
-                annonce = NoterGeste(maintenant, h, $"✦ L'Entité guérit {h.Nom}{Signe(maniere)}.");
+                if (!Souffrant(h, maintenant)) return new Recit("ges.r.sain", ("h", h));
+                annonce = NoterGeste(maintenant, h, new Recit("ges.guerit", ("h", h), ("s", Signe(maniere))));
                 GuerirDeTout(h, maintenant);
-                NoterEntite(maintenant, TypeEvenement.Maladie, h, null, $"Le mal quitte {h.Nom} d'un coup : {Il(h)} guérit.", annonce);
+                NoterEntite(maintenant, TypeEvenement.Maladie, h, null, new Recit("ges.gueri", ("h", h)), annonce);
                 FaireSavoir(geste, maniere, h, h.CommunauteId, Temoins(h, maniere, tous, maintenant), true, 0.7, annonce, tous, maintenant);
-                return $"{h.Nom} guérit.";
+                return new Recit("ges.r.gueri", ("h", h));
             }
             case GesteEntite.RendreFecond:
             {
@@ -202,14 +178,14 @@ public sealed partial class Comportement
                 var (jmin, jmax) = Gestes.Jours(geste);
                 force = Math.Clamp(double.IsFinite(force) ? force : fmin, fmin, fmax);
                 jours = Math.Clamp(double.IsFinite(jours) ? jours : jmin, jmin, jmax);
-                annonce = NoterGeste(maintenant, h, $"✦ L'Entité rend {h.Nom} plus fécond{E(h)} (chances de concevoir × {force:0.0}) pour {Duree(jours)}{Signe(maniere)}.");
+                annonce = NoterGeste(maintenant, h, new Recit("ges.fecond", ("h", h), ("f", new Decimale(force)), ("d", Duree(jours)), ("s", Signe(maniere))));
                 h.FeconditeEntite = force;
                 h.FeconditeJusqua = maintenant + (long)(jours * Calendrier.SecondesParJour);
                 FaireSavoir(geste, maniere, h, h.CommunauteId, Temoins(h, maniere, tous, maintenant), true, 0.4, annonce, tous, maintenant);
-                return h.EstFecond(maintenant) ? $"{h.Nom} est plus fécond{E(h)} pour {Duree(jours)}." : $"{h.Nom} n'est pas en âge de concevoir : rien ne changera.";
+                return h.EstFecond(maintenant) ? new Recit("ges.r.fecond", ("h", h), ("d", Duree(jours))) : new Recit("ges.r.pasFecond", ("h", h));
             }
             default:
-                return "Ce geste porte sur une communauté.";
+                return Recit.Seul("ges.r.surCommunaute");
         }
     }
 
@@ -237,21 +213,22 @@ public sealed partial class Comportement
     /// <paramref name="h"/> tombe malade de la maladie choisie (voir <see cref="Gestes.Contagieuse"/>). Renvoie, en mots, ce qui
     /// s'est passé (vide : il en est déjà malade).
     /// </summary>
-    private string Contaminer(Humain h, int code, long cause, long maintenant)
+    private Recit? Contaminer(Humain h, int code, long cause, long maintenant)
     {
         if (code is >= 1 and < Gestes.Contagieuse && Enum.IsDefined((Maladie)code))
         {
             var fiche = Maladies.Fiche((Maladie)code);
-            if (h.EstMalade(maintenant) && h.Maladie == fiche.Maladie) return "";
+            if (h.EstMalade(maintenant) && h.Maladie == fiche.Maladie) return null;
             h.Maladie = fiche.Maladie;
             h.MaladeJusqua = maintenant + Maladies.Duree(fiche, h, alea);
-            NoterEntite(maintenant, TypeEvenement.Maladie, h, null, $"{h.Nom} tombe malade : {fiche.Nom}.", cause);
-            return $"{h.Nom} tombe malade : {fiche.Nom}.";
+            var malade = new Recit("ges.tombeMalade", ("h", h), ("m", Recit.Seul($"maladie.{fiche.Maladie}")));
+            NoterEntite(maintenant, TypeEvenement.Maladie, h, null, malade, cause);
+            return malade;
         }
-        if (Catastrophes is null) return "";
+        if (Catastrophes is null) return null;
         var pathogene = code >= Gestes.Contagieuse ? code - Gestes.Contagieuse : 0;
-        if (Catastrophes.Infecter(h, pathogene, maintenant, cause) == 0) return "";
-        return $"{h.Nom} a attrapé {Catastrophes.Pathogenes[h.InfectionId - 1].Nom}.";
+        if (Catastrophes.Infecter(h, pathogene, maintenant, cause) == 0) return null;
+        return new Recit("ges.r.attrape", ("h", h), ("m", Catastrophes.Pathogenes[h.InfectionId - 1].Dit));
     }
 
     // ───────────── Sur une communauté ─────────────
@@ -261,26 +238,25 @@ public sealed partial class Comportement
     /// catastrophe (calamité) ; <paramref name="force"/> : part des membres frappés, part perdue, facteur de fécondité,
     /// bénédiction (0 à 100) ou intensité de la calamité ; <paramref name="jours"/> : durée. Renvoie, en mots, ce qui s'est passé.
     /// </summary>
-    public string AgirSur(Communaute c, GesteEntite geste, ManiereGeste maniere, int param, double force, double jours, List<Humain> tous, long maintenant)
+    public Recit AgirSur(Communaute c, GesteEntite geste, ManiereGeste maniere, int param, double force, double jours, List<Humain> tous, long maintenant)
     {
         _maintenant = maintenant;
         _tous = tous;
         var membres = tous.Vivants().Where(h => h.EstVivant && h.CommunauteId == c.Id).OrderBy(h => h.Id).ToList();
-        if (membres.Count == 0 || !c.Active) return $"La {Minuscule(c.Nom)} n'a plus de membres.";
+        if (membres.Count == 0 || !c.Active) return new Recit("ges.r.vide", ("c", c));
         var figure = membres.Find(h => h.Id == c.FigureId) ?? membres[0];
         var (fmin, fmax) = Gestes.Force(geste);
         var (jmin, jmax) = Gestes.Jours(geste);
         if (geste != GesteEntite.Calamite) force = Math.Clamp(double.IsFinite(force) ? force : fmin, fmin, fmax);
         jours = Math.Clamp(double.IsFinite(jours) ? jours : jmin, jmin, jmax);
-        var nom = Minuscule(c.Nom);
         var fin = maintenant + (long)(jours * Calendrier.SecondesParJour);
         long annonce;
-        string resultat;
+        Recit resultat;
         switch (geste)
         {
             case GesteEntite.Epidemie:
             {
-                annonce = NoterGeste(maintenant, figure, $"✦ L'Entité envoie une épidémie sur la {nom}{Signe(maniere)}.");
+                annonce = NoterGeste(maintenant, figure, new Recit("ges.epidemie", ("c", c), ("s", Signe(maniere))));
                 // La part voulue des membres, tirée au hasard ; une maladie nouvelle naît chez le premier, et passe aux autres.
                 var nombre = Math.Max(1, (int)Math.Round(force * membres.Count));
                 var frappes = membres.OrderBy(_ => alea.Reel()).Take(nombre).ToList();
@@ -288,25 +264,25 @@ public sealed partial class Comportement
                 var malades = 0;
                 foreach (var h in frappes)
                 {
-                    if (Contaminer(h, code, annonce, maintenant).Length > 0) malades++;
+                    if (Contaminer(h, code, annonce, maintenant) is not null) malades++;
                     if (code == 0 && h.InfectionId != 0) code = Gestes.Contagieuse + h.InfectionId;
                 }
-                resultat = $"{malades} membre{(malades > 1 ? "s" : "")} sur {membres.Count} tombe{(malades > 1 ? "nt" : "")} malade{(malades > 1 ? "s" : "")}.";
+                resultat = new Recit("ges.r.epidemie", ("n", malades), ("sur", membres.Count));
                 break;
             }
             case GesteEntite.Calamite:
             {
-                if (Catastrophes is null || !Enum.IsDefined((TypeCatastrophe)param)) return "Calamité inconnue.";
-                annonce = NoterGeste(maintenant, figure, $"✦ L'Entité frappe la {nom} d'une calamité : {TypesCatastrophe.Nom((TypeCatastrophe)param)}{Signe(maniere)}.");
+                if (Catastrophes is null || !Enum.IsDefined((TypeCatastrophe)param)) return Recit.Seul("ges.r.calamiteInconnue");
+                annonce = NoterGeste(maintenant, figure, new Recit("ges.calamite", ("c", c), ("k", Recit.Seul($"catastropheNom.{(TypeCatastrophe)param}")), ("s", Signe(maniere))));
                 var id = Catastrophes.Declencher((TypeCatastrophe)param, c.CentreX, c.CentreY, force, tous, maintenant, Origine.Entite);
-                if (id == 0) return "Cette calamité ne peut pas avoir lieu ici.";
-                resultat = $"{TypesCatastrophe.Nom((TypeCatastrophe)param)} frappe ses terres.";
+                if (id == 0) return Recit.Seul("ges.r.calamiteImpossible");
+                resultat = new Recit("ges.r.calamite", ("k", Recit.Seul($"catastropheNom.{(TypeCatastrophe)param}")));
                 break;
             }
             case GesteEntite.Famine:
             {
                 annonce = NoterGeste(maintenant, figure,
-                    $"✦ L'Entité affame la {nom} : {Math.Round(100 * force)} % du gibier et des plantes de ses terres disparaissent pour {Duree(jours)}{Signe(maniere)}.");
+                    new Recit("ges.famine", ("c", c), ("p", (long)Math.Round(100 * force)), ("d", Duree(jours)), ("s", Signe(maniere))));
                 var rayon = c.Rayon + 2;
                 Remplacer(new EffetEntite(geste, c.Id, maintenant, fin, force, c.CentreX, c.CentreY, rayon, annonce));
                 foreach (var i in Cases(c.CentreX, c.CentreY, rayon))
@@ -315,12 +291,12 @@ public sealed partial class Comportement
                     ecosysteme.Gibier[i] = (ushort)Math.Round(ecosysteme.Gibier[i] * (1 - force));
                 }
                 Fleau(maintenant);
-                resultat = "Le gibier et les plantes s'effondrent sur ses terres.";
+                resultat = Recit.Seul("ges.r.famine");
                 break;
             }
             case GesteEntite.SortirDeFamine:
             {
-                annonce = NoterGeste(maintenant, figure, $"✦ L'Entité sort la {nom} de la famine{Signe(maniere)}.");
+                annonce = NoterGeste(maintenant, figure, new Recit("ges.finFamine", ("c", c), ("s", Signe(maniere))));
                 Cultes!.Effets.RemoveAll(e => e.Geste == GesteEntite.Famine && e.CommunauteId == c.Id);
                 Fleau(maintenant);
                 var saison = Ecosysteme.FacteurSaison(maintenant);
@@ -335,32 +311,32 @@ public sealed partial class Comportement
                     h.Reserves = Math.Min(100, h.Reserves + 30);
                 }
                 c.Disette = false;
-                resultat = "Le gibier et les plantes reviennent ; la faim tombe.";
+                resultat = Recit.Seul("ges.r.finFamine");
                 break;
             }
             case GesteEntite.ArreterEpidemie:
             {
                 var malades = membres.Where(h => h.InfectionId != 0 || h.EstMalade(maintenant)).ToList();
-                if (malades.Count == 0) return $"Personne n'est malade dans la {nom}.";
-                annonce = NoterGeste(maintenant, figure, $"✦ L'Entité arrête le mal qui frappe la {nom}{Signe(maniere)}.");
+                if (malades.Count == 0) return new Recit("ges.r.personneMalade", ("c", c));
+                annonce = NoterGeste(maintenant, figure, new Recit("ges.arrete", ("c", c), ("s", Signe(maniere))));
                 foreach (var h in malades) GuerirDeTout(h, maintenant);
-                NoterEntite(maintenant, TypeEvenement.Maladie, figure, null, $"Le mal quitte d'un coup les malades de la {nom} : {malades.Count} guérissent.", annonce);
-                resultat = $"{malades.Count} malade{(malades.Count > 1 ? "s" : "")} guéri{(malades.Count > 1 ? "s" : "")}.";
+                NoterEntite(maintenant, TypeEvenement.Maladie, figure, null, new Recit("ges.arrete.gueris", ("c", c), ("n", malades.Count)), annonce);
+                resultat = new Recit("ges.r.gueris", ("n", malades.Count));
                 break;
             }
             case GesteEntite.Fecondite:
                 annonce = NoterGeste(maintenant, figure,
-                    $"✦ L'Entité rend les femmes de la {nom} plus fécondes (chances de concevoir × {force:0.0}) pour {Duree(jours)}{Signe(maniere)}.");
+                    new Recit("ges.fecondite", ("c", c), ("f", new Decimale(force)), ("d", Duree(jours)), ("s", Signe(maniere))));
                 Remplacer(new EffetEntite(geste, c.Id, maintenant, fin, force, c.CentreX, c.CentreY, c.Rayon, annonce));
-                resultat = $"Fécondité accordée pour {Duree(jours)}.";
+                resultat = new Recit("ges.r.fecondite", ("d", Duree(jours)));
                 break;
             case GesteEntite.Benir:
-                annonce = NoterGeste(maintenant, figure, $"✦ L'Entité bénit la {nom} ({Math.Round(force)} sur 100) pour {Duree(jours)}{Signe(maniere)}.");
+                annonce = NoterGeste(maintenant, figure, new Recit("ges.benit", ("c", c), ("f", (long)Math.Round(force)), ("d", Duree(jours)), ("s", Signe(maniere))));
                 Remplacer(new EffetEntite(geste, c.Id, maintenant, fin, force / 100, c.CentreX, c.CentreY, c.Rayon, annonce));
-                resultat = $"Bénie pour {Duree(jours)} : moins de maladies, de morts en couches et de petits morts.";
+                resultat = new Recit("ges.r.benie", ("d", Duree(jours)));
                 break;
             default:
-                return "Ce geste porte sur un humain.";
+                return Recit.Seul("ges.r.surHumain");
         }
         var vecu = maniere == ManiereGeste.Cachee ? [] : membres.Where(h => h.EstVivant && !h.EstBebe(maintenant)).Select(h => (h, 1.0, true)).ToList();
         FaireSavoir(geste, maniere, null, c.Id, vecu, Gestes.EstBienfait(geste), 1, annonce, tous, maintenant);
@@ -411,18 +387,18 @@ public sealed partial class Comportement
     }
 
     /// <summary>Note le geste lui-même (★) : un acte de l'Entité, que l'observateur seul voit en entier.</summary>
-    private long NoterGeste(long maintenant, Humain h, string texte) =>
+    private long NoterGeste(long maintenant, Humain h, Recit texte) =>
         NoterEntite(maintenant, TypeEvenement.Geste, h, null, texte, 0, significatif: true);
 
-    private static string Signe(ManiereGeste m, FormeMort? forme = null) =>
-        m == ManiereGeste.Cachee ? ", caché" : forme == FormeMort.Foudre ? "" : $", avec {Gestes.NomManiere(m)}";
+    private static Recit Signe(ManiereGeste m, FormeMort? forme = null) =>
+        m == ManiereGeste.Cachee ? Recit.Seul("ges.signe.cache") : forme == FormeMort.Foudre ? Recit.Seul("ges.signe.aucun") : new Recit("ges.signe", ("m", Gestes.NomManiere(m)));
 
-    private static string Duree(double jours) => jours switch
+    private static Recit Duree(double jours) => jours switch
     {
-        < 135 => "une saison",
-        < 300 => $"{Math.Round(jours / Calendrier.JoursParSaison)} saisons",
-        < 540 => "un an",
-        _ => $"{Math.Round(jours / Calendrier.JoursParAn, 1):0.#} ans",
+        < 135 => Recit.Seul("ges.duree.saison"),
+        < 300 => new Recit("ges.duree.saisons", ("n", (long)Math.Round(jours / Calendrier.JoursParSaison))),
+        < 540 => Recit.Seul("ges.duree.an"),
+        _ => new Recit("ges.duree.ans", ("n", Math.Round(jours / Calendrier.JoursParAn, 1))),
     };
 
 }

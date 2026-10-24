@@ -1150,7 +1150,7 @@ public sealed class MondeSimule
     /// chacun comprend, croit, obéit ou refuse à sa manière. <paramref name="cibleId"/> : la personne désignée (0 : aucune) ;
     /// <paramref name="param"/> : direction, plante ou communauté. Renvoie, pour chacun, ce qu'il en a fait.
     /// </summary>
-    public List<(int Humain, string Resultat)> Parler(IReadOnlyCollection<int> humainsIds, IReadOnlyCollection<int> communautes, Parole parole,
+    public List<(int Humain, Recit Resultat)> Parler(IReadOnlyCollection<int> humainsIds, IReadOnlyCollection<int> communautes, Parole parole,
         ModeParole mode, int cibleId, int param)
     {
         lock (_verrou)
@@ -1160,7 +1160,7 @@ public sealed class MondeSimule
                 foreach (var h in _humains)
                     if (h.EstVivant && h.CommunauteId == c && !h.EstBebe(_secondes)) ids.Add(h.Id);
             var cible = cibleId >= 1 && cibleId <= _humains.Count ? _humains[cibleId - 1] : null;
-            var resultats = new List<(int, string)>();
+            var resultats = new List<(int, Recit)>();
             foreach (var id in ids.Order())
             {
                 var h = _humains[id - 1];
@@ -1176,7 +1176,7 @@ public sealed class MondeSimule
     /// L'Entité inspire un penchant à un humain (ou à chaque adulte de communautés) : pour <paramref name="cibleId"/>, ou pour
     /// celui que le monde choisit (0). <paramref name="mutuel"/> : l'autre le ressent aussi (coup de foudre).
     /// </summary>
-    public List<(int Humain, string Resultat)> Inspirer(IReadOnlyCollection<int> humainsIds, IReadOnlyCollection<int> communautes, int cibleId,
+    public List<(int Humain, Recit Resultat)> Inspirer(IReadOnlyCollection<int> humainsIds, IReadOnlyCollection<int> communautes, int cibleId,
         bool mutuel, bool passion, bool orientation)
     {
         lock (_verrou)
@@ -1186,7 +1186,7 @@ public sealed class MondeSimule
                 foreach (var h in _humains)
                     if (h.EstVivant && h.CommunauteId == c && !h.EstEnfant(_secondes)) ids.Add(h.Id);
             var cible = cibleId >= 1 && cibleId <= _humains.Count ? _humains[cibleId - 1] : null;
-            var resultats = new List<(int, string)>();
+            var resultats = new List<(int, Recit)>();
             foreach (var id in ids.Order())
             {
                 var h = _humains[id - 1];
@@ -1217,7 +1217,7 @@ public sealed class MondeSimule
     /// <summary>
     /// L'Entité exauce une prière en attente. Renvoie, en mots, ce qui s'est passé, ou pourquoi elle ne peut l'être.
     /// </summary>
-    public string Exaucer(int priereId)
+    public Recit Exaucer(int priereId)
     {
         lock (_verrou)
         {
@@ -1230,7 +1230,7 @@ public sealed class MondeSimule
     /// <summary>
     /// L'Entité refuse une prière en attente, en secret ou par un signe. Renvoie, en mots, ce qui s'est passé.
     /// </summary>
-    public string Refuser(int priereId, bool signe)
+    public Recit Refuser(int priereId, bool signe)
     {
         lock (_verrou)
         {
@@ -1244,20 +1244,20 @@ public sealed class MondeSimule
     /// L'Entité fait un geste sur un humain (<see cref="Gestes.SurHumain"/>) ou sur une communauté. Les bornes de durée et de
     /// force sont imposées. Renvoie, en mots, ce qui s'est passé, ou pourquoi le geste ne peut avoir lieu.
     /// </summary>
-    public string Agir(GesteEntite geste, int cibleId, ManiereGeste maniere, int param, double force, double jours)
+    public Recit Agir(GesteEntite geste, int cibleId, ManiereGeste maniere, int param, double force, double jours)
     {
-        if (!Enum.IsDefined(geste) || !Enum.IsDefined(maniere)) return "Geste inconnu.";
+        if (!Enum.IsDefined(geste) || !Enum.IsDefined(maniere)) return Recit.Seul("ges.r.inconnu");
         lock (_verrou)
         {
-            string texte;
+            Recit texte;
             if (Gestes.SurHumain(geste))
             {
-                if (cibleId < 1 || cibleId > _humains.Count) return "Cet humain n'existe pas.";
+                if (cibleId < 1 || cibleId > _humains.Count) return Recit.Seul("ges.r.humainInconnu");
                 texte = _comportement.AgirSur(_humains[cibleId - 1], geste, maniere, param, force, jours, _humains, _secondes);
             }
             else
             {
-                if (cibleId < 1 || cibleId > _communautes.Count) return "Cette communauté n'existe pas.";
+                if (cibleId < 1 || cibleId > _communautes.Count) return Recit.Seul("ges.r.communauteInconnue");
                 texte = _comportement.AgirSur(_communautes[cibleId - 1], geste, maniere, param, force, jours, _humains, _secondes);
             }
             VerserJournal();

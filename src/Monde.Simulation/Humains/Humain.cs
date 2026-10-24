@@ -271,10 +271,10 @@ public sealed class Humain
     /// Ce qui a le plus fait monter sa croyance depuis la dernière note (en mots, sa force, l'événement en cause), et ce qui
     /// l'a le plus fait baisser.
     /// </summary>
-    internal string? CroyanceRaison { get; set; }
+    internal Recits.Recit? CroyanceRaison { get; set; }
     internal double CroyancePoussee { get; set; }
     internal long CroyanceCause { get; set; }
-    internal string? CroyanceRaisonBaisse { get; set; }
+    internal Recits.Recit? CroyanceRaisonBaisse { get; set; }
     internal double CroyanceBaisse { get; set; }
     internal long CroyanceCauseBaisse { get; set; }
 
@@ -298,7 +298,7 @@ public sealed class Humain
     internal double RevolteNote { get; set; } = double.NaN;
 
     /// <summary>Ce qui a le plus fait bouger son regard depuis la dernière note (en mots, sa force, l'événement en cause).</summary>
-    internal string? RegardRaison { get; set; }
+    internal Recits.Recit? RegardRaison { get; set; }
     internal double RegardPoussee { get; set; }
     internal long RegardCause { get; set; }
 
@@ -726,7 +726,8 @@ public sealed class Humain
     }
 
     // Les enregistrements (records) des humains ne sont jamais modifiés en place : on les remplace.
-    private static bool EstImmuable(Type t) => t.GetMethod("<Clone>$") is not null;
+    // Un récit ne change plus une fois fait (seul son texte français se met en cache) : il se partage.
+    private static bool EstImmuable(Type t) => t.GetMethod("<Clone>$") is not null || t == typeof(Recits.Recit);
 
     /// <summary>Recopie <paramref name="source"/> dans <paramref name="cible"/> (une nouvelle liste s'il n'y en a pas).</summary>
     internal static List<T>? Recopier<T>(List<T>? source, List<T>? cible)

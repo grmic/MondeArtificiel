@@ -1056,7 +1056,7 @@ public sealed partial class Comportement
                 new Recit("ing.visions", ("h", h), ("plante", espece.Dit)));
             Jardin.Confier(h, TypeIntime.Croyance, 0, Recits.Recit.Seul("js.visions"),
                 40 + 40 * h.Personnalite.Transcendance, id, _maintenant, $"visions:{espece.Numero}");
-            Croyances.Ajouter(h, 8 * (0.5 + h.Personnalite.Transcendance), $"{espece.Nom} lui a donné des visions", id, _maintenant, signe: true);
+            Croyances.Ajouter(h, 8 * (0.5 + h.Personnalite.Transcendance), new Recit("cro.visions", ("plante", espece.Dit)), id, _maintenant, signe: true);
             Retenir(h, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Visions, espece.Numero, Symptome.Aucun, origine, 0, tous);
         }
         // Les vertus agissent sur la maladie réelle, que l'humain le sache ou non.

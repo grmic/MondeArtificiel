@@ -338,7 +338,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         var texte = service.Monde.Exaucer(priere);
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
-        return texte;
+        return L.Rediger(texte);
     }
 
     /// <summary>L'Entité refuse une prière en attente, en secret (par défaut) ou par un signe. Renvoie, en mots, ce qui s'est passé.</summary>
@@ -348,7 +348,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         var texte = service.Monde.Refuser(priere, signe);
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
-        return texte;
+        return L.Rediger(texte);
     }
 
     /// <summary>Gestes que l'Entité peut faire, manières, formes de mort et maladies.</summary>
@@ -371,7 +371,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         var texte = monde.Agir(lu.geste, demande.Cible, lu.maniere, lu.param, demande.Force, demande.Jours);
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
-        return texte;
+        return L.Rediger(texte);
     }
 
     /// <summary>Paroles, manières de se manifester, directions, plantes et communautés que l'Entité peut choisir.</summary>
@@ -438,10 +438,10 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return (humains.Distinct().ToArray(), communautes.Distinct().ToArray());
     }
 
-    private List<ResultatParoleDto> Resultats(List<(int Humain, string Resultat)> resultats)
+    private List<ResultatParoleDto> Resultats(List<(int Humain, Simulation.Recits.Recit Resultat)> resultats)
     {
         var (_, humains) = service.Monde.InstantaneHumains();
-        return resultats.Select(r => new ResultatParoleDto(r.Humain, r.Humain >= 1 && r.Humain <= humains.Count ? humains[r.Humain - 1].Nom : "?", r.Resultat)).ToList();
+        return resultats.Select(r => new ResultatParoleDto(r.Humain, r.Humain >= 1 && r.Humain <= humains.Count ? humains[r.Humain - 1].Nom : "?", L.Rediger(r.Resultat))).ToList();
     }
 
     /// <summary>Au redémarrage du serveur : reprendre la dernière vitesse (vrai) ou repartir en pause (faux).</summary>

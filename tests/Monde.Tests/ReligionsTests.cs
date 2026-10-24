@@ -77,13 +77,13 @@ public sealed class ReligionsTests : IDisposable
         var (monde, p) = UnePriere();
         var texte = monde.Exaucer(p.Id);
 
-        Assert.StartsWith("Exaucée", texte);
+        Assert.StartsWith("Exaucée", texte.Texte);
         var apres = monde.Prieres().First(x => x.Id == p.Id);
         Assert.Equal(IssuePriere.ExauceeParEntite, apres.Issue);
         Assert.Contains(monde.Etat.JournalNonEnregistre!, e => e.Origine == Origine.Entite && e.Type == TypeEvenement.Religion && e.Texte.Contains("exauce"));
         // Une seconde fois : elle n'attend plus rien.
-        Assert.Equal("Cette prière n'attend plus de réponse.", monde.Exaucer(p.Id));
-        Assert.Equal("Cette prière n'existe pas (ou plus).", monde.Exaucer(-3));
+        Assert.Equal("Cette prière n'attend plus de réponse.", monde.Exaucer(p.Id).Texte);
+        Assert.Equal("Cette prière n'existe pas (ou plus).", monde.Exaucer(-3).Texte);
     }
 
     /// <summary>L'Entité désigne un prophète : apparition à des adultes croyants, jusqu'à ce que l'un accepte.</summary>
@@ -112,7 +112,7 @@ public sealed class ReligionsTests : IDisposable
         Assert.Equal(SourceProphete.Entite, prophete.SourceProphete);
         Assert.Equal(r.Id, prophete.ReligionId);
         Assert.Equal(NaissanceReligion.Prophete, r.Naissance);
-        Assert.Equal($"la parole de {prophete.Nom}", r.Sens);
+        Assert.Equal($"la parole de {prophete.Nom}", global::Monde.Simulation.Recits.Recit.Relire(r.Sens)?.ToString());
         Assert.Contains(r.Dogmes, d => d.Precepte == Precepte.Createur && d.Origine == OrigineDogme.Entite);
         // « Partage avec… », si le prophète l'a crue, devient un précepte (peut-être changé en offrandes).
         var partage = prophete.Impulsions.Where(i => i.Parole == Parole.Partage).ToList();

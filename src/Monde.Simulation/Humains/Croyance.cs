@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -32,7 +34,7 @@ public static class Croyances
     /// Fait bouger la croyance de <paramref name="h"/>. Une hausse compte moins quand on croit déjà beaucoup.
     /// <paramref name="signe"/> : l'invisible s'est montré (le déclin sans signe repart de zéro). Renvoie le changement réel.
     /// </summary>
-    public static double Ajouter(Humain h, double delta, string raison, long cause, long maintenant, bool signe = false)
+    public static double Ajouter(Humain h, double delta, Recit raison, long cause, long maintenant, bool signe = false)
     {
         // Pour un autre que celui dont c'est le tour, le changement vient après le pas (et n'est pas encore connu).
         if (Tour.Autrui(h))
@@ -51,7 +53,7 @@ public static class Croyances
     }
 
     /// <summary>Garde ce qui a le plus poussé la croyance dans chaque sens, pour le dire quand elle change d'une dizaine.</summary>
-    internal static void Retenir(Humain h, double d, string raison, long cause)
+    internal static void Retenir(Humain h, double d, Recit raison, long cause)
     {
         if (d > h.CroyancePoussee)
             (h.CroyancePoussee, h.CroyanceRaison, h.CroyanceCause) = (d, raison, cause);
@@ -100,9 +102,9 @@ public static class Croyances
             var cible = somme / poids;
             var d = (cible - c) * (1 - Math.Pow(0.5, 1 / demiVie));
             c += d;
-            Retenir(h, d, parents >= poids / 2
-                ? (d > 0 ? "ses parents y croient" : "ses parents n'y croient guère")
-                : (d > 0 ? "les siens y croient" : "les siens n'y croient guère"), 0);
+            Retenir(h, d, Recits.Recit.Seul(parents >= poids / 2
+                ? (d > 0 ? "cro.parents" : "cro.parentsGuere")
+                : (d > 0 ? "cro.siens" : "cro.siensGuere")), 0);
         }
         // Les années sans signe : la croyance retombe vers celle du tempérament (demi-vie de quelques années).
         var repos = Repos(h);
@@ -111,13 +113,13 @@ public static class Croyances
             var demiVie = 360 * 6 * (0.6 + 0.8 * p.Transcendance) * (1.15 - 0.3 * Analytique(h));
             var d = -(c - repos) * (1 - Math.Pow(0.5, 1 / demiVie));
             c += d;
-            Retenir(h, d, "aucun signe de l'invisible depuis longtemps", 0);
+            Retenir(h, d, Recits.Recit.Seul("cro.aucunSigne"), 0);
         }
         h.Croyance = Math.Clamp(c, 0, 100);
     }
 
     /// <summary>Texte du changement d'une dizaine, ou null s'il n'y a rien à noter.</summary>
-    internal static string? Changement(Humain h)
+    internal static Recit? Changement(Humain h)
     {
         if (double.IsNaN(h.CroyanceNotee)) h.CroyanceNotee = h.Croyance;
         var avant = h.CroyanceNotee;
@@ -126,9 +128,9 @@ public static class Croyances
         var monte = apres > avant;
         var raison = monte ? h.CroyanceRaison : h.CroyanceRaisonBaisse;
         var n = (int)Math.Round(apres);
-        return monte
-            ? $"{h.Nom} croit davantage en l'invisible ({n}/100){(raison is null ? "" : " : " + raison)}."
-            : $"{h.Nom} croit moins en l'invisible ({n}/100){(raison is null ? "" : " : " + raison)}.";
+        return raison is null
+            ? new Recit(monte ? "cro.plus" : "cro.moins", ("h", h), ("n", n))
+            : new Recit(monte ? "cro.plus.r" : "cro.moins.r", ("h", h), ("n", n), ("r", raison));
     }
 
     /// <summary>La croyance en mots, pour l'observateur.</summary>

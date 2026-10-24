@@ -44,7 +44,7 @@ public static class Religions
         _ => null,
     };
 
-    private static string Titre(Religion r) => L.T("religion.titre", ("nom", r.Nom), ("sens", r.Sens));
+    private static string Titre(Religion r) => L.T("religion.titre", ("nom", r.Nom), ("sens", L.Garde(r.Sens)));
 
     /// <summary>Prières en mémoire : en attente d'abord (les plus fortes en tête), puis les plus récentes.</summary>
     public static List<PriereDto> Prieres(ServiceMonde service, bool enAttente, int limite = 300)
@@ -80,7 +80,7 @@ public static class Religions
         return new PriereDto(p.Id, Date(p.Le), h.Id, h.Nom, communautes.GetValueOrDefault(h.CommunauteId), L.T($"sujetPriere.{p.Sujet}"), p.CibleId, x?.Nom,
             (int)Math.Round(100 * p.Ferveur), p.Forte, r is null ? null : r.Nom, texte,
             p.Refus == RefusPriere.Signe ? L.T("priere.refuseeSigne") : L.T($"issuePriere.{p.Issue}"), p.IssueLe > 0 ? Date(p.IssueLe) : null,
-            p.Conclusion, p.EvenementId,
+            L.Garde(p.Conclusion), p.EvenementId,
             p.Issue == IssuePriere.EnAttente && p.Refus == RefusPriere.Aucun && (collective || h.EstVivant) && p.Sujet != SujetPriere.Remerciement,
             h.CommunauteId, collective ? communautes.GetValueOrDefault(p.CommunauteId, "?") : null, p.CommunauteId, p.Refus == RefusPriere.Cache ? L.T("priere.refuseeSecret") : null);
     }
@@ -106,11 +106,11 @@ public static class Religions
             if (sansGroupe > 0) parCommunaute.Add(L.T("religion.sansCommunaute", ("n", sansGroupe)));
             var lieu = lieux.Find(l => l.ReligionId == r.Id);
             var fondateur = humains[r.FondateurId - 1];
-            return new ReligionDto(r.Id, r.Nom, r.Sens, L.T($"naissanceReligion.{r.Naissance}"), r.FondateurId, fondateur.Nom, Date(r.FondeeLe),
+            return new ReligionDto(r.Id, r.Nom, L.Garde(r.Sens)!, L.T($"naissanceReligion.{r.Naissance}"), r.FondateurId, fondateur.Nom, Date(r.FondeeLe),
                 r.ParentId >= 1 && r.ParentId <= religions.Count ? religions[r.ParentId - 1].Nom : null, communautes.GetValueOrDefault(r.CommunauteId),
                 f.Count, r.FidelesMax, f.Count == 0 ? 0 : (int)Math.Round(100 * f.Average(h => h.Ferveur)), r.EteinteLe > 0 ? Date(r.EteinteLe) : null,
-                r.Gestes, r.Dogmes.Select(d => new DogmeDto(d.Texte, L.T($"origineDogme.{d.Origine}"), d.Origine is OrigineDogme.Entite, Date(d.Le), d.EvenementId)).ToList(),
-                porteurs, parCommunaute, lieu?.Raison, r.EvenementId);
+                L.Garde(r.Gestes), r.Dogmes.Select(d => new DogmeDto(L.Garde(d.Texte)!, L.T($"origineDogme.{d.Origine}"), d.Origine is OrigineDogme.Entite, Date(d.Le), d.EvenementId)).ToList(),
+                porteurs, parCommunaute, L.Garde(lieu?.Raison), r.EvenementId);
         }).OrderBy(r => r.EteinteLe is null ? 0 : 1).ThenByDescending(r => r.Fideles).ThenBy(r => r.Id).ToList();
     }
 
@@ -118,7 +118,7 @@ public static class Religions
     public static List<LieuSacreDto> Lieux(ServiceMonde service)
     {
         var (religions, lieux, _) = service.Monde.Religions();
-        return lieux.Select(l => new LieuSacreDto(l.Id, l.X, l.Y, l.Raison,
+        return lieux.Select(l => new LieuSacreDto(l.Id, l.X, l.Y, L.Garde(l.Raison)!,
             l.ReligionId >= 1 && l.ReligionId <= religions.Count ? religions[l.ReligionId - 1].Nom : null)).ToList();
     }
 

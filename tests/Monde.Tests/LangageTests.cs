@@ -167,7 +167,7 @@ public sealed class LangageTests
         Assert.Equal(1, bebe.NomParId);
         var e = Assert.Single(social.Journal, x => x.Id == bebe.NomEvenementId);
         Assert.Equal(TypeEvenement.Langage, e.Type);
-        Assert.Contains($"« {bebe.NomLangue} », qui veut dire « {bebe.NomSens} »", e.Texte);
+        Assert.Contains($"« {bebe.NomLangue} », qui veut dire « {Monde.Simulation.Recits.Recit.Relire(bebe.NomSens)} »", e.Texte);
     }
 
     [Fact]
