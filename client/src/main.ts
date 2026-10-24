@@ -1,6 +1,7 @@
 import { oublierSuivis, PanneauSuivis } from "./suivis";
 import { chargerCarte, distanceEnMots, VueCarte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
+import { Calques } from "./calques";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
 import { PanneauDecouvertes } from "./decouvertes";
@@ -48,6 +49,7 @@ let natureEn: (x: number, y: number) => { abondance: number; pluie: number } | n
 let territoireEn: (x: number, y: number) => { nom: string } | null = () => null;
 let catastrophesEn: (x: number, y: number) => { nom: string; intensite: string }[] = () => [];
 let feuxEn: (x: number, y: number) => string[] = () => [];
+let terrainEn: (x: number, y: number) => string[] = () => [];
 
 function decrire(info: InfoTuile): void {
   if (!info) return;
@@ -65,6 +67,7 @@ function decrire(info: InfoTuile): void {
   }
   const terres = territoireEn(x, y);
   if (terres) lignes.push(t("survol.terres", { nom: terres.nom, nomMin: `${terres.nom.charAt(0).toLowerCase()}${terres.nom.slice(1)}` }));
+  lignes.push(...terrainEn(x, y));
   lignes.push(...feuxEn(x, y));
   for (const c of catastrophesEn(x, y)) lignes.push(`⚠ ${c.nom}${c.intensite ? ` (${c.intensite})` : ""}`);
   if (emplacement) lignes.unshift(t("survol.emplacement", { numero: emplacement.numero }));
@@ -78,6 +81,8 @@ async function demarrer(): Promise<void> {
   territoireEn = (x, y) => vue.territoireEn(x, y);
   catastrophesEn = (x, y) => vue.catastrophesEn(x, y);
   feuxEn = (x, y) => vue.feuxEn(x, y);
+  const calques = new Calques(vue, element<HTMLButtonElement>("#boutonCalques"), element("#panneauCalques"));
+  terrainEn = (x, y) => calques.texteEn(x, y);
 
   // Feux et réserves : relus toutes les 5 secondes ; les réserves peuvent être masquées (choix retenu par le navigateur).
   const caseReserves = element<HTMLInputElement>("#voirReserves");
@@ -381,6 +386,7 @@ async function demarrer(): Promise<void> {
   demarrerConnexion(element("#statut"), async () => {
     await horloge.synchroniser();
     montrerHumains(await connexion.invoke<HumainVue[]>("Humains"));
+    void calques.recharger();
     await journal.recharger();
   });
 
@@ -390,6 +396,7 @@ async function demarrer(): Promise<void> {
     try {
       const carte = await chargerCarte(reglages ? { ...reglages } : undefined);
       vue.afficher(carte, reglages !== undefined);
+      if (!reglages) void calques.recharger();
       if (!reglages) humainsDeDepart = carte.emplacements.length * 2;
       const apercu = reglages ? t("carte.apercu") : t("carte.mondeCourant");
       infos.textContent = t("carte.chargee", { apercu, graine: String(carte.graine), n: carte.emplacements.length });

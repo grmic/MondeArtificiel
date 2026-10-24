@@ -105,7 +105,7 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
             Population(monde, g, humains, maintenant),
             Marche(g, humains, maintenant),
         };
-        rubriques.InsertRange(rubriques.FindIndex(r => r.Titre == T("terrains")) + 1, SousSol(carte));
+        rubriques.InsertRange(rubriques.FindIndex(r => r.Titre == T("terrains")) + 1, [.. SousSol(carte), Cotes(carte)]);
         return new CaracteristiquesDto(InfosMonde.ParDefaut.Nom, (uint)monde.Graine, L.Date(date), Echelle.KilometresParCase,
             Echelle.MetresParUnite, rubriques, g.Traversee?.Cases ?? []);
     }
@@ -143,10 +143,38 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
                 new(T("infranchissables"), T("infranchissables.valeur", ("v", Km(Echelle.Kilometres(infranchissables)))), T("infranchissables.aide")),
             ]),
             new(T("gisements"), [
-                .. t.Gisements.GroupBy(x => x.Type).OrderBy(x => x.Key).Select(x => new MesureDto(L.T($"gite.{x.Key}"),
-                    T("gisements.valeur", ("n", x.Count()), ("a", x.Count(y => y.Profondeur == Enfouissement.Affleurant))), T("gisements.aide"))),
+                .. t.Gisements.GroupBy(x => x.Type).OrderBy(x => x.Key).Select((x, k) => new MesureDto(L.T($"gite.{x.Key}"),
+                    T("gisements.valeur", ("n", x.Count()), ("a", x.Count(y => y.Profondeur == Enfouissement.Affleurant))), k == 0 ? T("gisements.aide") : null)),
             ]),
         ];
+    }
+
+    /// <summary>
+    /// Côtes et mer (voir <see cref="Mer"/>) : rivages, fonds, récifs, passages vers les autres terres et ce qu'on en voit,
+    /// vents dominants. Rien ne s'en sert encore pour naviguer.
+    /// </summary>
+    private static RubriqueDto Cotes(Carte carte)
+    {
+        var m = carte.Mer;
+        var kmCase = Echelle.KilometresParCase;
+        var rivages = m.Rivages.Where(r => r != Rivage.Aucun).GroupBy(r => r).OrderByDescending(x => x.Count())
+            .Select(x => new MesureDto(T($"rivage.{x.Key}"), Km(x.Count() * kmCase))).ToList();
+        int Rang(int masse) => m.Continents is var c && c.Contains(masse) ? c.ToList().IndexOf(masse) + 1 : 0;
+        var passages = m.Passages.Where(p => Rang(p.MasseA) > 0 && Rang(p.MasseB) > 0)
+            .Select(p => new MesureDto(T("passage", ("a", Rang(p.MasseA)), ("b", Rang(p.MasseB))), T("passage.valeur", ("v", Km(p.Km))),
+                T(p.VueDuRivage ? "passage.vueRivage" : p.VueDuSommet ? "passage.vueSommet" : "passage.invisible"), p.DepuisA)).ToList();
+        var ile = m.Iles.Where(i => !double.IsNaN(i.DistanceKm)).MaxBy(i => i.DistanceKm);
+        return new(T("cotes.titre"), [
+            .. rivages,
+            new(T("plateau"), Km2(Echelle.KilometresCarres(m.Fonds.Count(f => f == Fond.Plateau))), T("plateau.aide")),
+            new(T("profondeurMax"), T("metres", ("v", N(m.Profondeur.Max(), 0)))),
+            new(T("recifs"), Km2(Echelle.KilometresCarres(m.Recif.Count(r => r))), T("recifs.aide")),
+            new(T("hautsFonds"), N(m.HautFond.Count(r => r), 0), T("hautsFonds.aide")),
+            .. ile is null ? Array.Empty<MesureDto>() : [new MesureDto(T("ileLointaine"), T("passage.valeur", ("v", Km(ile.DistanceKm))), null, carte.Indice(ile.X, ile.Y))],
+            .. passages,
+            .. m.Vents.Select((v, s) => new MesureDto(T("vent", ("saison", L.Saison((Saison)s))),
+                T("vent.valeur", ("de", T($"rose.{(int)Math.Round(v.Depuis / 45) % 8}")), ("v", N(v.Vitesse, 0))), s == 0 ? T("vent.aide") : null)),
+        ]);
     }
 
     private static RubriqueDto Population(MondeSimule monde, Geographie g, List<Humain> humains, long maintenant)

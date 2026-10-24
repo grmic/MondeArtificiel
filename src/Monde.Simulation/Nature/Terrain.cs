@@ -324,6 +324,8 @@ public sealed class Terrain
             if (!Climat.EstPraticable(b) && b != Biome.Lac) continue;
             var (sol, f) = true switch
             {
+                // Neige et glace : pas de sol (ni plantes ni gibier n'y vivent).
+                _ when b == Biome.SommetEnneige => (Sol.Aucun, 0),
                 _ when b is Biome.Montagne or Biome.SommetEnneige && pente[i] >= 3 => (Sol.Lithosol, 0.15),
                 _ when roches[i] == Roche.Evaporites => (Sol.Salin, 0.06),
                 _ when b == Biome.Desert => (Sol.Desertique, 0.12),

@@ -124,6 +124,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Failles, volcans et sismicité du continent.</summary>
     public GeologieDto Geologie() => GeologieDto.Depuis(service.Monde);
 
+    /// <summary>Roches, sols, pentes, rivières, fonds marins, rivages, grottes, sources et gisements, pour les calques de la carte.</summary>
+    public TerrainDto Terrain() => TerrainDto.Depuis(service.Monde);
+
     /// <summary>Caractéristiques du Monde : échelle, surface et dimensions du continent, relief, climat, population, marche.</summary>
     public CaracteristiquesDto Caracteristiques() => CaracteristiquesDto.Depuis(service);
 

@@ -346,6 +346,7 @@ export class VueCarte {
   private territoires?: { donnees: Territoires; proprietaires: Int32Array };
   private readonly calqueCatastrophes = new Container();
   private readonly calqueTrajet = new Container();
+  private readonly calqueTerrain = new Container();
   private readonly calqueFeux = new Graphics();
   private feux: Feux = { feux: [], reserves: [] };
   private reservesVisibles = true;
@@ -419,6 +420,7 @@ export class VueCarte {
   /** Affiche une carte ; un aperçu (autres réglages) cache les humains du monde courant. */
   afficher(carte: Carte, apercu = false): void {
     this.calqueHumains.visible = !apercu;
+    this.calqueTerrain.visible = !apercu;
     this.afficherNature(null);
     this.afficherTerritoires(null);
     this.afficherCatastrophes(null, [], null);
@@ -440,7 +442,7 @@ export class VueCarte {
     }
     this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
     this.afficherTrajet(null);
-    this.monde.addChild(this.nuit, this.calqueTerritoires, this.calqueNature, this.calqueCatastrophes, this.calqueFeux, this.calqueTrajet, this.marqueurs, this.calqueHumains);
+    this.monde.addChild(this.calqueTerrain, this.nuit, this.calqueTerritoires, this.calqueNature, this.calqueCatastrophes, this.calqueFeux, this.calqueTrajet, this.marqueurs, this.calqueHumains);
     this.cadrer();
   }
 
@@ -468,6 +470,12 @@ export class VueCarte {
     for (const f of this.feux.feux) if (f.x === x && f.y === y) lignes.push(f.couve ? t("carte.feuCouve") : t("carte.feuFlambe"));
     if (this.reservesVisibles) for (const r of this.feux.reserves) if (r.x === x && r.y === y) lignes.push(t("carte.reserve", { texte: r.texte }));
     return lignes;
+  }
+
+  /** Calques du terrain (roches, sols, eaux, fonds, grottes, gisements), dessinés par le module des calques ; null : aucun. */
+  afficherCalques(dessin: Container | null): void {
+    for (const c of this.calqueTerrain.removeChildren()) c.destroy({ children: true, texture: true });
+    if (dessin) this.calqueTerrain.addChild(dessin);
   }
 
   /** Montre (ou cache, avec null) les ressources des terres et les régions touchées par la sécheresse ou très arrosées. */

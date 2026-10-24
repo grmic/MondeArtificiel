@@ -87,4 +87,59 @@ public sealed class TerrainTests
         Assert.Contains(vus, e => !e.Significatif);
         Assert.Contains(monde.Etat.Humains!, h => h.Memoire.Lieux.Exists(l => l.Type == TypeLieu.Gisement));
     }
+
+    [Fact]
+    public void Mer_MemeCarte_MemeMer_EtFondsCoherents()
+    {
+        var a = Carte.Mer;
+        var b = Mer.Calculer(GenerateurContinent.Generer(42));
+        Assert.Equal(a.Profondeur, b.Profondeur);
+        Assert.Equal(a.Rivages, b.Rivages);
+        Assert.Equal(a.Recif, b.Recif);
+        Assert.Equal(a.Iles, b.Iles);
+        Assert.Equal(a.Vents, b.Vents);
+        for (var i = 0; i < Carte.Biomes.Length; i++)
+        {
+            var sale = Biomes.EstEauSalee((Biome)Carte.Biomes[i]);
+            Assert.Equal(sale, a.Profondeur[i] > 0);
+            Assert.Equal(sale, a.Fonds[i] != Fond.Terre);
+            if (a.Rivages[i] != Rivage.Aucun) Assert.False(sale);
+            if (a.Recif[i]) Assert.InRange(a.Profondeur[i], 1, 30);
+        }
+        Assert.Single(a.Continents);
+        Assert.Contains(a.Rivages, r => r == Rivage.Plage);
+        Assert.Contains(a.Rivages, r => r == Rivage.Falaise);
+        Assert.Equal(4, a.Vents.Length);
+        Assert.All(a.Vents, v => Assert.InRange(v.Depuis, 0, 360));
+    }
+
+    [Fact]
+    public void Horizon_SuitLaCourbureDeLaPlanete()
+    {
+        // Debout sur la plage, l'horizon est à moins de 5 km ; le sommet d'une montagne de 1 000 m se voit de plus de 110 km.
+        Assert.InRange(Mer.Horizon(Mer.HauteurDesYeux, 0), 4.5, 4.8);
+        Assert.InRange(Mer.Horizon(Mer.HauteurDesYeux, 1000), 115, 118);
+    }
+
+    [Fact]
+    public void Passages_EntreContinents_MesuresEtVus()
+    {
+        var carte = GenerateurContinent.Generer(new ConfigurationMonde(4, 33, 256, 256, 3));
+        var m = carte.Mer;
+        Assert.Equal(3, m.Continents.Count);
+        var entre = m.Passages.Where(p => m.Continents.Contains(p.MasseA) && m.Continents.Contains(p.MasseB)).ToList();
+        Assert.NotEmpty(entre);
+        Assert.All(entre, p =>
+        {
+            Assert.InRange(p.Km, 0.1, 300);
+            Assert.Equal(p.MasseA, m.Masse[p.DepuisA]);
+            Assert.Equal(p.MasseB, m.Masse[p.VersB]);
+            if (p.VueDuRivage) Assert.True(p.VueDuSommet);
+        });
+        // Les courants longent les côtes et suivent le vent au large.
+        var cote = Enumerable.Range(0, m.Profondeur.Length).First(i => m.DistanceCote[i] == 1);
+        var (x, y) = m.Courant(cote, Monde.Simulation.Temps.Saison.Ete);
+        Assert.True(Math.Sqrt(x * x + y * y) < 0.5);
+        Assert.Equal((0.0, 0.0), m.Courant(carte.Indice(carte.Emplacements[0].X, carte.Emplacements[0].Y), Monde.Simulation.Temps.Saison.Ete));
+    }
 }

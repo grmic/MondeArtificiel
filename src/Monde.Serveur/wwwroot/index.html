@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-BIvOk6KH.js"></script>
+    <script type="module" crossorigin src="/assets/index-BmrK-RI5.js"></script>
   </head>
   <body>
     <div id="scene"></div>
@@ -17,6 +17,7 @@
       <div id="vitesses" class="vitesses" role="group" data-t-aria-label="temps.vitesseDuTemps"></div>
       <form id="formGraine" class="graine">
         <button type="button" id="boutonRessources" data-t="barre.ressources" data-t-title="barre.ressourcesAide"></button>
+        <button type="button" id="boutonCalques" data-t="barre.calques" data-t-title="barre.calquesAide"></button>
         <label class="case-barre" data-t-title="barre.reservesAide"><input id="voirReserves" type="checkbox" checked /> <span data-t="barre.reserves"></span></label>
         <button type="button" id="boutonCommunautes" data-t="barre.communautes" data-t-title="barre.communautesAide"></button>
         <button type="button" id="boutonTerritoires" data-t="barre.territoires" data-t-title="barre.territoiresAide"></button>
@@ -33,6 +34,7 @@
         <button type="button" id="boutonConfiguration" data-t="barre.configuration" data-t-title="barre.configurationAide"></button>
       </form>
     </header>
+    <section id="panneauCalques" class="panneau-calques" data-t-aria-label="barre.calques" hidden></section>
     <section id="panneauTemps" class="temps" data-t-aria-label="temps.controle">
       <div class="ligne">
         <label for="curseurVitesse" data-t="temps.vitesseLibre"></label>
