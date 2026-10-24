@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -307,7 +309,7 @@ public sealed partial class Comportement
         {
             var refus = Noter(maintenant, TypeEvenement.Conflit, hote, h, $"{h.Nom} vient demander le feu à {hote.Nom}, qui le lui refuse.");
             Social?.ChangerAffection(h, hote, -5, maintenant);
-            Jardin.Confier(h, TypeIntime.Opinion, hote.Id, $"{hote.Nom} m'a refusé le feu. Je ne l'oublierai pas.", 25, refus, maintenant, $"opinion:{hote.Id}");
+            Jardin.Confier(h, TypeIntime.Opinion, hote.Id, new Recit("js.feu.refuse", ("x", hote)), 25, refus, maintenant, $"opinion:{hote.Id}");
             return;
         }
         // Qui sait faire une mèche qui couve la donne : elle tiendra jusqu'au camp ; sinon, une branche qui brûle.
@@ -317,7 +319,7 @@ public sealed partial class Comportement
             $"{h.Nom} est venu{E(h)} demander le feu{(etranger ? " chez des voisins" : "")} : {hote.Nom} lui donne {(meche ? "une mèche qui couve" : "une branche qui brûle")}.",
             significatif: etranger, karma: Regard.Partage);
         VieSociale.Gratitude(hote, h, etranger ? 8 : 4);
-        Jardin.Confier(h, TypeIntime.Opinion, hote.Id, $"{hote.Nom} nous a donné le feu.", 30, don, maintenant, $"opinion:{hote.Id}");
+        Jardin.Confier(h, TypeIntime.Opinion, hote.Id, new Recit("js.feu.donne", ("x", hote)), 30, don, maintenant, $"opinion:{hote.Id}");
         h.Activite = Activite.Repos;
     }
 }

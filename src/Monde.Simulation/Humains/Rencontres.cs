@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -327,7 +329,7 @@ public sealed partial class VieSociale
                 var cadeau = Noter(maintenant, TypeEvenement.Partage, d, receveur,
                     $"Au rassemblement, {d.Nom} offre {quoi} à {receveur.Nom}, de la {Minuscule(Communautes[receveur.CommunauteId - 1].Nom)}.",
                     r.EvenementId, karma: Regard.Partage);
-                Jardin.Confier(receveur, TypeIntime.Opinion, d.Id, $"{d.Nom} m'a fait un cadeau. Je lui rendrai.", 25, cadeau, maintenant, $"opinion:{d.Id}");
+                Jardin.Confier(receveur, TypeIntime.Opinion, d.Id, new Recit("js.cadeau", ("x", d)), 25, cadeau, maintenant, $"opinion:{d.Id}");
             }
         }
     }

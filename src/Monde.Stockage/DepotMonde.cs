@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 35;
+    public const int VersionSchema = 36;
 
     private readonly string _connexion;
 
@@ -586,6 +586,8 @@ public sealed partial class DepotMonde
         if (actuelle < 34) MigrerVersion34(connexion, transaction);
         // Version 35 : journal et pensées enregistrés comme récits (clé et paramètres), écrits dans la langue de l'observateur.
         if (actuelle < 35) MigrerVersion35(connexion, transaction);
+        // Version 36 : jardin secret enregistré comme récits.
+        if (actuelle < 36) MigrerVersion36(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -977,13 +979,14 @@ public sealed partial class DepotMonde
         {
             while (l.Read()) Trouver(l.GetInt64(0))?.Memoire.Pensees.Add(formesPensees.Lire(l, 3, 4) is { } r ? new Pensee(l.GetInt64(1), null, r) : new Pensee(l.GetInt64(1), l.GetString(2)));
         }
-        commande.CommandText = "SELECT humain, secondes, type, sujet, texte, intensite, cause, cle FROM jardin ORDER BY humain, rang;";
+        commande.CommandText = "SELECT humain, secondes, type, sujet, texte, intensite, cause, cle, forme, valeurs FROM jardin ORDER BY humain, rang;";
         using (var l = commande.ExecuteReader())
         {
             while (l.Read())
             {
-                Trouver(l.GetInt64(0))?.Memoire.Jardin.Add(new Intime(l.GetInt64(1), (TypeIntime)l.GetByte(2), l.GetInt32(3), l.GetString(4),
-                    l.GetDouble(5), l.GetInt64(6), l.GetString(7)));
+                var recit = formesPensees.Lire(l, 8, 9);
+                Trouver(l.GetInt64(0))?.Memoire.Jardin.Add(new Intime(l.GetInt64(1), (TypeIntime)l.GetByte(2), l.GetInt32(3), recit is null ? l.GetString(4) : null,
+                    l.GetDouble(5), l.GetInt64(6), l.GetString(7), recit));
             }
         }
         commande.CommandText = "SELECT humain, type, de, le, jusqua, evenement, raison, levee FROM exclusions ORDER BY humain, rang;";
@@ -1230,8 +1233,8 @@ public sealed partial class DepotMonde
             "INSERT INTO exclusions (humain, rang, type, de, le, jusqua, evenement, raison, levee) VALUES ($h, $r, $t, $d, $l, $j, $e, $x, $v);",
             "$h", "$r", "$t", "$d", "$l", "$j", "$e", "$x", "$v");
         using var jardin = Preparer(connexion, transaction,
-            "INSERT INTO jardin (humain, rang, secondes, type, sujet, texte, intensite, cause, cle) VALUES ($h, $r, $s, $t, $su, $x, $i, $c, $k);",
-            "$h", "$r", "$s", "$t", "$su", "$x", "$i", "$c", "$k");
+            "INSERT INTO jardin (humain, rang, secondes, type, sujet, texte, intensite, cause, cle, forme, valeurs) VALUES ($h, $r, $s, $t, $su, $x, $i, $c, $k, $f, $v);",
+            "$h", "$r", "$s", "$t", "$su", "$x", "$i", "$c", "$k", "$f", "$v");
         using var griefs = Preparer(connexion, transaction,
             "INSERT INTO griefs (humain, rang, contre, motif, intensite, initiale, evenement, victime) VALUES ($h, $r, $c, $m, $i, $n, $e, $v);",
             "$h", "$r", "$c", "$m", "$i", "$n", "$e", "$v");
@@ -1266,7 +1269,8 @@ public sealed partial class DepotMonde
             for (var r = 0; r < m.Jardin.Count; r++)
             {
                 var x = m.Jardin[r];
-                Lancer(jardin, h.Id, r, x.Secondes, (int)x.Type, x.SujetId, x.Texte, x.Intensite, x.CauseId, x.Cle);
+                var (texte, forme, valeurs) = formes.Colonnes(x.Recit, x.Brut);
+                Lancer(jardin, h.Id, r, x.Secondes, (int)x.Type, x.SujetId, texte, x.Intensite, x.CauseId, x.Cle, forme, valeurs);
             }
             for (var r = 0; r < h.Griefs.Count; r++)
             {

@@ -51,13 +51,14 @@ public sealed partial class Comportement
     private static bool Recent(Humain h, string cle, double jours, long maintenant) =>
         h.Memoire.Jardin.Exists(x => x.Cle == cle && maintenant - x.Secondes < jours * Calendrier.SecondesParJour);
 
-    private static void Confier(Humain h, TypeIntime type, int sujet, string texte, double intensite, long cause, long maintenant, string cle)
+    private static void Confier(Humain h, TypeIntime type, int sujet, object texte, double intensite, long cause, long maintenant, string cle)
     {
         Jardin.Retirer(h, cle);
         Jardin.Confier(h, type, sujet, texte, intensite, cause, maintenant, cle);
     }
 
     private static string Il(Humain h) => h.Sexe == Sexe.Femme ? "elle" : "il";
+
     private static string Les(Sexe s) => s == Sexe.Femme ? "les femmes" : "les hommes";
 
     /// <summary>
@@ -107,7 +108,7 @@ public sealed partial class Comportement
         {
             VieSociale.Rejouir(h, 3 + 6 * desir);
             VieSociale.Rejouir(autre, 2 + 4 * retour);
-            Confier(h, TypeIntime.Joie, autre.Id, $"{autre.Nom} a bien voulu de moi.", 15 + 30 * desir, 0, maintenant, $"accepte:{autre.Id}");
+            Confier(h, TypeIntime.Joie, autre.Id, new Recit("js.desirs.accepte", ("a", autre)), 15 + 30 * desir, 0, maintenant, $"accepte:{autre.Id}");
         }
         SAccoupler(h, autre, tous, maintenant);
         return true;
@@ -130,16 +131,16 @@ public sealed partial class Comportement
         var id = Noter(maintenant, TypeEvenement.Attirance, h, autre, texte);
         var blessure = (4 + 12 * desir) * (0.6 + 0.8 * h.Personnalite.Nevrosisme) * (refus == Refus.NePlaitPas ? 1 : 0.5);
         h.Humeur = Math.Max(0, h.Humeur - blessure);
-        Confier(h, TypeIntime.Peine, autre.Id, refus == Refus.NePlaitPas ? $"{autre.Nom} ne veut pas de moi." : $"{autre.Nom} m'a repoussé{E(h)}.",
+        Confier(h, TypeIntime.Peine, autre.Id, refus == Refus.NePlaitPas ? new Recit("js.desirs.neVeutPas", ("a", autre)) : new Recit("js.desirs.repousse", ("a", autre), ("g", h)),
             15 + 50 * desir, id, maintenant, cle);
         if (refus == Refus.NePlaitPas && Attirance.Attractivite(h, Social?.IdealDe(h) ?? IdealBeaute.ParDefaut, maintenant) < 45
             && h.Memoire.Jardin.Count(x => x.Cle.StartsWith("refus:", StringComparison.Ordinal)) >= 2)
         {
-            Confier(h, TypeIntime.ImageDeSoi, 0, "Personne ne veut de moi.", 20 + 40 * h.Personnalite.Nevrosisme, id, maintenant, "image:attrait");
+            Confier(h, TypeIntime.ImageDeSoi, 0, Recits.Recit.Seul("js.desirs.personne"), 20 + 40 * h.Personnalite.Nevrosisme, id, maintenant, "image:attrait");
         }
         if (refus == Refus.NOsePas)
         {
-            Confier(autre, TypeIntime.Question, h.Id, $"Pourquoi {h.Nom} me trouble-t-{Il(h)} ainsi ?", 30, id, maintenant, $"trouble:{h.Id}");
+            Confier(autre, TypeIntime.Question, h.Id, new Recit("js.desirs.trouble", ("h", h)), 30, id, maintenant, $"trouble:{h.Id}");
         }
         // Des avances de quelqu'un de son sexe, repoussées : là où c'est mal vu, on peut le dire autour de soi.
         if (autre.Sexe == h.Sexe && refus == Refus.NePlaitPas && Social is not null
@@ -160,28 +161,29 @@ public sealed partial class Comportement
         var cle = $"refoule:{autre.Id}";
         if (Recent(h, cle, meme ? 60 : 180, maintenant)) return;
         object raison;
-        string pensee;
+        Recit pensee;
         var type = TypeIntime.Peine;
         if (meme)
         {
             var tolerance = Social?.ToleranceMoeursDe(h) ?? 0.5;
             var p = h.Personnalite;
             var x = autre.Nom;
+            Jardin.V V(string cle, double poids, int registre = 1) => new(new Recit(cle, ("x", autre)), poids, registre);
             (raison, pensee) = h.Lucidite < 0.3
                 ? ((object)new Recit("j.refoule.incompris"), Jardin.Varier(h, cle, 0, x,
-                    new Jardin.V($"{x} me trouble. Je ne comprends pas pourquoi.", 0.5),
-                    new Jardin.V($"Pourquoi mon cœur bat-il ainsi près de {x} ?", 0.3, 2),
-                    new Jardin.V($"{x} me trouble.", 0.3, 0))!)
+                    V("js.refoule.incompris.1", 0.5),
+                    V("js.refoule.incompris.2", 0.3, 2),
+                    V("js.refoule.incompris.3", 0.3, 0))!)
                 : tolerance < 0.4
                     ? ((object)new Recit("j.refoule.reprouve", ("h", h)), Jardin.Varier(h, cle, 1, x,
-                        new Jardin.V($"J'aime {x}, mais personne ne doit le savoir.", 0.5),
-                        new Jardin.V($"Ce que je ressens pour {x} doit rester caché.", 0.3),
-                        new Jardin.V($"Si les miens savaient ce que j'éprouve pour {x}…", 0.1 + Jardin.S(p.Nevrosisme), 2))!)
+                        V("js.refoule.reprouve.1", 0.5),
+                        V("js.refoule.reprouve.2", 0.3),
+                        V("js.refoule.reprouve.3", 0.1 + Jardin.S(p.Nevrosisme), 2))!)
                     : ((object)new Recit("j.refoule.nOsePas"), Jardin.Varier(h, cle, 2, x,
-                        new Jardin.V($"Je n'ose pas dire à {x} ce que je ressens.", 0.4),
-                        new Jardin.V($"Un jour, je dirai à {x} ce que je ressens.", 0.1 + Jardin.S(p.Extraversion)),
-                        new Jardin.V($"{x} ne sait pas ce que j'éprouve.", 0.3),
-                        new Jardin.V($"Je garde pour moi ce que je ressens pour {x}.", 0.1 + Jardin.S(p.Moral.EvitementAffectif)))!);
+                        V("js.refoule.nOsePas.1", 0.4),
+                        V("js.refoule.nOsePas.2", 0.1 + Jardin.S(p.Extraversion)),
+                        V("js.refoule.nOsePas.3", 0.3),
+                        V("js.refoule.nOsePas.4", 0.1 + Jardin.S(p.Moral.EvitementAffectif)))!);
             if (h.Lucidite < 0.3) type = TypeIntime.Question;
         }
         else
@@ -191,10 +193,10 @@ public sealed partial class Comportement
                 : new Recit("j.refoule.attachement", ("p", VieSociale.ParenteR(h, compagnon!)));
             var p = h.Personnalite;
             pensee = Jardin.Varier(h, cle, 3, autre.Nom,
-                new Jardin.V($"{autre.Nom} me plaît, mais je reste avec {compagnon!.Nom}.", 0.4),
-                new Jardin.V($"Je pense à {autre.Nom}, mais c'est {compagnon.Nom} que j'ai choisi{E(h)}.", 0.2 + Jardin.S(p.Conscience)),
-                new Jardin.V($"{autre.Nom} me trouble ; je ne trahirai pas {compagnon.Nom}.", 0.1 + Jardin.S(p.Moral.Honnetete) + Jardin.S(p.Moral.Fondements.Loyaute)),
-                new Jardin.V($"{autre.Nom}… non. Il y a {compagnon.Nom}.", 0.2, 0))!;
+                new Jardin.V(new Recit("js.refoule.couple.1", ("a", autre), ("c", compagnon!)), 0.4),
+                new Jardin.V(new Recit("js.refoule.couple.2", ("a", autre), ("c", compagnon), ("g", h)), 0.2 + Jardin.S(p.Conscience)),
+                new Jardin.V(new Recit("js.refoule.couple.3", ("a", autre), ("c", compagnon)), 0.1 + Jardin.S(p.Moral.Honnetete) + Jardin.S(p.Moral.Fondements.Loyaute)),
+                new Jardin.V(new Recit("js.refoule.couple.4", ("a", autre), ("c", compagnon)), 0.2, 0))!;
             type = TypeIntime.Intention;
         }
         var id = Noter(maintenant, TypeEvenement.Attirance, h, autre, new Recit("j.refoule", ("h", h), ("a", autre), ("raison", raison)));
@@ -215,17 +217,16 @@ public sealed partial class Comportement
         }
         var avant = h.Lucidite;
         h.Lucidite = Math.Min(1, h.Lucidite + 0.00005 * desir * (0.5 + h.Personnalite.Ouverture));
-        var autres = Les(h.Sexe);
         if (avant < 0.3 && h.Lucidite >= 0.3)
         {
             var id = Noter(maintenant, TypeEvenement.Attirance, h, null, new Recit("j.eveil.trouble", ("h", h)));
-            Confier(h, TypeIntime.Question, 0, $"Pourquoi {autres} me troublent-{(h.Sexe == Sexe.Femme ? "elles" : "ils")} ?", 40, id, maintenant, "orientation");
+            Confier(h, TypeIntime.Question, 0, new Recit("js.eveil.trouble", ("g", h)), 40, id, maintenant, "orientation");
         }
         else if (avant < 0.6 && h.Lucidite >= 0.6)
         {
-            var aussi = h.Orientation.Vers(h.Sexe == Sexe.Homme ? Sexe.Femme : Sexe.Homme) >= 0.5 ? "aussi " : "";
-            var id = Noter(maintenant, TypeEvenement.Attirance, h, null, new Recit("j.eveil.comprend", ("h", h), ("aussi", aussi.Length > 0)));
-            Confier(h, TypeIntime.ImageDeSoi, 0, $"Ce sont {aussi}{autres} que je désire.", 50, id, maintenant, "orientation");
+            var aussi = h.Orientation.Vers(h.Sexe == Sexe.Homme ? Sexe.Femme : Sexe.Homme) >= 0.5;
+            var id = Noter(maintenant, TypeEvenement.Attirance, h, null, new Recit("j.eveil.comprend", ("h", h), ("aussi", aussi)));
+            Confier(h, TypeIntime.ImageDeSoi, 0, new Recit("js.eveil.comprend", ("aussi", aussi), ("g", h)), 50, id, maintenant, "orientation");
         }
     }
 
@@ -251,8 +252,8 @@ public sealed partial class Comportement
             VieSociale.Rejouir(x, 8);
             x.Lucidite = Math.Max(x.Lucidite, 0.6);
             if (!nouveau) continue;
-            Confier(x, TypeIntime.Joie, y.Id, $"Avec {y.Nom}, je me sens enfin moi-même.", 50, id, maintenant, $"amour:{y.Id}");
-            if (secret) Confier(x, TypeIntime.Peur, y.Id, $"Si les miens savaient, pour {y.Nom}…", 30 + 50 * (0.5 - tolerance), id, maintenant, "moeurs-secret");
+            Confier(x, TypeIntime.Joie, y.Id, new Recit("js.amour.soi", ("y", y)), 50, id, maintenant, $"amour:{y.Id}");
+            if (secret) Confier(x, TypeIntime.Peur, y.Id, new Recit("js.amour.secret", ("y", y)), 30 + 50 * (0.5 - tolerance), id, maintenant, "moeurs-secret");
         }
         if (infidele) Ebruiter(a, b, id, tous, maintenant);
 

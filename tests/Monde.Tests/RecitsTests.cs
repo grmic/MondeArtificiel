@@ -7,7 +7,7 @@ using Monde.Simulation.Temps;
 namespace Monde.Tests;
 
 /// <summary>
-/// 0.30.1 : le journal et les pensées sont des récits (clé et paramètres) écrits à l'affichage. En français, la phrase
+/// 0.30.1 et 0.30.2 : le journal, les pensées et le jardin secret sont des récits (clé et paramètres) écrits à l'affichage. En français, la phrase
 /// est celle d'avant ; en anglais, elle s'accorde au genre et au nombre ; enregistrés, les récits se relisent à l'identique.
 /// </summary>
 public sealed class RecitsTests
@@ -48,6 +48,28 @@ public sealed class RecitsTests
             En.Rediger(new Recit("j.fusion.fond", ("c", tako), ("d", deBor), ("n", 3L))));
         Assert.Equal("La communauté Tako se fond dans la communauté de Bor (2) : 3 de ses membres vivent désormais avec eux.",
             Fr.Rediger(new Recit("j.fusion.fond", ("c", tako), ("d", deBor), ("n", 3L))));
+    }
+
+    /// <summary>0.30.2 : le jardin secret aussi, à la première personne, accordé à celui qui pense et à ceux dont il parle.</summary>
+    [Fact]
+    public void JardinSecret_EcritALaPremierePersonne()
+    {
+        var console = new Recit("js.console.1", ("s", Ana));
+        Assert.Equal("Je reste près d'Ana tant qu'elle a du chagrin.", Fr.Rediger(console));
+        Assert.Equal("I'll stay close to Ana while she grieves.", En.Rediger(console));
+        var deuil = new Recit("js.deuil", ("p", new Recit("parenteMoi.mere", ("nom", Ana), ("g", Ana))));
+        Assert.Equal("La mort de ma mère Ana me ronge.", Fr.Rediger(deuil));
+        Assert.Equal("The death of my mother Ana gnaws at me.", En.Rediger(deuil));
+        var savoir = new Recit("jv.fierte.1", ("g", Eli), ("savoir", new Recit("effetMoi.Couvert")));
+        Assert.Equal("J'ai appris seule à me vêtir ; cela m'a coûté bien des efforts.", Fr.Rediger(savoir));
+        Assert.Equal("I learned to clothe myself on my own; it cost me a great deal of effort.", En.Rediger(savoir));
+        var eveil = new Recit("js.eveil.comprend", ("aussi", true), ("g", Eli));
+        Assert.Equal(("Ce sont aussi les femmes que je désire.", "It's women I desire too."), (Fr.Rediger(eveil), En.Rediger(eveil)));
+        var peur = new Recit("jv.craindre.13", ("cat", new Recit("catastropheLe.Eruption")));
+        Assert.Equal(("L'éruption… j'y pense encore.", "The eruption… I still think about it."), (Fr.Rediger(peur), En.Rediger(peur)));
+        var raconte = new Recit("js.raconte", ("s", Bor), ("fond", new Recit("jv.rever.2", ("m", Ana))));
+        Assert.Equal("Bor m'a raconté : Ana est venue me voir en rêve ; elle veille sur moi.", Fr.Rediger(raconte));
+        Assert.Equal("Bor told me: Ana came to see me in a dream; she watches over me.", En.Rediger(raconte));
     }
 
     [Fact]

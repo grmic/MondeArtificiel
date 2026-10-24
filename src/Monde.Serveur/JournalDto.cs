@@ -84,7 +84,7 @@ public sealed record PenseeDto(string Date, string Texte, bool Ancien = false);
 /// Une chose du jardin secret : sa nature (intention, peur, espoir…), qui elle concerne (0 : personne), ce qu'il se dit,
 /// sa force (0 à 100) et l'événement qui l'a fait naître.
 /// </summary>
-public sealed record IntimeDto(string Date, string Type, int Sujet, string? NomSujet, string Texte, int Intensite, long Cause);
+public sealed record IntimeDto(string Date, string Type, int Sujet, string? NomSujet, string Texte, int Intensite, long Cause, bool Ancien = false);
 
 /// <summary>Un trait affiché : nom, valeur (0 à 1, ou QI) et qualification en mots.</summary>
 public sealed record TraitDto(string Nom, double Valeur, string Mots, string Aide);
@@ -241,7 +241,7 @@ public sealed record FicheDto(
             h.Memoire.Pensees.AsEnumerable().Reverse().Select(x => new PenseeDto(Date(x.Secondes), L.Ecrire(x), L.Ancien(x.Recit))).ToList(),
             h.Memoire.Jardin.OrderBy(x => x.Type).ThenByDescending(x => x.Intensite)
                 .Select(x => new IntimeDto(Date(x.Secondes), TypeIntime(x.Type), x.SujetId, x.SujetId > 0 && x.SujetId != id ? Nom(x.SujetId) : null,
-                    x.Texte, (int)Math.Round(x.Intensite), x.CauseId)).ToList(),
+                    x.Recit is { } r ? L.Rediger(r) : x.Brut ?? "", (int)Math.Round(x.Intensite), x.CauseId, L.Ancien(x.Recit))).ToList(),
             h.Memoire.Lieux.OrderBy(l => l.Type).ThenByDescending(l => l.Rappels).ThenByDescending(l => l.VuLe)
                 .Select(l => new LieuDto(l.Type switch { TypeLieu.Eau => "eau", TypeLieu.Nourriture => "nourriture", _ => "abri" },
                     l.X, l.Y, Date(l.VuLe), l.Rappels + 1)).ToList(),

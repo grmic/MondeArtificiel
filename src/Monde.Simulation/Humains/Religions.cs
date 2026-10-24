@@ -1,6 +1,8 @@
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -273,9 +275,9 @@ public sealed partial class Comportement
         h.Ferveur = 1;
         Confier(h, TypeIntime.ImageDeSoi, 0, source switch
         {
-            SourceProphete.Imposteur => "Ils m'écouteront, et ils me nourriront.",
-            _ when p.Moral.Honnetete < 0.4 => "L'invisible m'a choisi, moi, entre tous.",
-            _ => "L'invisible parle par ma bouche. En serai-je digne ?",
+            SourceProphete.Imposteur => Recits.Recit.Seul("js.prophete.imposteur"),
+            _ when p.Moral.Honnetete < 0.4 => new Recit("js.prophete.orgueil", ("g", h)),
+            _ => new Recit("js.prophete.digne", ("g", h)),
         }, 50 + 40 * p.Extraversion, r.EvenementId, maintenant, "image:prophete");
         // Ses plus proches, s'ils croient déjà un peu, le suivent les premiers.
         foreach (var l in h.Liens.ToArray())
@@ -414,7 +416,7 @@ public sealed partial class Comportement
         Croyances.Ajouter(o, 5, $"{par.Nom} l'a convaincu{E(o)}", id, maintenant);
         Social?.ChangerAffection(o, par, 5, maintenant);
         if (r.Enseigne(Precepte.Createur))
-            Confier(o, TypeIntime.Croyance, par.Id, "Une Entité venue d'ailleurs nous a faits, et elle nous parle.", 30 + 40 * o.Ferveur, id, maintenant, "croyance:entite");
+            Confier(o, TypeIntime.Croyance, par.Id, Recits.Recit.Seul("js.religion.entite"), 30 + 40 * o.Ferveur, id, maintenant, "croyance:entite");
     }
 
     // ───────────── Prophéties ─────────────
@@ -660,7 +662,7 @@ public sealed partial class Comportement
         choisi.RoleDepuis = maintenant;
         var id = Noter(maintenant, TypeEvenement.Religion, choisi, null,
             $"{choisi.Nom} devient {(choisi.Sexe == Sexe.Femme ? "la gardienne" : "le gardien")} des rites du {r.Nom} dans la {c.Nom.ToLowerInvariant()}.", r.EvenementId);
-        Confier(choisi, TypeIntime.Fierte, 0, "Les miens m'ont confié leurs rites.", 40 + 40 * choisi.Ferveur, id, maintenant, "image:pretre");
+        Confier(choisi, TypeIntime.Fierte, 0, Recits.Recit.Seul("js.religion.pretre"), 40 + 40 * choisi.Ferveur, id, maintenant, "image:pretre");
     }
 
     // ───────────── Opposition ─────────────
@@ -702,7 +704,7 @@ public sealed partial class Comportement
                 var id = Noter(maintenant, TypeEvenement.Exclusion, prophete, figure,
                     $"Poussée par {figure.Nom}, la {c.Nom.ToLowerInvariant()} chasse {prophete.Nom}, qui parlait au nom de l'invisible.", r.EvenementId, significatif: true);
                 prophete.Exclusions.Add(new Exclusion(TypeExclusion.Communaute, c.Id, maintenant, maintenant + duree, id, raison));
-                Confier(prophete, TypeIntime.Peine, figure.Id, "Les miens m'ont chassé, et l'invisible n'a rien fait.", 50, id, maintenant, $"exil:{c.Id}");
+                Confier(prophete, TypeIntime.Peine, figure.Id, new Recit("js.religion.chasse", ("g", prophete)), 50, id, maintenant, $"exil:{c.Id}");
                 foreach (var f in fideles) f.Ferveur = Math.Min(1, f.Ferveur + 0.05);
             }
             else
@@ -845,7 +847,7 @@ public sealed partial class Comportement
         {
             Noter(maintenant, TypeEvenement.Religion, meneur, victime, $"Les siens refusent : {victime.Nom} aura la vie sauve.", proposition, significatif: true);
             foreach (var m in membres) if (m.Id != meneur.Id && m.Personnalite.Moral.Fondements.Soin > 0.5) Social?.ChangerAffection(m, meneur, -8, maintenant);
-            Confier(victime, TypeIntime.Peur, meneur.Id, $"{meneur.Nom} a voulu m'offrir à l'invisible.", 70, proposition, maintenant, $"sacrifice:{meneur.Id}");
+            Confier(victime, TypeIntime.Peur, meneur.Id, new Recit("js.sacrifice.peur", ("x", meneur)), 70, proposition, maintenant, $"sacrifice:{meneur.Id}");
             return;
         }
         Tuer(victime, maintenant, CauseDeMort.Sacrifice, $"{victime.Nom} est offert{E(victime)} en sacrifice à l'invisible par {meneur.Nom}.", proposition, meneur, Regard.Sacrifier);
@@ -854,7 +856,7 @@ public sealed partial class Comportement
         {
             if (m.Id == meneur.Id || m.EstBebe(maintenant)) continue;
             if (m.Personnalite.Moral.EmpathieEmotionnelle > 0.6)
-                Confier(m, TypeIntime.Culpabilite, victime.Id, $"Nous avons laissé mourir {victime.Nom} pour l'invisible.", 30 + 50 * m.Personnalite.Moral.EmpathieEmotionnelle,
+                Confier(m, TypeIntime.Culpabilite, victime.Id, new Recit("js.sacrifice.culpabilite", ("x", victime)), 30 + 50 * m.Personnalite.Moral.EmpathieEmotionnelle,
                     victime.MortEvenementId, maintenant, $"sacrifice:{victime.Id}");
             else if (m.ReligionId == r.Id) m.Ferveur = Math.Min(1, m.Ferveur + 0.05);
             if (m.AffectionPour(victime.Id) >= 40)

@@ -1,5 +1,7 @@
 using Monde.Simulation.Nature;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -47,7 +49,7 @@ public sealed partial class Comportement
             var p = gardien.Personnalite;
             var remords = 100 * Math.Clamp(0.5 * p.Moral.EmpathieEmotionnelle + 0.3 * p.Conscience + 0.2 * p.Moral.Compassion, 0, 1) * (1 - Psyche.Froideur(p));
             if (remords >= 25)
-                Jardin.Confier(gardien, TypeIntime.Culpabilite, 0, mort ? "Mon feu a tué. J'aurais dû le garder." : "Mon feu a gagné les herbes. Des miens ont été brûlés.",
+                Jardin.Confier(gardien, TypeIntime.Culpabilite, 0, Recits.Recit.Seul(mort ? "js.feu.tue" : "js.feu.brules"),
                     remords, faute, maintenant, $"incendie:{c.Id}");
         }
         // Les leçons : le gardien, les proches des victimes, puis ceux qui ont vu.

@@ -70,7 +70,7 @@ public sealed partial class Comportement
             if (!Recent(h, "entite:retenue", 7, maintenant))
             {
                 var id0 = Noter(maintenant, TypeEvenement.Conflit, h, cible, new Recit("j.retenue", ("h", h), ("c", cible)), retenue.EvenementId);
-                Confier(h, TypeIntime.Intention, cible.Id, $"Je ne me vengerai pas de {cible.Nom}. La voix l'a voulu.", 30, id0, maintenant, "entite:retenue");
+                Confier(h, TypeIntime.Intention, cible.Id, new Recit("js.retenue", ("c", cible)), 30, id0, maintenant, "entite:retenue");
             }
             h.Colere *= 0.7;
             return;

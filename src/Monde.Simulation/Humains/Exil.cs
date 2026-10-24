@@ -257,7 +257,7 @@ public sealed partial class VieSociale
             motif?.EvenementId ?? 0, communaute: c.Id, significatif: renonce, karma: Regard.Plaider);
         foreach (var m in flechis)
         {
-            Jardin.Confier(m, TypeIntime.Opinion, x.Id, $"{p.Nom} m'a convaincu{E(m)} d'épargner {x.Nom}.", 35, id, maintenant, $"opinion:{x.Id}");
+            Jardin.Confier(m, TypeIntime.Opinion, x.Id, new Recit("js.exil.convaincu", ("p", p), ("x", x), ("g", m)), 35, id, maintenant, $"opinion:{x.Id}");
             // Convaincu d'épargner, on lui laisse une chance : la rancune baisse et l'aversion retombe (il faudra de nouveaux
             // torts pour qu'on veuille de nouveau le chasser), sinon le groupe remettrait l'exil en question chaque semaine.
             for (var i = 0; i < m.Griefs.Count; i++)
@@ -273,9 +273,9 @@ public sealed partial class VieSociale
         if (renonce)
         {
             ChangerAffection(x, p, 20, maintenant);
-            Jardin.Confier(x, TypeIntime.Joie, p.Id, $"{p.Nom} m'a défendu{e} quand les miens voulaient me chasser.", 60, id, maintenant, $"plaidoyer:{p.Id}");
+            Jardin.Confier(x, TypeIntime.Joie, p.Id, new Recit("js.exil.defendu", ("p", p), ("g", x)), 60, id, maintenant, $"plaidoyer:{p.Id}");
         }
-        Jardin.Confier(p, TypeIntime.Intention, x.Id, renonce ? $"J'ai obtenu qu'on garde {x.Nom} parmi nous." : $"J'ai plaidé pour {x.Nom}, en vain.",
+        Jardin.Confier(p, TypeIntime.Intention, x.Id, new Recit(renonce ? "js.exil.obtenu" : "js.exil.enVain", ("x", x)),
             40, id, maintenant, $"plaider:{x.Id}");
         return renonce;
     }
@@ -294,10 +294,10 @@ public sealed partial class VieSociale
         x.Exclusions.Add(new Exclusion(TypeExclusion.Communaute, c.Id, maintenant, jusqua, id, raison.Encoder()));
         x.Humeur = Math.Max(0, x.Humeur - 25 * (0.6 + 0.8 * x.Personnalite.Nevrosisme));
         x.Colere = Math.Min(100, x.Colere + 20);
-        Jardin.Confier(x, TypeIntime.Peine, 0, $"Les miens m'ont chassé{E(x)}.", 70, id, maintenant, $"exil:{c.Id}");
-        Jardin.Confier(x, TypeIntime.ImageDeSoi, 0, "Je ne vaux plus rien aux yeux des miens.", 30 + 40 * x.Personnalite.Nevrosisme, id, maintenant, "image:exil");
+        Jardin.Confier(x, TypeIntime.Peine, 0, new Recit("js.exil.chasse", ("g", x)), 70, id, maintenant, $"exil:{c.Id}");
+        Jardin.Confier(x, TypeIntime.ImageDeSoi, 0, Recit.Seul("js.exil.rien"), 30 + 40 * x.Personnalite.Nevrosisme, id, maintenant, "image:exil");
         Jardin.Marquer(x, Epreuve.Exil, duree == 0 ? 1 : Math.Min(1, 0.4 + duree / (double)Calendrier.SecondesParAn / 3), id, maintenant, alea);
-        foreach (var m in hostiles) Jardin.Confier(m, TypeIntime.Opinion, x.Id, $"Il fallait chasser {x.Nom}.", 40, id, maintenant, $"opinion:{x.Id}");
+        foreach (var m in hostiles) Jardin.Confier(m, TypeIntime.Opinion, x.Id, new Recit("js.exil.fallait", ("x", x)), 40, id, maintenant, $"opinion:{x.Id}");
 
         // Le compagnon peut le suivre, s'il l'aime assez et ne lui en veut pas.
         if (humains.ElementAtOrDefault(x.PartenaireId - 1) is { EstVivant: true } p && p.CommunauteId == c.Id
@@ -306,7 +306,7 @@ public sealed partial class VieSociale
             var suit = Noter(maintenant, TypeEvenement.Exclusion, p, x, new Recit("j.exil.suit", ("p", p), ("x", x)), id,
                 communaute: c.Id);
             p.Exclusions.Add(new Exclusion(TypeExclusion.Depart, c.Id, maintenant, jusqua, suit, new Recit("j.exil.raison.suivre", ("x", x)).Encoder()));
-            Jardin.Confier(p, TypeIntime.Intention, x.Id, $"Je reste avec {x.Nom}, où qu'{il} aille.", 60, suit, maintenant, $"exil-suivre:{x.Id}");
+            Jardin.Confier(p, TypeIntime.Intention, x.Id, new Recit("js.exil.suivre", ("x", x)), 60, suit, maintenant, $"exil-suivre:{x.Id}");
         }
     }
 
@@ -317,9 +317,8 @@ public sealed partial class VieSociale
         var id = Noter(maintenant, TypeEvenement.Exclusion, p, x, new Recit("j.exil.renie", ("p", p), ("x", x), ("raison", raison)), g.EvenementId, significatif: true);
         x.Exclusions.Add(new Exclusion(TypeExclusion.Famille, p.Id, maintenant, duree == 0 ? 0 : maintenant + duree, id, raison.Encoder()));
         x.Humeur = Math.Max(0, x.Humeur - 15 * (0.6 + 0.8 * x.Personnalite.Nevrosisme));
-        var parent = p.Sexe == Sexe.Femme ? "Ma mère" : "Mon père";
-        Jardin.Confier(x, TypeIntime.Peine, p.Id, $"{parent} m'a renié{E(x)}.", 60, id, maintenant, $"renie:{p.Id}");
-        Jardin.Confier(p, TypeIntime.Opinion, x.Id, $"{x.Nom} n'est plus mon enfant.", 60, id, maintenant, $"opinion:{x.Id}");
+        Jardin.Confier(x, TypeIntime.Peine, p.Id, new Recit("js.exil.renie", ("g", p), ("x", x)), 60, id, maintenant, $"renie:{p.Id}");
+        Jardin.Confier(p, TypeIntime.Opinion, x.Id, new Recit("js.exil.plusMonEnfant", ("x", x)), 60, id, maintenant, $"opinion:{x.Id}");
     }
 
     private static Recit DireDuree(long secondes)

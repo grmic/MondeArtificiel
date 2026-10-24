@@ -1,6 +1,8 @@
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -45,6 +47,14 @@ public sealed partial class Comportement
     /// </summary>
     internal static double Patience(Humain h, bool vital) =>
         (0.6 + 0.4 * h.Personnalite.Conscience + 0.4 * h.Ferveur) * (vital ? 1.5 : 1);
+
+    /// <summary>Celui que le croyant prie, dans la langue de l'observateur (« celle qui les a faits », « les morts », « l'invisible »).</summary>
+    private Recit InvisibleRecit(Humain h) => Recits.Recit.Seul(Invisible(h) switch
+    {
+        "celle qui les a faits" => "js.priere.qui.createur",
+        "les morts" => "js.priere.qui.morts",
+        _ => "js.priere.qui.invisible",
+    });
 
     /// <summary>Celui que le croyant prie, selon ce que lui ont appris les siens.</summary>
     private string Invisible(Humain h)
@@ -144,15 +154,15 @@ public sealed partial class Comportement
             cultes.Prieres.Add(priere);
             Confier(h, TypeIntime.Espoir, b.Cible, b.Sujet switch
             {
-                SujetPriere.Guerison when x is not null => $"Pourvu que {x.Nom} guérisse.",
-                SujetPriere.Vengeance when x is not null => b.Param switch
+                SujetPriere.Guerison when x is not null => new Recit("js.priere.guerison", ("x", x)),
+                SujetPriere.Vengeance when x is not null => new Recit(b.Param switch
                 {
-                    VengeanceMort => $"Que {x.Nom} meure pour ce qu'{Il(x)} m'a fait.",
-                    VengeanceLesSiens => $"Que {x.Nom} et les siens paient pour ce qu'{Il(x)} m'a fait.",
-                    _ => $"Que {x.Nom} souffre pour ce qu'{Il(x)} m'a fait.",
-                },
-                SujetPriere.Amour when x is not null => $"Pourvu que {x.Nom} m'aime un jour.",
-                _ => $"J'ai prié {Invisible(h)}. M'entendra-t-on ?",
+                    VengeanceMort => "js.priere.meure",
+                    VengeanceLesSiens => "js.priere.lesSiens",
+                    _ => "js.priere.souffre",
+                }, ("x", x)),
+                SujetPriere.Amour when x is not null => new Recit("js.priere.amour", ("x", x)),
+                _ => new Recit("js.priere.entendra", ("qui", InvisibleRecit(h))),
             }, 20 + 50 * ferveur, priere.EvenementId, maintenant, "priere");
         }
     }
@@ -295,7 +305,7 @@ public sealed partial class Comportement
             Regards.Ajouter(h, SentimentInvisible.Amour, 0.8 * gain * (0.6 + 0.8 * pe.Agreabilite) * (0.4 + 0.6 * h.Croyance / 100),
                 $"{Il(h)} croit que sa prière a été entendue", id, maintenant, signe: true);
         h.Ferveur = Math.Min(1, h.Ferveur + 0.1 * (1 - h.Ferveur));
-        Confier(h, TypeIntime.Croyance, p.CibleId, p.Sujet == SujetPriere.Vengeance ? $"L'invisible a frappé {x?.Nom} pour moi." : "On m'a entendu, quand j'ai prié.",
+        Confier(h, TypeIntime.Croyance, p.CibleId, p.Sujet == SujetPriere.Vengeance ? new Recit("js.priere.frappe", ("x", x)) : new Recit("js.priere.entendu", ("g", h)),
             30 + 50 * p.Ferveur, id, maintenant, "croyance:priere");
         Jardin.Retirer(h, "priere");
         // Celui qui porte la parole et dont la prière a été entendue : on le dit, et son prestige grandit.
@@ -339,7 +349,7 @@ public sealed partial class Comportement
             {
                 p.Conclusion = $"{Il(h)} n'a pas assez prié";
                 h.Ferveur = Math.Min(1, h.Ferveur + 0.08);
-                Confier(h, TypeIntime.Culpabilite, 0, "Je n'ai pas assez prié.", 20 + 40 * h.Personnalite.Nevrosisme, p.EvenementId, maintenant, "priere:faute");
+                Confier(h, TypeIntime.Culpabilite, 0, Recits.Recit.Seul("js.priere.faute"), 20 + 40 * h.Personnalite.Nevrosisme, p.EvenementId, maintenant, "priere:faute");
             }
             else p.Conclusion = "l'invisible avait ses raisons";
             if (p.Forte)
@@ -358,7 +368,7 @@ public sealed partial class Comportement
         Croyances.Ajouter(h, -perte, perdu ? "ses prières n'ont sauvé personne" : "ses prières sont restées sans réponse", id, maintenant);
         h.Ferveur = Math.Max(0, h.Ferveur - 0.1);
         if (perdu && x is not null)
-            Confier(h, TypeIntime.Question, x.Id, $"J'ai prié pour {x.Nom}, et {Il(x)} est mort{E(x)}. Personne ne m'écoute donc ?", 30 + 50 * p.Ferveur, id, maintenant, "question:priere");
+            Confier(h, TypeIntime.Question, x.Id, new Recit("js.priere.mort", ("x", x)), 30 + 50 * p.Ferveur, id, maintenant, "question:priere");
     }
 
     /// <summary>

@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -225,7 +227,7 @@ public sealed partial class Comportement
                     h.Savoirs.Add(new Savoir(Geste.Assembler, a.Corps, a.Tete, Effet.Rien, 0, Symptome.Aucun, 1, 0, _maintenant, _maintenant,
                         origine, 0, id, a.Signature));
                 if (v.Raison.Contains("s'échappent", StringComparison.Ordinal))
-                    Jardin.Confier(h, TypeIntime.Question, 0, "Si ces choses rondes pouvaient tourner sans s'échapper de sous la charge…",
+                    Jardin.Confier(h, TypeIntime.Question, 0, Recits.Recit.Seul("js.idee.tourner"),
                         40 + 30 * h.Personnalite.Ouverture, id, _maintenant, "idee:tourner");
             }
             return (v, null);

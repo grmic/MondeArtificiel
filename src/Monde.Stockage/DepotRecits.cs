@@ -5,7 +5,7 @@ using Monde.Simulation.Recits;
 namespace Monde.Stockage;
 
 /// <summary>
-/// Journal et pensées enregistrés comme récits (0.30.1), pour que la phrase s'écrive à l'affichage dans la langue de
+/// Journal, pensées (0.30.1) et jardin secret (0.30.2) enregistrés comme récits, pour que la phrase s'écrive à l'affichage dans la langue de
 /// l'observateur. Chaque ligne garde le numéro de sa « forme » (clé du fichier de langue et noms des paramètres, écrits
 /// une seule fois dans <c>recits_formes</c>) et ses valeurs en tableau JSON. Une ligne d'avant garde sa phrase française
 /// dans <c>texte</c> et n'a pas de forme.
@@ -27,6 +27,13 @@ public sealed partial class DepotMonde
             if (!colonnes.Contains("forme")) Executer(connexion, transaction, $"ALTER TABLE {table} ADD COLUMN forme INTEGER;");
             if (!colonnes.Contains("valeurs")) Executer(connexion, transaction, $"ALTER TABLE {table} ADD COLUMN valeurs TEXT;");
         }
+    }
+
+    private static void MigrerVersion36(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        var colonnes = Colonnes(connexion, transaction, "jardin");
+        if (!colonnes.Contains("forme")) Executer(connexion, transaction, "ALTER TABLE jardin ADD COLUMN forme INTEGER;");
+        if (!colonnes.Contains("valeurs")) Executer(connexion, transaction, "ALTER TABLE jardin ADD COLUMN valeurs TEXT;");
     }
 
     /// <summary>Les formes de récit d'un monde, lues d'un coup ; celles qu'un enregistrement ajoute sont écrites à la fin.</summary>

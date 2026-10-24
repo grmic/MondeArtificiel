@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Ce qu'un humain éprouve envers l'invisible, en plus d'y croire.</summary>
@@ -413,7 +415,7 @@ public sealed partial class Comportement
         if (bienfait)
         {
             Regards.Ajouter(o, SentimentInvisible.Amour, 15 * a * (0.6 + 0.8 * p.Agreabilite), soi ? "l'invisible l'a béni" : $"l'invisible a béni {nom}", cause, maintenant, direct);
-            if (direct && a >= 0.4) Confier(o, TypeIntime.Croyance, cible?.Id ?? 0, soi ? "L'invisible m'a fait du bien. Il me voit." : "J'ai vu l'invisible faire le bien.", 30 + 40 * a, cause, maintenant, "regard:bienfait");
+            if (direct && a >= 0.4) Confier(o, TypeIntime.Croyance, cible?.Id ?? 0, Recits.Recit.Seul(soi ? "js.regard.bienfait.soi" : "js.regard.bienfait"), 30 + 40 * a, cause, maintenant, "regard:bienfait");
             return;
         }
         if (m >= 0)
@@ -421,7 +423,7 @@ public sealed partial class Comportement
             Regards.Ajouter(o, SentimentInvisible.Crainte, 15 * a * (0.4 + 0.6 * m) * (0.6 + 0.5 * p.Nevrosisme + 0.5 * autorite),
                 soi ? "l'invisible l'a puni" : $"l'invisible a puni {nom}", cause, maintenant, direct);
             if (direct && a >= 0.4)
-                Confier(o, TypeIntime.Peur, cible?.Id ?? 0, soi ? "J'ai fauté, et l'invisible me l'a fait payer." : "L'invisible punit ceux qui fautent. Je dois prendre garde.",
+                Confier(o, TypeIntime.Peur, cible?.Id ?? 0, Recits.Recit.Seul(soi ? "js.regard.chatiment.soi" : "js.regard.chatiment"),
                     30 + 40 * a, cause, maintenant, "regard:chatiment");
             return;
         }
@@ -432,8 +434,8 @@ public sealed partial class Comportement
         Regards.Ajouter(o, SentimentInvisible.Revolte, revolte, $"l'invisible a frappé {nom} sans raison", cause, maintenant);
         if (direct && a >= 0.4 || proche)
             Confier(o, TypeIntime.Question, cible?.Id ?? 0, cible is null || soi
-                ? "Qu'avons-nous fait pour être ainsi frappés ?"
-                : $"Pourquoi l'invisible a-t-il frappé {cible.Nom} ? {Majuscule(Il(cible))} n'avait rien fait.", 30 + 50 * a, cause, maintenant, "regard:injuste");
+                ? Recits.Recit.Seul("js.regard.injuste.nous")
+                : new Recit("js.regard.injuste", ("x", cible)), 30 + 50 * a, cause, maintenant, "regard:injuste");
     }
 
     /// <summary>

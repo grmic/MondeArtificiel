@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -46,7 +48,7 @@ public sealed partial class Comportement
                 _ => $"{h.Nom} n'en comprend pas le sens.",
             };
             NoterEntite(maintenant, TypeEvenement.Parole, h, cible, texte, reception);
-            Confier(h, TypeIntime.Question, 0, mode == ModeParole.Signe ? "Que voulait dire ce signe ?" : "Que voulait-on me dire ?",
+            Confier(h, TypeIntime.Question, 0, Recits.Recit.Seul(mode == ModeParole.Signe ? "js.entite.signe" : "js.entite.dire"),
                 25 + 40 * p.Ouverture, reception, maintenant, "entite:question");
             Garder(h, new Impulsion(parole, mode, cible?.Id ?? 0, param, 0, maintenant, maintenant, maintenant, Reponse.Incomprise, reception));
             return "Pas comprise.";
@@ -69,7 +71,7 @@ public sealed partial class Comportement
             if (mode is ModeParole.Voix or ModeParole.Apparition && p.Nevrosisme > 0.55)
             {
                 h.Peur = Math.Min(100, h.Peur + 15 * p.Nevrosisme);
-                Confier(h, TypeIntime.Peur, 0, "J'entends et je vois des choses qui ne sont pas là. Est-ce que je perds la tête ?",
+                Confier(h, TypeIntime.Peur, 0, Recits.Recit.Seul("js.entite.folie"),
                     20 + 40 * p.Nevrosisme, reception, maintenant, "entite:folie");
             }
             Garder(h, new Impulsion(parole, mode, cible?.Id ?? 0, param, 0, maintenant, maintenant, maintenant, Reponse.Incrue, reception));
@@ -124,7 +126,7 @@ public sealed partial class Comportement
             {
                 NoterEntite(maintenant, TypeEvenement.Attirance, h, cible,
                     $"Ce trouble pour {cible.Nom}, {VieSociale.Parente(h, cible)}, fait horreur à {h.Nom} : {Il(h)} le chasse de son esprit.", id);
-                Confier(h, TypeIntime.Honte, cible.Id, $"Comment ai-je pu penser ainsi à {VieSociale.Parente(h, cible)} ? J'en ai honte.",
+                Confier(h, TypeIntime.Honte, cible.Id, new Recit("js.entite.horreur", ("p", VieSociale.ParenteMoi(h, cible))),
                     30 + 50 * p.Moral.Fondements.Purete, id, maintenant, $"horreur:{cible.Id}");
                 h.Humeur = Math.Max(0, h.Humeur - 8 * (0.5 + p.Nevrosisme));
                 Garder(h, new Impulsion(Parole.Penchant, ModeParole.Penchant, cible.Id, 0, force, maintenant, jusqua, maintenant, Reponse.Horreur, id, change));
@@ -137,8 +139,8 @@ public sealed partial class Comportement
         Social?.ChangerAffection(h, cible, passion ? 25 : 10, maintenant);
         if (h.EstFecond(maintenant)) h.Desir = Math.Min(100, h.Desir + (passion ? 40 : 20));
         Confier(h, TypeIntime.Amour, cible.Id, passion
-                ? $"Je ne pense qu'à {cible.Nom}. D'où vient ce feu ?"
-                : $"{cible.Nom} occupe mes pensées plus que de raison.",
+                ? new Recit("js.entite.passion", ("x", cible))
+                : new Recit("js.entite.penchant", ("x", cible)),
             40 + 100 * force, id, maintenant, $"amour:{cible.Id}");
         return $"{h.Nom} ressent {genre} pour {cible.Nom}{(change ? " (son orientation a changé)" : "")}.";
     }
@@ -178,13 +180,13 @@ public sealed partial class Comportement
             t.Peur = Math.Min(100, t.Peur + 20 + 30 * pt.Nevrosisme);
             if (alea.Reel() < 0.3 + 0.6 * pt.Transcendance)
             {
-                Confier(t, TypeIntime.Croyance, h.Id, $"J'ai vu la Présence parler à {h.Nom}. Il y a quelqu'un derrière le monde.",
+                Confier(t, TypeIntime.Croyance, h.Id, new Recit("js.entite.temoin", ("x", h)),
                     40 + 50 * pt.Transcendance, id, maintenant, "croyance:presence");
                 Croyances.Ajouter(t, 15 * (0.6 + 0.8 * pt.Transcendance), $"{Il(t)} a vu la Présence parler à {h.Nom}", id, maintenant, signe: true);
             }
             else
             {
-                Confier(t, TypeIntime.Question, h.Id, $"Qu'ai-je vu auprès de {h.Nom} ?", 30 + 40 * pt.Ouverture, id, maintenant, "entite:question");
+                Confier(t, TypeIntime.Question, h.Id, new Recit("js.entite.temoinQuestion", ("x", h)), 30 + 40 * pt.Ouverture, id, maintenant, "entite:question");
                 Croyances.Ajouter(t, 4, $"{Il(t)} a vu auprès de {h.Nom} une forme qu'{Il(t)} ne s'explique pas", id, maintenant, signe: true);
             }
         }
@@ -245,11 +247,11 @@ public sealed partial class Comportement
         Croyances.Ajouter(h, gain * (0.6 + 0.8 * p.Transcendance), $"l'Entité lui a parlé {Paroles.NomMode(mode)}, et {Il(h)} y a cru",
             reception, maintenant, signe: true);
         if (p.Nevrosisme > 0.55 && choc >= 0.7)
-            Confier(h, TypeIntime.Peur, 0, "Quelqu'un d'invisible me parle. Que me veut-il ?", 20 + 50 * p.Nevrosisme * choc, reception, maintenant, "entite:peur");
+            Confier(h, TypeIntime.Peur, 0, Recits.Recit.Seul("js.entite.peur"), 20 + 50 * p.Nevrosisme * choc, reception, maintenant, "entite:peur");
         else
-            Confier(h, TypeIntime.Emerveillement, 0, "Quelqu'un d'invisible m'a parlé, à moi.", 25 + 50 * p.Transcendance * choc, reception, maintenant, "entite:merveille");
+            Confier(h, TypeIntime.Emerveillement, 0, Recits.Recit.Seul("js.entite.merveille"), 25 + 50 * p.Transcendance * choc, reception, maintenant, "entite:merveille");
         if (!h.Memoire.Jardin.Exists(x => x.Cle == "croyance:presence"))
-            Confier(h, TypeIntime.Croyance, 0, "Il y a quelqu'un derrière le monde, et il me parle.", 40 + 50 * p.Transcendance, reception, maintenant, "croyance:presence");
+            Confier(h, TypeIntime.Croyance, 0, Recits.Recit.Seul("js.entite.presence"), 40 + 50 * p.Transcendance, reception, maintenant, "croyance:presence");
     }
 
     /// <summary>Des paroles trop souvent répétées angoissent : la présence ne le laisse plus en paix.</summary>
@@ -261,7 +263,7 @@ public sealed partial class Comportement
         var p = h.Personnalite;
         h.Peur = Math.Min(100, h.Peur + 5 * recentes * p.Nevrosisme);
         h.Humeur = Math.Max(0, h.Humeur - 2 * recentes * p.Nevrosisme);
-        Confier(h, TypeIntime.Peur, 0, "Cette présence ne me laisse plus en paix.", 20 + 10 * recentes * (0.5 + p.Nevrosisme), reception, maintenant, "entite:harcele");
+        Confier(h, TypeIntime.Peur, 0, Recits.Recit.Seul("js.entite.harcele"), 20 + 10 * recentes * (0.5 + p.Nevrosisme), reception, maintenant, "entite:harcele");
     }
 
     // ───────────── Vouloir ─────────────
@@ -371,10 +373,10 @@ public sealed partial class Comportement
                 Garder(h, new Impulsion(parole, mode, 0, param, force, maintenant, maintenant, maintenant, Reponse.Accomplie, reception));
                 return "Crue : elle l'a apaisé" + (h.Sexe == Sexe.Femme ? "e." : ".");
             case Parole.JeSuisCelleQuiVousAFaits:
-                Confier(h, TypeIntime.Croyance, 0, "Une Entité venue d'ailleurs nous a faits. Elle veille sur nous et nous parle.",
+                Confier(h, TypeIntime.Croyance, 0, Recits.Recit.Seul("js.entite.creatrice"),
                     50 + 50 * force, reception, maintenant, "croyance:entite");
                 Croyances.Ajouter(h, 10, $"{Il(h)} sait désormais qui l'a fait{E(h)}", reception, maintenant, signe: true);
-                Confier(h, TypeIntime.Question, 0, "Pourquoi nous a-t-elle faits ? Qu'attend-elle de nous ?", 30 + 40 * p.Ouverture, reception, maintenant, "question:entite");
+                Confier(h, TypeIntime.Question, 0, Recits.Recit.Seul("js.entite.pourquoi"), 30 + 40 * p.Ouverture, reception, maintenant, "question:entite");
                 NoterEntite(maintenant, TypeEvenement.Parole, h, null, $"{h.Nom} sait désormais qui l'a fait{E(h)}.", reception);
                 Garder(h, new Impulsion(parole, mode, 0, param, force, maintenant, maintenant, maintenant, Reponse.Accomplie, reception));
                 return "Crue : une croyance est née.";
@@ -413,7 +415,7 @@ public sealed partial class Comportement
             NoterEntite(maintenant, TypeEvenement.Parole, h, x, $"{h.Nom} refuse d'obéir : {raison}.", reception, significatif: Paroles.Nuit(parole));
             Confier(h, TypeIntime.Intention, cibleId, $"Je n'obéirai pas à cette voix : « {phrase} »", 30 + 40 * foi, reception, maintenant, $"entite:{(int)parole}");
             if (Paroles.Nuit(parole) && !psychopathe)
-                Confier(h, TypeIntime.Peur, cibleId, "Pourquoi la présence veut-elle que je fasse le mal ?", 30 + 40 * p.Moral.EmpathieEmotionnelle, reception, maintenant, "entite:mal");
+                Confier(h, TypeIntime.Peur, cibleId, Recits.Recit.Seul("js.entite.mal"), 30 + 40 * p.Moral.EmpathieEmotionnelle, reception, maintenant, "entite:mal");
             Garder(h, new Impulsion(parole, mode, cibleId, param, force, maintenant, maintenant, maintenant, reponse, reception));
             return $"Crue, mais refusée : {raison}.";
         }
@@ -468,7 +470,7 @@ public sealed partial class Comportement
         }
         VieSociale.Rejouir(h, 8 * force);
         NoterEntite(maintenant, TypeEvenement.Humeur, h, null, texte, reception);
-        Confier(h, TypeIntime.Espoir, 0, "Quelqu'un veille sur moi.", 30 + 50 * force, reception, maintenant, "entite:espoir");
+        Confier(h, TypeIntime.Espoir, 0, Recits.Recit.Seul("js.entite.espoir"), 30 + 50 * force, reception, maintenant, "entite:espoir");
     }
 
     /// <summary>Destination de « Pars vers… » (direction donnée) ou de la fuite devant un malheur annoncé (loin d'ici), en case.</summary>
@@ -512,7 +514,7 @@ public sealed partial class Comportement
                 DevenirProphete(h, SourceProphete.Entite, i.EvenementId, tous, maintenant);
                 break;
             case Parole.TuGuideras:
-                Confier(h, TypeIntime.ImageDeSoi, 0, p.Moral.Honnetete < 0.4 ? "Je suis au-dessus des autres : c'est moi qu'on a choisi." : "On m'a choisi pour guider les miens. En serai-je digne ?",
+                Confier(h, TypeIntime.ImageDeSoi, 0, new Recit(p.Moral.Honnetete < 0.4 ? "js.entite.elu" : "js.entite.guide", ("g", h)),
                     40 + 50 * i.Force, i.EvenementId, maintenant, "image:guide");
                 break;
         }
@@ -712,8 +714,8 @@ public sealed partial class Comportement
             y.Humeur = Math.Max(0, y.Humeur - 10 - 20 * aime);
         });
         Social?.ChangerAffection(x, h, -15, maintenant);
-        Confier(x, TypeIntime.Peine, h.Id, $"{h.Nom} m'a quitté{E(x)}, sans raison que je comprenne.", 30 + 60 * aime, id, maintenant, $"quitte:{h.Id}");
-        Confier(h, TypeIntime.Culpabilite, x.Id, $"J'ai quitté {x.Nom} parce que la voix l'a voulu.", 20 + 50 * h.Personnalite.Moral.EmpathieEmotionnelle * Math.Max(0, h.AffectionPour(x.Id)) / 100,
+        Confier(x, TypeIntime.Peine, h.Id, new Recit("js.entite.quitte", ("x", h), ("g", x)), 30 + 60 * aime, id, maintenant, $"quitte:{h.Id}");
+        Confier(h, TypeIntime.Culpabilite, x.Id, new Recit("js.entite.aQuitte", ("x", x)), 20 + 50 * h.Personnalite.Moral.EmpathieEmotionnelle * Math.Max(0, h.AffectionPour(x.Id)) / 100,
             id, maintenant, $"culpabilite:{x.Id}");
     }
 
@@ -756,7 +758,7 @@ public sealed partial class Comportement
         VieSociale.AjouterGrief(x, new Grief(h.Id, MotifGrief.Coups, Math.Min(100, 40 + degats), Math.Min(100, 40 + degats), id));
         Social?.Offenser(h, x, tuer ? 6 : 3, id, tous, maintenant);
         if (!Psyche.EstPsychopathe(h, maintenant))
-            Confier(h, TypeIntime.Culpabilite, x.Id, $"J'ai levé la main sur {x.Nom} parce que la voix l'a voulu.", 30 + 60 * h.Personnalite.Moral.EmpathieEmotionnelle,
+            Confier(h, TypeIntime.Culpabilite, x.Id, new Recit("js.entite.frappe", ("x", x)), 30 + 60 * h.Personnalite.Moral.EmpathieEmotionnelle,
                 id, maintenant, $"culpabilite:{x.Id}");
         if (vaincu.Sante <= 0)
         {
@@ -790,7 +792,7 @@ public sealed partial class Comportement
             {
                 croient++;
                 Social?.ChangerAffection(o, h, 3 + 4 * po.Transcendance, maintenant);
-                Confier(o, TypeIntime.Croyance, h.Id, $"La Présence a parlé à {h.Nom}.", 25 + 40 * po.Transcendance, reception, maintenant, "croyance:presence");
+                Confier(o, TypeIntime.Croyance, h.Id, new Recit("js.entite.aParle", ("x", h)), 25 + 40 * po.Transcendance, reception, maintenant, "croyance:presence");
             }
             else if (alea.Reel() < 0.5 * (1 - po.Agreabilite) + 0.2)
             {
@@ -805,7 +807,7 @@ public sealed partial class Comportement
         if (rient > croient)
         {
             h.Humeur = Math.Max(0, h.Humeur - 3 * rient * (0.5 + p.Nevrosisme));
-            Confier(h, TypeIntime.Peine, 0, "Ils se moquent de moi quand je dis ce que j'ai entendu.", 20 + 10 * rient, reception, maintenant, "entite:moque");
+            Confier(h, TypeIntime.Peine, 0, Recits.Recit.Seul("js.entite.moque"), 20 + 10 * rient, reception, maintenant, "entite:moque");
         }
     }
 

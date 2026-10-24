@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -284,15 +286,15 @@ public sealed partial class Comportement
         if (incline)
         {
             Regards.Ajouter(h, SentimentInvisible.Crainte, 6 * enjeu, "l'invisible a dit non", cause, maintenant, signe: true);
-            Confier(h, TypeIntime.Croyance, 0, "L'invisible a dit non. Il a ses raisons.", 30 + 30 * p.Ferveur, cause, maintenant, "croyance:refus");
+            Confier(h, TypeIntime.Croyance, 0, Recits.Recit.Seul("js.refus.croyance"), 30 + 30 * p.Ferveur, cause, maintenant, "croyance:refus");
         }
         else
         {
             Regards.Ajouter(h, SentimentInvisible.Revolte, 10 * enjeu * (0.5 + pe.Nevrosisme), "l'invisible a dit non", cause, maintenant, signe: true);
-            Confier(h, TypeIntime.Question, 0, "Pourquoi l'invisible m'a-t-il refusé cela ?", 30 + 40 * p.Ferveur, cause, maintenant, "question:refus");
+            Confier(h, TypeIntime.Question, 0, Recits.Recit.Seul("js.refus.question"), 30 + 40 * p.Ferveur, cause, maintenant, "question:refus");
         }
         if (p.Sujet == SujetPriere.Vengeance)
-            Confier(h, TypeIntime.Honte, p.CibleId, "J'ai demandé qu'on frappe un autre, et l'invisible a refusé.", 30 + 30 * pe.Agreabilite, cause, maintenant, "honte:refus");
+            Confier(h, TypeIntime.Honte, p.CibleId, Recits.Recit.Seul("js.refus.honte"), 30 + 30 * pe.Agreabilite, cause, maintenant, "honte:refus");
         return incline;
     }
 }

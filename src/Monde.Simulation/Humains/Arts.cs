@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Ce qu'une image peinte sur la roche représente.</summary>
@@ -168,7 +170,7 @@ public sealed partial class Comportement
             _lamentations.Add((c.Id, mort.Id));
             c.Chagrin = Math.Max(0, c.Chagrin - 10);
             Retenir(c, Geste.Chanter, Matiere.Aucune, Matiere.Aucune, Effet.Chant, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous);
-            Jardin.Confier(c, TypeIntime.Peine, mort.Id, $"J'ai chanté pour {mort.Nom}. Ma peine a trouvé une voix.", 30 + 30 * c.Personnalite.Ouverture,
+            Jardin.Confier(c, TypeIntime.Peine, mort.Id, new Recit("js.lamentation", ("x", mort)), 30 + 30 * c.Personnalite.Ouverture,
                 id, _maintenant, $"lamentation:{mort.Id}");
             foreach (var o in chanteurs) if (o.Id > c.Id) Social?.ChangerAffection(c, o, 1, _maintenant);
         }
@@ -309,14 +311,16 @@ public sealed partial class Comportement
             if (auditeurs.Count == 0) continue;
             _racontes.Add((s.Id, souvenir.Cle));
             // Un récit déjà entendu se raconte sous le nom de celui qui le dit maintenant.
-            var fond = souvenir.Texte.IndexOf(" m'a raconté : ", StringComparison.Ordinal) is >= 0 and var k ? souvenir.Texte[(k + 15)..] : souvenir.Texte;
+            object fond = souvenir.Recit is { Cle: "js.raconte" } deja ? deja["fond"] ?? ""
+                : souvenir.Recit is { } r ? r
+                : souvenir.Texte.IndexOf(" m'a raconté : ", StringComparison.Ordinal) is >= 0 and var k ? souvenir.Texte[(k + 15)..] : souvenir.Texte;
             var cle = souvenir.Cle.StartsWith("recit:", StringComparison.Ordinal) ? souvenir.Cle : "recit:" + souvenir.Cle;
             var qui = auditeurs.Count == 1 ? auditeurs[0].Nom : $"{auditeurs.Count} des siens";
             var id = Noter(_maintenant, TypeEvenement.Langage, s, auditeurs.Count == 1 ? auditeurs[0] : null,
-                $"{s.Nom} raconte à {qui}, à la veillée : « {fond} »", souvenir.CauseId);
+                $"{s.Nom} raconte à {qui}, à la veillée : « {Catalogues.Fr.Ecrire(fond)} »", souvenir.CauseId);
             foreach (var o in auditeurs)
             {
-                Jardin.Confier(o, souvenir.Type, souvenir.SujetId, $"{s.Nom} m'a raconté : {fond}", souvenir.Intensite * (0.4 + 0.3 * o.Personnalite.Ouverture),
+                Jardin.Confier(o, souvenir.Type, souvenir.SujetId, new Recit("js.raconte", ("s", s), ("fond", fond)), souvenir.Intensite * (0.4 + 0.3 * o.Personnalite.Ouverture),
                     id, _maintenant, cle);
                 if (souvenir.Type == TypeIntime.Croyance)
                     Croyances.Ajouter(o, 1 + 2 * o.Personnalite.Transcendance, $"ce que {s.Nom} a raconté à la veillée", id, _maintenant);
@@ -337,7 +341,7 @@ public sealed partial class Comportement
         var pare = ocre == 0 ? "" : ocre * 2 >= danseurs.Count ? ", parés d'ocre" : ", certains parés d'ocre";
         var id = Noter(_maintenant, TypeEvenement.Art, s, null, $"Fête{groupe} : {danseurs.Count} dansent {son}{pare}.");
         foreach (var d in danseurs)
-            Jardin.Confier(d, TypeIntime.Joie, s.Id, "Nous avons dansé ensemble jusqu'à la nuit.", 25 + 30 * d.Personnalite.Extraversion, id, _maintenant, "fete");
+            Jardin.Confier(d, TypeIntime.Joie, s.Id, Recits.Recit.Seul("js.fete"), 25 + 30 * d.Personnalite.Extraversion, id, _maintenant, "fete");
     }
 
     /// <summary>

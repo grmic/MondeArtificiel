@@ -1,6 +1,8 @@
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -473,11 +475,11 @@ public sealed partial class VieSociale
         var volontaires = avis.Where(x => x.Score >= Suivre).Select(x => x.h).ToList();
         var refus = avis.Where(x => x.Score < Suivre).Select(x => x.h).ToList();
         foreach (var h in volontaires.Where(h => h.Id != instigateur.Id))
-            Jardin.Confier(h, TypeIntime.Intention, b.FigureId, $"Je suivrai {instigateur.Nom} contre la {nb}.", 40, projet.EvenementId, maintenant, $"guerre:{b.Id}");
+            Jardin.Confier(h, TypeIntime.Intention, b.FigureId, new Recit("js.guerre.suivre", ("i", instigateur), ("c", b)), 40, projet.EvenementId, maintenant, $"guerre:{b.Id}");
         foreach (var h in refus)
             Jardin.Confier(h, TypeIntime.Intention, instigateur.Id, Voix(h) < -0.3
-                ? $"Je ne suivrai pas {instigateur.Nom} contre la {nb} : la voix me l'a défendu."
-                : $"Je ne suivrai pas {instigateur.Nom} dans cette guerre contre la {nb}.", 35, projet.EvenementId, maintenant, $"guerre:{b.Id}");
+                ? new Recit("js.guerre.voix", ("i", instigateur), ("c", b))
+                : new Recit("js.guerre.refus", ("i", instigateur), ("c", b)), 35, projet.EvenementId, maintenant, $"guerre:{b.Id}");
 
         // Les alliés répondent.
         var renforts = new List<Humain>();
@@ -552,11 +554,11 @@ public sealed partial class VieSociale
         foreach (var h in humains.Vivants().Where(h => h.EstVivant && h.CommunauteId == a.Id))
         {
             // Ceux qui voulaient y aller oublient leur intention ; ceux qui ont refusé gardent la leur en mémoire.
-            if (h.Id == projet.InstigateurId || h.Memoire.Jardin.Any(x => x.Cle == cle && x.Texte.StartsWith("Je suivrai", StringComparison.Ordinal))) Jardin.Retirer(h, cle);
+            if (h.Id == projet.InstigateurId || h.Memoire.Jardin.Any(x => x.Cle == cle && (x.Recit?.Cle == "js.guerre.suivre" || x.Brut?.StartsWith("Je suivrai", StringComparison.Ordinal) == true))) Jardin.Retirer(h, cle);
         }
         if (instigateur is { EstVivant: true })
         {
-            Jardin.Confier(instigateur, TypeIntime.Opinion, instigateur.Id, "Les miens ne m'ont pas suivi. Ils le regretteront.",
+            Jardin.Confier(instigateur, TypeIntime.Opinion, instigateur.Id, new Recit("js.guerre.renonce", ("g", instigateur)),
                 30 + 40 * (1 - instigateur.Personnalite.Agreabilite), id, maintenant, $"renoncement:{projet.CibleId}");
         }
         a.Projet = null;
@@ -1187,12 +1189,12 @@ public sealed partial class Comportement
         {
             var tp = tueur.Personnalite;
             if (Psyche.EstPsychopathe(tueur, maintenant))
-                Jardin.Confier(tueur, TypeIntime.ImageDeSoi, victime.Id, $"J'ai tué {victime.Nom}. Je n'ai rien senti.", 40, id, maintenant, $"tue:{victime.Id}");
+                Jardin.Confier(tueur, TypeIntime.ImageDeSoi, victime.Id, new Recit("js.tue.froid", ("v", victime)), 40, id, maintenant, $"tue:{victime.Id}");
             else if (tp.Agreabilite >= 0.6 || tp.Moral.EmpathieEmotionnelle >= 0.65)
-                Jardin.Confier(tueur, TypeIntime.Peine, victime.Id, $"J'ai tué {victime.Nom}. Son visage me hante.",
+                Jardin.Confier(tueur, TypeIntime.Peine, victime.Id, new Recit("js.tue.hante", ("v", victime)),
                     40 + 20 * tp.Agreabilite + 20 * tp.Moral.EmpathieEmotionnelle, id, maintenant, $"tue:{victime.Id}");
             else
-                Jardin.Confier(tueur, TypeIntime.Joie, victime.Id, $"J'ai abattu {victime.Nom} : les miens sont plus forts.", 30 + 40 * (1 - tp.Agreabilite), id, maintenant, $"tue:{victime.Id}");
+                Jardin.Confier(tueur, TypeIntime.Joie, victime.Id, new Recit("js.tue.fier", ("v", victime)), 30 + 40 * (1 - tp.Agreabilite), id, maintenant, $"tue:{victime.Id}");
         }
         // Un combat où des siens sont tombés laisse une trace durable à ceux qui l'ont vécu (peur, sursauts : Jeronimus et al., 2014).
         foreach (var h in assaillants.Concat(defenseurs).Where(h => h.EstVivant))
@@ -1202,7 +1204,7 @@ public sealed partial class Comportement
         }
         foreach (var d in defenseurs.Vivants().Where(d => d.EstVivant))
         {
-            Jardin.Confier(d, TypeIntime.Peur, c.FigureId, $"J'ai peur que les guerriers de la {nc} reviennent nous surprendre.",
+            Jardin.Confier(d, TypeIntime.Peur, c.FigureId, new Recit("js.raid.peur", ("c", c)),
                 30 + 50 * d.Personnalite.Nevrosisme + 10 * mortsDefenseurs, id, maintenant, $"peur:raid:{c.Id}");
         }
         // Même sans mort, l'attaque offense tout le groupe attaqué.

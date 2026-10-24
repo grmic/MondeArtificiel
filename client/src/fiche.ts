@@ -38,6 +38,8 @@ interface Intime {
   texte: string;
   intensite: number;
   cause: number;
+  /** Écrite avant la traduction du jardin secret (0.30.2) : reste en français. */
+  ancien?: boolean;
 }
 
 /** Rubriques du jardin secret, dans l'ordre d'affichage. */
@@ -524,7 +526,7 @@ export class PanneauFiche {
       const ul = el("ul", "liste jardin");
       for (const x of choses) {
         const li = el("li");
-        li.title = t("fiche.force", { v: x.intensite, date: x.date });
+        li.title = t("fiche.force", { v: x.intensite, date: x.date }) + (x.ancien ? `\n${t("evenement.ancien")}` : "");
         li.append(el("span", "date", x.date), ` ${x.texte} `, el("span", "discret", `(${x.intensite})`));
         if (x.sujet > 0 && x.nomSujet) li.append(" ", this.lien(x.sujet, "→ " + x.nomSujet));
         if (x.cause > 0) li.append(" ", boutonCause(li, x.cause, t("commun.pourquoi")));

@@ -2,6 +2,8 @@ using Monde.Simulation.Monde;
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -26,7 +28,7 @@ namespace Monde.Simulation.Humains;
 public static partial class Jardin
 {
     /// <summary>Une pensée possible, son poids selon le caractère, et son registre (0 : mots simples, 1 : courant, 2 : imagé).</summary>
-    internal readonly record struct V(string Texte, double Poids, int Registre = 1);
+    internal readonly record struct V(Recit Texte, double Poids, int Registre = 1);
 
     private const long Semaine = 7 * Calendrier.SecondesParJour;
 
@@ -69,118 +71,118 @@ public static partial class Jardin
             var grief = h.Griefs.Where(g => g.ContreId == l.Id).MaxBy(g => g.Intensite);
             // Le compagnon a sa propre rubrique (l'amour), sauf quand une rancune pèse plus que lui.
             if (h.PartenaireId == l.Id && grief is null) continue;
-            var (x, il, le, lui) = (autre.Nom, Il(autre), Le(autre), Pronom(autre));
+            var x = autre;
             var rel = Relation(h, autre);
             var niveau = l.Affection switch { >= 75 => 3, >= 40 => 2, <= -60 => -2, _ => -1 };
             V[] options;
             if (grief is { Motif: MotifGrief.Meurtre, VictimeId: > 0 } gm)
             {
-                var v = humains[gm.VictimeId - 1].Nom;
+                var v = humains[gm.VictimeId - 1];
                 options =
                 [
-                    new($"Je hais {x} : {il} a tué {v}.", 0.6),
-                    new($"Le sang de {v} crie encore ; {x} l'a versé.", 0.3, 2),
-                    new($"{x} a tué {v}. Je voudrais pardonner ; je ne peux pas.", 0.05 + 2 * S(p.Agreabilite) + S(m.Compassion)),
-                    new($"{x} a tué {v}. Je m'en souviendrai le moment venu.", 0.05 + 2 * Bas(p.Agreabilite) + 2 * f),
-                    new($"{x} a tué {v}.", 0.3, 0),
+                    new(new Recit("jv.opinions.1", ("x", x), ("v", v)), 0.6),
+                    new(new Recit("jv.opinions.2", ("v", v), ("x", x)), 0.3, 2),
+                    new(new Recit("jv.opinions.3", ("x", x), ("v", v)), 0.05 + 2 * S(p.Agreabilite) + S(m.Compassion)),
+                    new(new Recit("jv.opinions.4", ("x", x), ("v", v)), 0.05 + 2 * Bas(p.Agreabilite) + 2 * f),
+                    new(new Recit("jv.opinions.5", ("x", x), ("v", v)), 0.3, 0),
                 ];
             }
             else if (grief is { Motif: MotifGrief.Infidelite })
             {
                 options =
                 [
-                    new($"{x} m'a trahi{E(h)} ; je ne l'oublie pas.", 0.5),
-                    new($"{x} est allé{E(autre)} vers quelqu'un d'autre ; je ne vaux donc rien à ses yeux ?", 0.05 + 2 * S(m.AnxieteAffective) + S(p.Nevrosisme)),
-                    new($"{x} m'a trahi{E(h)}. Je lui pardonnerai peut-être.", 0.05 + 2 * S(p.Agreabilite)),
-                    new($"{x} m'a trahi{E(h)} ; je n'attendais rien de personne, de toute façon.", 0.05 + 2 * S(m.EvitementAffectif)),
-                    new($"{x} a souillé notre lien.", 0.05 + 2 * S(m.Fondements.Purete), 2),
+                    new(new Recit("jv.opinions.6", ("x", x), ("g", h)), 0.5),
+                    new(new Recit("jv.opinions.7", ("x", x)), 0.05 + 2 * S(m.AnxieteAffective) + S(p.Nevrosisme)),
+                    new(new Recit("jv.opinions.8", ("x", x), ("g", h)), 0.05 + 2 * S(p.Agreabilite)),
+                    new(new Recit("jv.opinions.9", ("x", x), ("g", h)), 0.05 + 2 * S(m.EvitementAffectif)),
+                    new(new Recit("jv.opinions.10", ("x", x)), 0.05 + 2 * S(m.Fondements.Purete), 2),
                 ];
             }
             else if (grief is { Motif: MotifGrief.Coups })
             {
                 options =
                 [
-                    new($"{x} m'a frappé{E(h)} : je me méfie {De(autre)}.", 0.5),
-                    new($"{x} m'a frappé{E(h)} ; je lui rendrai ses coups.", 0.05 + 2 * Bas(p.Agreabilite)),
-                    new($"J'ai peur de {x} depuis qu'{il} m'a frappé{E(h)}.", 0.05 + 2 * S(p.Nevrosisme)),
-                    new($"{x} frappe ; {il} ne vaut pas mieux qu'une bête.", 0.1 + S(m.Fondements.Soin), 2),
+                    new(new Recit("jv.opinions.11", ("x", x), ("g", h)), 0.5),
+                    new(new Recit("jv.opinions.12", ("x", x), ("g", h)), 0.05 + 2 * Bas(p.Agreabilite)),
+                    new(new Recit("jv.opinions.13", ("x", x), ("g", h)), 0.05 + 2 * S(p.Nevrosisme)),
+                    new(new Recit("jv.opinions.14", ("x", x)), 0.1 + S(m.Fondements.Soin), 2),
                 ];
             }
             else if (grief is { Motif: MotifGrief.Rival })
             {
                 options =
                 [
-                    new($"{x} m'a pris ce qui était à moi.", 0.3 + S(m.Fondements.Loyaute)),
-                    new($"Je ne pardonnerai pas à {x}.", 0.3 + Bas(p.Agreabilite)),
-                    new($"{x} me nargue ; {il} croit avoir gagné.", 0.1 + S(p.Nevrosisme), 2),
+                    new(new Recit("jv.opinions.15", ("x", x)), 0.3 + S(m.Fondements.Loyaute)),
+                    new(new Recit("jv.opinions.16", ("x", x)), 0.3 + Bas(p.Agreabilite)),
+                    new(new Recit("jv.opinions.17", ("x", x)), 0.1 + S(p.Nevrosisme), 2),
                 ];
             }
             else if (grief is { Motif: MotifGrief.Vol })
             {
                 options =
                 [
-                    new($"{x} m'a volé ma part ; je {le} surveille.", 0.4),
-                    new($"{x} prend ce qui n'est pas à {lui}.", 0.3 + S(m.Fondements.Equite)),
-                    new($"La prochaine fois que {x} touche à ma part, {il} s'en souviendra.", 0.05 + 2 * Bas(p.Agreabilite)),
+                    new(new Recit("jv.opinions.18", ("x", x)), 0.4),
+                    new(new Recit("jv.opinions.19", ("x", x)), 0.3 + S(m.Fondements.Equite)),
+                    new(new Recit("jv.opinions.20", ("x", x)), 0.05 + 2 * Bas(p.Agreabilite)),
                 ];
             }
             else if (grief is { Motif: MotifGrief.Incendie, VictimeId: > 0 } gi)
             {
-                var v = humains[gi.VictimeId - 1].Nom;
+                var v = humains[gi.VictimeId - 1];
                 options =
                 [
-                    new($"Le feu de {x} a gagné les herbes, et {v} en a souffert. {Majuscule(il)} aurait dû le garder.", 0.5),
-                    new($"{x} n'a pas voulu ce qui est arrivé à {v}. Mais c'est son feu.", 0.05 + 2 * S(p.Agreabilite)),
-                    new($"Je ne laisserai plus {x} allumer de feu près de nous.", 0.05 + 2 * Bas(p.Agreabilite) + S(p.Nevrosisme)),
+                    new(new Recit("jv.opinions.21", ("x", x), ("v", v)), 0.5),
+                    new(new Recit("jv.opinions.22", ("x", x), ("v", v)), 0.05 + 2 * S(p.Agreabilite)),
+                    new(new Recit("jv.opinions.23", ("x", x)), 0.05 + 2 * Bas(p.Agreabilite) + S(p.Nevrosisme)),
                 ];
             }
             else if (grief is { Motif: MotifGrief.Trahison })
             {
                 options =
                 [
-                    new($"{x} nous a quittés pour nos ennemis.", 0.4),
-                    new($"{x} est un traître ; qu'{il} ne revienne jamais.", 0.1 + 2 * S(m.Fondements.Loyaute)),
+                    new(new Recit("jv.opinions.24", ("x", x)), 0.4),
+                    new(new Recit("jv.opinions.25", ("x", x)), 0.1 + 2 * S(m.Fondements.Loyaute)),
                 ];
             }
             else options = niveau switch
             {
                 3 => Cher(h, autre, l, rel, f, maintenant),
                 2 => [
-                    new($"Je peux compter sur {x}.", 0.5),
-                    new($"J'aime bien {x}.", 0.4, 0),
-                    new($"{x} est de bonne compagnie.", 0.05 + 2 * S(p.Extraversion)),
-                    new($"{x} est fiable, je crois.", 0.05 + 2 * S(p.Nevrosisme)),
-                    new($"{x} est quelqu'un de bien.", 0.05 + S(m.Honnetete) + S(p.Agreabilite)),
-                    new($"Je ne connais pas encore bien {x}, mais {il} me plaît.", l.Familiarite < 30 ? 1 : 0),
-                    new($"{x} ne rechigne jamais à la peine ; je respecte cela.", 0.05 + 2 * S(p.Conscience)),
-                    new($"{x} peut m'être utile.", 3 * f, 0),
-                    new($"On s'entend bien, {x} et moi.", 0.3, 0),
-                    new($"{x} sait faire des choses que j'ignore ; je devrais l'observer.", Utiles(autre) > Utiles(h) + 1 ? 0.2 + 2 * S(p.Ouverture) : 0),
-                    new($"Avec {x}, le temps passe vite.", 0.1 + S(p.Extraversion), 2),
-                    new($"{x} {(rel == "parent" ? "m'a élevé" + E(h) : "est des nôtres")} ; cela compte.", 0.05 + 2 * S(m.Fondements.Loyaute)),
+                    new(new Recit("jv.opinions.26", ("x", x)), 0.5),
+                    new(new Recit("jv.opinions.27", ("x", x)), 0.4, 0),
+                    new(new Recit("jv.opinions.28", ("x", x)), 0.05 + 2 * S(p.Extraversion)),
+                    new(new Recit("jv.opinions.29", ("x", x)), 0.05 + 2 * S(p.Nevrosisme)),
+                    new(new Recit("jv.opinions.30", ("x", x)), 0.05 + S(m.Honnetete) + S(p.Agreabilite)),
+                    new(new Recit("jv.opinions.31", ("x", x)), l.Familiarite < 30 ? 1 : 0),
+                    new(new Recit("jv.opinions.32", ("x", x)), 0.05 + 2 * S(p.Conscience)),
+                    new(new Recit("jv.opinions.33", ("x", x)), 3 * f, 0),
+                    new(new Recit("jv.opinions.34", ("x", x)), 0.3, 0),
+                    new(new Recit("jv.opinions.35", ("x", x)), Utiles(autre) > Utiles(h) + 1 ? 0.2 + 2 * S(p.Ouverture) : 0),
+                    new(new Recit("jv.opinions.36", ("x", x)), 0.1 + S(p.Extraversion), 2),
+                    new(rel == "parent" ? new Recit("jv.opinions.eleve", ("x", x), ("g", h)) : new Recit("jv.opinions.desNotres", ("x", x)), 0.05 + 2 * S(m.Fondements.Loyaute)),
                 ],
                 -2 => [
-                    new($"Je ne supporte plus {x}.", 0.5),
-                    new($"{x} me fait horreur.", 0.1 + S(m.Fondements.Purete)),
-                    new($"La seule voix de {x} me fait serrer les dents.", 0.3, 2),
-                    new($"Un jour, {x} paiera.", 0.05 + 2 * Bas(p.Agreabilite)),
-                    new($"J'essaie d'aimer {x}, mais je n'y arrive pas.", 0.05 + 2 * S(p.Agreabilite) + S(m.Compassion)),
-                    new($"{x} me veut du mal, j'en suis sûr{E(h)}.", 0.05 + 2 * S(p.Nevrosisme)),
-                    new($"{x} est faible ; je saurai m'en servir.", 3 * f),
-                    new($"{x}, je l'évite.", 0.2 + S(m.EvitementAffectif), 0),
+                    new(new Recit("jv.opinions.37", ("x", x)), 0.5),
+                    new(new Recit("jv.opinions.38", ("x", x)), 0.1 + S(m.Fondements.Purete)),
+                    new(new Recit("jv.opinions.39", ("x", x)), 0.3, 2),
+                    new(new Recit("jv.opinions.40", ("x", x)), 0.05 + 2 * Bas(p.Agreabilite)),
+                    new(new Recit("jv.opinions.41", ("x", x)), 0.05 + 2 * S(p.Agreabilite) + S(m.Compassion)),
+                    new(new Recit("jv.opinions.42", ("x", x), ("g", h)), 0.05 + 2 * S(p.Nevrosisme)),
+                    new(new Recit("jv.opinions.43", ("x", x)), 3 * f),
+                    new(new Recit("jv.opinions.44", ("x", x)), 0.2 + S(m.EvitementAffectif), 0),
                 ],
                 _ => [
-                    new($"Je me méfie de {x}.", 0.5),
-                    new($"{x} parle trop.", 0.1 + Bas(p.Extraversion)),
-                    new($"Je n'aime pas la façon dont {x} me regarde.", 0.05 + 2 * S(p.Nevrosisme)),
-                    new($"{x} n'est pas des nôtres.", autre.CommunauteId != h.CommunauteId ? 0.2 + 2 * S(m.Fondements.Loyaute) : 0),
-                    new($"{x} laisse les autres faire sa part.", 0.05 + 2 * S(p.Conscience)),
-                    new($"{x} m'agace, mais il faut bien vivre ensemble.", 0.1 + S(p.Agreabilite)),
-                    new($"{x} ne respecte pas ceux qui sont plus âgés.", autre.Naissance > h.Naissance ? 2 * S(m.Fondements.Autorite) : 0),
-                    new($"{x} ne me revient pas.", 0.3, 0),
+                    new(new Recit("jv.opinions.45", ("x", x)), 0.5),
+                    new(new Recit("jv.opinions.46", ("x", x)), 0.1 + Bas(p.Extraversion)),
+                    new(new Recit("jv.opinions.47", ("x", x)), 0.05 + 2 * S(p.Nevrosisme)),
+                    new(new Recit("jv.opinions.48", ("x", x)), autre.CommunauteId != h.CommunauteId ? 0.2 + 2 * S(m.Fondements.Loyaute) : 0),
+                    new(new Recit("jv.opinions.49", ("x", x)), 0.05 + 2 * S(p.Conscience)),
+                    new(new Recit("jv.opinions.50", ("x", x)), 0.1 + S(p.Agreabilite)),
+                    new(new Recit("jv.opinions.51", ("x", x)), autre.Naissance > h.Naissance ? 2 * S(m.Fondements.Autorite) : 0),
+                    new(new Recit("jv.opinions.52", ("x", x)), 0.3, 0),
                 ],
             };
-            var texte = Varier(h, $"opinion:{l.Id}", niveau * 100 + (int)(grief?.Motif ?? (MotifGrief)99), x, options);
+            var texte = Varier(h, $"opinion:{l.Id}", niveau * 100 + (int)(grief?.Motif ?? (MotifGrief)99), x.Nom, options);
             if (texte is not null)
                 Confier(h, TypeIntime.Opinion, l.Id, texte, Math.Abs(l.Affection), grief?.EvenementId ?? 0, maintenant, $"opinion:{l.Id}");
         }
@@ -191,51 +193,51 @@ public static partial class Jardin
     {
         var p = h.Personnalite;
         var m = p.Moral;
-        var (x, il, le, lui) = (autre.Nom, Il(autre), Le(autre), Pronom(autre));
+        var x = autre;
         return rel switch
         {
             "enfant" => [
-                new($"{x} est ce que j'ai de plus précieux.", 0.3 + p.Attachement),
-                new($"J'aime {x}.", 0.5, 0),
-                new($"Quand je regarde {x} dormir, plus rien ne me fait peur.", 0.1 + S(p.Ouverture) + S(m.EmpathieEmotionnelle), 2),
-                new($"Je tremble à l'idée qu'il arrive malheur à {x}.", 0.05 + 2 * S(p.Nevrosisme) + S(m.AnxieteAffective)),
-                new($"Je dois apprendre à {x} tout ce que je sais.", 0.05 + 2 * S(p.Conscience)),
-                new($"{x} me fait rire comme personne.", 0.05 + 2 * S(p.Extraversion)),
-                new($"{x} grandit ; il faudra qu'{il} apprenne à se passer de moi.", 0.05 + 2 * S(m.EvitementAffectif)),
-                new($"{x} me ressemble ; j'en suis {Fier(h)}.", 0.1 + S(p.Extraversion) + Bas(p.Agreabilite)),
-                new($"{x} me sera utile, un jour.", 3 * f, 0),
+                new(new Recit("jv.cher.1", ("x", x)), 0.3 + p.Attachement),
+                new(new Recit("jv.cher.2", ("x", x)), 0.5, 0),
+                new(new Recit("jv.cher.3", ("x", x)), 0.1 + S(p.Ouverture) + S(m.EmpathieEmotionnelle), 2),
+                new(new Recit("jv.cher.4", ("x", x)), 0.05 + 2 * S(p.Nevrosisme) + S(m.AnxieteAffective)),
+                new(new Recit("jv.cher.5", ("x", x)), 0.05 + 2 * S(p.Conscience)),
+                new(new Recit("jv.cher.6", ("x", x)), 0.05 + 2 * S(p.Extraversion)),
+                new(new Recit("jv.cher.7", ("x", x)), 0.05 + 2 * S(m.EvitementAffectif)),
+                new(new Recit("jv.cher.8", ("x", x), ("g", h)), 0.1 + S(p.Extraversion) + Bas(p.Agreabilite)),
+                new(new Recit("jv.cher.9", ("x", x)), 3 * f, 0),
             ],
             "parent" => [
-                new($"{x} m'a tout appris.", 0.3 + S(p.Conscience)),
-                new($"Je voudrais que {x} soit {Fier(autre)} de moi.", 0.05 + S(p.Nevrosisme) + S(m.Fondements.Autorite)),
-                new($"J'ai peur de perdre {x}.", 0.05 + S(p.Nevrosisme) + S(m.AnxieteAffective)),
-                new($"{x} vieillit ; c'est à moi de veiller sur {lui}, maintenant.", autre.AgeEnAnnees(maintenant) >= 45 ? 0.2 + S(m.Compassion) + S(m.Fondements.Soin) : 0),
-                new($"J'aime {x}.", 0.5, 0),
-                new($"La voix de {x} me rassure, comme quand j'étais petit{E(h)}.", 0.1 + S(m.AnxieteAffective) + S(m.EmpathieEmotionnelle), 2),
-                new($"{x} ne me comprend pas toujours, mais {il} m'aime.", 0.05 + S(p.Ouverture) + S(m.EmpathieCognitive)),
-                new($"{x} m'a donné la vie ; je lui dois le respect.", 0.05 + 2 * S(m.Fondements.Autorite)),
+                new(new Recit("jv.cher.10", ("x", x)), 0.3 + S(p.Conscience)),
+                new(new Recit("jv.cher.11", ("x", x)), 0.05 + S(p.Nevrosisme) + S(m.Fondements.Autorite)),
+                new(new Recit("jv.cher.12", ("x", x)), 0.05 + S(p.Nevrosisme) + S(m.AnxieteAffective)),
+                new(new Recit("jv.cher.13", ("x", x)), autre.AgeEnAnnees(maintenant) >= 45 ? 0.2 + S(m.Compassion) + S(m.Fondements.Soin) : 0),
+                new(new Recit("jv.cher.2", ("x", x)), 0.5, 0),
+                new(new Recit("jv.cher.14", ("x", x), ("g", h)), 0.1 + S(m.AnxieteAffective) + S(m.EmpathieEmotionnelle), 2),
+                new(new Recit("jv.cher.15", ("x", x)), 0.05 + S(p.Ouverture) + S(m.EmpathieCognitive)),
+                new(new Recit("jv.cher.16", ("x", x)), 0.05 + 2 * S(m.Fondements.Autorite)),
             ],
             "fratrie" => [
-                new($"{x} et moi, nous avons grandi ensemble ; rien ne nous séparera.", 0.4, 2),
-                new($"J'aime {x}.", 0.5, 0),
-                new($"{x} a toujours eu plus que moi, mais je l'aime quand même.", 0.05 + S(p.Nevrosisme) + Bas(p.Agreabilite)),
-                new($"Si on touche à {x}, on aura affaire à moi.", 0.05 + 2 * S(m.Fondements.Loyaute) + Bas(p.Agreabilite)),
-                new($"{x} sait tout de moi, depuis toujours.", 0.2 + S(p.Extraversion)),
-                new($"{x} m'est utile ; le sang nous lie.", 3 * f),
+                new(new Recit("jv.cher.17", ("x", x)), 0.4, 2),
+                new(new Recit("jv.cher.2", ("x", x)), 0.5, 0),
+                new(new Recit("jv.cher.18", ("x", x)), 0.05 + S(p.Nevrosisme) + Bas(p.Agreabilite)),
+                new(new Recit("jv.cher.19", ("x", x)), 0.05 + 2 * S(m.Fondements.Loyaute) + Bas(p.Agreabilite)),
+                new(new Recit("jv.cher.20", ("x", x)), 0.2 + S(p.Extraversion)),
+                new(new Recit("jv.cher.21", ("x", x)), 3 * f),
             ],
             _ => [
-                new($"{x} est un être cher ; je ferais tout pour {lui}.", 0.4),
-                new($"Avec {x}, je peux tout dire.", 0.05 + S(p.Extraversion) + S(m.EmpathieCognitive)),
-                new($"{x} me comprend sans un mot.", 0.1 + S(m.EmpathieEmotionnelle), 2),
-                new($"Quand {x} est là, j'ai moins peur.", 0.05 + 2 * S(p.Nevrosisme)),
-                new($"{x} est des miens ; je {le} défendrai contre tous.", 0.05 + 2 * S(m.Fondements.Loyaute)),
-                new($"J'admire {x}.", 2 * S(autre.Personnalite.Charisme, 0.55)),
-                new($"Je dois beaucoup à {x}.", 0.05 + S(m.Honnetete) + S(p.Agreabilite)),
-                new($"{x} est {(autre.Sexe == Sexe.Femme ? "mon amie" : "mon ami")}.", l.Amis ? 0.5 : 0, 0),
-                new($"{x} compte pour moi, mais je n'ai besoin de personne.", 0.05 + 2 * S(m.EvitementAffectif)),
-                new($"J'ai peur que {x} se lasse de moi.", 0.05 + 2 * S(m.AnxieteAffective)),
-                new($"Je sais m'y prendre avec {x}.", 3 * f),
-                new($"Le rire de {x} chasse les nuages.", 0.05 + S(p.Ouverture) + S(p.Extraversion), 2),
+                new(new Recit("jv.cher.22", ("x", x)), 0.4),
+                new(new Recit("jv.cher.23", ("x", x)), 0.05 + S(p.Extraversion) + S(m.EmpathieCognitive)),
+                new(new Recit("jv.cher.24", ("x", x)), 0.1 + S(m.EmpathieEmotionnelle), 2),
+                new(new Recit("jv.cher.25", ("x", x)), 0.05 + 2 * S(p.Nevrosisme)),
+                new(new Recit("jv.cher.26", ("x", x)), 0.05 + 2 * S(m.Fondements.Loyaute)),
+                new(new Recit("jv.cher.27", ("x", x)), 2 * S(autre.Personnalite.Charisme, 0.55)),
+                new(new Recit("jv.cher.28", ("x", x)), 0.05 + S(m.Honnetete) + S(p.Agreabilite)),
+                new(new Recit("jv.cher.29", ("x", x)), l.Amis ? 0.5 : 0, 0),
+                new(new Recit("jv.cher.30", ("x", x)), 0.05 + 2 * S(m.EvitementAffectif)),
+                new(new Recit("jv.cher.31", ("x", x)), 0.05 + 2 * S(m.AnxieteAffective)),
+                new(new Recit("jv.cher.32", ("x", x)), 3 * f),
+                new(new Recit("jv.cher.33", ("x", x)), 0.05 + S(p.Ouverture) + S(p.Extraversion), 2),
             ],
         };
     }
@@ -252,70 +254,70 @@ public static partial class Jardin
         {
             { DeprimeDepuis: not null } => (1, 80.0, new V[]
             {
-                new("Je ne vaux rien ; à quoi bon ?", 0.5),
-                new("Tout est gris, même le soleil.", 0.3, 2),
-                new($"Je suis {(h.Sexe == Sexe.Femme ? "lasse" : "las")} de tout.", 0.4, 0),
-                new("Les miens seraient mieux sans moi.", 0.05 + S(p.Nevrosisme) + S(m.AnxieteAffective)),
+                new(Recit.Seul("jv.imageDeSoi.1"), 0.5),
+                new(Recit.Seul("jv.imageDeSoi.2"), 0.3, 2),
+                new(new Recit("jv.imageDeSoi.3", ("g", h)), 0.4, 0),
+                new(Recit.Seul("jv.imageDeSoi.4"), 0.05 + S(p.Nevrosisme) + S(m.AnxieteAffective)),
             }),
             { JoursSeul: >= 14 } => (2, 60.0, new V[]
             {
-                new("Personne ne veut de moi.", 0.5),
-                new($"Je suis seul{E(h)}, et personne ne s'en soucie.", 0.3 + S(p.Nevrosisme)),
-                new($"Seul{E(h)}, au moins, personne ne me déçoit.", 0.05 + 3 * S(m.EvitementAffectif)),
-                new("Les voix des autres me manquent, le soir.", 0.1 + S(p.Extraversion), 2),
+                new(Recit.Seul("jv.imageDeSoi.5"), 0.5),
+                new(new Recit("jv.imageDeSoi.6", ("g", h)), 0.3 + S(p.Nevrosisme)),
+                new(new Recit("jv.imageDeSoi.7", ("g", h)), 0.05 + 3 * S(m.EvitementAffectif)),
+                new(Recit.Seul("jv.imageDeSoi.8"), 0.1 + S(p.Extraversion), 2),
             }),
             _ when communaute?.FigureId == h.Id => (3, 70.0, new V[]
             {
-                new("Les miens se tournent vers moi : je dois les guider.", 0.4 + S(p.Conscience)),
-                new("Les miens attendent tout de moi ; et si je me trompais ?", 0.05 + 2 * S(p.Nevrosisme)),
-                new("Sans moi, les miens ne sauraient pas quoi faire.", 0.05 + 2 * Bas(p.Agreabilite) + 2 * f),
-                new("On m'écoute ; je dois être juste.", 0.05 + 2 * S(m.Fondements.Equite)),
+                new(Recit.Seul("jv.imageDeSoi.9"), 0.4 + S(p.Conscience)),
+                new(Recit.Seul("jv.imageDeSoi.10"), 0.05 + 2 * S(p.Nevrosisme)),
+                new(Recit.Seul("jv.imageDeSoi.11"), 0.05 + 2 * Bas(p.Agreabilite) + 2 * f),
+                new(Recit.Seul("jv.imageDeSoi.12"), 0.05 + 2 * S(m.Fondements.Equite)),
             }),
             { Sante: < 40 } => (4, 55.0, new V[]
             {
-                new($"Mon corps me trahit ; je ne suis plus bon{(h.Sexe == Sexe.Femme ? "ne" : "")} à grand-chose.", 0.5),
-                new("Je deviens un poids pour les miens.", 0.05 + S(m.Compassion) + S(p.Agreabilite)),
-                new("Mon corps s'use ; il faudra bien partir un jour.", 0.05 + 2 * S(p.Transcendance), 2),
-                new("J'ai mal.", 0.3, 0),
+                new(new Recit("jv.imageDeSoi.13", ("g", h)), 0.5),
+                new(Recit.Seul("jv.imageDeSoi.14"), 0.05 + S(m.Compassion) + S(p.Agreabilite)),
+                new(Recit.Seul("jv.imageDeSoi.15"), 0.05 + 2 * S(p.Transcendance), 2),
+                new(Recit.Seul("jv.imageDeSoi.16"), 0.3, 0),
             }),
             _ when h.Humeur >= 70 && p.Extraversion >= 0.6 => (5, 45.0, new V[]
             {
-                new($"Je suis fort{E(h)} et les autres m'apprécient.", 0.4),
-                new("La vie est bonne avec moi.", 0.3, 0),
-                new($"Je suis {(h.Sexe == Sexe.Femme ? "heureuse" : "heureux")} parmi les miens.", 0.3 + S(p.Agreabilite)),
-                new("Le soleil est chaud et j'ai le cœur léger.", 0.2 + S(p.Ouverture), 2),
+                new(new Recit("jv.imageDeSoi.17", ("g", h)), 0.4),
+                new(Recit.Seul("jv.imageDeSoi.18"), 0.3, 0),
+                new(new Recit("jv.imageDeSoi.19", ("g", h)), 0.3 + S(p.Agreabilite)),
+                new(Recit.Seul("jv.imageDeSoi.20"), 0.2 + S(p.Ouverture), 2),
             }),
             _ when h.Humeur < 30 => (6, 45.0, new V[]
             {
-                new("Rien ne me réussit.", 0.5),
-                new("Je porte la malchance avec moi.", 0.05 + S(p.Transcendance) + S(p.Nevrosisme)),
-                new("Les jours se traînent, lourds comme des pierres.", 0.2, 2),
+                new(Recit.Seul("jv.imageDeSoi.21"), 0.5),
+                new(Recit.Seul("jv.imageDeSoi.22"), 0.05 + S(p.Transcendance) + S(p.Nevrosisme)),
+                new(Recit.Seul("jv.imageDeSoi.23"), 0.2, 2),
             }),
             _ when p.Nevrosisme >= 0.7 => (7, 35.0, new V[]
             {
-                new("Je crains de ne pas être à la hauteur.", 0.5),
-                new("Les autres voient bien que je suis faible.", 0.2 + S(m.AnxieteAffective)),
-                new("Un rien m'effraie ; je voudrais être plus fort" + E(h) + ".", 0.3),
+                new(Recit.Seul("jv.imageDeSoi.24"), 0.5),
+                new(Recit.Seul("jv.imageDeSoi.25"), 0.2 + S(m.AnxieteAffective)),
+                new(new Recit("jv.imageDeSoi.plusFort", ("g", h)), 0.3),
             }),
             _ => (8, 15.0, new V[]
             {
-                new("Je fais ce qu'il faut pour vivre.", 0.4),
-                new("Je suis comme les autres, ni plus ni moins.", 0.3, 0),
-                new("Je fais toujours ce qui doit être fait.", 0.05 + 2 * S(p.Conscience)),
-                new("Demain, je ferai mieux.", 0.05 + 2 * Bas(p.Conscience)),
-                new("Je ne sais pas encore qui je suis.", h.AgeEnAnnees(maintenant) < 22 ? 0.2 + S(p.Ouverture) : 0),
-                new("Mes enfants ont besoin de moi ; cela me suffit.", humains.EnfantsDe(h.Id).Any(e => e.EstVivant && e.EstEnfant(maintenant)) ? 0.2 + p.Attachement : 0),
-                new("J'aime être parmi les autres.", 0.05 + 2 * S(p.Extraversion)),
-                new($"Je suis bien seul{E(h)}, à l'écart.", 0.05 + 2 * Bas(p.Extraversion)),
-                new("Je ne veux de mal à personne.", 0.05 + 2 * S(p.Agreabilite)),
-                new("Les autres sont faibles ; pas moi.", 3 * f),
-                new("Je vois des choses que les autres ne voient pas.", qi >= 120 ? 0.3 + S(p.Ouverture) : 0, 2),
-                new("Les autres comprennent plus vite que moi.", qi < 82 ? 0.3 : 0, 0),
-                new("Mes mains savent faire ce que d'autres ne savent pas.", p.Intelligence.Manuelle >= 118 ? 0.4 : 0),
-                new("Je trouve toujours les mots ; on m'écoute.", p.Intelligence.Verbale >= 118 ? 0.3 + S(p.Extraversion) : 0, 2),
+                new(Recit.Seul("jv.imageDeSoi.26"), 0.4),
+                new(Recit.Seul("jv.imageDeSoi.27"), 0.3, 0),
+                new(Recit.Seul("jv.imageDeSoi.28"), 0.05 + 2 * S(p.Conscience)),
+                new(Recit.Seul("jv.imageDeSoi.29"), 0.05 + 2 * Bas(p.Conscience)),
+                new(Recit.Seul("jv.imageDeSoi.30"), h.AgeEnAnnees(maintenant) < 22 ? 0.2 + S(p.Ouverture) : 0),
+                new(Recit.Seul("jv.imageDeSoi.31"), humains.EnfantsDe(h.Id).Any(e => e.EstVivant && e.EstEnfant(maintenant)) ? 0.2 + p.Attachement : 0),
+                new(Recit.Seul("jv.imageDeSoi.32"), 0.05 + 2 * S(p.Extraversion)),
+                new(new Recit("jv.imageDeSoi.33", ("g", h)), 0.05 + 2 * Bas(p.Extraversion)),
+                new(Recit.Seul("jv.imageDeSoi.34"), 0.05 + 2 * S(p.Agreabilite)),
+                new(Recit.Seul("jv.imageDeSoi.35"), 3 * f),
+                new(Recit.Seul("jv.imageDeSoi.36"), qi >= 120 ? 0.3 + S(p.Ouverture) : 0, 2),
+                new(Recit.Seul("jv.imageDeSoi.37"), qi < 82 ? 0.3 : 0, 0),
+                new(Recit.Seul("jv.imageDeSoi.38"), p.Intelligence.Manuelle >= 118 ? 0.4 : 0),
+                new(Recit.Seul("jv.imageDeSoi.39"), p.Intelligence.Verbale >= 118 ? 0.3 + S(p.Extraversion) : 0, 2),
             }),
         };
-        var texte = Choisir(h, "soi", cas, options) ?? "Je fais ce qu'il faut pour vivre.";
+        var texte = Choisir(h, "soi", cas, options) ?? Recit.Seul("jv.imageDeSoi.26");
         Confier(h, TypeIntime.ImageDeSoi, h.Id, texte, force, h.DepressionEvenementId, maintenant, "soi");
     }
 
@@ -339,58 +341,56 @@ public static partial class Jardin
         var passion = Math.Clamp((Attirance.Desir(h, c, ideal, maintenant) - 0.25) / 0.4, 0, 1);
         var engagement = Math.Clamp(0.5 * (lien?.Familiarite ?? 0) / 100 + 0.25 * p.Conscience + 0.25 * (1 - m.EvitementAffectif), 0, 1);
         var (i, pa, e) = (intimite >= 0.55, passion >= 0.5, engagement >= 0.55);
-        var x = c.Nom;
-        var il = Il(c);
-        var comp = c.Sexe == Sexe.Femme ? "ma compagne" : "mon compagnon";
+        var x = c;
         var (forme, options) = (i, pa, e) switch
         {
             (true, true, true) => (1, new V[]
             {
-                new($"{x} est tout pour moi.", 0.4),
-                new($"Je désire {x} autant que je l'aime ; nous ne faisons qu'un.", 0.3, 2),
-                new($"Chaque soir, je retrouve {x} comme on retrouve le feu.", 0.2 + S(p.Ouverture), 2),
-                new($"J'aime {x}.", 0.4, 0),
-                new($"{x} et moi, nous vieillirons ensemble.", 0.1 + S(p.Conscience)),
+                new(new Recit("jv.couple.1", ("x", x)), 0.4),
+                new(new Recit("jv.couple.2", ("x", x)), 0.3, 2),
+                new(new Recit("jv.couple.3", ("x", x)), 0.2 + S(p.Ouverture), 2),
+                new(new Recit("jv.cher.2", ("x", x)), 0.4, 0),
+                new(new Recit("jv.couple.4", ("x", x)), 0.1 + S(p.Conscience)),
             }),
             (true, true, false) => (2, new V[]
             {
-                new($"Mon cœur bat plus vite quand {x} est près de moi.", 0.4),
-                new($"Je pense à {x} du matin au soir.", 0.3 + S(m.AnxieteAffective)),
-                new($"Avec {x}, tout est neuf.", 0.2 + S(p.Ouverture), 2),
-                new($"J'aime {x}.", 0.3, 0),
+                new(new Recit("jv.couple.5", ("x", x)), 0.4),
+                new(new Recit("jv.couple.6", ("x", x)), 0.3 + S(m.AnxieteAffective)),
+                new(new Recit("jv.couple.7", ("x", x)), 0.2 + S(p.Ouverture), 2),
+                new(new Recit("jv.cher.2", ("x", x)), 0.3, 0),
             }),
             (true, false, true) => (3, new V[]
             {
-                new($"{x} et moi, nous avons poussé ensemble comme deux arbres.", 0.3, 2),
-                new("Le feu des débuts s'est calmé ; reste la tendresse.", 0.3 + S(p.Ouverture), 2),
-                new($"{x} est {comp}, et c'est bien.", 0.4, 0),
-                new($"Je peux tout confier à {x}.", 0.2 + S(m.EmpathieCognitive)),
+                new(new Recit("jv.couple.8", ("x", x)), 0.3, 2),
+                new(Recit.Seul("jv.couple.9"), 0.3 + S(p.Ouverture), 2),
+                new(new Recit("jv.couple.10", ("x", x)), 0.4, 0),
+                new(new Recit("jv.couple.11", ("x", x)), 0.2 + S(m.EmpathieCognitive)),
             }),
             (false, true, true) => (4, new V[]
             {
-                new($"Je désire {x}, mais je ne sais pas ce qu'{il} pense vraiment.", 0.4),
-                new($"{x} me plaît ; pour le reste, nous parlons peu.", 0.3 + Bas(p.Extraversion)),
+                new(new Recit("jv.couple.12", ("x", x)), 0.4),
+                new(new Recit("jv.couple.13", ("x", x)), 0.3 + Bas(p.Extraversion)),
             }),
             (false, false, true) => (5, new V[]
             {
-                new($"Je reste avec {x} par habitude.", 0.4),
-                new($"{x} et moi, nous ne nous parlons plus guère.", 0.3),
-                new($"Je dois rester avec {x} ; c'est ainsi.", 0.05 + S(p.Conscience) + S(m.Fondements.Autorite)),
+                new(new Recit("jv.couple.14", ("x", x)), 0.4),
+                new(new Recit("jv.couple.15", ("x", x)), 0.3),
+                new(new Recit("jv.couple.16", ("x", x)), 0.05 + S(p.Conscience) + S(m.Fondements.Autorite)),
             }),
             (false, true, false) => (6, new V[]
             {
-                new($"{x} m'attire, et c'est tout ce que je sais de nous.", 0.4),
-                new($"Je ne pense qu'à {x}, la nuit.", 0.3, 0),
+                new(new Recit("jv.couple.17", ("x", x)), 0.4),
+                new(new Recit("jv.couple.18", ("x", x)), 0.3, 0),
             }),
             (true, false, false) => (7, new V[]
             {
-                new($"{x} est {(c.Sexe == Sexe.Femme ? "mon amie" : "mon ami")} plus que {comp}.", 0.5),
-                new($"J'aime la compagnie de {x}, sans plus.", 0.3, 0),
+                new(new Recit("jv.couple.19", ("x", x)), 0.5),
+                new(new Recit("jv.couple.20", ("x", x)), 0.3, 0),
             }),
             _ => (8, new V[]
             {
-                new($"Pourquoi suis-je encore avec {x} ?", 0.4),
-                new($"{x} m'est devenu{E(c)} étranger{(c.Sexe == Sexe.Femme ? "ère" : "")}.", 0.3, 2),
+                new(new Recit("jv.couple.21", ("x", x)), 0.4),
+                new(new Recit("jv.couple.22", ("x", x)), 0.3, 2),
             }),
         };
         var texte = Choisir(h, "couple", forme, options);
@@ -402,13 +402,13 @@ public static partial class Jardin
         var nuance = style switch
         {
             StyleAttachement.Anxieux => Choisir(h, "couple-style", 1,
-                new V($"J'ai peur que {x} se lasse de moi.", 0.5),
-                new V($"Quand {x} s'éloigne, je ne respire plus.", 0.3, 2),
-                new V($"{x} m'aime-t-{il} vraiment ?", 0.4, 0)),
+                new V(new Recit("jv.cher.31", ("x", x)), 0.5),
+                new V(new Recit("jv.couple.23", ("x", x)), 0.3, 2),
+                new V(new Recit("jv.couple.24", ("x", x)), 0.4, 0)),
             StyleAttachement.Evitant => Choisir(h, "couple-style", 2,
-                new V($"J'aime {x}, mais j'ai besoin d'être seul{E(h)} parfois.", 0.5),
-                new V($"{x} voudrait que je dise ce que je ressens ; je ne sais pas.", 0.3),
-                new V($"{x} est trop près de moi.", 0.3, 0)),
+                new V(new Recit("jv.couple.25", ("x", x), ("g", h)), 0.5),
+                new V(new Recit("jv.couple.26", ("x", x)), 0.3),
+                new V(new Recit("jv.couple.27", ("x", x)), 0.3, 0)),
             _ => null,
         };
         if (nuance is null) Retirer(h, "couple-style");
@@ -440,27 +440,27 @@ public static partial class Jardin
             Retirer(h, "desir");
             return;
         }
-        var (x, il) = (cible.Nom, Il(cible));
+        var x = cible;
         var compagnon = h.PartenaireId > 0 && humains[h.PartenaireId - 1].EstVivant ? humains[h.PartenaireId - 1] : null;
         var moinsBeau = Attirance.Attractivite(h, ideal, maintenant) + 10 < Attirance.Attractivite(cible, ideal, maintenant);
         var options = new List<V>
         {
-            new($"{x} me plaît.", 0.4, 0),
-            new($"Le corps de {x} me trouble.", 0.2 + S(p.Ouverture)),
-            new($"Je cherche le regard de {x} sans le vouloir.", 0.1 + S(p.Nevrosisme) + Bas(p.Extraversion)),
-            new($"Je pense à {x} quand la nuit tombe.", 0.3),
-            new($"Quand {x} rit, le rouge me monte au visage.", 0.05 + 2 * Bas(p.Extraversion)),
-            new($"J'ai envie de {x}, et je n'y peux rien.", 0.05 + 2 * Bas(p.Conscience)),
-            new($"Je voudrais que {x} me remarque.", moinsBeau ? 0.2 + S(p.Nevrosisme) : 0),
-            new($"{x} est {Beau(cible)} comme la lumière du matin sur l'eau.", 0.05 + 2 * S(p.Ouverture) + S(p.Intelligence.Artistique / 150), 2),
-            new($"J'irai vers {x} ; qui ne tente rien n'a rien.", 0.05 + 2 * S(p.Extraversion) * Bas(p.Nevrosisme, 0.6)),
-            new($"{x} me plaît ; je finirai par l'avoir.", 3 * f),
+            new(new Recit("jv.desirer.1", ("x", x)), 0.4, 0),
+            new(new Recit("jv.desirer.2", ("x", x)), 0.2 + S(p.Ouverture)),
+            new(new Recit("jv.desirer.3", ("x", x)), 0.1 + S(p.Nevrosisme) + Bas(p.Extraversion)),
+            new(new Recit("jv.desirer.4", ("x", x)), 0.3),
+            new(new Recit("jv.desirer.5", ("x", x)), 0.05 + 2 * Bas(p.Extraversion)),
+            new(new Recit("jv.desirer.6", ("x", x)), 0.05 + 2 * Bas(p.Conscience)),
+            new(new Recit("jv.desirer.7", ("x", x)), moinsBeau ? 0.2 + S(p.Nevrosisme) : 0),
+            new(new Recit("jv.desirer.8", ("x", x)), 0.05 + 2 * S(p.Ouverture) + S(p.Intelligence.Artistique / 150), 2),
+            new(new Recit("jv.desirer.9", ("x", x)), 0.05 + 2 * S(p.Extraversion) * Bas(p.Nevrosisme, 0.6)),
+            new(new Recit("jv.desirer.10", ("x", x)), 3 * f),
         };
-        if (cible.Sexe == h.Sexe) options.Add(new($"Je désire {x} ; je le garde pour moi.", 0.6 + Bas(p.Ouverture)));
+        if (cible.Sexe == h.Sexe) options.Add(new(new Recit("jv.desirer.11", ("x", x)), 0.6 + Bas(p.Ouverture)));
         if (compagnon is not null)
         {
-            options.Add(new($"{x} me trouble, et j'en ai honte : il y a {compagnon.Nom}.", 0.05 + S(p.Conscience) + S(m.Honnetete) + S(m.Fondements.Purete)));
-            options.Add(new($"{compagnon.Nom} n'en saura rien, si je vais vers {x}…", 0.05 + Bas(p.Conscience) + S(p.Extraversion) * Bas(m.Honnetete)));
+            options.Add(new(new Recit("jv.desirer.12", ("x", x), ("c", compagnon)), 0.05 + S(p.Conscience) + S(m.Honnetete) + S(m.Fondements.Purete)));
+            options.Add(new(new Recit("jv.desirer.13", ("c", compagnon), ("x", x)), 0.05 + Bas(p.Conscience) + S(p.Extraversion) * Bas(m.Honnetete)));
         }
         var texte = Choisir(h, "desir", cible.Id * 4 + (compagnon is null ? 0 : 1) + (moinsBeau ? 2 : 0), [.. options]);
         var force = (15 + 50 * meilleur) * (0.6 + 0.6 * h.Desir / 100);
@@ -471,13 +471,13 @@ public static partial class Jardin
         if (affection < 50 || meilleur < exigence + 0.1) return;
         var partage = cible.AffectionPour(h.Id) >= 50;
         var amour = Choisir(h, "amour", cible.Id * 2 + (partage ? 1 : 0),
-            new V($"Je crois que j'aime {x}.", 0.5),
-            new V($"{x} ne me voit pas.", partage ? 0 : 0.3 + S(p.Nevrosisme)),
-            new V($"Si {x} me repousse, je ne m'en remettrai pas.", 0.05 + 2 * S(m.AnxieteAffective)),
-            new V($"J'aime {x}, je crois ; mieux vaut ne pas le dire.", 0.05 + 2 * S(m.EvitementAffectif)),
-            new V($"Un jour, {x} et moi, nous vivrons ensemble.", compagnon is null ? 0.05 + 2 * S(p.Extraversion) : 0),
-            new V($"Le nom de {x} me revient sans cesse, comme un chant.", 0.05 + S(p.Ouverture), 2),
-            new V($"Je ne devrais pas aimer {x}.", compagnon is not null ? 0.2 + S(p.Conscience) : 0));
+            new V(new Recit("jv.desirer.14", ("x", x)), 0.5),
+            new V(new Recit("jv.desirer.15", ("x", x)), partage ? 0 : 0.3 + S(p.Nevrosisme)),
+            new V(new Recit("jv.desirer.16", ("x", x)), 0.05 + 2 * S(m.AnxieteAffective)),
+            new V(new Recit("jv.desirer.17", ("x", x)), 0.05 + 2 * S(m.EvitementAffectif)),
+            new V(new Recit("jv.desirer.18", ("x", x)), compagnon is null ? 0.05 + 2 * S(p.Extraversion) : 0),
+            new V(new Recit("jv.desirer.19", ("x", x)), 0.05 + S(p.Ouverture), 2),
+            new V(new Recit("jv.desirer.20", ("x", x)), compagnon is not null ? 0.2 + S(p.Conscience) : 0));
         if (amour is not null) Confier(h, TypeIntime.Amour, cible.Id, amour, 20 + 0.6 * affection, 0, maintenant, "amour");
     }
 
@@ -513,18 +513,17 @@ public static partial class Jardin
             h.Memoire.Jardin.RemoveAll(x => x.Cle.StartsWith("jalousie", StringComparison.Ordinal));
             return;
         }
-        var (pn, rn) = (c.Nom, rival.Nom);
         var homme = h.Sexe == Sexe.Homme;
         var texte = Choisir(h, "jalousie", rival.Id,
-            new V($"Je vois comment {rn} regarde {pn}. Je n'aime pas cela.", homme ? 0.45 : 0.35),
-            new V($"J'ai peur que {pn} se donne à {rn}.", (homme ? 0.45 : 0.3) * (0.5 + p.Nevrosisme)),
-            new V($"La nuit, j'imagine {pn} dans les bras de {rn}.", (homme ? 0.3 : 0.2) * (0.5 + S(p.Ouverture)), 2),
-            new V($"{pn} rit plus avec {rn} qu'avec moi.", homme ? 0.3 : 0.45),
-            new V($"Je crains que {pn} ne tienne plus à {rn} qu'à moi.", (homme ? 0.3 : 0.45) * (0.5 + m.AnxieteAffective)),
-            new V($"Si {rn} s'approche encore de {pn}, je {Le(rival)} chasserai.", 0.05 + 2 * Bas(p.Agreabilite) + h.Colere / 100),
-            new V($"{pn} aime la compagnie de {rn} ; je n'ai rien à craindre, je crois.", (1 - p.Nevrosisme) * (1 - m.AnxieteAffective)),
-            new V($"{rn} est plus {Beau(rival)} que moi ; comment {pn} me préférerait-{Il(c)} ?", 0.05 + 2 * S(p.Nevrosisme)),
-            new V($"{pn} et {rn}… je n'aime pas ça.", 0.3, 0));
+            new V(new Recit("jv.jalouser.1", ("r", rival), ("p", c)), homme ? 0.45 : 0.35),
+            new V(new Recit("jv.jalouser.2", ("p", c), ("r", rival)), (homme ? 0.45 : 0.3) * (0.5 + p.Nevrosisme)),
+            new V(new Recit("jv.jalouser.3", ("p", c), ("r", rival)), (homme ? 0.3 : 0.2) * (0.5 + S(p.Ouverture)), 2),
+            new V(new Recit("jv.jalouser.4", ("p", c), ("r", rival)), homme ? 0.3 : 0.45),
+            new V(new Recit("jv.jalouser.5", ("p", c), ("r", rival)), (homme ? 0.3 : 0.45) * (0.5 + m.AnxieteAffective)),
+            new V(new Recit("jv.jalouser.6", ("r", rival), ("p", c)), 0.05 + 2 * Bas(p.Agreabilite) + h.Colere / 100),
+            new V(new Recit("jv.jalouser.7", ("p", c), ("r", rival)), (1 - p.Nevrosisme) * (1 - m.AnxieteAffective)),
+            new V(new Recit("jv.jalouser.8", ("r", rival), ("p", c)), 0.05 + 2 * S(p.Nevrosisme)),
+            new V(new Recit("jv.jalouser.9", ("p", c), ("r", rival)), 0.3, 0));
         if (texte is not null) Confier(h, TypeIntime.Jalousie, rival.Id, texte, force, griefRival?.EvenementId ?? 0, maintenant, "jalousie");
     }
 
@@ -546,21 +545,21 @@ public static partial class Jardin
             var force = (20 + 0.6 * l.Affection) * (0.6 + 0.8 * p.Nevrosisme) * (0.75 + 0.5 * m.EmpathieEmotionnelle) * (1 - 0.7 * f)
                         * Math.Exp(-jours / 365 / (1 + 3 * p.Attachement));
             if (force < 15) continue;
-            var (x, il, lui) = (mort.Nom, Il(mort), Pronom(mort));
+            var x = mort;
             var rel = Relation(h, mort);
             var ansDepuis = jours / 365;
-            var texte = Varier(h, $"manque:{mort.Id}", 0, x,
-                new V($"{x} me manque.", 0.5, 0),
-                new V($"Je crois parfois sentir {x} près de moi.", 0.05 + 2 * S(p.Transcendance)),
-                new V($"Je parle à {x} la nuit, même s'{il} n'est plus là.", 0.05 + S(p.Transcendance) + S(m.AnxieteAffective)),
-                new V($"Je ne pleure plus {x}, mais je pense à {lui} souvent.", 0.05 + 2 * Bas(p.Nevrosisme)),
-                new V($"Où est parti{E(mort)} {x} ? Je voudrais le savoir.", 0.05 + 2 * S(p.Ouverture)),
-                new V($"Je n'ai pas su protéger {x}.", rel == "enfant" ? 0.2 + S(p.Conscience) + p.Attachement : 0),
-                new V($"{x} serait grand{E(mort)}, maintenant.", rel == "enfant" && ansDepuis >= 2 ? 0.4 : 0),
-                new V($"Le froid de la nuit est plus dur depuis que {x} n'est plus là.", mort.Id == h.PartenaireId || mort.PartenaireId == h.Id ? 0.5 : 0, 2),
-                new V($"Je cherche encore {x} à mon côté, au réveil.", mort.Id == h.PartenaireId || mort.PartenaireId == h.Id ? 0.4 : 0),
-                new V($"J'entends encore la voix de {x}.", rel == "parent" ? 0.5 : 0.1),
-                new V($"Le monde est plus vide sans {x}.", 0.2, 2));
+            var texte = Varier(h, $"manque:{mort.Id}", 0, x.Nom,
+                new V(new Recit("jv.manquer.1", ("x", x)), 0.5, 0),
+                new V(new Recit("jv.manquer.2", ("x", x)), 0.05 + 2 * S(p.Transcendance)),
+                new V(new Recit("jv.manquer.3", ("x", x)), 0.05 + S(p.Transcendance) + S(m.AnxieteAffective)),
+                new V(new Recit("jv.manquer.4", ("x", x)), 0.05 + 2 * Bas(p.Nevrosisme)),
+                new V(new Recit("jv.manquer.5", ("x", x)), 0.05 + 2 * S(p.Ouverture)),
+                new V(new Recit("jv.manquer.6", ("x", x)), rel == "enfant" ? 0.2 + S(p.Conscience) + p.Attachement : 0),
+                new V(new Recit("jv.manquer.7", ("x", x)), rel == "enfant" && ansDepuis >= 2 ? 0.4 : 0),
+                new V(new Recit("jv.manquer.8", ("x", x)), mort.Id == h.PartenaireId || mort.PartenaireId == h.Id ? 0.5 : 0, 2),
+                new V(new Recit("jv.manquer.9", ("x", x)), mort.Id == h.PartenaireId || mort.PartenaireId == h.Id ? 0.4 : 0),
+                new V(new Recit("jv.manquer.10", ("x", x)), rel == "parent" ? 0.5 : 0.1),
+                new V(new Recit("jv.manquer.11", ("x", x)), 0.2, 2));
             if (texte is not null) Confier(h, TypeIntime.Manque, mort.Id, texte, force, mort.MortEvenementId, maintenant, $"manque:{mort.Id}");
         }
 
@@ -571,10 +570,10 @@ public static partial class Jardin
         {
             var a = humains[absent.Id - 1];
             var texte = Choisir(h, $"manque:{a.Id}", 1,
-                new V($"{a.Nom} est loin ; je me demande s'{Il(a)} pense à moi.", 0.3 + S(m.AnxieteAffective)),
-                new V($"Je voudrais revoir {a.Nom}.", 0.5, 0),
-                new V($"Quand le vent vient de là où vit {a.Nom}, je pense à {Pronom(a)}.", 0.1 + S(p.Ouverture), 2),
-                new V($"{a.Nom} a sa vie ; c'est bien ainsi.", 0.05 + 2 * S(m.EvitementAffectif)));
+                new V(new Recit("jv.manquer.12", ("a", a)), 0.3 + S(m.AnxieteAffective)),
+                new V(new Recit("jv.manquer.13", ("a", a)), 0.5, 0),
+                new V(new Recit("jv.manquer.14", ("a", a)), 0.1 + S(p.Ouverture), 2),
+                new V(new Recit("jv.manquer.15", ("a", a)), 0.05 + 2 * S(m.EvitementAffectif)));
             if (texte is not null) Confier(h, TypeIntime.Manque, a.Id, texte, 15 + 0.4 * absent.Affection * (0.6 + 0.8 * m.AnxieteAffective), 0, maintenant, $"manque:{a.Id}");
         }
 
@@ -582,13 +581,13 @@ public static partial class Jardin
         var age = h.AgeEnAnnees(maintenant);
         if (age < 40 || !Tirer(h, "nostalgie", semaine / Rythme(h), 0.25 + 0.4 * p.Nevrosisme)) return;
         var nostalgie = Choisir(h, "nostalgie", semaine / Rythme(h),
-            new V("Je repense au temps où je courais plus vite que tous.", 0.1 + S(p.Extraversion)),
-            new V("Autrefois, la vie était plus douce.", 0.1 + S(p.Nevrosisme)),
-            new V("Mes jambes ne me portent plus comme avant.", h.Sante < 70 || age >= 55 ? 0.5 : 0),
-            new V("Je pense souvent à ma jeunesse.", 0.4, 0),
-            new V("Le temps file comme l'eau entre les doigts.", 0.1 + S(p.Ouverture), 2),
-            new V("Ceux de mon âge s'en vont, un à un.", age >= 55 ? 0.4 : 0),
-            new V($"J'ai vu tant de saisons ; je suis devenu{E(h)} {(h.Sexe == Sexe.Femme ? "vieille" : "vieux")}.", age >= 50 ? 0.3 : 0));
+            new V(Recit.Seul("jv.manquer.16"), 0.1 + S(p.Extraversion)),
+            new V(Recit.Seul("jv.manquer.17"), 0.1 + S(p.Nevrosisme)),
+            new V(Recit.Seul("jv.manquer.18"), h.Sante < 70 || age >= 55 ? 0.5 : 0),
+            new V(Recit.Seul("jv.manquer.19"), 0.4, 0),
+            new V(Recit.Seul("jv.manquer.20"), 0.1 + S(p.Ouverture), 2),
+            new V(Recit.Seul("jv.manquer.21"), age >= 55 ? 0.4 : 0),
+            new V(new Recit("jv.manquer.22", ("g", h)), age >= 50 ? 0.3 : 0));
         if (nostalgie is not null) Confier(h, TypeIntime.Manque, 0, nostalgie, 20 + 20 * p.Nevrosisme, 0, maintenant, "nostalgie");
     }
 
@@ -613,17 +612,17 @@ public static partial class Jardin
             Retirer(h, "fierte");
             return;
         }
-        var savoir = trouve is null ? "" : Physique.NomEffet(trouve.Effet);
+        var (savoirMoi, savoirInf) = trouve is null ? (null, null) : (EffetMoi(trouve.Effet), new Recit($"effetInf.{trouve.Effet}"));
         var texte = Choisir(h, "fierte", (trouve is null ? 0 : 1) + (eleves > 0 ? 2 : 0) + (figure ? 4 : 0) + (enfants >= 3 ? 8 : 0) + (beau ? 16 : 0),
-            new V($"J'ai appris seul{E(h)} à {Moi(savoir)} ; cela m'a coûté bien des efforts.", trouve is null ? 0 : authentique),
-            new V($"Personne ne sait {savoir} aussi bien que moi.", trouve is null ? 0 : orgueil),
-            new V($"Je sais {Moi(savoir)}.", trouve is null ? 0 : 0.3, 0),
-            new V($"D'autres apprennent en me regardant ; j'en suis {Fier(h)}.", eleves > 0 ? authentique + 0.3 : 0),
-            new V("Sans moi, ils ne sauraient rien faire.", eleves > 0 ? orgueil : 0),
-            new V($"Les miens me suivent ; j'en suis {Fier(h)}.", figure ? authentique : 0),
-            new V("Sans moi, les miens ne seraient rien.", figure ? orgueil : 0),
-            new V($"J'ai donné la vie à {enfants} enfants.", enfants >= 3 ? 0.2 + p.Attachement : 0),
-            new V($"On me trouve {Beau(h)}, je le sais.", beau ? 0.1 + S(p.Extraversion) + 0.5 * orgueil : 0));
+            new V(new Recit("jv.fierte.1", ("g", h), ("savoir", savoirMoi)), trouve is null ? 0 : authentique),
+            new V(new Recit("jv.fierte.2", ("savoir", savoirInf)), trouve is null ? 0 : orgueil),
+            new V(new Recit("jv.fierte.3", ("savoir", savoirMoi)), trouve is null ? 0 : 0.3, 0),
+            new V(new Recit("jv.fierte.4", ("g", h)), eleves > 0 ? authentique + 0.3 : 0),
+            new V(Recit.Seul("jv.fierte.5"), eleves > 0 ? orgueil : 0),
+            new V(new Recit("jv.fierte.6", ("g", h)), figure ? authentique : 0),
+            new V(Recit.Seul("jv.fierte.7"), figure ? orgueil : 0),
+            new V(new Recit("jv.fierte.8", ("n", enfants)), enfants >= 3 ? 0.2 + p.Attachement : 0),
+            new V(new Recit("jv.fierte.9", ("g", h)), beau ? 0.1 + S(p.Extraversion) + 0.5 * orgueil : 0));
         if (texte is not null) Confier(h, TypeIntime.Fierte, 0, texte, 20 + 30 * Math.Max(authentique, orgueil) / 2.5 + 5 * Math.Min(4, eleves), trouve?.EvenementId ?? 0, maintenant, "fierte");
     }
 
@@ -653,32 +652,32 @@ public static partial class Jardin
         var f = Froid(p);
         var culpabilite = (0.2 + m.EmpathieEmotionnelle + m.Compassion + m.Honnetete + 0.5 * p.Conscience) * (1 - f);
         var honte = (0.2 + 1.5 * p.Nevrosisme + m.AnxieteAffective) * (1 - f);
-        var x = victime.Nom;
-        var acte = pire.Motif switch
+        var x = victime;
+        var acte = new Recit(pire.Motif switch
         {
-            MotifGrief.Coups => $"Je n'aurais pas dû frapper {x}",
-            MotifGrief.Infidelite => $"J'ai trahi {x}",
-            MotifGrief.Vol => $"J'ai pris la part de {x}",
-            MotifGrief.Meurtre => $"J'ai tué l'un des proches de {x}",
-            MotifGrief.Rival => $"J'ai pris à {x} ce qui lui tenait à cœur",
-            MotifGrief.Incendie => $"Mon feu a gagné les herbes et fait du mal aux proches de {x}",
-            _ => $"J'ai fait du mal à {x}",
-        };
+            MotifGrief.Coups => "jv.acte.coups",
+            MotifGrief.Infidelite => "jv.acte.infidelite",
+            MotifGrief.Vol => "jv.acte.vol",
+            MotifGrief.Meurtre => "jv.acte.meurtre",
+            MotifGrief.Rival => "jv.acte.rival",
+            MotifGrief.Incendie => "jv.acte.incendie",
+            _ => "jv.acte.autre",
+        }, ("x", x), ("g", h));
         var cas = culpabilite >= honte && culpabilite > 1.2 ? 1 : honte > 1 ? 2 : 3;
         var (type, texte) = cas switch
         {
             1 => (TypeIntime.Culpabilite, Choisir(h, "faute", (int)pire.Motif,
-                new V($"{acte} ; je voudrais réparer.", 0.5),
-                new V($"{acte}. Ce poids ne me quitte pas.", 0.3, 2),
-                new V($"{acte}. J'irai {Le(victime)} voir.", 0.1 + S(p.Extraversion) + S(p.Agreabilite)),
-                new V($"{acte}. C'était mal.", 0.3, 0))),
+                new V(new Recit("jv.fautes.1", ("acte", acte)), 0.5),
+                new V(new Recit("jv.fautes.2", ("acte", acte)), 0.3, 2),
+                new V(new Recit("jv.fautes.3", ("acte", acte), ("x", x)), 0.1 + S(p.Extraversion) + S(p.Agreabilite)),
+                new V(new Recit("jv.fautes.4", ("acte", acte)), 0.3, 0))),
             2 => (TypeIntime.Honte, Choisir(h, "faute", 10 + (int)pire.Motif,
-                new V($"Je suis mauvais{(h.Sexe == Sexe.Femme ? "e" : "")} ; {x} a raison de m'en vouloir.", 0.4),
-                new V($"Je ne peux plus regarder {x} en face.", 0.4),
-                new V("Si les autres savaient ce que je suis…", 0.2 + S(m.AnxieteAffective), 2))),
+                new V(new Recit("jv.fautes.5", ("g", h), ("x", x)), 0.4),
+                new V(new Recit("jv.fautes.6", ("x", x)), 0.4),
+                new V(Recit.Seul("jv.fautes.7"), 0.2 + S(m.AnxieteAffective), 2))),
             _ => (TypeIntime.Opinion, Choisir(h, "faute", 20 + (int)pire.Motif,
-                new V($"{x} m'en veut ; tant pis pour {Pronom(victime)}.", 0.5),
-                new V($"{x} l'a bien cherché.", 0.3 + 2 * f))),
+                new V(new Recit("jv.fautes.8", ("x", x)), 0.5),
+                new V(new Recit("jv.fautes.9", ("x", x)), 0.3 + 2 * f))),
         };
         if (texte is not null) Confier(h, type, victime.Id, texte, 15 + 0.5 * pire.Intensite * Math.Max(0.5, Math.Max(culpabilite, honte) / 2), pire.EvenementId, maintenant, "faute");
     }
@@ -705,23 +704,23 @@ public static partial class Jardin
             if (e > ecart) (ecart, cible, motif) = (e, a, k);
         }
         if (cible is null) return;
-        var x = cible.Nom;
+        var x = cible;
         var maligne = 0.05 + S(p.Nevrosisme) + Bas(p.Agreabilite) + Bas(m.Honnetete);
         var benigne = 0.1 + S(p.Conscience) + S(p.Ouverture) + 0.5 * S(p.Agreabilite);
         var texte = motif switch
         {
             1 => Choisir(h, "envie", cible.Id * 4 + 1,
-                new V($"Tous regardent {x} ; personne ne me regarde.", maligne),
-                new V($"Je voudrais être aussi {Beau(h)} que {x}.", benigne),
-                new V($"{x} est {Beau(cible)}. Pas moi.", 0.3, 0)),
+                new V(new Recit("jv.envier.1", ("x", x)), maligne),
+                new V(new Recit("jv.envier.2", ("g", h), ("x", x)), benigne),
+                new V(new Recit("jv.envier.3", ("x", x)), 0.3, 0)),
             2 => Choisir(h, "envie", cible.Id * 4 + 2,
-                new V($"Je voudrais savoir faire autant de choses que {x} ; je vais l'observer.", benigne),
-                new V($"{x} se croit plus malin{(cible.Sexe == Sexe.Femme ? "e" : "")} que les autres.", maligne),
-                new V($"{x} sait faire tant de choses…", 0.3, 0)),
+                new V(new Recit("jv.envier.4", ("x", x)), benigne),
+                new V(new Recit("jv.envier.5", ("x", x)), maligne),
+                new V(new Recit("jv.envier.6", ("x", x)), 0.3, 0)),
             _ => Choisir(h, "envie", cible.Id * 4 + 3,
-                new V($"{x} a quelqu'un ; moi, je n'ai personne.", 0.4),
-                new V($"Pourquoi {x} et pas moi ?", maligne),
-                new V($"Un jour, j'aurai moi aussi quelqu'un comme {x}.", benigne)),
+                new V(new Recit("jv.envier.7", ("x", x)), 0.4),
+                new V(new Recit("jv.envier.8", ("x", x)), maligne),
+                new V(new Recit("jv.envier.9", ("x", x)), benigne)),
         };
         if (texte is not null) Confier(h, TypeIntime.Envie, cible.Id, texte, 20 + Math.Min(40, ecart) * (0.5 + p.Nevrosisme), 0, maintenant, "envie");
     }
@@ -736,39 +735,39 @@ public static partial class Jardin
         if (h.Faim >= 70 || h.Reserves < 15)
         {
             var texte = Choisir(h, "peur:faim", petits ? 1 : 0,
-                new V("J'ai peur de mourir de faim.", 0.5),
-                new V("Mon ventre crie ; demain, trouverai-je de quoi manger ?", 0.3, 2),
-                new V("La faim va nous emporter, tous.", 0.05 + 2 * S(p.Nevrosisme)),
-                new V("J'ai peur que mes enfants n'aient rien à manger.", petits ? 0.4 + p.Attachement : 0),
-                new V("J'ai faim.", 0.3, 0));
+                new V(Recit.Seul("jv.craindre.1"), 0.5),
+                new V(Recit.Seul("jv.craindre.2"), 0.3, 2),
+                new V(Recit.Seul("jv.craindre.3"), 0.05 + 2 * S(p.Nevrosisme)),
+                new V(Recit.Seul("jv.craindre.4"), petits ? 0.4 + p.Attachement : 0),
+                new V(Recit.Seul("jv.craindre.5"), 0.3, 0));
             Confier(h, TypeIntime.Peur, 0, texte!, 40 + h.Faim / 2, communaute?.DisetteEvenementId ?? 0, maintenant, "peur:faim");
         }
         else Retirer(h, "peur:faim");
 
         if (communaute is { Disette: true, DestinationX: >= 0 })
         {
-            Confier(h, TypeIntime.Espoir, 0, $"J'espère que les terres vers {Lieux.Vers(communaute.CentreX, communaute.CentreY, communaute.DestinationX, communaute.DestinationY)} nous nourriront.",
+            Confier(h, TypeIntime.Espoir, 0, new Recit("jv.craindre.migration", ("vers", Lieux.VersRecit(communaute.CentreX, communaute.CentreY, communaute.DestinationX, communaute.DestinationY))),
                 50, communaute.DisetteEvenementId, maintenant, "espoir:migration");
         }
         if (h.EnceinteDepuis is not null)
         {
             var texte = Choisir(h, "espoir:enfant", 0,
-                new V("J'espère que l'enfant que je porte naîtra en bonne santé.", 0.5),
-                new V("J'ai hâte de serrer cet enfant contre moi.", 0.1 + p.Attachement),
-                new V("Pourvu que l'enfant vive…", 0.05 + 2 * S(p.Nevrosisme)),
-                new V("Quelque chose grandit en moi ; je le sens bouger.", 0.2 + S(p.Ouverture), 2));
+                new V(Recit.Seul("jv.craindre.6"), 0.5),
+                new V(Recit.Seul("jv.craindre.7"), 0.1 + p.Attachement),
+                new V(Recit.Seul("jv.craindre.8"), 0.05 + 2 * S(p.Nevrosisme)),
+                new V(Recit.Seul("jv.craindre.9"), 0.2 + S(p.Ouverture), 2));
             Confier(h, TypeIntime.Espoir, 0, texte!, 55, 0, maintenant, "espoir:enfant");
         }
         else Retirer(h, "espoir:enfant");
 
         if (h.Peur >= 30)
         {
-            var nom = TypesCatastrophe.Nom(h.PeurType);
+            var nom = CatastropheLe(h.PeurType);
             var texte = Choisir(h, "peur:catastrophe", (int)h.PeurType,
-                new V($"J'ai peur que {nom} revienne.", 0.5),
-                new V($"Chaque nuit, je guette {nom}.", 0.05 + 2 * S(p.Nevrosisme)),
-                new V($"Si {nom} revient, je saurai quoi faire.", 0.05 + S(p.Conscience) * Bas(p.Nevrosisme, 0.6) * 2),
-                new V($"{Majuscule(nom)}… j'y pense encore.", 0.3, 0));
+                new V(new Recit("jv.craindre.10", ("cat", nom)), 0.5),
+                new V(new Recit("jv.craindre.11", ("cat", nom)), 0.05 + 2 * S(p.Nevrosisme)),
+                new V(new Recit("jv.craindre.12", ("cat", nom)), 0.05 + S(p.Conscience) * Bas(p.Nevrosisme, 0.6) * 2),
+                new V(new Recit("jv.craindre.13", ("cat", nom)), 0.3, 0));
             Confier(h, TypeIntime.Peur, 0, texte!, h.Peur, h.PeurEvenementId, maintenant, "peur:catastrophe");
         }
 
@@ -776,33 +775,33 @@ public static partial class Jardin
         var age = h.AgeEnAnnees(maintenant);
         if (h.PartenaireId == 0 && age >= 18 && m.AnxieteAffective >= 0.6)
             Confier(h, TypeIntime.Peur, 0, Choisir(h, "peur:seul", 0,
-                new V($"J'ai peur de finir seul{E(h)}.", 0.5),
-                new V("Qui voudra de moi ?", 0.3, 0),
-                new V("Les saisons passent, et personne ne vient vers moi.", 0.2, 2))!, 20 + 40 * m.AnxieteAffective, 0, maintenant, "peur:seul");
+                new V(new Recit("jv.craindre.14", ("g", h)), 0.5),
+                new V(Recit.Seul("jv.craindre.15"), 0.3, 0),
+                new V(Recit.Seul("jv.craindre.16"), 0.2, 2))!, 20 + 40 * m.AnxieteAffective, 0, maintenant, "peur:seul");
         else Retirer(h, "peur:seul");
 
         // La mort qui approche : l'âge ou la maladie, plus présente aux anxieux ; les esprits tournés vers l'invisible se demandent où l'on va.
         if (age >= 50 || h.Sante < 45)
             Confier(h, TypeIntime.Peur, 0, Choisir(h, "peur:mort", h.Sante < 45 ? 1 : 0,
-                new V("Je sens que la mort approche.", 0.3 + S(p.Nevrosisme)),
-                new V("Où irai-je quand je mourrai ?", 0.05 + 2 * S(p.Transcendance)),
-                new V("Je partirai bientôt ; qui veillera sur les miens ?", 0.1 + S(m.Compassion) + p.Attachement / 2),
-                new V("La mort viendra ; je ne la crains pas.", 0.05 + 2 * Bas(p.Nevrosisme)))!,
+                new V(Recit.Seul("jv.craindre.17"), 0.3 + S(p.Nevrosisme)),
+                new V(Recit.Seul("jv.craindre.18"), 0.05 + 2 * S(p.Transcendance)),
+                new V(Recit.Seul("jv.craindre.19"), 0.1 + S(m.Compassion) + p.Attachement / 2),
+                new V(Recit.Seul("jv.craindre.20"), 0.05 + 2 * Bas(p.Nevrosisme)))!,
                 15 + 30 * p.Nevrosisme + (h.Sante < 45 ? 20 : 0), 0, maintenant, "peur:mort");
         else Retirer(h, "peur:mort");
 
         // Espoirs de l'âge adulte : trouver quelqu'un, avoir des enfants.
         if (h.PartenaireId == 0 && age is >= 16 and < 45 && m.AnxieteAffective < 0.6)
             Confier(h, TypeIntime.Espoir, 0, Choisir(h, "espoir:amour", 0,
-                new V("J'espère trouver quelqu'un qui m'aimera.", 0.5),
-                new V("Un jour, quelqu'un marchera à mon côté.", 0.2 + S(p.Ouverture), 2),
-                new V("Je trouverai bien quelqu'un.", 0.2 + S(p.Extraversion), 0))!, 20 + 20 * p.Extraversion, 0, maintenant, "espoir:amour");
+                new V(Recit.Seul("jv.craindre.21"), 0.5),
+                new V(Recit.Seul("jv.craindre.22"), 0.2 + S(p.Ouverture), 2),
+                new V(Recit.Seul("jv.craindre.23"), 0.2 + S(p.Extraversion), 0))!, 20 + 20 * p.Extraversion, 0, maintenant, "espoir:amour");
         else Retirer(h, "espoir:amour");
         var enfants = humains.EnfantsDe(h.Id).Count();
         if (enfants == 0 && age is >= 18 and < 40 && p.Attachement >= 0.6)
             Confier(h, TypeIntime.Espoir, 0, Choisir(h, "espoir:enfants", 0,
-                new V("J'espère avoir des enfants un jour.", 0.5),
-                new V("Je voudrais tenir un petit à moi dans mes bras.", 0.3, 2))!, 20 + 30 * p.Attachement, 0, maintenant, "espoir:enfants");
+                new V(Recit.Seul("jv.craindre.24"), 0.5),
+                new V(Recit.Seul("jv.craindre.25"), 0.3, 2))!, 20 + 30 * p.Attachement, 0, maintenant, "espoir:enfants");
         else Retirer(h, "espoir:enfants");
     }
 
@@ -819,70 +818,70 @@ public static partial class Jardin
         var mort = h.DeuilDeId > 0 && h.Chagrin >= 15 ? humains[h.DeuilDeId - 1] : null;
         if (mort is not null)
         {
-            options.Add(new($"J'ai rêvé de {mort.Nom} : {Il(mort)} me parlait, mais je ne comprenais pas.", 1.0));
-            options.Add(new($"{mort.Nom} est venu{E(mort)} me voir en rêve ; {Il(mort)} veille sur moi.", 0.2 + 2 * S(p.Transcendance)));
-            options.Add(new($"J'ai rêvé que {mort.Nom} était encore là ; au réveil, j'ai pleuré.", 0.5));
+            options.Add(new(new Recit("jv.rever.1", ("m", mort)), 1.0));
+            options.Add(new(new Recit("jv.rever.2", ("m", mort)), 0.2 + 2 * S(p.Transcendance)));
+            options.Add(new(new Recit("jv.rever.3", ("m", mort)), 0.5));
             cause = h.DeuilEvenementId;
         }
         if (h.Peur >= 20 && cauchemar)
         {
             options.Add(new(h.PeurType switch
             {
-                TypeCatastrophe.Seisme => "J'ai rêvé que la terre s'ouvrait sous mes pieds.",
-                TypeCatastrophe.Eruption => "J'ai rêvé d'une montagne qui crachait du feu sur nous.",
-                TypeCatastrophe.Tsunami or TypeCatastrophe.Crue => "J'ai rêvé que l'eau montait, montait, et que je ne pouvais pas fuir.",
-                TypeCatastrophe.Incendie => "J'ai rêvé que le feu me poursuivait.",
-                TypeCatastrophe.Cyclone => "J'ai rêvé que le vent m'emportait.",
-                TypeCatastrophe.Epidemie => "J'ai rêvé que tous les miens étaient couchés, brûlants.",
-                TypeCatastrophe.VagueDeFroid or TypeCatastrophe.HiverVolcanique or TypeCatastrophe.HiverDImpact => $"J'ai rêvé que je gelais, seul{E(h)} dans la neige.",
-                TypeCatastrophe.Comete or TypeCatastrophe.Bolide or TypeCatastrophe.Impact or TypeCatastrophe.Eclipse or TypeCatastrophe.Aurore => "J'ai rêvé que le ciel tombait sur nous.",
-                _ => "J'ai fait un cauchemar ; je ne m'en souviens plus, mais j'ai peur.",
+                TypeCatastrophe.Seisme => Recit.Seul("jv.cauchemar.seisme"),
+                TypeCatastrophe.Eruption => Recit.Seul("jv.cauchemar.eruption"),
+                TypeCatastrophe.Tsunami or TypeCatastrophe.Crue => Recit.Seul("jv.cauchemar.eau"),
+                TypeCatastrophe.Incendie => Recit.Seul("jv.cauchemar.feu"),
+                TypeCatastrophe.Cyclone => Recit.Seul("jv.cauchemar.vent"),
+                TypeCatastrophe.Epidemie => Recit.Seul("jv.cauchemar.epidemie"),
+                TypeCatastrophe.VagueDeFroid or TypeCatastrophe.HiverVolcanique or TypeCatastrophe.HiverDImpact => new Recit("jv.cauchemar.froid", ("g", h)),
+                TypeCatastrophe.Comete or TypeCatastrophe.Bolide or TypeCatastrophe.Impact or TypeCatastrophe.Eclipse or TypeCatastrophe.Aurore => Recit.Seul("jv.cauchemar.ciel"),
+                _ => Recit.Seul("jv.cauchemar.autre"),
             }, 1.5));
             cause = h.PeurEvenementId;
         }
         if (h.Faim >= 60)
         {
-            options.Add(new(h.Sait(Effet.Cuisson) ? "J'ai rêvé d'un festin : de la viande grillée à n'en plus finir." : "J'ai rêvé de fruits si nombreux que les branches pliaient.", 1.2));
+            options.Add(new(Recit.Seul(h.Sait(Effet.Cuisson) ? "jv.rever.festin" : "jv.rever.fruits"), 1.2));
         }
         var desir = h.Memoire.Jardin.Find(x => x.Cle == "desir");
         if (desir is not null && desir.SujetId > 0)
         {
-            var x = humains[desir.SujetId - 1].Nom;
-            options.Add(new($"J'ai rêvé de {x}, tout près de moi.", 0.6));
-            options.Add(new($"J'ai rêvé que {x} me prenait la main.", 0.4));
+            var x = humains[desir.SujetId - 1];
+            options.Add(new(new Recit("jv.rever.4", ("x", x)), 0.6));
+            options.Add(new(new Recit("jv.rever.5", ("x", x)), 0.4));
         }
         var jalousie = h.Memoire.Jardin.Find(x => x.Cle == "jalousie");
         if (jalousie is not null && h.PartenaireId > 0)
-            options.Add(new($"J'ai rêvé que {humains[h.PartenaireId - 1].Nom} partait avec {humains[jalousie.SujetId - 1].Nom}.", 0.8));
+            options.Add(new(new Recit("jv.rever.6", ("p", humains[h.PartenaireId - 1]), ("r", humains[jalousie.SujetId - 1])), 0.8));
         // Puis les rêves de toujours.
         if (cauchemar)
         {
-            options.Add(new("J'ai rêvé qu'une bête énorme me poursuivait.", 0.5));
-            options.Add(new("J'ai rêvé que je tombais, sans fin.", 0.4));
-            options.Add(new($"J'ai rêvé que les miens partaient sans moi, et que je restais seul{E(h)}.", 0.2 + S(p.Moral.AnxieteAffective)));
-            options.Add(new("J'ai rêvé que je ne pouvais plus bouger, et que quelque chose approchait.", 0.3, 2));
+            options.Add(new(Recit.Seul("jv.rever.7"), 0.5));
+            options.Add(new(Recit.Seul("jv.rever.8"), 0.4));
+            options.Add(new(new Recit("jv.rever.9", ("g", h)), 0.2 + S(p.Moral.AnxieteAffective)));
+            options.Add(new(Recit.Seul("jv.rever.10"), 0.3, 2));
         }
         else
         {
-            options.Add(new("J'ai rêvé que je volais au-dessus des arbres, comme un oiseau.", 0.2 + S(p.Ouverture)));
-            options.Add(new("J'ai rêvé d'une bête immense qui me regardait sans bouger.", 0.3));
-            options.Add(new("J'ai rêvé que je parlais aux bêtes, et qu'elles me répondaient.", 0.05 + S(p.Transcendance) + S(p.Ouverture)));
-            options.Add(new("J'ai rêvé d'un pays où il ne faisait jamais froid.", 0.3));
-            options.Add(new("J'ai rêvé d'une lumière qui me parlait.", 0.05 + 2 * S(p.Transcendance), 2));
-            options.Add(new("J'ai rêvé que j'étais de nouveau enfant, près de ma mère.", h.MereId > 0 ? 0.3 + S(p.Moral.AnxieteAffective) : 0));
-            options.Add(new("J'ai rêvé que je trouvais quelque chose d'important ; au réveil, tout s'était envolé.", 0.05 + S(p.Ouverture) + S(p.Intelligence.Generale / 150)));
-            options.Add(new("J'ai fait un rêve étrange ; je ne m'en souviens plus.", 0.4, 0));
-            options.Add(new("J'ai rêvé que je marchais sur l'eau.", 0.2, 2));
+            options.Add(new(Recit.Seul("jv.rever.11"), 0.2 + S(p.Ouverture)));
+            options.Add(new(Recit.Seul("jv.rever.12"), 0.3));
+            options.Add(new(Recit.Seul("jv.rever.13"), 0.05 + S(p.Transcendance) + S(p.Ouverture)));
+            options.Add(new(Recit.Seul("jv.rever.14"), 0.3));
+            options.Add(new(Recit.Seul("jv.rever.15"), 0.05 + 2 * S(p.Transcendance), 2));
+            options.Add(new(Recit.Seul("jv.rever.16"), h.MereId > 0 ? 0.3 + S(p.Moral.AnxieteAffective) : 0));
+            options.Add(new(Recit.Seul("jv.rever.17"), 0.05 + S(p.Ouverture) + S(p.Intelligence.Generale / 150)));
+            options.Add(new(Recit.Seul("jv.rever.18"), 0.4, 0));
+            options.Add(new(Recit.Seul("jv.rever.19"), 0.2, 2));
         }
         var texte = Choisir(h, "reve", semaine, [.. options]);
         if (texte is null) return;
         Confier(h, TypeIntime.Reve, mort?.Id ?? 0, texte, 25 + (cauchemar ? 25 : 10) + 20 * p.Ouverture, cause, maintenant, "reve");
-        if (mort is not null && texte.Contains(mort.Nom))
+        if (mort is not null && texte.Texte.Contains(mort.Nom))
             Croyances.Ajouter(h, 1.5 * (0.3 + p.Transcendance), $"{Il(h)} a revu {mort.Nom} en rêve", cause, maintenant);
         // Le rêve d'un mort qui revient : de là peut naître l'idée que les morts vivent ailleurs (Tylor, 1871).
-        if (mort is not null && texte.Contains("veille sur moi") && Tirer(h, "croyance:morts", semaine, 0.5 * p.Transcendance))
+        if (mort is not null && texte.Texte.Contains("veille sur moi") && Tirer(h, "croyance:morts", semaine, 0.5 * p.Transcendance))
         {
-            Confier(h, TypeIntime.Croyance, 0, "Les morts ne nous quittent pas : ils reviennent nous voir la nuit.", 30 + 60 * p.Transcendance, cause, maintenant, "croyance:morts");
+            Confier(h, TypeIntime.Croyance, 0, Recit.Seul("jv.rever.croyanceMorts"), 30 + 60 * p.Transcendance, cause, maintenant, "croyance:morts");
             Croyances.Ajouter(h, 6, $"{mort.Nom} est revenu{E(mort)} le voir la nuit : les morts ne s'en vont pas", cause, maintenant, signe: true);
         }
     }
@@ -899,28 +898,28 @@ public static partial class Jardin
         var premier = h.Savoirs.Where(s => s.Origine != OrigineSavoir.Imitation && s.Effet is not (Effet.Rien or Effet.Poison or Effet.Visions)).MinBy(s => s.AppriLe);
         if (premier is not null)
         {
-            var nom = Moi(Physique.NomEffet(premier.Effet));
+            var nom = EffetMoi(premier.Effet);
             options.Add(premier.Origine == OrigineSavoir.Entite
-                ? new($"Je me souviens de l'idée venue de nulle part qui m'a appris à {nom}.", 0.6 * gai + S(p.Transcendance))
-                : new($"Je me souviens de la première fois où j'ai réussi à {nom}.", 0.8 * gai));
+                ? new(new Recit("jv.seSouvenir.1", ("savoir", nom)), 0.6 * gai + S(p.Transcendance))
+                : new(new Recit("jv.seSouvenir.2", ("savoir", nom)), 0.8 * gai));
         }
         var maitre = h.Savoirs.Where(s => s.Origine == OrigineSavoir.Imitation && s.MaitreId > 0).MinBy(s => s.AppriLe);
         if (maitre is not null)
-            options.Add(new($"Je me souviens de {humains[maitre.MaitreId - 1].Nom}, qui m'a appris à {Moi(Physique.NomEffet(maitre.Effet))}.", 0.4 * gai + S(p.Moral.Honnetete)));
+            options.Add(new(new Recit("jv.seSouvenir.3", ("m", humains[maitre.MaitreId - 1]), ("savoir", EffetMoi(maitre.Effet))), 0.4 * gai + S(p.Moral.Honnetete)));
         var aine = humains.EnfantsDe(h.Id).MinBy(e => e.Naissance);
-        if (aine is not null) options.Add(new($"Je me souviens de la naissance de {aine.Nom}.", 0.5 * gai + p.Attachement / 2));
+        if (aine is not null) options.Add(new(new Recit("jv.seSouvenir.4", ("a", aine)), 0.5 * gai + p.Attachement / 2));
         var mere = h.MereId > 0 ? humains[h.MereId - 1] : null;
-        if (mere is { EstVivant: false }) options.Add(new($"Je me souviens des mains de {mere.Nom}.", 0.5 * triste, 2));
+        if (mere is { EstVivant: false }) options.Add(new(new Recit("jv.seSouvenir.5", ("m", mere)), 0.5 * triste, 2));
         if (h.PeurEvenementId > 0)
-            options.Add(new($"Je me souviens de {TypesCatastrophe.Nom(h.PeurType)} ; je ne l'oublierai jamais.", 0.5 * triste + S(p.Nevrosisme)));
-        if (h.MereId > 0) options.Add(new("Je me souviens des jeux de mon enfance, au bord de l'eau.", 0.3 * gai));
+            options.Add(new(new Recit("jv.seSouvenir.6", ("cat", CatastropheLe(h.PeurType))), 0.5 * triste + S(p.Nevrosisme)));
+        if (h.MereId > 0) options.Add(new(Recit.Seul("jv.seSouvenir.7"), 0.3 * gai));
         else
         {
-            options.Add(new("Je me souviens du premier jour : nous étions si peu nombreux.", 0.4));
-            options.Add(new($"Je me souviens de m'être éveillé{E(h)} dans ce monde, sans savoir d'où je venais.", 0.1 + S(p.Transcendance) + S(p.Ouverture), 2));
+            options.Add(new(Recit.Seul("jv.seSouvenir.8"), 0.4));
+            options.Add(new(new Recit("jv.seSouvenir.9", ("g", h)), 0.1 + S(p.Transcendance) + S(p.Ouverture), 2));
         }
         if (h.Memoire.Jardin.Exists(x => x.Cle.StartsWith("exil", StringComparison.Ordinal)))
-            options.Add(new("Je me souviens du jour où les miens m'ont chassé" + E(h) + ".", 0.6 * triste));
+            options.Add(new(new Recit("jv.seSouvenir.exil", ("g", h)), 0.6 * triste));
         if (options.Count == 0) return;
         var texte = Choisir(h, "souvenir", palier, [.. options]);
         if (texte is not null) Confier(h, TypeIntime.Souvenir, 0, texte, 25 + 25 * p.Intelligence.Memoire / 100, 0, maintenant, "souvenir");
@@ -935,29 +934,29 @@ public static partial class Jardin
         var bebe = humains.EnfantsDe(h.Id).FirstOrDefault(e => e.EstVivant && e.EstBebe(maintenant));
         var options = new List<V>
         {
-            new("La nuit, les étoiles sont si nombreuses ; d'où viennent-elles ?", 0.3 + S(p.Ouverture)),
-            new("Le ciel est beau, ce soir.", 0.3, 0),
-            new("Le soleil couchant embrase tout le ciel ; je reste là, sans bouger.", 0.2, 2),
-            new("J'ai vu une bête aussi haute que les arbres. Comment une telle chose peut-elle vivre ?", 0.3),
-            new("Tout ce qui vit semble voulu par quelqu'un.", 0.05 + 2 * S(p.Transcendance), 2),
+            new(Recit.Seul("jv.sEmerveiller.1"), 0.3 + S(p.Ouverture)),
+            new(Recit.Seul("jv.sEmerveiller.2"), 0.3, 0),
+            new(Recit.Seul("jv.sEmerveiller.3"), 0.2, 2),
+            new(Recit.Seul("jv.sEmerveiller.4"), 0.3),
+            new(Recit.Seul("jv.sEmerveiller.5"), 0.05 + 2 * S(p.Transcendance), 2),
         };
         options.AddRange(biome switch
         {
             Biome.Montagne or Biome.SommetEnneige => [
-                new V($"La montagne touche le ciel ; je me sens tout petit{E(h)}.", 0.8),
-                new V("Là-haut, la neige ne fond jamais. Pourquoi ?", 0.4 + S(p.Ouverture))],
+                new V(new Recit("jv.sEmerveiller.6", ("g", h)), 0.8),
+                new V(Recit.Seul("jv.sEmerveiller.7"), 0.4 + S(p.Ouverture))],
             Biome.Ocean or Biome.EauPeuProfonde or Biome.Plage => [
-                new V("La grande eau ne finit jamais ; où s'arrête-t-elle ?", 0.8),
-                new V("Les vagues reviennent sans cesse, comme un souffle.", 0.4, 2)],
-            Biome.ForetDeConiferes => [new V("Les arbres sont si hauts qu'ils cachent le ciel.", 0.8)],
-            Biome.ForetTropicale => [new V("La forêt chante jour et nuit ; mille voix, et pas une pareille.", 0.8, 2)],
-            Biome.Desert => [new V("Le sable s'étend à perte de vue, et pourtant la vie y passe.", 0.8)],
-            Biome.Riviere => [new V("L'eau de la rivière ne s'arrête jamais de couler.", 0.8)],
-            Biome.Lac => [new V("Le lac reflète le ciel : il y a deux ciels.", 0.8, 2)],
-            Biome.Marais => [new V("Le marais respire la nuit, plein de voix.", 0.8)],
-            _ => [new V("Les grandes bêtes passent dans les fougères sans même nous voir.", 0.8)],
+                new V(Recit.Seul("jv.sEmerveiller.8"), 0.8),
+                new V(Recit.Seul("jv.sEmerveiller.9"), 0.4, 2)],
+            Biome.ForetDeConiferes => [new V(Recit.Seul("jv.sEmerveiller.10"), 0.8)],
+            Biome.ForetTropicale => [new V(Recit.Seul("jv.sEmerveiller.11"), 0.8, 2)],
+            Biome.Desert => [new V(Recit.Seul("jv.sEmerveiller.12"), 0.8)],
+            Biome.Riviere => [new V(Recit.Seul("jv.sEmerveiller.13"), 0.8)],
+            Biome.Lac => [new V(Recit.Seul("jv.sEmerveiller.14"), 0.8, 2)],
+            Biome.Marais => [new V(Recit.Seul("jv.sEmerveiller.15"), 0.8)],
+            _ => [new V(Recit.Seul("jv.sEmerveiller.16"), 0.8)],
         });
-        if (bebe is not null) options.Add(new($"{bebe.Nom} est si petit{E(bebe)}, et pourtant {Il(bebe)} me regarde déjà.", 0.6 + p.Attachement));
+        if (bebe is not null) options.Add(new(new Recit("jv.sEmerveiller.17", ("b", bebe)), 0.6 + p.Attachement));
         var texte = Choisir(h, "emerveillement", palier * 16 + (int)biome, [.. options]);
         if (texte is not null) Confier(h, TypeIntime.Emerveillement, bebe?.Id ?? 0, texte, 25 + 35 * p.Ouverture, 0, maintenant, "emerveillement");
     }
@@ -974,12 +973,12 @@ public static partial class Jardin
             return;
         }
         var texte = Choisir(h, "ennui", palier,
-            new V("Les jours se ressemblent tous.", 0.5),
-            new V("Rien ne se passe ; je m'ennuie.", 0.4, 0),
-            new V("Je voudrais voir ce qu'il y a derrière les collines.", 0.1 + 2 * S(p.Ouverture)),
-            new V("Toujours cueillir, toujours chercher ; n'y a-t-il rien d'autre ?", 0.2 + S(p.Ouverture), 2),
-            new V("Je tourne en rond comme une bête dans un trou.", 0.1 + S(p.Nevrosisme)),
-            new V("Il faudrait faire quelque chose de neuf.", 0.1 + S(p.Extraversion)));
+            new V(Recit.Seul("jv.sEnnuyer.1"), 0.5),
+            new V(Recit.Seul("jv.sEnnuyer.2"), 0.4, 0),
+            new V(Recit.Seul("jv.sEnnuyer.3"), 0.1 + 2 * S(p.Ouverture)),
+            new V(Recit.Seul("jv.sEnnuyer.4"), 0.2 + S(p.Ouverture), 2),
+            new V(Recit.Seul("jv.sEnnuyer.5"), 0.1 + S(p.Nevrosisme)),
+            new V(Recit.Seul("jv.sEnnuyer.6"), 0.1 + S(p.Extraversion)));
         if (texte is not null) Confier(h, TypeIntime.Ennui, 0, texte, 15 + 30 * penchant, 0, maintenant, "ennui");
     }
 
@@ -992,23 +991,23 @@ public static partial class Jardin
         if (!Tirer(h, "question:monde", palier, 0.03 + 0.25 * p.Ouverture * qi * qi)) return;
         var vif = S(qi, 1.1);
         var texte = Choisir(h, "question:monde", palier,
-            new V("Pourquoi le soleil revient-il chaque matin ?", 0.4),
-            new V("Où va l'eau de la rivière ?", 0.4),
-            new V("Pourquoi la lune change-t-elle de forme ?", 0.4),
-            new V("Qu'y a-t-il au-delà de la grande eau ?", 0.3 + S(p.Ouverture)),
-            new V("Pourquoi les oiseaux volent-ils, et pas nous ?", 0.4, 0),
-            new V("Pourquoi les morts ne se réveillent-ils plus ?", 0.3 + S(p.Nevrosisme)),
-            new V("D'où venons-nous ? Quelqu'un nous a-t-il faits ?", 0.05 + 2 * S(p.Transcendance)),
-            new V("Pourquoi le ventre des femmes s'arrondit-il avant une naissance ?", 0.1 + vif),
-            new V("Pourquoi les pierres tombent-elles toujours vers le bas ?", 0.1 + vif),
-            new V("Pourquoi fait-il plus froid quand le soleil est bas ?", 0.2 + vif),
-            new V("Pourquoi le feu mange-t-il le bois et pas la pierre ?", h.Sait(Effet.Flamme) || h.Sait(Effet.Foyer) ? 0.4 + vif : 0),
-            new V("Pourquoi certaines plantes guérissent-elles, et d'autres tuent-elles ?", h.Sait(Effet.Soulagement) || h.Sait(Effet.Poison) ? 0.5 : 0),
-            new V("Pourquoi un tronc roule-t-il quand on le pousse, et pas une pierre plate ?", 0.05 + 2 * S(p.Intelligence.Spatiale / 100, 1.1)),
-            new V("Les étoiles bougent-elles, ou est-ce nous ?", 2 * vif, 2),
-            new V("Les bêtes pensent-elles, comme nous ?", 0.2 + S(p.Moral.EmpathieCognitive)),
-            new V("Pourquoi rêvons-nous ?", 0.3),
-            new V("Pourquoi les enfants ressemblent-ils à leurs parents ?", 0.1 + vif));
+            new V(Recit.Seul("jv.seDemander.1"), 0.4),
+            new V(Recit.Seul("jv.seDemander.2"), 0.4),
+            new V(Recit.Seul("jv.seDemander.3"), 0.4),
+            new V(Recit.Seul("jv.seDemander.4"), 0.3 + S(p.Ouverture)),
+            new V(Recit.Seul("jv.seDemander.5"), 0.4, 0),
+            new V(Recit.Seul("jv.seDemander.6"), 0.3 + S(p.Nevrosisme)),
+            new V(Recit.Seul("jv.seDemander.7"), 0.05 + 2 * S(p.Transcendance)),
+            new V(Recit.Seul("jv.seDemander.8"), 0.1 + vif),
+            new V(Recit.Seul("jv.seDemander.9"), 0.1 + vif),
+            new V(Recit.Seul("jv.seDemander.10"), 0.2 + vif),
+            new V(Recit.Seul("jv.seDemander.11"), h.Sait(Effet.Flamme) || h.Sait(Effet.Foyer) ? 0.4 + vif : 0),
+            new V(Recit.Seul("jv.seDemander.12"), h.Sait(Effet.Soulagement) || h.Sait(Effet.Poison) ? 0.5 : 0),
+            new V(Recit.Seul("jv.seDemander.13"), 0.05 + 2 * S(p.Intelligence.Spatiale / 100, 1.1)),
+            new V(Recit.Seul("jv.seDemander.14"), 2 * vif, 2),
+            new V(Recit.Seul("jv.seDemander.15"), 0.2 + S(p.Moral.EmpathieCognitive)),
+            new V(Recit.Seul("jv.seDemander.16"), 0.3),
+            new V(Recit.Seul("jv.seDemander.17"), 0.1 + vif));
         if (texte is not null) Confier(h, TypeIntime.Question, 0, texte, 25 + 40 * p.Ouverture, 0, maintenant, "question:monde");
     }
 
@@ -1019,13 +1018,14 @@ public static partial class Jardin
     /// plausible, et selon l'aptitude verbale (les mots simples aux taiseux, les images aux esprits vifs en mots).
     /// Le tirage est stable pour une même clé et un même palier : la pensée ne change que si la situation change.
     /// </summary>
-    private static string? Choisir(Humain h, string cle, long palier, params V[] options) => Varier(h, cle, palier, null, options);
+    private static Recit? Choisir(Humain h, string cle, long palier, params V[] options) => Varier(h, cle, palier, null, options);
 
     /// <summary>
     /// Comme <see cref="Choisir"/>, pour une pensée sur quelqu'un (<paramref name="sujet"/>) : une forme déjà employée
     /// ailleurs dans le même jardin pour quelqu'un d'autre pèse moins, pour qu'un jardin ne répète pas dix fois la même phrase.
+    /// La comparaison se fait sur les phrases françaises : le choix ne dépend pas de la langue de l'observateur.
     /// </summary>
-    internal static string? Varier(Humain h, string cle, long palier, string? sujet, params V[] options)
+    internal static Recit? Varier(Humain h, string cle, long palier, string? sujet, params V[] options)
     {
         var verbal = (h.Personnalite.Intelligence.Verbale - 100) / 15;
         var total = 0.0;
@@ -1034,9 +1034,9 @@ public static partial class Jardin
         {
             var o = options[i];
             var w = Math.Max(0, o.Poids) * o.Registre switch { 0 => Math.Exp(-0.7 * verbal), 2 => Math.Exp(0.7 * verbal), _ => 1 };
-            if (w > 0 && sujet is not null && o.Texte.IndexOf(sujet, StringComparison.Ordinal) is var k and >= 0)
+            if (w > 0 && sujet is not null && o.Texte.Texte is var phrase && phrase.IndexOf(sujet, StringComparison.Ordinal) is var k and >= 0)
             {
-                var (avant, apres) = (o.Texte[..k], o.Texte[(k + sujet.Length)..]);
+                var (avant, apres) = (phrase[..k], phrase[(k + sujet.Length)..]);
                 var deja = h.Memoire.Jardin.Count(x => x.Cle != cle && x.Texte.Length > avant.Length + apres.Length
                     && x.Texte.StartsWith(avant, StringComparison.Ordinal) && x.Texte.EndsWith(apres, StringComparison.Ordinal));
                 w *= Math.Pow(0.25, deja);
@@ -1095,16 +1095,11 @@ public static partial class Jardin
     /// <summary>Penchant psychopathique, compté surtout près du haut de l'échelle (le carré écrase les petites valeurs).</summary>
     private static double Froid(Personnalite p) => Math.Pow(Psyche.Froideur(p), 2);
 
-    /// <summary>« se vêtir » devient « me vêtir » : un savoir dit à la première personne.</summary>
-    private static string Moi(string s) => s.StartsWith("se ", StringComparison.Ordinal) ? "me " + s[3..] : s.StartsWith("s'", StringComparison.Ordinal) ? "m'" + s[2..] : s;
+    /// <summary>Un savoir dit à la première personne (« me vêtir », « dress myself »).</summary>
+    private static Recit EffetMoi(Effet e) => Recit.Seul($"effetMoi.{e}");
 
-    private static string Le(Humain h) => h.Sexe == Sexe.Femme ? "la" : "le";
-
-    private static string Fier(Humain h) => h.Sexe == Sexe.Femme ? "fière" : "fier";
-
-    private static string Beau(Humain h) => h.Sexe == Sexe.Femme ? "belle" : "beau";
-
-    private static string Majuscule(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+    /// <summary>« le séisme », « the earthquake ».</summary>
+    internal static Recit CatastropheLe(TypeCatastrophe t) => Recit.Seul($"catastropheLe.{t}");
 
     /// <summary>Savoirs qui servent (sans compter ce qu'il sait ne pas marcher).</summary>
     private static int Utiles(Humain h) => h.Savoirs.Count(s => s.Effet != Effet.Rien);

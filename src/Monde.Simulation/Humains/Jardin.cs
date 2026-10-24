@@ -1,6 +1,8 @@
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Ce que contient le jardin secret d'un humain.</summary>
@@ -40,11 +42,16 @@ public enum TypeIntime : byte
 }
 
 /// <summary>
-/// Une chose intime : sa nature, qui elle concerne (0 : personne en particulier), ce qu'il se dit, sa force (0 à 100),
-/// l'événement qui l'a fait naître, et une clé : une nouvelle chose de même clé remplace l'ancienne (une seule opinion
-/// sur une même personne, une seule image de soi…).
+/// Une chose intime : sa nature, qui elle concerne (0 : personne en particulier), ce qu'il se dit (un récit à écrire dans
+/// la langue de l'observateur, ou, avant 0.30.2, sa phrase française), sa force (0 à 100), l'événement qui l'a fait
+/// naître, et une clé : une nouvelle chose de même clé remplace l'ancienne (une seule opinion sur une même personne,
+/// une seule image de soi…).
 /// </summary>
-public sealed record Intime(long Secondes, TypeIntime Type, int SujetId, string Texte, double Intensite, long CauseId, string Cle);
+public sealed record Intime(long Secondes, TypeIntime Type, int SujetId, string? Brut, double Intensite, long CauseId, string Cle, Recit? Recit = null)
+{
+    /// <summary>Ce qu'il se dit, en français.</summary>
+    public string Texte => Recit?.Texte ?? Brut ?? "";
+}
 
 /// <summary>
 /// Le jardin secret : pensées et intentions intimes, peurs, espoirs, joies et peines, ce qu'il pense des autres et de
@@ -63,7 +70,8 @@ public static partial class Jardin
     private const double Seuil = 5;
 
     /// <summary>Confie une chose au jardin d'un humain : elle remplace celle de même clé, ou la plus faible si le jardin est plein.</summary>
-    public static void Confier(Humain h, TypeIntime type, int sujet, string texte, double intensite, long cause, long maintenant, string cle)
+    /// <remarks><paramref name="texte"/> : un <see cref="Recit"/>, ou une phrase française (domaines pas encore traduits).</remarks>
+    public static void Confier(Humain h, TypeIntime type, int sujet, object texte, double intensite, long cause, long maintenant, string cle)
     {
         if (Tour.Autrui(h))
         {
@@ -72,12 +80,14 @@ public static partial class Jardin
         }
         if (!h.EstVivant || intensite < Seuil) return;
         var jardin = h.Memoire.Jardin;
-        var e = new Intime(maintenant, type, sujet, texte, Math.Min(100, intensite), cause, cle);
+        var e = texte is Recit r
+            ? new Intime(maintenant, type, sujet, null, Math.Min(100, intensite), cause, cle, r)
+            : new Intime(maintenant, type, sujet, Convert.ToString(texte, System.Globalization.CultureInfo.InvariantCulture) ?? "", Math.Min(100, intensite), cause, cle);
         var k = jardin.FindIndex(x => x.Cle == cle);
         if (k >= 0)
         {
             // Même chose, même force ou presque : rien de neuf, la date reste celle où elle est née.
-            if (jardin[k].Texte == texte && Math.Abs(jardin[k].Intensite - e.Intensite) < 10) return;
+            if (jardin[k].Texte == e.Texte && Math.Abs(jardin[k].Intensite - e.Intensite) < 10) return;
             jardin.RemoveAt(k);
         }
         else if (jardin.Count >= Taille)
@@ -106,7 +116,7 @@ public static partial class Jardin
         if (!h.EstVivant || h.EstBebe(maintenant)) return;
         var (apres, trace) = Psyche.Eprouver(h.Personnalite, epreuve, intensite, alea);
         h.Personnalite = apres;
-        if (trace is not null) Confier(h, TypeIntime.ImageDeSoi, 0, trace, 40 + 40 * intensite, cause, maintenant, $"epreuve:{epreuve}");
+        if (trace is not null) Confier(h, TypeIntime.ImageDeSoi, 0, new Recit(trace, ("g", h)), 40 + 40 * intensite, cause, maintenant, $"epreuve:{epreuve}");
     }
 
     /// <summary>
@@ -160,8 +170,8 @@ public static partial class Jardin
     }
 
     /// <summary>Une perte : la peine du deuil.</summary>
-    public static void Pleurer(Humain h, Humain mort, string parente, double chagrin, long maintenant) =>
-        Confier(h, TypeIntime.Peine, mort.Id, $"La mort de {parente} me ronge.", chagrin, mort.MortEvenementId, maintenant, $"deuil:{mort.Id}");
+    public static void Pleurer(Humain h, Humain mort, double chagrin, long maintenant) =>
+        Confier(h, TypeIntime.Peine, mort.Id, new Recit("js.deuil", ("p", VieSociale.ParenteMoi(h, mort))), chagrin, mort.MortEvenementId, maintenant, $"deuil:{mort.Id}");
 
     /// <summary>
     /// Après un phénomène terrifiant, certains y voient une volonté cachée (on prête volontiers une intention à ce qui
@@ -172,36 +182,31 @@ public static partial class Jardin
     {
         if (!h.EstVivant || h.EstEnfant(maintenant)) return;
         var p = h.Personnalite;
-        var nom = TypesCatastrophe.Nom(type);
         if (alea.Reel() < 0.6 * p.Transcendance * Math.Min(1, peur / 50))
         {
             var croyance = type switch
             {
-                TypeCatastrophe.Seisme => "Quelque chose de très puissant vit sous la terre ; quand il s'agite, tout tremble.",
-                TypeCatastrophe.Eruption => "La montagne est vivante, et sa colère brûle.",
-                TypeCatastrophe.Tsunami => "La grande eau a voulu nous prendre ; elle est en colère contre nous.",
-                TypeCatastrophe.Crue => "La rivière a ses humeurs : elle donne et elle reprend.",
-                TypeCatastrophe.Incendie => "Le feu tombé du ciel punit ceux qui l'ont mérité.",
-                TypeCatastrophe.Cyclone => "Le vent a une volonté ; il frappe qui il veut.",
-                TypeCatastrophe.Epidemie => "Quelqu'un d'invisible nous rend malades.",
-                TypeCatastrophe.Comete or TypeCatastrophe.Bolide or TypeCatastrophe.Impact or TypeCatastrophe.Eclipse or TypeCatastrophe.Aurore
-                    => "Le ciel nous parle ; ses signes annoncent quelque chose.",
-                TypeCatastrophe.VagueDeFroid or TypeCatastrophe.HiverVolcanique => "Le froid est envoyé par quelqu'un que nous avons fâché.",
-                _ => "Ce qui nous frappe n'arrive pas par hasard : quelqu'un, quelque part, le veut.",
+                TypeCatastrophe.Seisme => "seisme",
+                TypeCatastrophe.Eruption => "eruption",
+                TypeCatastrophe.Tsunami => "tsunami",
+                TypeCatastrophe.Crue => "crue",
+                TypeCatastrophe.Incendie => "incendie",
+                TypeCatastrophe.Cyclone => "cyclone",
+                TypeCatastrophe.Epidemie => "epidemie",
+                TypeCatastrophe.Comete or TypeCatastrophe.Bolide or TypeCatastrophe.Impact or TypeCatastrophe.Eclipse or TypeCatastrophe.Aurore => "ciel",
+                TypeCatastrophe.VagueDeFroid or TypeCatastrophe.HiverVolcanique => "froid",
+                _ => "autre",
             };
-            Confier(h, TypeIntime.Croyance, 0, croyance, 30 + 70 * p.Transcendance, evenement, maintenant, $"croyance:{type}");
+            Confier(h, TypeIntime.Croyance, 0, Recit.Seul($"js.croyance.{croyance}"), 30 + 70 * p.Transcendance, evenement, maintenant, $"croyance:{type}");
         }
         else if (alea.Reel() < 0.5 * p.Ouverture)
         {
-            Confier(h, TypeIntime.Question, 0, $"Pourquoi {nom} ? D'où cela vient-il, et qui l'a voulu ?", 30 + 50 * p.Ouverture, evenement, maintenant, $"question:{type}");
+            Confier(h, TypeIntime.Question, 0, new Recit("js.pourquoi", ("cat", CatastropheLe(type))), 30 + 50 * p.Ouverture, evenement, maintenant, $"question:{type}");
         }
     }
 
+    // Pour les croyances, encore écrites en français (elles passeront en récits avec l'Entité et les croyances).
     private static string E(Humain h) => h.Sexe == Sexe.Femme ? "e" : "";
 
     private static string Il(Humain h) => h.Sexe == Sexe.Femme ? "elle" : "il";
-
-    private static string De(Humain h) => h.Sexe == Sexe.Femme ? "d'elle" : "de lui";
-
-    private static string Pronom(Humain h) => h.Sexe == Sexe.Femme ? "elle" : "lui";
 }

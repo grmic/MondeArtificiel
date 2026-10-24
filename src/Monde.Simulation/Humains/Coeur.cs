@@ -89,13 +89,12 @@ public sealed partial class VieSociale
             var mort = s.DeuilDeId >= 1 && s.DeuilDeId <= humains.Count ? humains[s.DeuilDeId - 1] : null;
             var id = Noter(maintenant, TypeEvenement.Entraide, v, s,
                 mort is null ? new Recit("j.console", ("v", v), ("s", s)) : new Recit("j.console.deuil", ("v", v), ("s", s), ("p", ParenteR(s, mort))), s.DeuilEvenementId, karma: Regard.Consoler);
-            var (il, e) = s.Sexe == Sexe.Femme ? ("elle", "e") : ("il", "");
             var pensee = Jardin.Varier(v, cle, 0, s.Nom,
-                new Jardin.V($"Je reste près de {s.Nom} tant qu'{il} a du chagrin.", 0.4),
-                new Jardin.V($"Je partage la peine de {s.Nom}.", 0.2 + Jardin.S(p.Moral.EmpathieEmotionnelle)),
-                new Jardin.V($"Je trouverai les gestes pour consoler {s.Nom}.", 0.1 + Jardin.S(p.Moral.EmpathieCognitive)),
-                new Jardin.V($"{s.Nom} pleure ; je ne {(e == "e" ? "la" : "le")} laisserai pas seul{e}.", 0.2 + Jardin.S(p.Moral.Compassion)),
-                new Jardin.V($"Je console {s.Nom}.", 0.3, 0))!;
+                new Jardin.V(new Recit("js.console.1", ("s", s)), 0.4),
+                new Jardin.V(new Recit("js.console.2", ("s", s)), 0.2 + Jardin.S(p.Moral.EmpathieEmotionnelle)),
+                new Jardin.V(new Recit("js.console.3", ("s", s)), 0.1 + Jardin.S(p.Moral.EmpathieCognitive)),
+                new Jardin.V(new Recit("js.console.4", ("s", s)), 0.2 + Jardin.S(p.Moral.Compassion)),
+                new Jardin.V(new Recit("js.console.5", ("s", s)), 0.3, 0))!;
             Jardin.Confier(v, TypeIntime.Intention, s.Id, pensee, 20 + 30 * p.Moral.Compassion, id, maintenant, cle);
         }
     }
@@ -127,18 +126,17 @@ public sealed partial class VieSociale
             Gratitude(v, s, 2);
             var cle = $"soin:{s.Id}";
             if (v.Memoire.Jardin.Exists(x => x.Cle == cle && maintenant - x.Secondes < 30 * Temps.Calendrier.SecondesParJour)) return;
-            var etat = s.EstMalade(maintenant) || s.InfectionId != 0 ? "malade" : $"blessé{E(s)}";
+            var malade = s.EstMalade(maintenant) || s.InfectionId != 0;
             var id = Noter(maintenant, TypeEvenement.Entraide, v, s,
                 new Recit(s.EstMalade(maintenant) || s.InfectionId != 0 ? "j.veille.malade" : "j.veille.blesse", ("v", v), ("s", s)), s.InfectionId != 0 ? s.InfectionEvenementId : 0, karma: Regard.Veiller);
             Jardin.Retirer(v, cle);
-            var lui = s.Sexe == Sexe.Femme ? "elle" : "lui";
             var pensee = Jardin.Varier(v, cle, 0, s.Nom,
-                new Jardin.V($"Je prends soin de {s.Nom}.", 0.4),
-                new Jardin.V($"{s.Nom} a besoin de moi ; je reste près {(lui == "lui" ? "de lui" : "d'elle")}.", 0.2 + Jardin.S(p.Moral.Compassion)),
-                new Jardin.V($"Tant que {s.Nom} sera {etat}, je lui porterai à boire et à manger.", 0.2 + Jardin.S(p.Conscience)),
-                new Jardin.V($"Je soigne {s.Nom} ; {(lui == "lui" ? "il" : "elle")} ferait de même pour moi.", 0.1 + Jardin.S(p.Moral.Fondements.Equite)),
-                new Jardin.V($"Je veille sur {s.Nom}.", 0.3, 0),
-                new Jardin.V($"Le mal de {s.Nom} me fait mal à moi aussi.", 0.05 + 2 * Jardin.S(p.Moral.EmpathieEmotionnelle), 2))!;
+                new Jardin.V(new Recit("js.soin.1", ("s", s)), 0.4),
+                new Jardin.V(new Recit("js.soin.2", ("s", s)), 0.2 + Jardin.S(p.Moral.Compassion)),
+                new Jardin.V(new Recit(malade ? "js.soin.malade" : "js.soin.blesse", ("s", s)), 0.2 + Jardin.S(p.Conscience)),
+                new Jardin.V(new Recit("js.soin.3", ("s", s)), 0.1 + Jardin.S(p.Moral.Fondements.Equite)),
+                new Jardin.V(new Recit("js.soin.4", ("s", s)), 0.3, 0),
+                new Jardin.V(new Recit("js.soin.5", ("s", s)), 0.05 + 2 * Jardin.S(p.Moral.EmpathieEmotionnelle), 2))!;
             Jardin.Confier(v, TypeIntime.Intention, s.Id, pensee, 20 + 40 * p.Moral.Compassion, id, maintenant, cle);
             return;
         }
@@ -160,7 +158,7 @@ public sealed partial class VieSociale
             var id = Noter(maintenant, TypeEvenement.Entraide, g, e,
                 new Recit("j.recueille", ("g", g), ("e", e), ("age", Comportement.AgeEnMots(e, maintenant))),
                 dernier?.MortEvenementId ?? 0, karma: Regard.Recueillir);
-            Jardin.Confier(g, TypeIntime.Intention, e.Id, $"Je veillerai sur {e.Nom}.", 30 + 40 * g.Personnalite.Moral.Compassion, id, maintenant, cle);
+            Jardin.Confier(g, TypeIntime.Intention, e.Id, new Recit("js.recueil", ("e", e)), 30 + 40 * g.Personnalite.Moral.Compassion, id, maintenant, cle);
         }
     }
 }

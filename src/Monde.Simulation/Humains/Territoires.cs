@@ -1,5 +1,7 @@
 using Monde.Simulation.Monde;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>Ce que deux communautés sont l'une pour l'autre, constaté chaque semaine à partir des liens entre leurs membres.</summary>
@@ -291,6 +293,15 @@ public static class Lieux
         var angle = Math.Atan2(y1 - y0, x1 - x0);
         var secteur = (int)Math.Round(angle / (Math.PI / 4));
         return Directions[(secteur + 8) % 8];
+    }
+
+    private static readonly string[] Cles = ["est", "sud-est", "sud", "sud-ouest", "ouest", "nord-ouest", "nord", "nord-est"];
+
+    /// <summary>« vers le nord-est », dans la langue de l'observateur (clés <c>p.vers.*</c>).</summary>
+    public static Recits.Recit VersRecit(int x0, int y0, int x1, int y1)
+    {
+        var secteur = (int)Math.Round(Math.Atan2(y1 - y0, x1 - x0) / (Math.PI / 4));
+        return Recits.Recit.Seul("p.vers." + Cles[(secteur + 8) % 8]);
     }
 
     /// <summary>Distance à vol d'oiseau en mots (« 18 km »), pour le journal.</summary>

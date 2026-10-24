@@ -82,8 +82,10 @@ public sealed class Recit : IEquatable<Recit>
     /// <summary>Le récit sans paramètre de cette clé, créé une seule fois (les pensées courantes en font sans cesse).</summary>
     public static Recit Seul(string cle) => Seuls.GetOrAdd(cle, static c => new Recit(c));
 
-    /// <summary>Le récit écrit en français.</summary>
-    public string Texte => Catalogues.Fr.Rediger(this);
+    /// <summary>Le récit écrit en français (une fois : le jardin secret compare souvent ses phrases).</summary>
+    public string Texte => _texte ??= Catalogues.Fr.Rediger(this);
+
+    private string? _texte;
 
     public override string ToString() => Texte;
 

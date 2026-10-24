@@ -78,14 +78,14 @@ public sealed partial class Comportement
             var id = Noter(maintenant, TypeEvenement.Vol, h, victime, new Recit("j.vol.cache", ("h", h), ("v", victime)),
                 karma: Regard.Vol);
             if (psychopathe)
-                Confier(h, TypeIntime.ImageDeSoi, 0, "Ils ne voient rien. Je prends ce que je veux.", 40, id, maintenant, "vol");
+                Confier(h, TypeIntime.ImageDeSoi, 0, Recits.Recit.Seul("js.vol.froid"), 40, id, maintenant, "vol");
             else
             {
                 // Qui ressent la peine des autres a honte de ce qu'il a fait ; le froid n'éprouve rien.
                 var honte = 100 * Math.Clamp(0.5 * p.Moral.EmpathieEmotionnelle + 0.3 * p.Moral.Honnetete + 0.2 * p.Moral.Fondements.Equite, 0, 1) * (1 - froideur);
                 Confier(h, honte >= 30 ? TypeIntime.Peine : TypeIntime.Intention, victime.Id, honte >= 30
-                    ? $"J'ai volé {victime.Nom}. La faim m'y a poussé{E(h)}, mais j'en ai honte."
-                    : $"J'ai pris la nourriture de {victime.Nom}. Personne n'a rien vu.", Math.Max(20, honte), id, maintenant, "vol");
+                    ? new Recit("js.vol.honte", ("v", victime), ("g", h))
+                    : new Recit("js.vol.cache", ("v", victime)), Math.Max(20, honte), id, maintenant, "vol");
             }
             return;
         }
@@ -96,8 +96,8 @@ public sealed partial class Comportement
             : new Recit("j.vol.temoin", ("t", temoin!), ("h", h), ("v", victime));
         var vol = Noter(maintenant, TypeEvenement.Vol, h, victime, texte, significatif: psychopathe, karma: Regard.Vol);
         Confier(h, TypeIntime.Intention, victime.Id, psychopathe
-            ? $"{victime.Nom} m'a vu{E(h)}. La prochaine fois, je serai plus prudent{E(h)}."
-            : $"On m'a vu{E(h)} prendre la nourriture de {victime.Nom}.", 30, vol, maintenant, "vol");
+            ? new Recit("js.vol.vuFroid", ("v", victime), ("g", h))
+            : new Recit("js.vol.vu", ("v", victime), ("g", h)), 30, vol, maintenant, "vol");
 
         // La victime en veut au voleur, d'autant plus qu'elle tient à l'équité ; ceux qui l'apprennent l'estiment moins.
         var vm = victime.Personnalite;
@@ -117,7 +117,7 @@ public sealed partial class Comportement
             foreach (var t in new[] { victime, temoin })
             {
                 if (t is null) continue;
-                Jardin.Confier(t, TypeIntime.Opinion, h.Id, $"{h.Nom} sourit à tous, mais {Il(h)} prend sans honte. Je ne {(h.Sexe == Sexe.Femme ? "la" : "le")} crois plus.",
+                Jardin.Confier(t, TypeIntime.Opinion, h.Id, new Recit("js.vol.masque", ("h", h)),
                     50, vol, maintenant, $"opinion:{h.Id}");
             }
         }

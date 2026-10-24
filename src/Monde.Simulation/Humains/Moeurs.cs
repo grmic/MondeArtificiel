@@ -162,10 +162,10 @@ public sealed partial class VieSociale
                 AjouterGrief(temoin, new Grief(x.Id, MotifGrief.Moeurs, reprobation, reprobation, id));
                 ChangerAffection(temoin, x, -reprobation / 3, maintenant);
                 x.Humeur = Math.Max(0, x.Humeur - reprobation / 8);
-                Jardin.Confier(x, TypeIntime.Peur, temoin.Id, $"{temoin.Nom} sait, pour mes amours. Que va-t-il arriver ?",
+                Jardin.Confier(x, TypeIntime.Peur, temoin.Id, new Recit("js.moeurs.su", ("t", temoin)),
                     20 + reprobation / 2, id, maintenant, $"moeurs-su:{temoin.Id}");
             }
-            Jardin.Confier(temoin, TypeIntime.Opinion, a.Id, $"Ce que fait {a.Nom} est mal.", reprobation, id, maintenant, $"opinion:{a.Id}");
+            Jardin.Confier(temoin, TypeIntime.Opinion, a.Id, new Recit("js.moeurs.mal", ("a", a)), reprobation, id, maintenant, $"opinion:{a.Id}");
         }
         if (communaute is null) return;
         communaute.AffaireMoeursId = id;
@@ -189,7 +189,7 @@ public sealed partial class VieSociale
                 ChangerAffection(m, x, -force * rigidite, maintenant);
                 if (rigidite > 0.55) AjouterGrief(m, new Grief(x.Id, MotifGrief.Moeurs, 40 * rigidite, 40 * rigidite, id));
             }
-            Jardin.Confier(x, TypeIntime.ImageDeSoi, 0, "Les miens me regardent comme une honte.", 30 + force, id, maintenant, "image:moeurs");
+            Jardin.Confier(x, TypeIntime.ImageDeSoi, 0, Recit.Seul("js.moeurs.honte"), 30 + force, id, maintenant, "image:moeurs");
         }
         c.AffaireMoeursId = id;
     }

@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -377,7 +379,7 @@ public sealed partial class Comportement
             if (o.Id == s.Id || !o.EstVivant || o.X != s.X || o.Y != s.Y || o.EstBebe(_maintenant)) continue;
             Croyances.Ajouter(o, 3 * (0.3 + o.Personnalite.Transcendance), $"a vu {s.Nom} en transe", id, _maintenant, signe: true);
         }
-        Jardin.Confier(s, TypeIntime.Croyance, h.Id, $"Au chevet de {h.Nom}, les esprits ont parlé par ma bouche.",
+        Jardin.Confier(s, TypeIntime.Croyance, h.Id, new Recit("js.transe", ("x", h)),
             40 + 40 * s.Personnalite.Transcendance, id, _maintenant, $"transe:{h.Id}");
         Medecine.Placebo(h, s, true);
     }
@@ -396,7 +398,7 @@ public sealed partial class Comportement
         // Maudire, c'est souhaiter qu'il dépérisse : presque un souhait de mort (gravité 0,7), mais déjà un acte.
         var id = Noter(_maintenant, TypeEvenement.Medecine, s, t, $"{s.Nom} maudit {t.Nom} : {Il(s)} appelle sur {lui} les esprits et le mal.{suite}",
             karma: Regard.Intention(s, t, 0.7, 0, malediction: true, _maintenant));
-        Jardin.Confier(s, TypeIntime.Intention, t.Id, $"Que les esprits rongent {t.Nom}.", 30 + 40 * (1 - s.Personnalite.Moral.Compassion), id, _maintenant, $"maudire:{t.Id}");
+        Jardin.Confier(s, TypeIntime.Intention, t.Id, new Recit("js.maudire", ("x", t)), 30 + 40 * (1 - s.Personnalite.Moral.Compassion), id, _maintenant, $"maudire:{t.Id}");
         Social?.ChangerAffection(t, s, -15, _maintenant);
         if (f < 0.05) return;
         t.MauditLe = Math.Max(1, _maintenant);
@@ -405,7 +407,7 @@ public sealed partial class Comportement
         t.MauditEvenementId = id;
         t.Peur = Math.Max(t.Peur, 40 + 50 * f);
         t.PeurEvenementId = id;
-        Jardin.Confier(t, TypeIntime.Peur, s.Id, $"{s.Nom} m'a maudit{e}. Je sens le mal entrer en moi.", 40 + 50 * f, id, _maintenant, $"maudit:{s.Id}");
+        Jardin.Confier(t, TypeIntime.Peur, s.Id, new Recit("js.maudit", ("x", s), ("g", t)), 40 + 50 * f, id, _maintenant, $"maudit:{s.Id}");
     }
 
     /// <summary>La malédiction cesse : la peur reflue, ou un soignant l'a chassée.</summary>
@@ -559,7 +561,7 @@ public sealed partial class Comportement
             h.CharlatanDepuis = Math.Max(1, maintenant);
             var id = Noter(maintenant, TypeEvenement.Medecine, h, null,
                 $"{h.Nom} se met à prétendre savoir guérir les malades, sans rien en savoir : on nourrit et l'on respecte ceux qui soignent.");
-            Jardin.Confier(h, TypeIntime.Intention, 0, "Ils me croiront guérisseur ; on me nourrira, on m'écoutera.",
+            Jardin.Confier(h, TypeIntime.Intention, 0, new Recit("js.charlatan", ("g", h)),
                 30 + 40 * (1 - h.Personnalite.Moral.Honnetete), id, maintenant, "charlatan");
         }
     }

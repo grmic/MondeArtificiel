@@ -195,6 +195,24 @@ public sealed partial class VieSociale
         return lien is null ? new Personne(autre) : new Recit($"parente.{lien}.{(h.Sexe == Sexe.Femme ? "f" : "m")}", ("nom", autre), ("g", autre));
     }
 
+    /// <summary>
+    /// Le proche nommé par celui qui pense : « ma mère Ana », « mon ami Bor » (sinon son seul nom).
+    /// </summary>
+    public static object ParenteMoi(Humain h, Humain autre)
+    {
+        var lien = autre switch
+        {
+            _ when autre.MereId == h.Id || autre.PereId == h.Id => "enfant",
+            _ when h.MereId == autre.Id => "mere",
+            _ when h.PereId == autre.Id => "pere",
+            _ when h.PartenaireId == autre.Id || autre.PartenaireId == h.Id => "compagnon",
+            _ when h.MereId != 0 && h.MereId == autre.MereId => "fratrie",
+            _ when h.LienAvec(autre.Id) is { Amis: true } => "ami",
+            _ => null,
+        };
+        return lien is null ? new Personne(autre) : new Recit($"parenteMoi.{lien}", ("nom", autre), ("g", autre));
+    }
+
     /// <summary>Le proche nommé en français.</summary>
     public static string Parente(Humain h, Humain autre) => Catalogues.Fr.Ecrire(ParenteR(h, autre));
 

@@ -621,7 +621,7 @@ public sealed partial class VieSociale(Alea alea)
                 Noter(maintenant, TypeEvenement.Humeur, h, mort, new Recit("j.pleure", ("h", h), ("p", ParenteR(h, mort))), mort.MortEvenementId);
                 // Penser à la mort pousse à croire qu'il y a autre chose (Jong et al., 2012) : d'autant plus que le deuil est lourd.
                 Croyances.Ajouter(h, k / 25 * (0.3 + p.Transcendance), $"la mort de {Parente(h, mort)}", mort.MortEvenementId, maintenant);
-                Jardin.Pleurer(h, mort, Parente(h, mort), k, maintenant);
+                Jardin.Pleurer(h, mort, k, maintenant);
             }
             // La perte d'un très proche peut changer durablement (Jeronimus et al., 2014).
             if (k >= 50) Jardin.Marquer(h, Epreuve.Deuil, (k - 40) / 60, mort.MortEvenementId, maintenant, alea);
@@ -633,7 +633,7 @@ public sealed partial class VieSociale(Alea alea)
                 var soif = Math.Min(100, 1.2 * k);
                 AjouterGrief(h, new Grief(meurtrier.Id, MotifGrief.Meurtre, soif, soif, mort.MortEvenementId, mort.Id));
                 h.Colere = Math.Max(h.Colere, k);
-                Jardin.Confier(h, TypeIntime.Intention, meurtrier.Id, $"Je vengerai {mort.Nom} : {meurtrier.Nom} paiera.", soif * (0.5 + 0.5 * (1 - h.Personnalite.Agreabilite)),
+                Jardin.Confier(h, TypeIntime.Intention, meurtrier.Id, new Recit("js.vengeance", ("m", mort), ("t", meurtrier)), soif * (0.5 + 0.5 * (1 - h.Personnalite.Agreabilite)),
                     mort.MortEvenementId, maintenant, $"vengeance:{meurtrier.Id}");
             }
         }

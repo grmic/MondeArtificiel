@@ -282,6 +282,8 @@ public sealed class GuerresTests
             Jardin.Confier(membreA, TypeIntime.Croyance, 0, "La montagne est vivante ; d'où vient sa colère ? « 'Robert'); DROP TABLE jardin;-- »", 70, 9,
                 etat.Secondes, "croyance:test");
             Jardin.Confier(membreA, TypeIntime.Opinion, 3, "Je me méfie de lui.", 40, 0, etat.Secondes, "opinion:3");
+            Jardin.Confier(membreA, TypeIntime.Reve, 0, new Recit("js.raconte", ("s", membreA), ("fond", Recit.Seul("jv.rever.8"))), 30, 0,
+                etat.Secondes, "recit:reve");
             b.SoumiseAId = a.Id;
             b.SoumiseLe = etat.Secondes - 2 * Jour;
             b.SoumissionEvenementId = 4;

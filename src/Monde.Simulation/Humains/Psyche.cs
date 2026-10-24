@@ -1,5 +1,7 @@
 using Monde.Simulation.Monde;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -387,7 +389,8 @@ public static class Psyche
     /// <summary>
     /// Trace durable d'une épreuve (0 &lt; intensité ≤ 1) : les événements de vie pénibles augmentent le névrosisme, d'autant plus
     /// qu'on y était déjà sensible (Jeronimus et al., 2014) ; la perte et la trahison rendent plus anxieux dans les liens,
-    /// l'exil plus méfiant de la proximité. Rend la nouvelle personnalité et une phrase pour le jardin secret, ou null si rien n'a bougé.
+    /// l'exil plus méfiant de la proximité. Rend la nouvelle personnalité et la clé d'une phrase pour le jardin secret, ou null si
+    /// rien n'a bougé.
     /// </summary>
     public static (Personnalite Personnalite, string? Trace) Eprouver(Personnalite p, Epreuve epreuve, double intensite, Alea alea)
     {
@@ -413,14 +416,7 @@ public static class Psyche
             },
         };
         if (choc < 0.4) return (nouvelle, null);
-        var trace = epreuve switch
-        {
-            Epreuve.Deuil => "Depuis cette perte, je m'inquiète plus vite, et j'ai peur de perdre ceux qui me restent.",
-            Epreuve.Guerre => "Ce que j'ai vu au combat ne me quitte pas : je sursaute pour un rien.",
-            Epreuve.Exil => "Depuis qu'on m'a chassé, je garde les autres à distance.",
-            _ => "Depuis cette trahison, je doute de ceux que j'aime.",
-        };
-        return (nouvelle, trace);
+        return (nouvelle, $"js.epreuve.{(epreuve is Epreuve.Deuil or Epreuve.Guerre or Epreuve.Exil ? epreuve : Epreuve.Trahison)}");
     }
 
     // ── Lecture des traits ──────────────────────────────────────────────────────────────────

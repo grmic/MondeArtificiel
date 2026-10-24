@@ -709,11 +709,11 @@ public sealed class MondeSimule
                     Id = _numeros.Suivant(), CauseId = naissance.Id, Significatif = true,
                 });
             }
-            Jardin.Confier(mere, TypeIntime.Joie, bebe.Id, $"{bebe.Nom} est né{(bebe.Sexe == Sexe.Femme ? "e" : "")} de moi : quelle joie !",
+            Jardin.Confier(mere, TypeIntime.Joie, bebe.Id, new Recit("js.naissance.mere", ("b", bebe)),
                 30 + 60 * mere.Personnalite.Attachement, naissance.Id, _secondes, $"naissance:{bebe.Id}");
             if (pere is { EstVivant: true } && pere.PartenaireId == mere.Id)
             {
-                Jardin.Confier(pere, TypeIntime.Joie, bebe.Id, $"{mere.Nom} m'a donné {(bebe.Sexe == Sexe.Femme ? "une fille" : "un fils")}, {bebe.Nom}.",
+                Jardin.Confier(pere, TypeIntime.Joie, bebe.Id, new Recit("js.naissance.pere", ("m", mere), ("b", bebe)),
                     20 + 50 * pere.Personnalite.Attachement, naissance.Id, _secondes, $"naissance:{bebe.Id}");
             }
             // Une naissance réjouit la mère, et le père s'il est là et attaché à ses enfants.
@@ -947,7 +947,7 @@ public sealed class MondeSimule
             if (Psyche.EstPsychopathe(h, _secondes) && !h.Memoire.Jardin.Exists(x => x.Cle == "masque"))
             {
                 Jardin.Confier(h, TypeIntime.ImageDeSoi, 0,
-                    "Les autres sont des outils. Je leur montre le visage qu'ils veulent voir ; leurs peines ne me touchent pas.",
+                    Recit.Seul("js.masque"),
                     60, 0, _secondes, "masque");
             }
             var age = h.AgeEnAnnees(_secondes);

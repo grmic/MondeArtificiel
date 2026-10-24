@@ -245,14 +245,14 @@ public sealed partial class Comportement
         if (Recent(h, cle, 60, maintenant)) return;
         if (Psyche.EstPsychopathe(h, maintenant))
         {
-            Confier(h, TypeIntime.Intention, compagnon.Id, $"{compagnon.Nom} n'en saura rien. Et quand bien même.", 35, accouplement, maintenant, cle);
+            Confier(h, TypeIntime.Intention, compagnon.Id, new Recit("js.infidele.froid", ("c", compagnon)), 35, accouplement, maintenant, cle);
             return;
         }
         var m = h.Personnalite.Moral;
         var honte = 100 * Math.Clamp(0.25 * m.EmpathieEmotionnelle + 0.25 * m.Honnetete + 0.3 * Math.Max(0, h.AffectionPour(compagnon.Id)) / 100
                                      + 0.2 * m.Fondements.Loyaute, 0, 1) * (1 - Psyche.Froideur(h.Personnalite));
         if (honte < 25) return;
-        Confier(h, TypeIntime.Peine, compagnon.Id, $"J'ai trahi {compagnon.Nom} avec {complice.Nom}. J'en ai honte.", honte, accouplement, maintenant, cle);
+        Confier(h, TypeIntime.Peine, compagnon.Id, new Recit("js.infidele.honte", ("c", compagnon), ("x", complice)), honte, accouplement, maintenant, cle);
         Tour.Changer(h, x => x.Humeur = Math.Max(0, x.Humeur - honte / 10));
     }
 
@@ -529,7 +529,7 @@ public sealed partial class Comportement
                 var id = Noter(maintenant, TypeEvenement.Entraide, choisie, b,
                     new Recit("j.allaite", ("c", choisie), ("b", b), ("age", AgeEnMots(b, maintenant)), ("morte", morte is null ? "" : new Recit("j.allaite.orphelin", ("b", b), ("m", morte)))),
                     morte?.MortEvenementId ?? 0, significatif: true, karma: Regard.Allaiter);
-                Jardin.Confier(choisie, TypeIntime.Intention, b.Id, $"Je nourrirai {b.Nom} de mon lait, comme mon enfant.",
+                Jardin.Confier(choisie, TypeIntime.Intention, b.Id, new Recit("js.allaiter", ("b", b)),
                     40 + 40 * choisie.Personnalite.Moral.Compassion, id, maintenant, cle);
             }
             return choisie;
@@ -541,7 +541,7 @@ public sealed partial class Comportement
             var id = Noter(maintenant, TypeEvenement.Entraide, g, b,
                 new Recit("j.bouchees", ("g", g), ("b", b), ("age", AgeEnMots(b, maintenant))),
                 morte?.MortEvenementId ?? 0, significatif: true, karma: Regard.NourrirSansLait);
-            Jardin.Confier(g, TypeIntime.Intention, b.Id, $"{b.Nom} n'a plus de mère : c'est moi qui le nourrirai.",
+            Jardin.Confier(g, TypeIntime.Intention, b.Id, new Recit("js.nourrir", ("b", b)),
                 40 + 40 * g.Personnalite.Moral.Compassion, id, maintenant, cle);
         }
         return g;

@@ -75,9 +75,9 @@ public sealed partial class Comportement
         var id = Noter(maintenant, TypeEvenement.Guerre, ravisseur, captive,
             new Recit("j.enleve", ("r", ravisseur), ("h", captive), ("age", AgeEnMots(captive, maintenant)), ("c", c), ("d", cible)),
             cause, significatif: true, karma: Regard.Enlever);
-        Jardin.Confier(captive, TypeIntime.Peine, ravisseur.Id, $"{ravisseur.Nom} m'a arrachée aux miens. Je veux les revoir.",
+        Jardin.Confier(captive, TypeIntime.Peine, ravisseur.Id, new Recit("js.captive", ("r", ravisseur), ("g", captive)),
             60 + 30 * captive.Personnalite.Nevrosisme, id, maintenant, "captive");
-        Jardin.Confier(ravisseur, TypeIntime.Joie, captive.Id, $"J'ai ramené {captive.Nom} de chez la {Minuscule(cible.Nom)}.",
+        Jardin.Confier(ravisseur, TypeIntime.Joie, captive.Id, new Recit("js.ravisseur", ("x", captive), ("c", cible)),
             30 + 30 * (1 - ravisseur.Personnalite.Agreabilite), id, maintenant, $"captive:{captive.Id}");
         // Ses proches en gardent la rancune, comme d'un meurtre, un peu moins fort.
         Social!.Offenser(ravisseur, captive, 10, id, humains, maintenant);
