@@ -302,8 +302,8 @@ public sealed partial class Comportement
                 var saison = Ecosysteme.FacteurSaison(maintenant);
                 foreach (var i in Cases(c.CentreX, c.CentreY, c.Rayon + 2))
                 {
-                    ecosysteme.Plantes[i] = (ushort)Math.Clamp(Math.Max(ecosysteme.Plantes[i], ecosysteme.NiveauPlantes(i, saison)), 0, 10_000);
-                    ecosysteme.Gibier[i] = (ushort)Math.Clamp(Math.Max(ecosysteme.Gibier[i], ecosysteme.NiveauGibier(i)), 0, 10_000);
+                    ecosysteme.Plantes[i] = (ushort)Math.Clamp(Math.Max(ecosysteme.Plantes[i], ecosysteme.NiveauPlantes(i, saison)), 0, Ecosysteme.Plafond);
+                    ecosysteme.Gibier[i] = (ushort)Math.Clamp(Math.Max(ecosysteme.Gibier[i], ecosysteme.NiveauGibier(i)), 0, Ecosysteme.Plafond);
                 }
                 foreach (var h in membres)
                 {

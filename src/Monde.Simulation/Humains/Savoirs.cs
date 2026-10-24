@@ -634,47 +634,39 @@ public static class Physique
         if (b is Biome.ForetTropicale or Biome.Marais or Biome.Riviere) yield return Matiere.Fibres;
         if (saisonSeche && b is Biome.PlaineDeFougeres or Biome.ForetDeConiferes or Biome.Desert or Biome.Montagne) yield return Matiere.HerbeSeche;
         if (b is Biome.ForetTropicale or Biome.Marais) yield return Matiere.Calebasse;
-        if (b is Biome.Riviere or Biome.Marais) yield return Matiere.Argile;
+        if (b is Biome.Riviere or Biome.Marais || carte.Terrain.Roches[carte.Indice(x, y)] == Nature.Roche.Schiste) yield return Matiere.Argile;
         // Arbres tombés : là où il y a des arbres (les forêts, les fougères arborescentes, les rives).
         if (b is Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere or Biome.Marais) yield return Matiere.Tronc;
         if (b is Biome.ForetDeConiferes) yield return Matiere.Resine;
-        // Terre rouge (oxydes de fer) : dans les roches des montagnes et des déserts, et par endroits dans les sols rouges des
-        // forêts chaudes, des plaines et des berges.
-        if (b is Biome.Montagne or Biome.Desert || b is Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere && Ocreuse(carte, x, y))
-            yield return Matiere.Ocre;
+        // Terre rouge (oxydes de fer) : dans les roches des montagnes et des déserts, les grès rouges et les latérites des
+        // forêts chaudes, et par endroits dans les plaines et sur les berges.
+        if (b is Biome.Montagne or Biome.Desert || Ocreuse(carte, x, y)) yield return Matiere.Ocre;
     }
 
-    /// <summary>Zone de 4 × 4 cases où affleure de la terre rouge (une sur quatre environ), stable pour une graine.</summary>
+    /// <summary>
+    /// Terre rouge ici : grès et latérites en sont faits ; ailleurs, sous les forêts chaudes, les plaines et les berges,
+    /// une zone de 4 × 4 cases sur quatre environ, stable pour une graine.
+    /// </summary>
     public static bool Ocreuse(Carte carte, int x, int y)
     {
+        var i = carte.Indice(x, y);
+        if (carte.Terrain.Roches[i] == Nature.Roche.Gres && Climat.EstPraticable(carte.BiomeEn(x, y)) || carte.Terrain.Sols[i] == Nature.Sol.Lateritique) return true;
+        if (carte.BiomeEn(x, y) is not (Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere)) return false;
         var etat = carte.Graine ^ 0x4F435245UL ^ ((ulong)(x / 4) * 0xD6E8FEB86659FD93UL) ^ ((ulong)(y / 4) * 0x9E3779B97F4A7C15UL);
         return (Alea.SplitMix64(ref etat) & 0xFFFF) / 65536.0 < 0.25;
     }
 
     /// <summary>
-    /// Y a-t-il ici une paroi de roche où peindre ? Dans les montagnes et les déserts, et là où affleurent les roches à silex
-    /// (craies et calcaires, avec leurs abris sous roche).
+    /// Y a-t-il ici une paroi de roche où peindre ? Dans les montagnes et les déserts, sur les falaises, et dans les grottes et
+    /// les abris sous roche.
     /// </summary>
     public static bool Paroi(Carte carte, int x, int y) =>
-        carte.BiomeEn(x, y) is Biome.Montagne or Biome.Desert || carte.BiomeEn(x, y) is not (Biome.Ocean or Biome.EauPeuProfonde or Biome.Lac) && (Roches(carte, x, y) & 2) != 0;
+        carte.BiomeEn(x, y) is Biome.Montagne or Biome.Desert
+        || Climat.EstPraticable(carte.BiomeEn(x, y)) && (carte.Terrain.Falaise[carte.Indice(x, y)] || carte.Terrain.GrotteEn[carte.Indice(x, y)] != 0);
 
     /// <summary>
-    /// Roches d'une zone de 4 × 4 cases (3,2 km de côté), stables pour une graine : galets (bit 1), silex (bit 2), pyrite (bit 4,
-    /// presque toujours avec le silex, comme les nodules de marcassite de la craie), obsidienne (bit 8, près des volcans).
+    /// Pierres de la case : galets durs (bit 1), silex (bit 2), pyrite (bit 4), obsidienne (bit 8, près des volcans),
+    /// selon la roche du lieu (voir <see cref="Nature.Terrain.Pierres"/>).
     /// </summary>
-    public static int Roches(Carte carte, int x, int y)
-    {
-        var etat = carte.Graine ^ 0x524F43484553UL ^ ((ulong)(x / 4) * 0x9E3779B97F4A7C15UL) ^ ((ulong)(y / 4) * 0xC2B2AE3D27D4EB4FUL);
-        var z = Alea.SplitMix64(ref etat);
-        var u1 = (z & 0xFFFF) / 65536.0;
-        var u2 = ((z >> 16) & 0xFFFF) / 65536.0;
-        var u3 = ((z >> 32) & 0xFFFF) / 65536.0;
-        var u4 = ((z >> 48) & 0xFFFF) / 65536.0;
-        var r = 0;
-        if (u1 < 0.35) r |= 1;
-        if (u2 < 0.18) r |= 2;
-        if ((r & 2) != 0 ? u3 < 0.35 : u3 < 0.03) r |= 4;
-        if (u4 < 0.5) r |= 8;
-        return r;
-    }
+    public static int Roches(Carte carte, int x, int y) => carte.Terrain.Pierres[carte.Indice(x, y)];
 }

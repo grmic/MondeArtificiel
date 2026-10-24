@@ -116,7 +116,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // La soif fait nager même épuisé, au risque de se noyer : on ne reste pas mourir sur une rive sans eau douce.
         SuivreSesObjets(h);
         _nageur = PeutNager(h) || h.Nage >= 0.4 && h.Soif >= 60 && h.Froid < 50 || Radeau(h) is not null;
+        _gueMax = GueMax(h);
         Ramasser(h);
+        Remarquer(h);
         ObserverLeFeu(h, tous);
         DecouvrirLaBraise(h, tous);
         SentirLaFumee(h, tous);
@@ -141,6 +143,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         (_motif, _autre) = (Motif.Aucun, null);
         Decider(h, partenaire, tous, maintenant);
         _nageur = false;
+        _gueMax = 0;
         if (!h.EstVivant) return;
         EteindreEnPartant(h, x0, y0, tous);
         if (h.Activite != avant && Penseur.Penser(h, _motif, _autre, maintenant) is { } pensee)
@@ -1146,7 +1149,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 h.Objets[h.Objets.IndexOf(radeau)] = radeau with { Plein = true };
                 h.Fatigue = Math.Min(100, h.Fatigue + 1);
             }
-            else if (!Climat.EstPraticable(carte.BiomeEn(bx, by)))
+            else if (!Climat.EstPraticable(carte.BiomeEn(bx, by)) || _gueMax > 0 && carte.BiomeEn(bx, by) == Biome.Riviere && CourantEn(carte.Indice(bx, by)) > _gueMax)
             {
                 // Il traverse à la nage.
                 Baignade(h, true);
@@ -1171,7 +1174,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             int nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
-            if (!Praticable(carte.BiomeEn(nx, ny))) continue;
+            if (!Praticable(carte.Indice(nx, ny))) continue;
             var d = Distance2(nx, ny, cibleX, cibleY);
             if (d < meilleure) (meilleure, bx, by, egalites) = (d, nx, ny, 1);
             else if (d == meilleure && bx >= 0 && alea.Entier(++egalites) == 0) (bx, by) = (nx, ny);
@@ -1211,7 +1214,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             var (i, d) = file.Dequeue();
             int x = i % carte.Largeur, y = i / carte.Largeur;
-            if (i != depart && Distance(x, y, cx, cy) <= (Praticable((Biome)carte.Biomes[cible]) ? 0 : 1))
+            if (i != depart && Distance(x, y, cx, cy) <= (Praticable(cible) ? 0 : 1))
             {
                 while (parent[i] != depart) i = parent[i];
                 return i;
@@ -1222,7 +1225,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
-                if (vus[j] == generation || !Praticable((Biome)carte.Biomes[j])) continue;
+                if (vus[j] == generation || !Praticable(j)) continue;
                 vus[j] = generation;
                 parent[j] = i;
                 file.Enqueue((j, d + 1));
@@ -1276,7 +1279,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 if (vus[j] == generation) continue;
                 vus[j] = generation;
                 // L'eau non praticable peut être une cible (on boit depuis la rive) mais on ne la traverse pas.
-                if (Praticable((Biome)carte.Biomes[j])) file.Enqueue((j, d + 1));
+                if (Praticable(j)) file.Enqueue((j, d + 1));
             }
         }
         return meilleur;
@@ -1347,17 +1350,20 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     private bool CalculerEauDouceAPortee(int x, int y)
     {
-        if (Biomes.EstEauDouce(carte.BiomeEn(x, y))) return true;
+        if (Biomes.EstEauDouce(carte.BiomeEn(x, y)) || SourceBuvable(x, y)) return true;
         foreach (var (dx, dy) in Voisins8)
         {
             int nx = x + dx, ny = y + dy;
-            if (nx >= 0 && ny >= 0 && nx < carte.Largeur && ny < carte.Hauteur && Biomes.EstEauDouce(carte.BiomeEn(nx, ny)))
+            if (nx >= 0 && ny >= 0 && nx < carte.Largeur && ny < carte.Hauteur && (Biomes.EstEauDouce(carte.BiomeEn(nx, ny)) || SourceBuvable(nx, ny)))
             {
                 return true;
             }
         }
         return false;
     }
+
+    /// <summary>Une source où l'on peut boire (douce, ou chaude près d'un volcan ; pas salée).</summary>
+    private bool SourceBuvable(int x, int y) => carte.Terrain.SourceA(x, y) is { Type: not Nature.TypeSource.Salee };
 
     /// <summary>Humains du pas en cours (pour l'imitation pendant les gestes).</summary>
     [ThreadStatic] private static IReadOnlyList<Humain>? _tousDuFil;
@@ -1369,11 +1375,41 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     private bool Praticable(Biome b) => Climat.EstPraticable(b) || _nageur && b is Biome.Lac or Biome.EauPeuProfonde;
 
+    /// <summary>
+    /// Danger du courant (profondeur × vitesse, m²/s) que l'humain en cours accepte pour passer une rivière à gué ;
+    /// 0 : pas de limite (hors de son tour).
+    /// </summary>
+    [ThreadStatic] private static double _gueMax;
+
+    /// <summary>La case est praticable, et sa rivière, s'il y en a une, se passe à gué aujourd'hui (ou il sait nager).</summary>
+    private bool Praticable(int j)
+    {
+        var b = (Biome)carte.Biomes[j];
+        if (!Praticable(b)) return false;
+        if (b != Biome.Riviere || _gueMax <= 0) return true;
+        var courant = CourantEn(j);
+        return courant <= _gueMax || _nageur && courant <= 3 * _gueMax;
+    }
+
+    /// <summary>Danger du courant de la rivière de la case aujourd'hui (selon la saison et les pluies de l'année).</summary>
+    private double CourantEn(int j) => carte.Terrain.CourantDuJour(j, Terrain.FacteurSaison(_maintenant) * ecosysteme.PluieEn(j));
+
+    /// <summary>
+    /// Courant qu'on ose affronter à gué : un adulte perd pied vers 0,5 à 1 m²/s (profondeur × vitesse ; Jonkman et
+    /// Penning-Rowsell, 2008), un enfant bien avant ; le prudent s'arrête plus tôt que le téméraire.
+    /// </summary>
+    private double GueMax(Humain h)
+    {
+        var age = h.AgeEnAnnees(_maintenant);
+        var taille = Math.Clamp(age / 16, 0.4, 1);
+        return (0.5 + 0.5 * (1 - h.Personnalite.Prudence)) * taille * taille;
+    }
+
     /// <summary>Un feu réchauffe autant qu'un bon abri : on dort à côté sans geler.</summary>
     internal const double ChaleurDuFeu = 0.6;
 
     /// <summary>Protection d'une case contre le froid : le terrain, ou une hutte.</summary>
-    private double AbriEn(int x, int y) => Math.Max(Climat.Abri(carte.BiomeEn(x, y)), Installations.AbriEn(x, y));
+    private double AbriEn(int x, int y) => Math.Max(Math.Max(Climat.Abri(carte.BiomeEn(x, y)), Installations.AbriEn(x, y)), Climat.Abri(carte.Terrain.GrotteA(x, y)));
 
     private double AbriEn(int i) => AbriEn(i % carte.Largeur, i / carte.Largeur);
 

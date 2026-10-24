@@ -105,8 +105,48 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
             Population(monde, g, humains, maintenant),
             Marche(g, humains, maintenant),
         };
+        rubriques.InsertRange(rubriques.FindIndex(r => r.Titre == T("terrains")) + 1, SousSol(carte));
         return new CaracteristiquesDto(InfosMonde.ParDefaut.Nom, (uint)monde.Graine, L.Date(date), Echelle.KilometresParCase,
             Echelle.MetresParUnite, rubriques, g.Traversee?.Cases ?? []);
+    }
+
+    /// <summary>
+    /// Ce que porte le terrain (voir <see cref="Terrain"/>) : roches et sols des terres émergées, falaises, grottes, sources,
+    /// rivières, et les gisements, que l'Entité voit tous même quand nul humain ne les connaît.
+    /// </summary>
+    private static RubriqueDto[] SousSol(Carte carte)
+    {
+        var t = carte.Terrain;
+        var terres = Enumerable.Range(0, carte.Biomes.Length).Where(i => carte.Altitudes[i] >= Carte.NiveauMer && Climat.EstPraticable((Biome)carte.Biomes[i])
+                                                                          || (Biome)carte.Biomes[i] is Biome.Montagne or Biome.SommetEnneige).ToList();
+        MesureDto[] Repartition<TCle>(Func<int, TCle> cle, Func<TCle, string> nom) where TCle : notnull =>
+        [
+            .. terres.GroupBy(cle).OrderByDescending(x => x.Count()).Select(x =>
+                new MesureDto(nom(x.Key), Km2(Echelle.KilometresCarres(x.Count())), Pourcent(x.Count() / (double)terres.Count))),
+        ];
+        var grottes = t.Grottes.Where(x => !x.SousRoche).ToList();
+        var abris = t.Grottes.Count - grottes.Count;
+        var plusProfonde = grottes.MaxBy(x => x.Metres);
+        var embouchure = Enumerable.Range(0, t.Debit.Length).MaxBy(i => t.Debit[i]);
+        var infranchissables = Enumerable.Range(0, t.Courant.Length).Count(i => t.Debit[i] > 0 && t.Courant[i] > 1);
+        return
+        [
+            new(T("roches"), Repartition(i => t.Roches[i], r => L.T($"roche.{r}"))),
+            new(T("sols"), Repartition(i => t.Sols[i], s => L.T($"sol.{s}"))),
+            new(T("cavites"), [
+                new(T("falaises"), N(t.Falaise.Count(f => f), 0), T("falaises.aide")),
+                new(T("grottes"), N(grottes.Count, 0), plusProfonde is null ? null : T("grottes.aide", ("v", N(plusProfonde.Metres, 0))),
+                    plusProfonde is null ? -1 : carte.Indice(plusProfonde.X, plusProfonde.Y)),
+                new(T("abrisSousRoche"), N(abris, 0)),
+                .. Enum.GetValues<TypeSource>().Select(s => new MesureDto(T($"sources.{s}"), N(t.Sources.Count(x => x.Type == s), 0))),
+                new(T("debitMax"), T("debit", ("v", N(t.Debit[embouchure], 0))), T("debitMax.aide"), embouchure),
+                new(T("infranchissables"), T("infranchissables.valeur", ("v", Km(Echelle.Kilometres(infranchissables)))), T("infranchissables.aide")),
+            ]),
+            new(T("gisements"), [
+                .. t.Gisements.GroupBy(x => x.Type).OrderBy(x => x.Key).Select(x => new MesureDto(L.T($"gite.{x.Key}"),
+                    T("gisements.valeur", ("n", x.Count()), ("a", x.Count(y => y.Profondeur == Enfouissement.Affleurant))), T("gisements.aide"))),
+            ]),
+        ];
     }
 
     private static RubriqueDto Population(MondeSimule monde, Geographie g, List<Humain> humains, long maintenant)

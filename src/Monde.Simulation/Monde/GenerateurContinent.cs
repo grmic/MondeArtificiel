@@ -254,6 +254,52 @@ public static class GenerateurContinent
     private static void TracerRivieres(byte[] altitudes, byte[] biomes, double[] climat, int largeur, int hauteur)
     {
         var n = biomes.Length;
+        var (niveau, _, debit) = Ecouler(altitudes, biomes, climat, largeur, hauteur);
+
+        var seuilRiviere = SeuilRiviere(n);
+        for (var i = 0; i < n; i++)
+        {
+            var biome = (Biome)biomes[i];
+            if (Biomes.EstEauSalee(biome) || biome == Biome.Lac) continue;
+            var profondeur = niveau[i] - altitudes[i] * 8;
+            if (profondeur >= ProfondeurMinLac)
+            {
+                biomes[i] = (byte)Biome.Lac;
+            }
+            else if (debit[i] >= seuilRiviere)
+            {
+                biomes[i] = (byte)Biome.Riviere;
+            }
+        }
+    }
+
+    /// <summary>Débit (en pluie de cases) au-delà duquel une tuile porte une rivière.</summary>
+    internal static double SeuilRiviere(int cases) => cases / 400.0;
+
+    /// <summary>
+    /// Humidité de chaque tuile, telle que la génération l'a tirée (même graine, même bruit) : elle ne dépend que de la graine
+    /// et de la taille de la carte.
+    /// </summary>
+    internal static double[] Humidite(ulong graine, int largeur, int hauteur)
+    {
+        var alea = new Alea(graine);
+        _ = alea.Suivant(); // le relief
+        var humidite = new Bruit(alea.Suivant());
+        var climat = new double[largeur * hauteur];
+        for (var y = 0; y < hauteur; y++)
+        {
+            for (var x = 0; x < largeur; x++) climat[y * largeur + x] = humidite.Fractal(x / 48.0, y / 48.0, 4);
+        }
+        return climat;
+    }
+
+    /// <summary>
+    /// Écoulement de l'eau : niveau après remplissage des cuvettes (en huitièmes d'unité d'altitude), tuile vers laquelle
+    /// chacune s'écoule (−1 pour la mer) et débit reçu (pluie cumulée de toutes les tuiles d'amont, en pluie de cases).
+    /// </summary>
+    internal static (int[] Niveau, int[] Aval, double[] Debit) Ecouler(byte[] altitudes, byte[] biomes, double[] climat, int largeur, int hauteur)
+    {
+        var n = biomes.Length;
         var niveau = new int[n];   // altitude après remplissage, en huitièmes d'unité
         var aval = new int[n];
         var ferme = new bool[n];
@@ -303,22 +349,7 @@ public static class GenerateurContinent
                 debit[aval[c]] += debit[c];
             }
         }
-
-        var seuilRiviere = n / 400.0;
-        for (var i = 0; i < n; i++)
-        {
-            var biome = (Biome)biomes[i];
-            if (Biomes.EstEauSalee(biome) || biome == Biome.Lac) continue;
-            var profondeur = niveau[i] - altitudes[i] * 8;
-            if (profondeur >= ProfondeurMinLac)
-            {
-                biomes[i] = (byte)Biome.Lac;
-            }
-            else if (debit[i] >= seuilRiviere)
-            {
-                biomes[i] = (byte)Biome.Riviere;
-            }
-        }
+        return (niveau, aval, debit);
     }
 
     private static (int Gibier, int Plantes) RessourcesDeBase(Biome biome) => biome switch

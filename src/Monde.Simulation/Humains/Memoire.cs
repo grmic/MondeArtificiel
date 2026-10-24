@@ -10,6 +10,9 @@ public enum TypeLieu : byte
     Eau = 0,
     Nourriture = 1,
     Abri = 2,
+
+    /// <summary>Un gisement remarqué (sel, cuivre natif, ocre jaune du soufre…) : on ne s'en sert pas encore, on s'en souvient.</summary>
+    Gisement = 3,
 }
 
 /// <summary>Un lieu dont l'humain se souvient.</summary>

@@ -52,8 +52,9 @@ public sealed class Ecosysteme
         _carte = carte;
         _regionsX = (carte.Largeur + TailleRegion - 1) / TailleRegion;
         _regionsY = (carte.Hauteur + TailleRegion - 1) / TailleRegion;
-        Gibier = gibier ?? carte.Gibier.Select(v => (ushort)(v * 100)).ToArray();
-        Plantes = plantes ?? carte.Plantes.Select(v => (ushort)(v * 100)).ToArray();
+        // Un monde neuf part de ce que porte le sol de chaque case ; un monde ancien y converge saison après saison.
+        Gibier = gibier ?? carte.Gibier.Select((v, i) => Arrondir(v * 100 * (0.6 + 0.4 * Sol(i)))).ToArray();
+        Plantes = plantes ?? carte.Plantes.Select((v, i) => Arrondir(v * 100 * Sol(i))).ToArray();
         Pluies = pluies ?? Enumerable.Repeat(1.0, _regionsX * _regionsY).ToArray();
         Degats = degats ?? new ushort[carte.Plantes.Length];
         if (Gibier.Length != carte.Gibier.Length || Plantes.Length != carte.Plantes.Length || Pluies.Length != _regionsX * _regionsY
@@ -124,10 +125,15 @@ public sealed class Ecosysteme
 
     /// <summary>Niveau des plantes vers lequel la tuile repousse aujourd'hui (centièmes).</summary>
     public double NiveauPlantes(int i, double saison) =>
-        _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i)) * (1 - Degats[i] / 10_000.0) * FacteurClimat * Epargne(i);
+        _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i)) * (1 - Degats[i] / 10_000.0) * FacteurClimat * Epargne(i) * Sol(i);
 
     /// <summary>Capacité d'accueil du gibier sur la tuile cette année (centièmes) : il dépend moins des pluies que les plantes.</summary>
-    public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i))) * (1 - Degats[i] / 20_000.0) * Epargne(i);
+    public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i))) * (1 - Degats[i] / 20_000.0) * Epargne(i) * (0.6 + 0.4 * Sol(i));
+
+    // Ce que le sol change aux plantes de la case (voir Terrain.FacteurSol) ; le gibier, qui broute, en dépend moins.
+    private float[]? _sol;
+
+    private double Sol(int i) => (_sol ??= _carte.Terrain.FacteurSol)[i];
 
     /// <summary>
     /// Famine envoyée par l'Entité : part des plantes et du gibier perdue sur chaque tuile (null : aucune). Fixé chaque jour
@@ -182,7 +188,10 @@ public sealed class Ecosysteme
         Disperser();
     }
 
-    private static ushort Arrondir(double v) => (ushort)Math.Clamp(Math.Round(v, MidpointRounding.AwayFromZero), 0, 10_000);
+    /// <summary>Plus haut niveau d'une ressource (centièmes) : une case pleine (100) sur le meilleur sol (×1,8 au plus).</summary>
+    internal const int Plafond = 18_000;
+
+    private static ushort Arrondir(double v) => (ushort)Math.Clamp(Math.Round(v, MidpointRounding.AwayFromZero), 0, Plafond);
 
     /// <summary>
     /// Les bêtes passent des cases où elles sont nombreuses (relativement à ce que la case peut nourrir) vers les voisines
@@ -200,7 +209,7 @@ public sealed class Ecosysteme
             if (x + 1 < largeur) Echanger(i, i + 1, flux);
             if (i + largeur < Gibier.Length) Echanger(i, i + largeur, flux);
         }
-        for (var i = 0; i < Gibier.Length; i++) Gibier[i] = (ushort)Math.Clamp(Gibier[i] + flux[i], 0, 10_000);
+        for (var i = 0; i < Gibier.Length; i++) Gibier[i] = (ushort)Math.Clamp(Gibier[i] + flux[i], 0, Plafond);
     }
 
     private void Echanger(int a, int b, int[] flux)

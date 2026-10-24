@@ -428,9 +428,10 @@ public sealed partial class VieSociale
         else if (a.SoumiseAId == b.Id || b.SoumiseAId == a.Id) caduc = Recit.Seul("guerre.caduc.soumis");
         else if (!instigateur.EstVivant || instigateur.CommunauteId != a.Id) caduc = new Recit("guerre.caduc.instigateur", ("i", instigateur));
         else if (a.Raid is not null) caduc = Recit.Seul("guerre.caduc.raid");
-        if (caduc is not null)
+        // b null rend toujours le projet caduc ; le redire ici renseigne l'analyse des null.
+        if (caduc is not null || b is null)
         {
-            Renoncer(a, humains, new Recit("guerre.abandon", ("a", a), ("caduc", caduc)), null, maintenant);
+            Renoncer(a, humains, new Recit("guerre.abandon", ("a", a), ("caduc", caduc!)), null, maintenant);
             return;
         }
         var figure = humains[a.FigureId - 1];

@@ -30,6 +30,11 @@ public sealed class Carte
 
     public const byte NiveauMer = 128;
 
+    private Nature.Terrain? _terrain;
+
+    /// <summary>Roches, sols, rivières, grottes, sources et gisements : tirés de la graine et de la carte au premier besoin.</summary>
+    public Nature.Terrain Terrain => LazyInitializer.EnsureInitialized(ref _terrain, () => Nature.Terrain.Calculer(this));
+
     public int Indice(int x, int y) => y * Largeur + x;
 
     public Biome BiomeEn(int x, int y) => (Biome)Biomes[Indice(x, y)];

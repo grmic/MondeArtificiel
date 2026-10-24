@@ -686,6 +686,7 @@ public sealed class MondeSimule
 
         _installations.Bruler(SecondesParPas / (double)Calendrier.SecondesParHeure);
 
+        _comportement.RecenserLesGisements(_humains);
         if (Coeurs == 1) VivreChacunSonTour(nouveauJour);
         else VivreEnsemble(nouveauJour);
 
@@ -970,6 +971,7 @@ public sealed class MondeSimule
                 {
                     TypeLieu.Eau => "eau",
                     TypeLieu.Nourriture => "nourriture",
+                    TypeLieu.Gisement => "gisement",
                     _ => "abri",
                 };
                 object fois = l.Rappels > 0 ? new Recit("j.oubli.fois", ("h", h), ("n", l.Rappels + 1)) : "";

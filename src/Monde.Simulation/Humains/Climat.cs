@@ -38,6 +38,19 @@ public static class Climat
         _ => 0,
     };
 
+    /// <summary>
+    /// Protection d'une grotte : à quelques mètres de l'entrée, la température ne suit plus guère celle du dehors et le vent
+    /// n'entre pas (une grotte profonde garde la moyenne annuelle du lieu) ; un abri sous roche ne coupe que la pluie et une
+    /// partie du vent.
+    /// </summary>
+    public static double Abri(Nature.Grotte? g) => g switch
+    {
+        null => 0,
+        { SousRoche: true } => 0.5,
+        { Metres: < 10 } => 0.7,
+        _ => 0.85,
+    };
+
     /// <summary>Un humain peut-il marcher sur ce terrain ? (pas encore de nage ni de bateau)</summary>
     public static bool EstPraticable(Biome biome) =>
         biome is not (Biome.Ocean or Biome.EauPeuProfonde or Biome.Lac);
