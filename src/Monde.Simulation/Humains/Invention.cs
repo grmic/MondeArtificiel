@@ -95,9 +95,8 @@ public sealed partial class Comportement
     /// Une idée pour répondre au besoin, tirée de ce qu'il sait : la pierre qui perce mieux que le bois, la chose ronde qui
     /// roule, le bois qui flotte. Renvoie l'objet imaginé et la pensée qui y a mené, ou null s'il ne voit rien.
     /// </summary>
-    private (Assemblage Objet, string Pensee)? Imaginer(Humain h, Besoin besoin, double charge)
+    private (Assemblage Objet, Recit Pensee)? Imaginer(Humain h, Besoin besoin, double charge)
     {
-        var il = Il(h);
         switch (besoin)
         {
             case Besoin.Chasser:
@@ -110,8 +109,8 @@ public sealed partial class Comportement
                 var lien = ChoisirLien(h);
                 var montage = alea.Reel() < 0.75 ? Montage.Bout : Montage.Travers;
                 return (new Assemblage(corps, 1, tete, 1, lien, montage),
-                    $"{h.Nom} regarde {Physique.Nom(tete)} : la pierre perce mieux que le bois. {Majuscule(il)} veut la fixer {(montage == Montage.Bout ? "au bout" : "en travers")} {DeNom(corps)}"
-                    + (lien == Matiere.Aucune ? ", en la serrant dans sa main." : $" avec {Physique.Nom(lien)}."));
+                    new Recit(montage == Montage.Bout ? "inv.chasser.bout" : "inv.chasser.travers", ("h", h), ("tete", Physique.Nom(tete)), ("corps", Physique.Nom(corps)),
+                        ("fin", lien == Matiere.Aucune ? Recits.Recit.Seul("inv.serrant") : AvecLien(lien))));
             }
             case Besoin.Couper:
             {
@@ -122,8 +121,8 @@ public sealed partial class Comportement
                 var lien = ChoisirLien(h);
                 var montage = alea.Reel() < 0.6 ? Montage.Travers : Montage.Bout;
                 return (new Assemblage(Matiere.Branche, 1, t, 1, lien, montage),
-                    $"{h.Nom} se meurtrit les mains à casser du bois. {Majuscule(il)} pense au coup que donne une pierre au bout du bras, et la fixe "
-                    + $"{(montage == Montage.Travers ? "en travers" : "au bout")} d'une branche" + (lien == Matiere.Aucune ? " sans rien pour la tenir." : $" avec {Physique.Nom(lien)}."));
+                    new Recit(montage == Montage.Travers ? "inv.couper.travers" : "inv.couper.bout", ("h", h),
+                        ("fin", lien == Matiere.Aucune ? Recits.Recit.Seul("inv.sansRien") : AvecLien(lien))));
             }
             case Besoin.Rapporter:
                 return ImaginerTransport(h, charge);
@@ -136,10 +135,9 @@ public sealed partial class Comportement
     /// Rapporter une charge trop lourde pour les bras : poser la charge sur des branches liées (comme le toit d'une hutte),
     /// sur des troncs qui roulent, ou sur des choses rondes qui tournent ; chaque idée vient d'un savoir précis.
     /// </summary>
-    private (Assemblage, string)? ImaginerTransport(Humain h, double charge)
+    private (Assemblage, Recit)? ImaginerTransport(Humain h, double charge)
     {
-        var il = Il(h);
-        var idees = new List<(Assemblage, string, double)>();
+        var idees = new List<(Assemblage, Recit, double)>();
         var lien = ChoisirLien(h);
         var lieAvant = lien != Matiere.Aucune;
         // Des rondelles percées, et l'idée de les enfiler sur un bâton : la plus élaborée, faite de deux savoirs.
@@ -148,27 +146,27 @@ public sealed partial class Comportement
         {
             var k = Math.Min(percees, 1 + alea.Entier(4));
             idees.Add((new Assemblage(Matiere.Branche, 3 + alea.Entier(3), Matiere.RondellePercee, k, lien, Montage.Axe),
-                $"{h.Nom} se souvient de la rondelle qui roulait, et du trou qu'{il} y a percé. {Majuscule(il)} enfile {(k == 1 ? "sa rondelle" : "ses rondelles")} sur un bâton et pose des branches liées dessus.",
+                new Recit("inv.axe", ("h", h), ("n", k)),
                 3));
         }
         // Des troncs qui roulent : y poser la charge.
         if (h.Savoirs.Exists(s => s.Effet == Effet.Roule && s.A == Matiere.Tronc) && Combien(h, Matiere.Tronc) > 0)
             idees.Add((new Assemblage(Matiere.Tronc, 2 + alea.Entier(3), Matiere.Aucune, 0, Matiere.Aucune, Montage.Dessous),
-                $"{h.Nom} se souvient du tronc qui roulait quand on le poussait. {Majuscule(il)} couche des troncs sous la charge.", 1.5));
+                new Recit("inv.rouleaux", ("h", h)), 1.5));
         // Des choses rondes et courtes (rondelles, galets) glissées dessous : l'idée est bonne, la forme ne l'est pas.
         foreach (var rond in new[] { Matiere.Rondelle, Matiere.Galet })
         {
             if (!h.Savoirs.Exists(s => s.Effet == Effet.Roule && s.A == rond) || Combien(h, rond) < 1) continue;
             var n = Math.Min(Combien(h, rond), 2 + alea.Entier(3));
             idees.Add((new Assemblage(rond, Math.Max(1, n), Matiere.Aucune, 0, Matiere.Aucune, Montage.Dessous),
-                $"{h.Nom} se souvient {Que(rond)} roulait. {Majuscule(il)} en glisse sous la charge.", 1.5));
+                new Recit("inv.dessous", ("h", h), ("m", QueNom(rond))), 1.5));
         }
         // Des branches liées côte à côte, comme le toit d'une hutte ou un lit de feuilles.
         if (Combien(h, Matiere.Branche) > 0 && (lieAvant || h.Sait(Effet.Abri)))
             idees.Add((new Assemblage(Matiere.Branche, 3 + alea.Entier(4), Matiere.Aucune, 0, lien, Montage.Cote),
                 h.Sait(Effet.Abri)
-                    ? $"{h.Nom} pense aux branches de la hutte, qui portent les feuilles. {Majuscule(il)} en lie quelques-unes côte à côte et y pose la charge pour la traîner."
-                    : $"{h.Nom} lie des branches côte à côte et y pose la charge pour la traîner.", 1));
+                    ? new Recit("inv.traineau.hutte", ("h", h))
+                    : new Recit("inv.traineau", ("h", h)), 1));
         if (idees.Count == 0) return null;
         var total = idees.Sum(i => i.Item3);
         var x = alea.Reel() * total;
@@ -180,7 +178,7 @@ public sealed partial class Comportement
     }
 
     /// <summary>Traverser l'eau sans nager : lier côte à côte ce qu'il a vu flotter.</summary>
-    private (Assemblage, string)? ImaginerRadeau(Humain h, double charge)
+    private (Assemblage, Recit)? ImaginerRadeau(Humain h, double charge)
     {
         var flottants = h.Savoirs.Where(s => s.Effet == Effet.Flotte && Combien(h, s.A) > 0).Select(s => s.A).Distinct().ToList();
         if (flottants.Count == 0) return null;
@@ -194,12 +192,11 @@ public sealed partial class Comportement
         };
         n = Math.Min(n, Combien(h, m));
         var lien = ChoisirLien(h);
-        var il = Il(h);
         if (lien == Matiere.Aucune)
             return (new Assemblage(m, 1, Matiere.Aucune, 0, Matiere.Aucune, Montage.Dessous),
-                $"{h.Nom} se souvient {Que(m)} flotte. {Majuscule(il)} s'y agrippe pour traverser.");
+                new Recit("inv.agrippe", ("h", h), ("m", QueNom(m))));
         return (new Assemblage(m, n, Matiere.Aucune, 0, lien, Montage.Cote),
-            $"{h.Nom} se souvient {Que(m)} flotte. {Majuscule(il)} en lie plusieurs côte à côte avec {Physique.Nom(lien)} pour monter dessus.");
+            new Recit("inv.radeau", ("h", h), ("m", QueNom(m)), ("lien", Physique.Nom(lien))));
     }
 
     // ------------------------------------------------------------------ Essayer, retenir, transmettre
@@ -208,7 +205,7 @@ public sealed partial class Comportement
     /// Assemble l'objet et l'essaie. Réussi, il est retenu (savoir et objet), et ceux qui regardent peuvent l'imiter ;
     /// manqué, la raison est notée au journal quand c'était une idée nouvelle, et la confiance baisse sinon.
     /// </summary>
-    private (Verdict Verdict, Objet? Objet) Essayer(Humain h, Besoin besoin, Assemblage a, double charge, OrigineSavoir origine, string? pensee,
+    private (Verdict Verdict, Objet? Objet) Essayer(Humain h, Besoin besoin, Assemblage a, double charge, OrigineSavoir origine, Recit? pensee,
         IReadOnlyList<Humain> tous, double km = 0)
     {
         h.Activite = Activite.Fabriquer;
@@ -221,12 +218,12 @@ public sealed partial class Comportement
             if (origine != OrigineSavoir.Essai || connu < 0)
             {
                 var id = Noter(_maintenant, TypeEvenement.Decouverte, h, null,
-                    $"{pensee ?? $"{h.Nom} assemble {Lois.Decrire(a)}."} Mais {v.Raison}.");
+                    new Recit("inv.mais", ("pensee", pensee ?? new Recit("inv.assemble", ("h", h), ("objet", Lois.Decrire(a)))), ("raison", v.Raison)));
                 // Il retient que cela ne marche pas : il ne refera pas la même chose (tant qu'il s'en souvient).
                 if (!h.Savoirs.Exists(s => s.Effet == Effet.Rien && s.Pieces == a.Signature))
                     h.Savoirs.Add(new Savoir(Geste.Assembler, a.Corps, a.Tete, Effet.Rien, 0, Symptome.Aucun, 1, 0, _maintenant, _maintenant,
                         origine, 0, id, a.Signature));
-                if (v.Raison.Contains("s'échappent", StringComparison.Ordinal))
+                if (v.Raison.Cle == "lois.r.echappent")
                     Jardin.Confier(h, TypeIntime.Question, 0, Recits.Recit.Seul("js.idee.tourner"),
                         40 + 30 * h.Personnalite.Ouverture, id, _maintenant, "idee:tourner");
             }
@@ -237,7 +234,7 @@ public sealed partial class Comportement
         Consommer(h, a.Tete, a.NTete);
         Consommer(h, a.Lien, 1);
         var evenement = Retenir(h, Geste.Assembler, a.Corps, a.Tete, v.Effet, 0, Symptome.Aucun, origine, 0, tous, pieces: a.Signature,
-            recit: pensee is null ? null : $"{pensee} Cela marche : {v.Raison}.");
+            recit: pensee is null ? null : new Recit("inv.marche", ("pensee", pensee), ("raison", v.Raison)));
         if (evenement > 0) Montrer(h, Geste.Assembler, a.Corps, a.Tete, v.Effet, 0, Symptome.Aucun, tous, evenement, a.Signature);
         else Montrer(h, Geste.Assembler, a.Corps, a.Tete, v.Effet, 0, Symptome.Aucun, tous, 0, a.Signature);
         // Des troncs couchés sous la charge restent sur place ; le reste s'emporte.
@@ -314,7 +311,7 @@ public sealed partial class Comportement
                 var base_ = Juger(h, besoin, a, charge, km);
                 if (essai.Reussi && essai.Qualite > base_.Qualite + 0.02 && APiecesPour(h, variante))
                     return Essayer(h, besoin, variante, charge, OrigineSavoir.Reflexion,
-                        $"{h.Nom} refait {Lois.Decrire(a)}, mais autrement : {Lois.Decrire(variante)}.", tous, km);
+                        new Recit("inv.refait", ("h", h), ("a", Lois.Decrire(a)), ("b", Lois.Decrire(variante))), tous, km);
             }
             return Essayer(h, besoin, a, charge, OrigineSavoir.Essai, null, tous, km);
         }
@@ -381,7 +378,7 @@ public sealed partial class Comportement
         var vigueur = Force(h, _maintenant);
         var bras = Lois.PorterABras(vigueur);
         double emporte;
-        string comment;
+        Recit comment;
         var vehicule = h.Objets.FirstOrDefault(o => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { } a
                                                      && a.Montage is Montage.Cote or Montage.Axe && Lois.Portance(a) <= 40
                                                      && Juger(h, Besoin.Rapporter, a, reste, km).Reussi);
@@ -390,7 +387,7 @@ public sealed partial class Comportement
             UserObjet(h, vehicule, 0.04);
             RenforcerAssemblage(h, vehicule);
             emporte = viande;
-            comment = $"sur {Lois.Decrire(Assemblage.Lire(vehicule.Pieces)!)}";
+            comment = new Recit("inv.sur", ("objet", Lois.Decrire(Assemblage.Lire(vehicule.Pieces)!)));
         }
         else
         {
@@ -399,17 +396,17 @@ public sealed partial class Comportement
             if (r is { Verdict.Reussi: true } essai)
             {
                 emporte = viande;
-                comment = essai.Objet is { } o ? $"sur {Lois.Decrire(Assemblage.Lire(o.Pieces)!)}" : "sur des troncs qui roulent";
+                comment = essai.Objet is { } o ? new Recit("inv.sur", ("objet", Lois.Decrire(Assemblage.Lire(o.Pieces)!))) : Recits.Recit.Seul("inv.surTroncs");
             }
             else if (reste <= bras)
             {
                 emporte = viande;
-                comment = "sur ses épaules";
+                comment = Recits.Recit.Seul("inv.epaules");
             }
             else if (lame && h.Sait(Effet.Decoupe))
             {
                 emporte = Math.Min(viande, bras);
-                comment = "en quartiers, dans ses bras";
+                comment = Recits.Recit.Seul("inv.quartiers");
             }
             else return;
         }
@@ -419,7 +416,7 @@ public sealed partial class Comportement
         if (emporte < 1) return;
         Prendre(h, new Objet(Matiere.Carcasse, Math.Clamp(emporte / 100, 0, 1), 1));
         Noter(_maintenant, TypeEvenement.Entraide, h, affame,
-            $"{h.Nom} emporte {Math.Round(emporte)} kg de viande {comment}, pour {affame.Nom} et les siens qui ont faim.", karma: Regard.NourrirLesAffames);
+            new Recit("inv.emporte", ("h", h), ("kg", (long)Math.Round(emporte)), ("comment", comment), ("a", affame)), karma: Regard.NourrirLesAffames);
     }
 
     /// <summary>Viande d'une part de gibier, en kg.</summary>
@@ -578,15 +575,15 @@ public sealed partial class Comportement
             h.Activite = Activite.Fabriquer;
             h.CibleX = h.CibleY = -1;
             var r = Physique.Tenter(Geste.Percer, Matiere.Rondelle, meche, Contexte(h), alea);
-            var pensee = $"{h.Nom} se souvient du bois qui chauffe et se creuse quand on y fait tourner un bâton. {Majuscule(Il(h))} fait tourner {Physique.Nom(meche)} au milieu de sa rondelle.";
+            var pensee = new Recit("inv.percer", ("h", h), ("meche", Physique.Nom(meche)));
             if (r.Effet == Effet.Percage)
             {
                 var id = Retenir(h, Geste.Percer, Matiere.Rondelle, meche, Effet.Percage, 0, Symptome.Aucun, OrigineSavoir.Reflexion, 0, tous,
-                    recit: pensee + " Le trou traverse.");
+                    recit: new Recit("inv.percer.reussi", ("pensee", pensee)));
                 Produire(h, Geste.Percer, Matiere.Rondelle, meche, r, id);
                 Montrer(h, Geste.Percer, Matiere.Rondelle, meche, Effet.Percage, 0, Symptome.Aucun, tous, id);
             }
-            else Noter(_maintenant, TypeEvenement.Decouverte, h, null, pensee + " Mais la pointe glisse et le trou n'avance pas.");
+            else Noter(_maintenant, TypeEvenement.Decouverte, h, null, new Recit("inv.percer.rate", ("pensee", pensee)));
             return true;
         }
         // Qui sait percer en refait, pour la rondelle qu'il porte.
@@ -597,20 +594,9 @@ public sealed partial class Comportement
         return false;
     }
 
-    /// <summary>« d'une branche », « d'un épieu ».</summary>
-    private static string DeNom(Matiere m)
-    {
-        var nom = Physique.Nom(m);
-        return nom.StartsWith("du ", StringComparison.Ordinal) ? "de " + nom[3..] : "d'" + nom;
-    }
+    /// <summary>« avec une corde. »</summary>
+    private static Recit AvecLien(Matiere lien) => new("inv.avecLien", ("lien", Physique.Nom(lien)));
 
-    /// <summary>« que le bois sec », « qu'une calebasse ».</summary>
-    private static string Que(Matiere m)
-    {
-        var nom = Physique.Nom(m);
-        if (nom.StartsWith("du ", StringComparison.Ordinal)) nom = "le " + nom[3..];
-        return nom.StartsWith("un", StringComparison.Ordinal) ? "qu'" + nom : "que " + nom;
-    }
-
-    private static string IlChose(Matiere m) => Physique.Nom(m).StartsWith("une ", StringComparison.Ordinal) ? "elle" : "il";
+    /// <summary>La matière dite après « se souvient que » : « le bois sec » (et non « du bois sec »), « une calebasse ».</summary>
+    private static Recit QueNom(Matiere m) => m == Matiere.BoisSec ? Recits.Recit.Seul("inv.leBoisSec") : Physique.Nom(m);
 }

@@ -77,7 +77,7 @@ public sealed record DemographieDto(long Maintenant, string Date, long SecondesP
             .Select(c => new Stockage.RepereCatastrophe(c.Id, c.Type, c.Origine, c.Debut, c.Nom, c.Morts, c.MortsSuites));
         var reperes = enMemoire.Concat(service.Depot.LireReperesCatastrophes()).DistinctBy(c => c.Id)
             .Select(c => new RepereDto(c.Id, CatastropheDto.Types.GetValueOrDefault(c.Type, "autre"), c.Debut,
-                L.Date(c.Debut), c.Nom, c.Morts, c.MortsSuites, c.Origine == Origine.Entite))
+                L.Date(c.Debut), L.Garde(c.Nom), c.Morts, c.MortsSuites, c.Origine == Origine.Entite))
             .Concat(monde.Guerres().Where(g => g.MortsA + g.MortsB > 0).Select(g => new RepereDto(g.Id, "guerre", g.Debut,
                 L.Date(g.Debut), L.T("demographie.guerre", ("a", NomDe(communautes, g.A)), ("b", NomDe(communautes, g.B))),
                 g.MortsA + g.MortsB, 0, false)))

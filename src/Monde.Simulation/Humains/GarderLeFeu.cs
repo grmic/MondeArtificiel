@@ -56,7 +56,7 @@ public sealed partial class Comportement
         if (heure < 5 || heure > 9) return;
         if (alea.Reel() >= 0.02 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
         var id = Retenir(h, Geste.Couvrir, Matiere.Aucune, Matiere.Feu, Effet.Braises, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
-            recit: $"Au matin, {h.Nom} remue la cendre froide du feu de la veille : dessous, une braise rougit encore.");
+            recit: new Recit("feu.braise", ("h", h)));
         Montrer(h, Geste.Couvrir, Matiere.Aucune, Matiere.Feu, Effet.Braises, 0, Symptome.Aucun, tous, id);
     }
 
@@ -117,7 +117,7 @@ public sealed partial class Comportement
         var (x, y) = (h.X, h.Y);
         Tour.Differer(() => Installations.Couvrir(x, y));
         var id = Retenir(h, Geste.Couvrir, Matiere.Aucune, Matiere.Feu, Effet.Braises, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous);
-        if (JournalQuotidien) Noter(_maintenant, TypeEvenement.Pensee, h, null, $"{h.Nom} couvre le feu de cendre pour la nuit.", id != 0 ? id : foyer.EvenementId);
+        if (JournalQuotidien) Noter(_maintenant, TypeEvenement.Pensee, h, null, new Recit("feu.couvre", ("h", h)), id != 0 ? id : foyer.EvenementId);
         Montrer(h, Geste.Couvrir, Matiere.Aucune, Matiere.Feu, Effet.Braises, 0, Symptome.Aucun, tous, 0);
         return true;
     }
@@ -173,7 +173,7 @@ public sealed partial class Comportement
         h.PorteurDuFeuDepuis = _maintenant;
         if (ancien is not null) Tour.Changer(ancien, x => x.PorteurDuFeuDepuis = 0);
         Noter(_maintenant, TypeEvenement.Decouverte, h, ancien,
-            $"Les siens disent de {h.Nom} qu'{Il(h)} porte leur feu : à chaque halte, c'est {Lui(h)} qui le rallume{(ancien is null ? "" : $", comme le faisait {ancien.Nom}")}.");
+            ancien is null ? new Recit("feu.porteur", ("h", h)) : new Recit("feu.porteur.ancien", ("h", h), ("a", ancien)));
     }
 
     /// <summary>Allumer un feu neuf : qui sait dégager le foyer écarte l'herbe et l'entoure de pierres (et ceux qui regardent l'imitent).</summary>
@@ -307,7 +307,7 @@ public sealed partial class Comportement
         var etranger = h.CommunauteId != hote.CommunauteId && h.CommunauteId != 0 && hote.CommunauteId != 0;
         if (alea.Reel() >= accord)
         {
-            var refus = Noter(maintenant, TypeEvenement.Conflit, hote, h, $"{h.Nom} vient demander le feu à {hote.Nom}, qui le lui refuse.");
+            var refus = Noter(maintenant, TypeEvenement.Conflit, hote, h, new Recit("feu.refuse", ("h", h), ("o", hote)));
             Social?.ChangerAffection(h, hote, -5, maintenant);
             Jardin.Confier(h, TypeIntime.Opinion, hote.Id, new Recit("js.feu.refuse", ("x", hote)), 25, refus, maintenant, $"opinion:{hote.Id}");
             return;
@@ -316,7 +316,7 @@ public sealed partial class Comportement
         var meche = hote.Savoirs.Exists(s => s.Effet == Effet.PorteFeu && s.Confiance >= 0.4);
         Prendre(h, meche ? new Objet(Matiere.PorteFeu, 0.6, 1) : new Objet(Matiere.Brandon, 1, 1));
         var don = Noter(maintenant, TypeEvenement.Entraide, hote, h,
-            $"{h.Nom} est venu{E(h)} demander le feu{(etranger ? " chez des voisins" : "")} : {hote.Nom} lui donne {(meche ? "une mèche qui couve" : "une branche qui brûle")}.",
+            new Recit(etranger ? "feu.donne.voisins" : "feu.donne", ("h", h), ("o", hote), ("quoi", Recits.Recit.Seul(meche ? "feu.donne.meche" : "feu.donne.branche"))),
             significatif: etranger, karma: Regard.Partage);
         VieSociale.Gratitude(hote, h, etranger ? 8 : 4);
         Jardin.Confier(h, TypeIntime.Opinion, hote.Id, new Recit("js.feu.donne", ("x", hote)), 30, don, maintenant, $"opinion:{hote.Id}");

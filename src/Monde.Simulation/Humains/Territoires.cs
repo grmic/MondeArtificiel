@@ -135,15 +135,15 @@ public sealed partial class VieSociale
         {
             c.Disette = true;
             c.DisetteEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null, c.Abondance < AbondanceDisette
-                ? $"La disette gagne la {Minuscule(c.Nom)} : le gibier et les plantes se font rares alentour ({c.Abondance:P0} de ce que la terre donne d'ordinaire)."
-                : $"La disette gagne la {Minuscule(c.Nom)} : ses membres maigrissent et ont faim.", communaute: c.Id);
+                ? new Recit("terr.disette.terre", ("c", c), ("p", Libelles.Pourcent(c.Abondance)))
+                : new Recit("terr.disette.faim", ("c", c)), communaute: c.Id);
         }
         else if (c.Disette && reserves > ReservesFinDisette && c.Abondance > AbondanceFinDisette)
         {
             c.Disette = false;
             c.DisettesSurmontees++;
             if (c.FusionVersId == 0) c.DestinationX = c.DestinationY = -1;
-            Noter(maintenant, TypeEvenement.Communaute, figure, null, $"La disette prend fin pour la {Minuscule(c.Nom)}.", c.DisetteEvenementId,
+            Noter(maintenant, TypeEvenement.Communaute, figure, null, new Recit("terr.disette.fin", ("c", c)), c.DisetteEvenementId,
                 communaute: c.Id);
             return;
         }
@@ -153,7 +153,7 @@ public sealed partial class VieSociale
         if (c.DestinationX >= 0 && Math.Max(Math.Abs(c.CentreX - c.DestinationX), Math.Abs(c.CentreY - c.DestinationY)) <= 4)
         {
             c.InstallationEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                $"La {Minuscule(c.Nom)} s'installe sur ses nouvelles terres, {Lieux.Direction(carte, c.CentreX, c.CentreY)} du continent.",
+                new Recit("terr.installe", ("c", c), ("ou", Lieux.DirectionR(carte, c.CentreX, c.CentreY))),
                 communaute: c.Id);
             c.Migrations++;
             c.DestinationX = c.DestinationY = -1;
@@ -178,7 +178,7 @@ public sealed partial class VieSociale
         {
             (c.DestinationX, c.DestinationY) = (meilleur.X, meilleur.Y);
             Noter(maintenant, TypeEvenement.Communaute, guide, null,
-                $"La {Minuscule(c.Nom)} part vers {Lieux.Vers(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)}, à {Lieux.Distance(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)}, vers des terres plus riches dont se souvient {guide.Nom}.",
+                new Recit("terr.part", ("c", c), ("vers", Lieux.VersR(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)), ("d", Lieux.DistanceR(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)), ("g", guide)),
                 c.DisetteEvenementId, communaute: c.Id);
             return;
         }
@@ -194,7 +194,7 @@ public sealed partial class VieSociale
             if (!Climat.EstPraticable(carte.BiomeEn(x, y)) || carte.Plantes[carte.Indice(x, y)] + carte.Gibier[carte.Indice(x, y)] < 40) continue;
             (c.DestinationX, c.DestinationY) = (x, y);
             Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                $"La {Minuscule(c.Nom)} quitte ses terres épuisées et part à l'aventure vers {Lieux.Vers(c.CentreX, c.CentreY, x, y)}, à quelque {Lieux.Distance(c.CentreX, c.CentreY, x, y)}.",
+                new Recit("terr.aventure", ("c", c), ("vers", Lieux.VersR(c.CentreX, c.CentreY, x, y)), ("d", Lieux.DistanceR(c.CentreX, c.CentreY, x, y))),
                 c.DisetteEvenementId, communaute: c.Id);
             return;
         }
@@ -255,19 +255,18 @@ public sealed partial class VieSociale
 
                 var figureA = humains[a.FigureId - 1];
                 var figureB = humains[b.FigureId - 1];
-                var (na, nb) = (Minuscule(a.Nom), Minuscule(b.Nom));
-                var texte = apres switch
+                var texte = new Recit(apres switch
                 {
-                    EtatRelation.Alliees => $"La {na} et la {nb} se lient d'amitié : leurs membres s'apprécient et se rendent service.",
-                    EtatRelation.Rivales => $"La {na} et la {nb} se disputent les mêmes terres, devenues trop pauvres pour toutes deux.",
-                    EtatRelation.Hostiles => $"La {na} et la {nb} sont désormais hostiles l'une à l'autre.",
+                    EtatRelation.Alliees => "terr.rel.alliees",
+                    EtatRelation.Rivales => "terr.rel.rivales",
+                    EtatRelation.Hostiles => "terr.rel.hostiles",
                     _ => avant switch
                     {
-                        EtatRelation.Alliees => $"L'amitié entre la {na} et la {nb} s'éteint.",
-                        EtatRelation.Rivales => $"La {na} et la {nb} ne se disputent plus leurs terres.",
-                        _ => $"L'hostilité entre la {na} et la {nb} s'apaise.",
+                        EtatRelation.Alliees => "terr.rel.finAmitie",
+                        EtatRelation.Rivales => "terr.rel.finRivalite",
+                        _ => "terr.rel.finHostilite",
                     },
-                };
+                }, ("a", a), ("b", b));
                 // Une hostilité qui suit une violence entre les deux groupes cite cette violence comme cause.
                 var id = Noter(maintenant, TypeEvenement.Communaute, figureA, figureB, texte,
                     apres switch
@@ -303,6 +302,35 @@ public static class Lieux
         var secteur = (int)Math.Round(Math.Atan2(y1 - y0, x1 - x0) / (Math.PI / 4));
         return Recits.Recit.Seul("p.vers." + Cles[(secteur + 8) % 8]);
     }
+
+    /// <summary>« le nord-est », dans la langue de l'observateur (clés <c>lieu.dir.*</c>).</summary>
+    public static Recit VersR(int x0, int y0, int x1, int y1)
+    {
+        var secteur = (int)Math.Round(Math.Atan2(y1 - y0, x1 - x0) / (Math.PI / 4));
+        return Recit.Seul("lieu.dir." + Cles[(secteur + 8) % 8]);
+    }
+
+    /// <summary>« au nord-est », « à l'est » : la direction d'un point vers un autre, dans la langue de l'observateur.</summary>
+    public static Recit PartieR(int x0, int y0, int x1, int y1)
+    {
+        var secteur = (int)Math.Round(Math.Atan2(y1 - y0, x1 - x0) / (Math.PI / 4));
+        return Recit.Seul("lieu.partie." + Cles[(secteur + 8) % 8]);
+    }
+
+    /// <summary>Partie du continent où se trouve un point (« au nord-ouest », « au centre »), dans la langue de l'observateur.</summary>
+    public static Recit DirectionR(Carte carte, int x, int y) => Recit.Seul($"lieu.partie.{Coin(carte, x, y)}");
+
+    /// <summary>Partie du continent où se trouve un point, en clé : « centre », « nord-ouest »…</summary>
+    public static string Coin(Carte carte, int x, int y)
+    {
+        int cx = carte.Largeur / 2, cy = carte.Hauteur / 2;
+        if (Math.Max(Math.Abs(x - cx), Math.Abs(y - cy)) < carte.Largeur / 6) return "centre";
+        var secteur = (int)Math.Round(Math.Atan2(y - cy, x - cx) / (Math.PI / 4));
+        return Cles[(secteur + 8) % 8];
+    }
+
+    /// <summary>Distance à vol d'oiseau, à écrire dans la langue de l'observateur.</summary>
+    public static Recit DistanceR(int x0, int y0, int x1, int y1) => Nature.Echelle.DistanceR(Nature.Echelle.Kilometres(x0, y0, x1, y1));
 
     /// <summary>Distance à vol d'oiseau en mots (« 18 km »), pour le journal.</summary>
     public static string Distance(int x0, int y0, int x1, int y1) => Nature.Echelle.Distance(Nature.Echelle.Kilometres(x0, y0, x1, y1));

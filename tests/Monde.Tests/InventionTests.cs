@@ -44,10 +44,10 @@ public sealed class InventionTests
     [Fact]
     public void Lois_UnTroncSeulRoule_DeuxTroncsLiesPortentUnHumain_DesBranchesCoulent()
     {
-        Assert.Contains("roule sur lui-même", Lois.Flotter(A(Matiere.Tronc, 1, 0, 0, 0, Montage.Dessous), 60, false).Raison);
+        Assert.Contains("roule sur lui-même", Lois.Flotter(A(Matiere.Tronc, 1, 0, 0, 0, Montage.Dessous), 60, false).Raison.Texte);
         Assert.Equal(Effet.Flottaison, Lois.Flotter(A(Matiere.Tronc, 2, 0, 0, Matiere.Fibres, Montage.Cote), 60, false).Effet);
         Assert.False(Lois.Flotter(A(Matiere.Tronc, 2, 0, 0, Matiere.Aucune, Montage.Cote), 60, false).Reussi);
-        Assert.Contains("s'enfonce", Lois.Flotter(A(Matiere.Branche, 8, 0, 0, Matiere.Corde, Montage.Cote), 60, false).Raison);
+        Assert.Contains("s'enfonce", Lois.Flotter(A(Matiere.Branche, 8, 0, 0, Matiere.Corde, Montage.Cote), 60, false).Raison.Texte);
         // La résine ne colle que chauffée.
         Assert.False(Lois.Flotter(A(Matiere.Tronc, 3, 0, 0, Matiere.Resine, Montage.Cote), 60, false).Reussi);
         Assert.True(Lois.Flotter(A(Matiere.Tronc, 3, 0, 0, Matiere.Resine, Montage.Cote), 60, true).Reussi);
@@ -59,21 +59,21 @@ public sealed class InventionTests
         double t = Lois.Traction(0.8), s = Lois.Soulever(0.8);
         var traineau = A(Matiere.Branche, 4, 0, 0, Matiere.Corde, Montage.Cote);
         Assert.Equal(Effet.Glisser, Lois.Transporter(traineau, 40, Biome.PlaineDeFougeres, t, s, false).Effet);
-        Assert.Contains("trop lourde à traîner", Lois.Transporter(traineau with { NCorps = 6 }, 60, Biome.ForetTropicale, t, s, false).Raison);
-        Assert.Contains("cèdent", Lois.Transporter(traineau with { NCorps = 2 }, 70, Biome.PlaineDeFougeres, t, s, false).Raison);
+        Assert.Contains("trop lourde à traîner", Lois.Transporter(traineau with { NCorps = 6 }, 60, Biome.ForetTropicale, t, s, false).Raison.Texte);
+        Assert.Contains("cèdent", Lois.Transporter(traineau with { NCorps = 2 }, 70, Biome.PlaineDeFougeres, t, s, false).Raison.Texte);
 
         var rondelles = A(Matiere.Rondelle, 3, 0, 0, 0, Montage.Dessous);
-        Assert.Contains("s'échappent", Lois.Transporter(rondelles, 60, Biome.PlaineDeFougeres, t, s, false).Raison);
+        Assert.Contains("s'échappent", Lois.Transporter(rondelles, 60, Biome.PlaineDeFougeres, t, s, false).Raison.Texte);
         Assert.Equal(Effet.Rouleaux, Lois.Transporter(A(Matiere.Tronc, 3, 0, 0, 0, Montage.Dessous), 60, Biome.PlaineDeFougeres, t, s, false).Effet);
         Assert.False(Lois.Transporter(A(Matiere.Tronc, 3, 0, 0, 0, Montage.Dessous), 60, Biome.Marais, t, s, false).Reussi);
 
         var chariot = A(Matiere.Branche, 6, Matiere.RondellePercee, 2, Matiere.Corde, Montage.Axe);
         Assert.Equal(Effet.RouleSurAxe, Lois.Transporter(chariot, 60, Biome.ForetTropicale, t, s, false).Effet);
-        Assert.Contains("traverse", Lois.Transporter(chariot with { Tete = Matiere.Rondelle }, 60, Biome.ForetTropicale, t, s, false).Raison);
+        Assert.Contains("traverse", Lois.Transporter(chariot with { Tete = Matiere.Rondelle }, 60, Biome.ForetTropicale, t, s, false).Raison.Texte);
         // Une seule roue : on soulève une part de la charge par les deux bras.
         var une = chariot with { NTete = 1 };
         Assert.Equal(Effet.RouleSurAxe, Lois.Transporter(une, 50, Biome.PlaineDeFougeres, t, s, false).Effet);
-        Assert.Contains("soulever", Lois.Transporter(une with { NCorps = 10 }, 150, Biome.PlaineDeFougeres, t, s, false).Raison);
+        Assert.Contains("soulever", Lois.Transporter(une with { NCorps = 10 }, 150, Biome.PlaineDeFougeres, t, s, false).Raison.Texte);
         Assert.Equal("axe:1", Lois.Structure(une.Signature));
         Assert.Equal("axe:2", Lois.Structure(chariot.Signature));
     }
@@ -84,9 +84,9 @@ public sealed class InventionTests
         var alea = new Alea(3);
         Assert.Equal(Effet.PointeEmmanchee, Lois.Emmancher(A(Matiere.Branche, 1, Matiere.Eclat, 1, Matiere.Corde, Montage.Bout), false, 1, alea).Effet);
         Assert.Equal(Effet.TranchantEmmanche, Lois.Emmancher(A(Matiere.Branche, 1, Matiere.Galet, 1, Matiere.Corde, Montage.Travers), false, 1, alea).Effet);
-        Assert.Contains("rien ne retient", Lois.Emmancher(A(Matiere.Branche, 1, Matiere.Eclat, 1, 0, Montage.Bout), false, 1, alea).Raison);
-        Assert.Contains("pas de pointe", Lois.Emmancher(A(Matiere.Branche, 1, Matiere.Galet, 1, Matiere.Corde, Montage.Bout), false, 1, alea).Raison);
-        Assert.Contains("pas plus dure", Lois.Emmancher(A(Matiere.Branche, 1, Matiere.Branche, 1, Matiere.Corde, Montage.Bout), false, 1, alea).Raison);
+        Assert.Contains("rien ne retient", Lois.Emmancher(A(Matiere.Branche, 1, Matiere.Eclat, 1, 0, Montage.Bout), false, 1, alea).Raison.Texte);
+        Assert.Contains("pas de pointe", Lois.Emmancher(A(Matiere.Branche, 1, Matiere.Galet, 1, Matiere.Corde, Montage.Bout), false, 1, alea).Raison.Texte);
+        Assert.Contains("pas plus dure", Lois.Emmancher(A(Matiere.Branche, 1, Matiere.Branche, 1, Matiere.Corde, Montage.Bout), false, 1, alea).Raison.Texte);
         var lance = new Objet(Matiere.Assemblage, 0.7, 1, Pieces: A(Matiere.Branche, 1, Matiere.Eclat, 1, Matiere.Corde, Montage.Bout).Signature);
         Assert.True(Lois.Chasse(lance) > Lois.Chasse(new Objet(Matiere.Epieu, 0.7, 1)));
         var hache = new Objet(Matiere.Assemblage, 0.7, 1, Pieces: A(Matiere.Branche, 1, Matiere.Galet, 1, Matiere.Corde, Montage.Travers).Signature);
@@ -199,7 +199,7 @@ public sealed class InventionTests
         Assert.NotEmpty(echecs);
         Assert.Equal(echecs.Count, echecs.Select(j => j.Texte).Distinct().Count());
         var retenu = Assert.Single(h.Savoirs, s => s.Effet == Effet.Rien && s.Geste == Geste.Assembler && s.Pieces.Length > 0);
-        Assert.Contains("ne marche pas", Physique.Decrire(retenu));
+        Assert.Contains("ne marche pas", Physique.Decrire(retenu).Texte);
     }
 
     [Fact]

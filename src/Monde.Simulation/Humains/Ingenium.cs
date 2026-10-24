@@ -162,7 +162,7 @@ public sealed partial class Comportement
     /// donné quelque chose, et ceux qui le regardaient peuvent l'imiter.
     /// </summary>
     private void Constater(Humain h, Geste g, Matiere a, Matiere b, Resultat r, OrigineSavoir origine, IReadOnlyList<Humain> tous,
-        Humain? maitre = null, string? recit = null)
+        Humain? maitre = null, Recit? recit = null)
     {
         if (r.Effet == Effet.Rien)
         {
@@ -325,7 +325,7 @@ public sealed partial class Comportement
     /// <paramref name="karmaMaitre"/> : ce que vaut, pour le maître, de l'avoir enseigné (voir <see cref="Regard.Enseigner"/>).
     /// </summary>
     private long Retenir(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, OrigineSavoir origine, int maitreId,
-        IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", string? recit = null, int heritage = 0, double karmaMaitre = 0)
+        IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", Recit? recit = null, int heritage = 0, double karmaMaitre = 0)
     {
         // Ce qu'un autre apprend en regardant celui dont c'est le tour, il le retient après le pas.
         if (Tour.Autrui(h))
@@ -347,17 +347,17 @@ public sealed partial class Comportement
         var premier = !Installations.Decouvertes.Exists(d => d.Effet == e && Lois.Structure(d.Pieces) == structure);
         // Un savoir que tout le monde avait perdu, retrouvé : c'est aussi un tournant.
         var retrouve = !premier && espece == 0 && !tous.Vivants().Any(o => o.EstVivant && o.Savoirs.Exists(s => s.Effet == e && s.Espece == 0));
-        var nom = espece > 0 ? Majuscule(Flore.Get(espece).Nom) : null;
+        var nom = espece > 0 ? Flore.Get(espece).Dit : null;
         var nouveau = new Savoir(g, a, b, e, espece, mal, 1 + heritage, (succes ? 1 : 0) + heritage, _maintenant, _maintenant, origine, maitreId, 0, pieces);
         var maitre = maitreId > 0 && maitreId <= tous.Count ? tous[maitreId - 1] : null;
         var description = Physique.Decrire(nouveau, nom);
         var comment = recit is not null ? recit : origine switch
         {
-            OrigineSavoir.Essai => Recit(h, nouveau, espece > 0 ? Flore.Get(espece).Nom : null),
+            OrigineSavoir.Essai => Raconter(h, nouveau, nom),
             OrigineSavoir.Observation => Observation(h, nouveau),
-            OrigineSavoir.Reflexion => $"{h.Nom} rapproche ce qu'{Il(h)} sait déjà et tente sa chance.",
-            OrigineSavoir.Imitation => $"{h.Nom} a regardé faire {maitre?.Nom ?? "un autre"}.",
-            _ => $"Une intuition soufflée par l'Entité a guidé la main de {h.Nom}.",
+            OrigineSavoir.Reflexion => new Recit("ing.reflexion", ("h", h)),
+            OrigineSavoir.Imitation => maitre is null ? new Recit("ing.imitation.autre", ("h", h)) : new Recit("ing.imitation", ("h", h), ("m", maitre)),
+            _ => new Recit("ing.entite", ("h", h)),
         };
         // Un savoir banal (le feu chauffe, le bois frotté tiédit) n'est pas noté chez chacun : seulement la première fois au monde.
         // Un chant, un rythme, une danse, la parure d'ocre appris des autres : cela se fait à chaque veillée.
@@ -370,10 +370,10 @@ public sealed partial class Comportement
         long id = 0;
         if (premier || retrouve || !banal || venu is not null)
         {
-            var texte = premier ? $"Première fois au monde : {comment} {h.Nom} comprend : « {description} »"
-                : retrouve ? $"Savoir retrouvé (plus personne ne le savait) : {comment} {h.Nom} comprend : « {description} »"
-                : venu is not null ? $"{venu.Value.Texte} {comment} {h.Nom} comprend : « {description} »"
-                : $"{comment} {h.Nom} comprend : « {description} »";
+            var texte = premier ? new Recit("ing.premiere", ("comment", comment), ("h", h), ("savoir", description))
+                : retrouve ? new Recit("ing.retrouve", ("comment", comment), ("h", h), ("savoir", description))
+                : venu is not null ? new Recit("ing.venu", ("venu", venu.Value.Texte), ("comment", comment), ("h", h), ("savoir", description))
+                : new Recit("ing.comprend", ("comment", comment), ("h", h), ("savoir", description));
             id = Noter(_maintenant, TypeEvenement.Decouverte, h, maitre, texte, significatif: premier || retrouve || venu is not null, karmaAutre: karmaMaitre,
                 autreCommunaute: venu?.Source ?? 0);
         }
@@ -399,7 +399,7 @@ public sealed partial class Comportement
     /// rassemblement, chez des voisins), ou de quelqu'un des siens venu d'ailleurs, alors qu'aucun autre des siens ne le sait.
     /// Renvoie la phrase qui le dit et la communauté d'où il vient, ou null.
     /// </summary>
-    private (string Texte, int Source)? VenuDAilleurs(Humain h, Humain maitre, Effet e, string structure, IReadOnlyList<Humain> tous)
+    private (Recit Texte, int Source)? VenuDAilleurs(Humain h, Humain maitre, Effet e, string structure, IReadOnlyList<Humain> tous)
     {
         if (h.CommunauteId == 0 || Social is not { } social || social.CommunauteDe(h) is not { } siens) return null;
         var etranger = maitre.CommunauteId != 0 && maitre.CommunauteId != h.CommunauteId;
@@ -411,100 +411,100 @@ public sealed partial class Comportement
             if (!o.EstVivant || o.Id == h.Id || o.Id == maitre.Id || o.CommunauteId != h.CommunauteId) continue;
             if (o.Savoirs.Exists(s => s.Effet == e && s.Espece == 0 && Lois.Structure(s.Pieces) == structure)) return null;
         }
-        var (nh, ns) = (Minuscule(siens.Nom), Minuscule(social.Communautes[source - 1].Nom));
-        var ou = h.VisiteChezId == maitre.Id ? $", chez qui {Il(h)} était en visite"
-            : maitre.VisiteChezId == h.Id ? $", venu{E(maitre)} lui rendre visite"
-            : h.RassemblementId != 0 && h.RassemblementId == maitre.RassemblementId ? " au rassemblement des deux groupes"
+        var (nh, ns) = (siens, social.Communautes[source - 1]);
+        object ou = h.VisiteChezId == maitre.Id ? new Recit("ing.ou.visite", ("h", h))
+            : maitre.VisiteChezId == h.Id ? new Recit("ing.ou.venu", ("m", maitre))
+            : h.RassemblementId != 0 && h.RassemblementId == maitre.RassemblementId ? Recits.Recit.Seul("ing.ou.rassemblement")
             : "";
         var texte = etranger
-            ? $"La {nh} l'apprend de la {ns} : {h.Nom} l'a vu faire à {maitre.Nom}{ou}."
-            : $"{maitre.Nom}, venu{E(maitre)} de la {ns}, apporte ce savoir à la {nh}.";
+            ? new Recit("ing.venu.etranger", ("nh", nh), ("ns", ns), ("h", h), ("m", maitre), ("ou", ou))
+            : new Recit("ing.venu.siens", ("m", maitre), ("ns", ns), ("nh", nh));
         return (texte, source);
     }
 
     /// <summary>Ce qu'il s'est passé, dit simplement.</summary>
-    private static string Recit(Humain h, Savoir s, string? plante)
+    private static Recit Raconter(Humain h, Savoir s, object? plante)
     {
         return s.Effet switch
         {
-            Effet.Eclat => $"{h.Nom} frappe {Physique.Nom(s.A)} contre {Physique.Nom(s.B)} : un éclat tranchant se détache.",
-            Effet.Etincelle => $"{h.Nom} frappe {Physique.Nom(s.A)} contre {Physique.Nom(s.B)} : des étincelles jaillissent.",
-            Effet.Flamme when s.Geste == Geste.Frotter => $"{h.Nom} frotte longtemps deux bois secs : une fumée monte, puis une flamme.",
-            Effet.Flamme => $"{h.Nom} frappe {Physique.Nom(s.A)} contre {Physique.Nom(s.B)} : une étincelle tombe dans l'herbe sèche, qui s'enflamme.",
-            Effet.Tiedeur => $"{h.Nom} frotte deux bouts de bois : ils deviennent chauds.",
-            Effet.Pointe => $"{h.Nom} racle une branche avec {Physique.Nom(s.B)} : son bout devient pointu.",
-            Effet.Corde => $"{h.Nom} tord des fibres entre ses doigts : elles tiennent ensemble.",
-            Effet.Couvert => $"{h.Nom} s'enveloppe {(s.A == Matiere.Peau ? "d'une peau" : "de grandes feuilles")} : le vent le mord moins.",
-            Effet.Abri => $"{h.Nom} pose de grandes feuilles sur des branches : dessous, il fait sec.",
-            Effet.Tubercules => $"{h.Nom} gratte la terre avec {Physique.Nom(s.A)} : des racines charnues apparaissent.",
-            Effet.Nage => $"{h.Nom} s'avance dans l'eau profonde, se débat, et flotte.",
-            Effet.Durci => $"{h.Nom} approche son bâton pointu du feu : la pointe noircit et durcit.",
-            Effet.Brandon => $"{h.Nom} approche une branche du feu : elle s'embrase et {Il(h)} l'emporte.",
-            Effet.PorteFeu => $"{h.Nom} approche {Physique.Nom(s.A)} du feu : {(s.A == Matiere.Corde ? "elle ne flambe pas, elle couve" : "elles ne flambent pas, elles couvent")}, et longtemps après, le bout rougit encore.",
-            Effet.Cuisson => $"{h.Nom} approche la bête du feu : la chair grillée est tendre et sent bon.",
-            Effet.Decoupe => $"{h.Nom} entaille la bête avec un éclat : la peau se détache.",
-            Effet.Foyer => $"{h.Nom} pose du bois sur les flammes : le feu grandit et dure.",
-            Effet.EauPortee => $"{h.Nom} plonge une calebasse dans l'eau : elle reste pleine quand {Il(h)} s'en va.",
-            Effet.Chasse => $"{h.Nom} chasse avec {Physique.Nom(s.A)} : la bête tombe plus vite.",
-            Effet.Chaleur => $"{h.Nom} s'approche du feu : sa chaleur est douce.",
-            Effet.Poison => $"{h.Nom} goûte {plante} : son ventre se tord.",
-            Effet.Visions => $"{h.Nom} mâche {plante} : le monde se met à onduler.",
-            Effet.Soulagement => $"{h.Nom} guérit après avoir pris {plante}.",
-            Effet.Roule => $"{h.Nom} pousse {Physique.Nom(s.A)} : {IlChose(s.A)} roule loin devant.",
-            Effet.Flotte => $"{h.Nom} pousse {Physique.Nom(s.A)} dans l'eau : {IlChose(s.A)} ne coule pas.",
-            Effet.Percage => $"{h.Nom} fait tourner {Physique.Nom(s.B)} contre {Physique.Nom(s.A)}, longtemps : un trou se creuse, puis traverse.",
-            Effet.Rondelle => $"{h.Nom} entaille {Physique.Nom(s.A)} à grands coups : une tranche ronde s'en détache.",
-            Effet.Pansement when s.A == Matiere.Eau => $"{h.Nom} a lavé une plaie à l'eau : elle s'est refermée sans pourrir.",
-            Effet.Pansement => $"{h.Nom} a pressé une plaie et l'a couverte de feuilles : elle s'est refermée sans pourrir.",
-            Effet.Rythme => $"{h.Nom} frappe {Physique.Nom(s.A)} contre {Physique.Nom(s.B)}, encore et encore : les coups prennent une cadence qui lui fait hocher la tête.",
-            Effet.Ocre => $"{h.Nom} écrase de la terre rouge et s'en frotte la peau : elle reste rouge, et les autres {Il(h) switch { "elle" => "la", _ => "le" }} regardent.",
-            Effet.Chant => $"{h.Nom} laisse sa voix monter et descendre : c'est un chant.",
-            Effet.Danse => $"{h.Nom} se met à bouger en cadence.",
-            Effet.Peinture => $"{h.Nom} pose de l'ocre sur la roche : la marque reste.",
-            _ => $"{h.Nom} essaie quelque chose de nouveau.",
+            Effet.Eclat => new Recit("ing.essai.Eclat", ("h", h), ("a", Physique.Nom(s.A)), ("b", Physique.Nom(s.B))),
+            Effet.Etincelle => new Recit("ing.essai.Etincelle", ("h", h), ("a", Physique.Nom(s.A)), ("b", Physique.Nom(s.B))),
+            Effet.Flamme when s.Geste == Geste.Frotter => new Recit("ing.essai.Flamme.frotter", ("h", h)),
+            Effet.Flamme => new Recit("ing.essai.Flamme", ("h", h), ("a", Physique.Nom(s.A)), ("b", Physique.Nom(s.B))),
+            Effet.Tiedeur => new Recit("ing.essai.Tiedeur", ("h", h)),
+            Effet.Pointe => new Recit("ing.essai.Pointe", ("h", h), ("b", Physique.Nom(s.B))),
+            Effet.Corde => new Recit("ing.essai.Corde", ("h", h)),
+            Effet.Couvert => new Recit(s.A == Matiere.Peau ? "ing.essai.Couvert.peau" : "ing.essai.Couvert", ("h", h)),
+            Effet.Abri => new Recit("ing.essai.Abri", ("h", h)),
+            Effet.Tubercules => new Recit("ing.essai.Tubercules", ("h", h), ("a", Physique.Nom(s.A))),
+            Effet.Nage => new Recit("ing.essai.Nage", ("h", h)),
+            Effet.Durci => new Recit("ing.essai.Durci", ("h", h)),
+            Effet.Brandon => new Recit("ing.essai.Brandon", ("h", h)),
+            Effet.PorteFeu => new Recit(s.A == Matiere.Corde ? "ing.essai.PorteFeu.corde" : "ing.essai.PorteFeu", ("h", h), ("a", Physique.Nom(s.A))),
+            Effet.Cuisson => new Recit("ing.essai.Cuisson", ("h", h)),
+            Effet.Decoupe => new Recit("ing.essai.Decoupe", ("h", h)),
+            Effet.Foyer => new Recit("ing.essai.Foyer", ("h", h)),
+            Effet.EauPortee => new Recit("ing.essai.EauPortee", ("h", h)),
+            Effet.Chasse => new Recit("ing.essai.Chasse", ("h", h), ("a", Physique.Nom(s.A))),
+            Effet.Chaleur => new Recit("ing.essai.Chaleur", ("h", h)),
+            Effet.Poison => new Recit("ing.essai.Poison", ("h", h), ("plante", plante)),
+            Effet.Visions => new Recit("ing.essai.Visions", ("h", h), ("plante", plante)),
+            Effet.Soulagement => new Recit("ing.essai.Soulagement", ("h", h), ("plante", plante)),
+            Effet.Roule => new Recit("ing.essai.Roule", ("h", h), ("a", Physique.Nom(s.A))),
+            Effet.Flotte => new Recit("ing.essai.Flotte", ("h", h), ("a", Physique.Nom(s.A))),
+            Effet.Percage => new Recit("ing.essai.Percage", ("h", h), ("a", Physique.Nom(s.A)), ("b", Physique.Nom(s.B))),
+            Effet.Rondelle => new Recit("ing.essai.Rondelle", ("h", h), ("a", Physique.Nom(s.A))),
+            Effet.Pansement when s.A == Matiere.Eau => new Recit("ing.essai.Pansement.eau", ("h", h)),
+            Effet.Pansement => new Recit("ing.essai.Pansement", ("h", h)),
+            Effet.Rythme => new Recit("ing.essai.Rythme", ("h", h), ("a", Physique.Nom(s.A)), ("b", Physique.Nom(s.B))),
+            Effet.Ocre => new Recit("ing.essai.Ocre", ("h", h)),
+            Effet.Chant => new Recit("ing.essai.Chant", ("h", h)),
+            Effet.Danse => new Recit("ing.essai.Danse", ("h", h)),
+            Effet.Peinture => new Recit("ing.essai.Peinture", ("h", h)),
+            _ => new Recit("ing.essai.autre", ("h", h)),
         };
     }
 
-    private static string Observation(Humain h, Savoir s) => s.Effet switch
+    private static Recit Observation(Humain h, Savoir s) => s.Effet switch
     {
-        Effet.Chaleur => $"{h.Nom}, transi, s'approche des flammes de l'incendie et sent leur chaleur.",
-        Effet.Brandon => $"{h.Nom} ramasse une branche qui brûle au bord de l'incendie.",
-        Effet.Cuisson => $"{h.Nom} trouve une bête surprise par l'incendie : sa chair grillée est tendre.",
-        Effet.Peinture => $"{h.Nom} contemple une image d'ocre sur la roche, et comprend qu'on peut en faire autant.",
-        _ => $"{h.Nom} observe ce qui se passe.",
+        Effet.Chaleur => new Recit("ing.observation.Chaleur", ("h", h)),
+        Effet.Brandon => new Recit("ing.observation.Brandon", ("h", h)),
+        Effet.Cuisson => new Recit("ing.observation.Cuisson", ("h", h)),
+        Effet.Peinture => new Recit("ing.observation.Peinture", ("h", h)),
+        _ => new Recit("ing.observation.autre", ("h", h)),
     };
 
     /// <summary>La question que le savoir fait naître, au jardin secret.</summary>
-    private static string Question(Savoir s) => s.Effet switch
+    private static Recit Question(Savoir s) => Recits.Recit.Seul(s.Effet switch
     {
-        Effet.Etincelle => "D'où viennent ces petites lumières qui sortent de la pierre ?",
-        Effet.Flamme => "J'ai fait naître le feu de mes mains. Qu'est-ce que le feu ?",
-        Effet.Chaleur => "Pourquoi le feu chauffe-t-il comme le soleil ?",
-        Effet.Visions => "Ce que j'ai vu sous l'effet de la plante, est-ce un autre monde ?",
-        Effet.Poison => "Pourquoi cette plante veut-elle me tuer ?",
-        Effet.Soulagement => "Cette plante a chassé mon mal. Comment le savait-elle ?",
-        Effet.Nage => "Pourquoi l'eau me porte-t-elle ?",
-        Effet.Roule => "Pourquoi ce qui est rond s'en va-t-il tout seul quand on le pousse ?",
-        Effet.Flotte => "Pourquoi le bois reste-t-il sur l'eau quand la pierre coule ?",
-        Effet.Flottaison => "L'eau ne me barre plus la route. Jusqu'où peut-on aller ainsi ?",
-        Effet.RouleSurAxe => "Ce qui tourne porte ce qui pèse. Que pourrait-on faire tourner encore ?",
-        Effet.Pansement => "Pourquoi une plaie laissée sale pourrit-elle, et une plaie soignée non ?",
-        Effet.Rythme => "Pourquoi ces coups en cadence me donnent-ils envie de bouger ?",
-        Effet.Chant => "D'où vient ce chant qui sort de moi ? Il dit ce que je ne sais pas dire.",
-        Effet.Danse => "Quand nous bougeons ensemble, je ne suis plus seul. Pourquoi ?",
-        Effet.Ocre => "Pourquoi le rouge attire-t-il tant les regards ?",
-        Effet.Peinture => "L'image restera quand je ne serai plus là. Qui la verra ?",
-        Effet.MainsPropres or Effet.Latrines or Effet.EauVive or Effet.ViandeSaine => "Qu'y a-t-il dans la saleté qui rend malade ? On ne le voit pas.",
-        Effet.Fumage => "Pourquoi la fumée empêche-t-elle la viande de pourrir ?",
-        Effet.Fumee => "Pourquoi les moustiques fuient-ils la fumée ?",
-        Effet.Brulis => "Le feu chasse les bêtes. Pourrait-on le mener où l'on veut ?",
-        Effet.Braises => "Le feu dort sous la cendre. Est-il vivant ?",
-        Effet.PorteFeu => "Le feu peut voyager avec moi. Jusqu'où pourrais-je le porter ?",
-        Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant => "Le feu nous sert, et il peut tout dévorer. Comment le tenir ?",
-        Effet.BrulisProtecteur => "Le feu arrête le feu. Comment est-ce possible ?",
-        Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide => "Si je garde aujourd'hui, j'aurai demain. Que faut-il garder encore ?",
-        _ => "Que pourrais-je faire d'autre avec cela ?",
-    };
+        Effet.Etincelle => "ing.question.Etincelle",
+        Effet.Flamme => "ing.question.Flamme",
+        Effet.Chaleur => "ing.question.Chaleur",
+        Effet.Visions => "ing.question.Visions",
+        Effet.Poison => "ing.question.Poison",
+        Effet.Soulagement => "ing.question.Soulagement",
+        Effet.Nage => "ing.question.Nage",
+        Effet.Roule => "ing.question.Roule",
+        Effet.Flotte => "ing.question.Flotte",
+        Effet.Flottaison => "ing.question.Flottaison",
+        Effet.RouleSurAxe => "ing.question.RouleSurAxe",
+        Effet.Pansement => "ing.question.Pansement",
+        Effet.Rythme => "ing.question.Rythme",
+        Effet.Chant => "ing.question.Chant",
+        Effet.Danse => "ing.question.Danse",
+        Effet.Ocre => "ing.question.Ocre",
+        Effet.Peinture => "ing.question.Peinture",
+        Effet.MainsPropres or Effet.Latrines or Effet.EauVive or Effet.ViandeSaine => "ing.question.MainsPropres",
+        Effet.Fumage => "ing.question.Fumage",
+        Effet.Fumee => "ing.question.Fumee",
+        Effet.Brulis => "ing.question.Brulis",
+        Effet.Braises => "ing.question.Braises",
+        Effet.PorteFeu => "ing.question.PorteFeu",
+        Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant => "ing.question.FoyerDegage",
+        Effet.BrulisProtecteur => "ing.question.BrulisProtecteur",
+        Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide => "ing.question.CacheDEau",
+        _ => "ing.question.autre",
+    });
 
     /// <summary>
     /// Ceux qui regardent peuvent imiter : d'autant plus qu'ils sont curieux, qu'ils aiment celui qui fait le geste ou
@@ -978,7 +978,7 @@ public sealed partial class Comportement
             Tour.Changer(o, x => x.Activite = Activite.Soigner);
             var plante = Flore.Get(s.Espece);
             Noter(_maintenant, TypeEvenement.Entraide, o, h,
-                $"{o.Nom} donne à {h.Nom} {plante.Nom}, qu'{Il(o)} croit bonne contre {Physique.Mal(mal)}.", karma: Regard.Remede);
+                new Recit("ing.remede", ("o", o), ("h", h), ("plante", plante.Dit), ("mal", Physique.Mal(mal))), karma: Regard.Remede);
             MarquerSoin(o, h);
             Medecine.Placebo(h, o, false);
             PrendreRemede(h, s.Espece, s.Geste, mal, o.Id, tous, OrigineSavoir.Imitation);
@@ -1033,8 +1033,8 @@ public sealed partial class Comportement
             h.Soif = Math.Min(100, h.Soif + (recrachee ? 2 : 15));
             h.Humeur = Math.Max(0, h.Humeur - (recrachee ? 2 : 10));
             var id = Noter(_maintenant, TypeEvenement.Maladie, h, null, recrachee
-                ? $"{h.Nom} goûte {espece.Nom} : c'est amer, {Il(h)} recrache, la bouche en feu et le cœur au bord des lèvres."
-                : $"{h.Nom} mange {espece.Nom} : {Il(h)} vomit, pris{(h.Sexe == Sexe.Femme ? "e" : "")} de violentes douleurs.");
+                ? new Recit("ing.recrache", ("h", h), ("plante", espece.Dit))
+                : new Recit("ing.vomit", ("h", h), ("plante", espece.Dit)));
             if (h.Sante <= 0)
             {
                 Mourir(h, _maintenant, CauseDeMort.Empoisonnement, id);
@@ -1053,7 +1053,7 @@ public sealed partial class Comportement
         if (geste == Geste.Manger && espece.Psychotrope > 0 && alea.Reel() < espece.Psychotrope)
         {
             var id = Noter(_maintenant, TypeEvenement.Decouverte, h, null,
-                $"{h.Nom} mange {espece.Nom} : le monde se met à onduler, {Il(h)} voit des formes et entend des voix.");
+                new Recit("ing.visions", ("h", h), ("plante", espece.Dit)));
             Jardin.Confier(h, TypeIntime.Croyance, 0, Recits.Recit.Seul("js.visions"),
                 40 + 40 * h.Personnalite.Transcendance, id, _maintenant, $"visions:{espece.Numero}");
             Croyances.Ajouter(h, 8 * (0.5 + h.Personnalite.Transcendance), $"{espece.Nom} lui a donné des visions", id, _maintenant, signe: true);
@@ -1197,13 +1197,13 @@ public sealed partial class Comportement
         if (espece is null)
         {
             Noter(maintenant, TypeEvenement.Decouverte, h, null,
-                $"{h.Nom} sent une idée lui venir : une plante qui ne pousse pas ici. {Majuscule(Il(h))} la cherche des yeux, en vain, et l'idée s'efface.");
+                new Recit("ing.souffle.absente", ("h", h)));
             return Effet.Rien;
         }
         var malade = h.EstMalade(maintenant) || h.InfectionId != 0 && h.SymptomesLe <= maintenant && h.GuerisonLe > maintenant;
         Noter(maintenant, TypeEvenement.Decouverte, h, null, geste == Geste.Manger
-            ? $"{h.Nom} sent une idée lui venir : manger {espece.Nom}{(malade ? ", contre son mal" : "")}. {Majuscule(Il(h))} la cueille et y goûte."
-            : $"{h.Nom} sent une idée lui venir : écraser {espece.Nom} et l'appliquer{(malade ? " sur son mal" : " sur sa peau")}.");
+            ? new Recit(malade ? "ing.souffle.manger.malade" : "ing.souffle.manger", ("h", h), ("plante", espece.Dit))
+            : new Recit(malade ? "ing.souffle.appliquer.malade" : "ing.souffle.appliquer", ("h", h), ("plante", espece.Dit)));
         if (malade)
         {
             var mal = h.EstMalade(maintenant) ? Physique.SymptomeDe(h.Maladie) : Symptome.Fievre;
@@ -1223,14 +1223,14 @@ public sealed partial class Comportement
         {
             var manque = APortee(h, a) ? b : a;
             Noter(maintenant, TypeEvenement.Decouverte, h, null,
-                $"{h.Nom} sent une idée lui venir : {Physique.Phrase(geste, a, b)}… mais {Il(h)} n'a pas {Physique.Nom(manque)} sous la main, et l'idée s'efface.");
+                new Recit("ing.souffle.manque", ("h", h), ("geste", Physique.Phrase(geste, a, b)), ("manque", Physique.Nom(manque))));
             return Effet.Rien;
         }
         var r = Physique.Tenter(geste, a, b, Contexte(h), alea);
         if (r.Effet == Effet.Rien)
         {
             Noter(maintenant, TypeEvenement.Decouverte, h, null,
-                $"{h.Nom} sent une idée lui venir : {Physique.Phrase(geste, a, b)}… {Majuscule(Il(h))} essaie, mais rien ne se passe.");
+                new Recit("ing.souffle.rien", ("h", h), ("geste", Physique.Phrase(geste, a, b))));
             return Effet.Rien;
         }
         Constater(h, geste, a, b, r, OrigineSavoir.Entite, tous);

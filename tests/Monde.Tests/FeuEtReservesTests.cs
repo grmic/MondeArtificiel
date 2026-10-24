@@ -88,7 +88,7 @@ public sealed class FeuEtReservesTests : IDisposable
         for (var i = 0; i < 400; i++)
             if (Physique.Tenter(Geste.Approcher, Matiere.Corde, Matiere.Feu, contexte, alea).Effet == Effet.PorteFeu) meches++;
         Assert.InRange(meches, 40, 360);
-        Assert.Contains("couve", Physique.Nom(Matiere.PorteFeu));
+        Assert.Contains("couve", Physique.Nom(Matiere.PorteFeu).Texte);
     }
 
     [Fact]

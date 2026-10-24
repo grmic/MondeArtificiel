@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation;
 
 public enum TypeEvenement : byte
@@ -142,6 +144,12 @@ public static class TypesEvenement
 /// <summary>Formulations partagées par le journal et le serveur.</summary>
 public static class Libelles
 {
+    /// <summary>Une part (0,45) en pour cent entier (45), comme l'écrit le format « P0 ».</summary>
+    public static long Pourcent(double part) => (long)Math.Round(100 * part, MidpointRounding.AwayFromZero);
+
+    /// <summary>Comment il est mort (« de faim »), à écrire dans la langue de l'observateur ; rien pour une cause inconnue.</summary>
+    public static object CauseR(Humains.CauseDeMort cause) => cause == Humains.CauseDeMort.Aucune ? "" : Recits.Recit.Seul($"cause.{cause}");
+
     public static string Cause(Humains.CauseDeMort cause) => cause switch
     {
         Humains.CauseDeMort.Faim => "de faim",

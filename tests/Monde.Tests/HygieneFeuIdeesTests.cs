@@ -109,7 +109,7 @@ public sealed class HygieneFeuIdeesTests
             if (Physique.Tenter(Geste.Remplir, Matiere.Peau, Matiere.Eau, contexte, alea).Effet == Effet.EauPortee) remplie++;
         Assert.InRange(remplie, 60, 199);
         Assert.Equal(Effet.Rien, Physique.Tenter(Geste.Remplir, Matiere.Peau, Matiere.Eau, contexte with { EauProche = false }, alea).Effet);
-        Assert.Contains("fumée", Physique.Decrire(Sait(Geste.Fumer, Matiere.Carcasse, Matiere.Feu, Effet.Fumage)));
+        Assert.Contains("fumée", Physique.Decrire(Sait(Geste.Fumer, Matiere.Carcasse, Matiere.Feu, Effet.Fumage)).Texte);
     }
 
     [Fact]

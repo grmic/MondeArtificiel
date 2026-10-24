@@ -463,7 +463,7 @@ public sealed partial class Comportement
         var r = Cultes!.Religions[p.ReligionId - 1];
         if (prophete.EstVivant) prophete.Miracles++;
         var id = Noter(maintenant, TypeEvenement.Religion, prophete, null,
-            $"Le malheur annoncé par {prophete.Nom} est venu ({venue.Nom}) : ceux qui l'ont entendu{E(prophete)} se souviennent de sa parole.",
+            $"Le malheur annoncé par {prophete.Nom} est venu ({venue.NomFrancais}) : ceux qui l'ont entendu{E(prophete)} se souviennent de sa parole.",
             p.EvenementId, significatif: true);
         var convertis = 0;
         foreach (var h in vivants)

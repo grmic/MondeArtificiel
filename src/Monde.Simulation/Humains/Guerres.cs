@@ -355,33 +355,31 @@ public sealed partial class VieSociale
     {
         var instigateur = guerriers[a.Id].OrderByDescending(h => Ardeur(h, b.Id, humains)).ThenBy(h => h.Id).First();
         var relation = RelationEntre(a.Id, b.Id);
-        var (na, nb) = (Minuscule(a.Nom), Minuscule(b.Nom));
-
         // La raison avancée : d'abord un mort à venger, puis la faim, puis la guerre déjà ouverte, enfin le goût de la violence.
         var meurtre = adultesDe(a).SelectMany(h => h.Griefs)
             .Where(g => g.Motif == MotifGrief.Meurtre && g.VictimeId > 0 && humains[g.ContreId - 1].CommunauteId == b.Id)
             .MaxBy(g => g.Intensite);
-        string raison;
+        Recit raison;
         long cause;
         if (meurtre is not null && Vengeance(adultesDe(a), b.Id, humains) > 0.3)
         {
             var victime = humains[meurtre.VictimeId - 1];
-            raison = $"pour venger {victime.Nom}, tué{E(victime)} par {humains[meurtre.ContreId - 1].Nom}";
+            raison = new Recit("guerre.raison.venger", ("v", victime), ("t", humains[meurtre.ContreId - 1]));
             cause = victime.MortEvenementId;
         }
         else if (a.Disette)
         {
-            raison = "pour chasser l'ennemi des terres où la nourriture manque";
+            raison = Recit.Seul("guerre.raison.terres");
             cause = a.DisetteEvenementId;
         }
         else if (relation == EtatRelation.EnGuerre)
         {
-            raison = "pour poursuivre la guerre";
+            raison = Recit.Seul("guerre.raison.poursuivre");
             cause = GuerreEntre(a.Id, b.Id)?.EvenementId ?? 0;
         }
         else
         {
-            raison = $"parce que la {nb} est une menace qu'il faut abattre";
+            raison = new Recit("guerre.raison.menace", ("b", b));
             cause = _offenses.GetValueOrDefault(Paire(a.Id, b.Id));
         }
         if (cause == 0) cause = _debutsRelations.GetValueOrDefault(Paire(a.Id, b.Id));
@@ -393,22 +391,17 @@ public sealed partial class VieSociale
                 && Math.Max(Math.Abs(a.CentreX - c.CentreX), Math.Abs(a.CentreY - c.CentreY)) <= DistanceRaidMax
                 && guerriers[c.Id].Count > 0)
             .Select(c => c.Id).ToList();
-        var appel = allies.Count switch
-        {
-            0 => "",
-            1 => $" Il compte sur la {Minuscule(Communautes[allies[0] - 1].Nom)} pour se joindre à eux.",
-            _ => $" Il compte sur {string.Join(", ", allies.Take(allies.Count - 1).Select(id => "la " + Minuscule(Communautes[id - 1].Nom)))} et la {Minuscule(Communautes[allies[^1] - 1].Nom)} pour se joindre à eux.",
-        };
-        var nouveau = relation == EtatRelation.EnGuerre ? "un nouveau raid" : "la guerre";
+        object appel = allies.Count == 0 ? ""
+            : new Recit("guerre.appel", ("i", instigateur), ("allies", new Liste(allies.Select(id => (object?)new RefCommunaute(Communautes[id - 1])).ToList())));
         var id = Noter(maintenant, TypeEvenement.Guerre, instigateur, humains[b.FigureId - 1],
-            $"{instigateur.Nom} pousse la {na} à préparer {nouveau} contre la {nb}, {raison}.{appel}",
+            new Recit(relation == EtatRelation.EnGuerre ? "guerre.pousse.raid" : "guerre.pousse", ("i", instigateur), ("a", a), ("b", b), ("raison", raison), ("appel", appel)),
             cause, communaute: a.Id, autreCommunaute: b.Id, significatif: true);
         a.Projet = new ProjetGuerre
         {
-            CibleId = b.Id, InstigateurId = instigateur.Id, Depuis = maintenant, EvenementId = id, Raison = raison, AlliesSollicites = allies,
+            CibleId = b.Id, InstigateurId = instigateur.Id, Depuis = maintenant, EvenementId = id, Raison = raison.Encoder(), AlliesSollicites = allies,
             DebatLe = maintenant + DelaiDebat(adultesDe(a).Count, meurtre is not null && Vengeance(adultesDe(a), b.Id, humains) > 0.6, instigateur),
         };
-        Jardin.Confier(instigateur, TypeIntime.Intention, b.FigureId, $"Frapper la {nb}, {raison}.", 50 + 25 * Math.Min(2, Ardeur(instigateur, b.Id, humains)),
+        Jardin.Confier(instigateur, TypeIntime.Intention, b.FigureId, new Recit("js.guerre.frapper", ("c", b), ("raison", raison)), 50 + 25 * Math.Min(2, Ardeur(instigateur, b.Id, humains)),
             id, maintenant, $"guerre:{b.Id}");
 
         List<Humain> adultesDe(Communaute c) => humains.Vivants().Where(h => h.EstVivant && h.CommunauteId == c.Id && !h.EstEnfant(maintenant)).ToList();
@@ -424,24 +417,22 @@ public sealed partial class VieSociale
     private void Deliberer(Communaute a, List<Humain> humains, List<Communaute> actives, Dictionary<int, List<Humain>> guerriers, long maintenant)
     {
         var projet = a.Projet!;
-        var na = Minuscule(a.Nom);
         var instigateur = humains[projet.InstigateurId - 1];
         var b = Heritiere(Communautes[projet.CibleId - 1]);
         if (b is not null && b.Id != projet.CibleId) projet.CibleId = b.Id;
 
         // Le projet n'a plus d'objet.
-        string? caduc = null;
-        if (b is null || b.Id == a.Id) caduc = $"la {Minuscule(Communautes[projet.CibleId - 1].Nom)} n'existe plus";
-        else if (RelationEntre(a.Id, b.Id) is not (EtatRelation.Hostiles or EtatRelation.EnGuerre or EtatRelation.Rivales)) caduc = $"la {na} n'a plus de querelle avec la {Minuscule(b.Nom)}";
-        else if (a.SoumiseAId == b.Id || b.SoumiseAId == a.Id) caduc = "l'un des deux groupes s'est soumis à l'autre";
-        else if (!instigateur.EstVivant || instigateur.CommunauteId != a.Id) caduc = $"sans {instigateur.Nom}, personne ne le reprend";
-        else if (a.Raid is not null) caduc = "les guerriers sont déjà partis en raid";
+        Recit? caduc = null;
+        if (b is null || b.Id == a.Id) caduc = new Recit("guerre.caduc.plus", ("b", Communautes[projet.CibleId - 1]));
+        else if (RelationEntre(a.Id, b.Id) is not (EtatRelation.Hostiles or EtatRelation.EnGuerre or EtatRelation.Rivales)) caduc = new Recit("guerre.caduc.querelle", ("a", a), ("b", b));
+        else if (a.SoumiseAId == b.Id || b.SoumiseAId == a.Id) caduc = Recit.Seul("guerre.caduc.soumis");
+        else if (!instigateur.EstVivant || instigateur.CommunauteId != a.Id) caduc = new Recit("guerre.caduc.instigateur", ("i", instigateur));
+        else if (a.Raid is not null) caduc = Recit.Seul("guerre.caduc.raid");
         if (caduc is not null)
         {
-            Renoncer(a, humains, $"Le projet de guerre de la {na} est abandonné : {caduc}.", null, maintenant);
+            Renoncer(a, humains, new Recit("guerre.abandon", ("a", a), ("caduc", caduc)), null, maintenant);
             return;
         }
-        var nb = Minuscule(b!.Nom);
         var figure = humains[a.FigureId - 1];
         var defense = Forces(b, guerriers, actives, maintenant);
         var force = Forces(a, guerriers, actives, maintenant);
@@ -493,22 +484,21 @@ public sealed partial class VieSociale
             var p = (Pacte(a.Id, allie.Id) ? 0.55 + 0.4 * (fa.Personnalite.Moral.Fondements.Loyaute - 0.5) : 0.25) + 0.5 * vengeance
                     + 0.3 * allie.Bellicisme - 0.3 * fa.Personnalite.Agreabilite
                     - (RelationEntre(allie.Id, b.Id) == EtatRelation.Indifferentes ? 0.15 : 0) - (allie.Disette ? 0.2 : 0);
-            var nallie = Minuscule(allie.Nom);
             if (alea.Reel() < p)
             {
                 var envoyes = siens.OrderByDescending(h => Ardeur(h, b.Id, humains)).ThenBy(h => h.Id).Take(2).ToList();
                 renforts.AddRange(envoyes);
                 Noter(maintenant, TypeEvenement.Guerre, fa, instigateur,
-                    $"{fa.Nom} accepte : la {nallie} enverra {(envoyes.Count > 1 ? "des guerriers" : "un guerrier")} avec la {na} contre la {nb}.",
+                    new Recit(envoyes.Count > 1 ? "guerre.allie.accepte" : "guerre.allie.accepte.un", ("f", fa), ("c", allie), ("a", a), ("b", b)),
                     projet.EvenementId, communaute: allie.Id, autreCommunaute: a.Id, significatif: true);
             }
             else
             {
-                var pourquoi = allie.Disette ? "les siens ont trop faim pour se battre"
-                    : RelationEntre(allie.Id, b.Id) == EtatRelation.Indifferentes ? $"la {nallie} n'a rien contre la {nb}"
-                    : fa.Personnalite.Agreabilite > 0.6 ? "il ne veut pas faire couler le sang" : "ce combat n'est pas le sien";
+                var pourquoi = allie.Disette ? Recit.Seul("guerre.allie.faim")
+                    : RelationEntre(allie.Id, b.Id) == EtatRelation.Indifferentes ? new Recit("guerre.allie.rienContre", ("c", allie), ("b", b))
+                    : fa.Personnalite.Agreabilite > 0.6 ? new Recit("guerre.allie.sang", ("f", fa)) : Recit.Seul("guerre.allie.pasLeSien");
                 Noter(maintenant, TypeEvenement.Guerre, fa, instigateur,
-                    $"{fa.Nom} refuse de suivre la {na} contre la {nb} : {pourquoi}.",
+                    new Recit("guerre.allie.refuse", ("f", fa), ("a", a), ("b", b), ("pourquoi", pourquoi)),
                     projet.EvenementId, communaute: allie.Id, autreCommunaute: a.Id, significatif: true);
             }
         }
@@ -519,33 +509,33 @@ public sealed partial class VieSociale
         var defenseurs = guerriers[b.Id].Sum(h => h.Sante / 100);
         // Les guerriers ont pu mourir ou partir avant le débat : sans eux, personne ne suit (renoncement plus bas).
         var faimMoyenne = guerriers[a.Id].Count == 0 ? 0 : guerriers[a.Id].Average(h => h.Faim);
-        string? renoncement = null;
+        Recit? renoncement = null;
         if (volontaires.Count < 2)
         {
             renoncement = figureContre
-                ? $"{figure.Nom} s'y oppose et presque personne ne suit {instigateur.Nom}"
-                : $"presque personne ne suit {instigateur.Nom}";
+                ? new Recit("guerre.renonce.figure", ("f", figure), ("i", instigateur))
+                : new Recit("guerre.renonce.personne", ("i", instigateur));
         }
         else if (forceTroupe < 0.9 * defenseurs)
         {
-            renoncement = $"la {nb} est trop forte : {troupe.Count + renforts.Count} hommes seulement contre {guerriers[b.Id].Count}";
+            renoncement = new Recit("guerre.renonce.fort", ("b", b), ("n", troupe.Count + renforts.Count), ("m", guerriers[b.Id].Count));
         }
         else if (faimMoyenne >= 65)
         {
-            renoncement = "la faim a ôté toute force aux guerriers";
+            renoncement = Recit.Seul("guerre.renonce.faim");
         }
         if (renoncement is not null)
         {
-            Renoncer(a, humains, $"La {na} renonce à la guerre contre la {nb} : {renoncement}.", instigateur, maintenant);
+            Renoncer(a, humains, new Recit("guerre.renonce", ("a", a), ("b", b), ("renoncement", renoncement)), instigateur, maintenant);
             return;
         }
 
         a.Projet = null;
-        LancerRaid(a, b, humains, [.. troupe, .. renforts], projet.Raison, projet.EvenementId, maintenant);
+        LancerRaid(a, b, humains, [.. troupe, .. renforts], Recit.Decoder(projet.Raison) ?? (object)projet.Raison, projet.EvenementId, maintenant);
     }
 
     /// <summary>Le projet est abandonné : c'est noté, et l'instigateur le garde sur le cœur.</summary>
-    private void Renoncer(Communaute a, List<Humain> humains, string texte, Humain? instigateur, long maintenant)
+    private void Renoncer(Communaute a, List<Humain> humains, Recit texte, Humain? instigateur, long maintenant)
     {
         var projet = a.Projet!;
         var id = Noter(maintenant, TypeEvenement.Guerre, instigateur ?? humains[a.FigureId - 1], null, texte, projet.EvenementId,
@@ -579,13 +569,14 @@ public sealed partial class VieSociale
     }
 
     /// <summary>La troupe part : chef en tête, vers le camp ennemi.</summary>
-    private void LancerRaid(Communaute a, Communaute b, List<Humain> humains, List<Humain> troupe, string raison, long cause, long maintenant)
+    private void LancerRaid(Communaute a, Communaute b, List<Humain> humains, List<Humain> troupe, object raison, long cause, long maintenant)
     {
         var chef = troupe[0];
-        var noms = string.Join(", ", troupe.Skip(1).Take(4).Select(h => h.Nom)) + (troupe.Count > 5 ? $" et {troupe.Count - 5} autres" : "");
+        var liste = new Liste(troupe.Skip(1).Take(4).Select(h => (object?)new Personne(h)).ToList(), virgules: true);
+        object noms = troupe.Count > 5 ? new Recit("guerre.noms.autres", ("noms", liste), ("n", troupe.Count - 5)) : liste;
         var id = Noter(maintenant, TypeEvenement.Guerre, chef, humains[b.FigureId - 1],
-            $"{chef.Nom} entraîne {(troupe.Count == 2 ? "un homme" : $"{troupe.Count - 1} hommes")} ({noms}) vers le camp de la {Minuscule(b.Nom)}, "
-            + $"à {Lieux.Distance(a.CentreX, a.CentreY, b.CentreX, b.CentreY)} {Lieux.Vers(a.CentreX, a.CentreY, b.CentreX, b.CentreY) switch { var v when v.StartsWith("l'", StringComparison.Ordinal) => "à " + v, var v => "au " + v[3..] }}, {raison}.",
+            new Recit("guerre.raid", ("chef", chef), ("n", troupe.Count - 1), ("noms", noms), ("b", b), ("d", Lieux.DistanceR(a.CentreX, a.CentreY, b.CentreX, b.CentreY)),
+                ("ou", Lieux.PartieR(a.CentreX, a.CentreY, b.CentreX, b.CentreY)), ("raison", raison)),
             cause, communaute: a.Id, autreCommunaute: b.Id, significatif: true);
         a.Raid = new Raid
         {
@@ -608,7 +599,7 @@ public sealed partial class VieSociale
             if (a.Active && b.Active)
             {
                 Noter(maintenant, TypeEvenement.Guerre, humains[a.FigureId - 1], humains[b.FigureId - 1],
-                    $"Le pacte entre la {Minuscule(a.Nom)} et la {Minuscule(b.Nom)} est rompu : l'amitié n'y est plus.", _pactes[cle],
+                    new Recit("guerre.pacte.rompu", ("a", a), ("b", b)), _pactes[cle],
                     communaute: a.Id, autreCommunaute: b.Id, significatif: true);
             }
             _pactes.Remove(cle);
@@ -630,7 +621,7 @@ public sealed partial class VieSociale
                 var cause = GuerreEntre(a.Id, ennemie.Id)?.EvenementId ?? GuerreEntre(b.Id, ennemie.Id)?.EvenementId
                     ?? _offenses.GetValueOrDefault(Paire(a.Id, ennemie.Id));
                 _pactes[Paire(a.Id, b.Id)] = Noter(maintenant, TypeEvenement.Guerre, fa, fb,
-                    $"{fa.Nom} et {fb.Nom} scellent un pacte : la {Minuscule(a.Nom)} et la {Minuscule(b.Nom)} feront front ensemble contre la {Minuscule(ennemie.Nom)}.",
+                    new Recit("guerre.pacte", ("fa", fa), ("fb", fb), ("a", a), ("b", b), ("e", ennemie)),
                     cause, communaute: a.Id, autreCommunaute: b.Id, significatif: true);
             }
         }
@@ -660,7 +651,7 @@ public sealed partial class VieSociale
             {
                 if (avant == apres) continue;
                 Noter(maintenant, TypeEvenement.Guerre, humains[apres.FigureId - 1], humains[ennemie.FigureId - 1],
-                    $"Les survivants de la {Minuscule(avant.Nom)}, désormais la {Minuscule(apres.Nom)}, poursuivent la guerre contre la {Minuscule(ennemie.Nom)}.",
+                    new Recit("guerre.heritage", ("avant", avant), ("apres", apres), ("e", ennemie)),
                     g.EvenementId, communaute: apres.Id, autreCommunaute: ennemie.Id, significatif: true);
             }
             var offense = _offenses.GetValueOrDefault(Paire(g.A, g.B), g.EvenementId);
@@ -711,8 +702,8 @@ public sealed partial class VieSociale
             {
                 g.FinEvenementId = Noter(maintenant, TypeEvenement.Guerre, humains[reste.FigureId - 1], null,
                     disparue.FusionneeDansId == reste.Id
-                        ? $"La guerre entre la {Minuscule(a.Nom)} et la {Minuscule(b.Nom)} s'achève : les survivants de la {Minuscule(disparue.Nom)} vivent désormais parmi leurs ennemis."
-                        : $"La guerre entre la {Minuscule(a.Nom)} et la {Minuscule(b.Nom)} s'achève avec la dispersion de la {Minuscule(disparue.Nom)} ; les rancunes demeurent.",
+                        ? new Recit("guerre.fin.absorbes", ("a", a), ("b", b), ("d", disparue))
+                        : new Recit("guerre.fin.dispersion", ("a", a), ("b", b), ("d", disparue)),
                     g.EvenementId, communaute: reste.Id, autreCommunaute: disparue.Id, significatif: true);
             }
         }
@@ -752,33 +743,29 @@ public sealed partial class VieSociale
             g.Issue = IssueGuerre.Paix;
             g.Fin = maintenant;
             g.FinEvenementId = Noter(maintenant, TypeEvenement.Guerre, fa, fb,
-                $"{fa.Nom} et {fb.Nom} se rencontrent et font la paix : la guerre entre la {Minuscule(a.Nom)} et la {Minuscule(b.Nom)} "
-                + $"s'achève ({Pertes(g)}). Pourquoi : {RaisonsPaix(g, fa, fb, lassitude, vengeance, maintenant)}.",
+                new Recit("guerre.paix", ("fa", fa), ("fb", fb), ("a", a), ("b", b), ("pertes", Pertes(g)), ("pourquoi", RaisonsPaix(g, fa, fb, lassitude, vengeance, maintenant))),
                 g.EvenementId, communaute: a.Id, autreCommunaute: b.Id, significatif: true);
             FaireLaPaix(a, b, humains, g.FinEvenementId);
         }
     }
 
     /// <summary>Ce qui a rendu la paix possible : le temps sans combat, la lassitude des deuils, des figures conciliantes, des rancunes apaisées.</summary>
-    private static string RaisonsPaix(Guerre g, Humain fa, Humain fb, double lassitude, double vengeance, long maintenant)
+    private static Liste RaisonsPaix(Guerre g, Humain fa, Humain fb, double lassitude, double vengeance, long maintenant)
     {
-        var raisons = new List<string>();
+        var raisons = new List<object?>();
         var mois = (int)((maintenant - g.DernierSangLe) / (30 * Calendrier.SecondesParJour));
-        raisons.Add(g.MortsA + g.MortsB == 0 ? $"aucun combat sanglant en {mois} mois de guerre" : $"aucun sang n'a coulé depuis {mois} mois");
-        if (lassitude >= 0.5) raisons.Add($"les deux camps sont las de pleurer leurs morts ({Pertes(g)})");
+        raisons.Add(new Recit(g.MortsA + g.MortsB == 0 ? "guerre.paix.sansCombat" : "guerre.paix.sansSang", ("n", mois)));
+        if (lassitude >= 0.5) raisons.Add(new Recit("guerre.paix.lassitude", ("pertes", Pertes(g))));
         var conciliant = fa.Personnalite.Agreabilite >= fb.Personnalite.Agreabilite ? fa : fb;
         if (conciliant.Personnalite.Agreabilite >= 0.6)
-            raisons.Add($"{conciliant.Nom} est d'un naturel conciliant{(Math.Min(fa.Personnalite.Agreabilite, fb.Personnalite.Agreabilite) >= 0.6 ? $", comme {(conciliant == fa ? fb : fa).Nom}" : "")}");
-        raisons.Add(vengeance < 0.2 ? "la soif de vengeance s'est apaisée" : "malgré la rancune de certains, qui n'oublient pas leurs morts");
-        return string.Join(", ", raisons.Take(raisons.Count - 1)) + (raisons.Count > 1 ? " et " : "") + raisons[^1];
+            raisons.Add(Math.Min(fa.Personnalite.Agreabilite, fb.Personnalite.Agreabilite) >= 0.6
+                ? new Recit("guerre.paix.conciliants", ("c", conciliant), ("o", conciliant == fa ? fb : fa))
+                : new Recit("guerre.paix.conciliant", ("c", conciliant)));
+        raisons.Add(Recit.Seul(vengeance < 0.2 ? "guerre.paix.apaisee" : "guerre.paix.rancune"));
+        return new Liste(raisons);
     }
 
-    private static string Pertes(Guerre g) => (g.MortsA + g.MortsB) switch
-    {
-        0 => "sans mort",
-        1 => "un mort",
-        var n => $"{n} morts",
-    };
+    private static Recit Pertes(Guerre g) => new("guerre.pertes", ("n", g.MortsA + g.MortsB));
 
     /// <summary>La paix apaise les rancunes contre l'autre groupe et rend les deux groupes moins belliqueux.</summary>
     private void FaireLaPaix(Communaute a, Communaute b, List<Humain> humains, long evenement)
@@ -810,14 +797,13 @@ public sealed partial class VieSociale
     {
         var figure = humains[vaincu.FigureId - 1];
         var autre = humains[vainqueur.FigureId - 1];
-        var (nv, nw) = (Minuscule(vaincu.Nom), Minuscule(vainqueur.Nom));
         g.Fin = maintenant;
         g.VainqueurId = vainqueur.Id;
         if (adultes.Count <= 3)
         {
             g.Issue = IssueGuerre.Absorption;
             g.FinEvenementId = Noter(maintenant, TypeEvenement.Guerre, figure, autre,
-                $"Trop peu nombreux pour survivre seuls, les derniers de la {nv} vont vivre parmi leurs vainqueurs, la {nw} ({Pertes(g)}).",
+                new Recit("guerre.absorption", ("v", vaincu), ("w", vainqueur), ("pertes", Pertes(g))),
                 g.EvenementId, communaute: vaincu.Id, autreCommunaute: vainqueur.Id, significatif: true);
             FaireLaPaix(vaincu, vainqueur, humains, g.FinEvenementId);
             vaincu.FusionVersId = vainqueur.Id;
@@ -833,7 +819,7 @@ public sealed partial class VieSociale
             vaincu.SoumiseAId = vainqueur.Id;
             vaincu.SoumiseLe = maintenant;
             g.FinEvenementId = vaincu.SoumissionEvenementId = Noter(maintenant, TypeEvenement.Guerre, figure, autre,
-                $"Vaincue, la {nv} se soumet à la {nw} : {figure.Nom} promet à {autre.Nom} une part de ce que les siens chassent et cueillent ({Pertes(g)}).",
+                new Recit("guerre.soumission", ("v", vaincu), ("w", vainqueur), ("f", figure), ("o", autre), ("pertes", Pertes(g))),
                 g.EvenementId, communaute: vaincu.Id, autreCommunaute: vainqueur.Id, significatif: true);
             FaireLaPaix(vaincu, vainqueur, humains, g.FinEvenementId);
             Aguerrir(vainqueur, 0.05);
@@ -850,8 +836,8 @@ public sealed partial class VieSociale
         (vaincu.DestinationX, vaincu.DestinationY) = Climat.EstPraticable(Carte.BiomeEn(cx, cy)) ? (cx, cy) : (-1, -1);
         g.FinEvenementId = Noter(maintenant, TypeEvenement.Guerre, figure, autre,
             vaincu.DestinationX >= 0
-                ? $"Plutôt que de se soumettre à la {nw}, {figure.Nom} emmène les siens loin d'elle, vers {Lieux.Vers(vainqueur.CentreX, vainqueur.CentreY, cx, cy)} ({Pertes(g)})."
-                : $"Plutôt que de se soumettre à la {nw}, la {nv} se retire et cesse le combat ({Pertes(g)}).",
+                ? new Recit("guerre.fuite", ("w", vainqueur), ("f", figure), ("vers", Lieux.VersR(vainqueur.CentreX, vainqueur.CentreY, cx, cy)), ("pertes", Pertes(g)))
+                : new Recit("guerre.retrait", ("w", vainqueur), ("v", vaincu), ("pertes", Pertes(g))),
             g.EvenementId, communaute: vaincu.Id, autreCommunaute: vainqueur.Id, significatif: true);
         // L'inimitié demeure ; la guerre cesse faute de combattants.
         _relations[Paire(vaincu.Id, vainqueur.Id)] = EtatRelation.Hostiles;
@@ -872,7 +858,7 @@ public sealed partial class VieSociale
             if (!maitre.Active)
             {
                 Noter(maintenant, TypeEvenement.Guerre, figure, null,
-                    $"La {Minuscule(c.Nom)} ne doit plus rien à personne : la {Minuscule(maitre.Nom)} n'existe plus.", c.SoumissionEvenementId,
+                    new Recit("guerre.libre", ("c", c), ("m", maitre)), c.SoumissionEvenementId,
                     communaute: c.Id, autreCommunaute: maitre.Id, significatif: true);
                 c.SoumiseAId = 0;
                 continue;
@@ -883,7 +869,7 @@ public sealed partial class VieSociale
                 && alea.Reel() < 0.1 * (1.2 - figure.Personnalite.Agreabilite))
             {
                 var id = Noter(maintenant, TypeEvenement.Guerre, figure, humains[maitre.FigureId - 1],
-                    $"Redevenue forte, la {Minuscule(c.Nom)} cesse de livrer sa nourriture à la {Minuscule(maitre.Nom)} : {figure.Nom} refuse de s'incliner plus longtemps.",
+                    new Recit("guerre.revolte", ("c", c), ("m", maitre), ("f", figure)),
                     c.SoumissionEvenementId, communaute: c.Id, autreCommunaute: maitre.Id, significatif: true);
                 c.SoumiseAId = 0;
                 _relations[Paire(c.Id, maitre.Id)] = EtatRelation.Hostiles;
@@ -1002,7 +988,7 @@ public sealed partial class Comportement
                 else if (maintenant - raid.Depuis > 6 * Calendrier.SecondesParJour)
                 {
                     Noter(maintenant, TypeEvenement.Guerre, humains[raid.Guerriers[0] - 1], null,
-                        $"Les guerriers de la {Minuscule(c.Nom)} n'ont pas pu surprendre la {Minuscule(cible.Nom)} : ils rentrent.", raid.EvenementId);
+                        new Recit("guerre.raid.rate", ("c", c), ("cible", cible)), raid.EvenementId);
                     Rentrer(c, raid, maintenant);
                 }
             }
@@ -1044,16 +1030,17 @@ public sealed partial class Comportement
     }
 
     /// <summary>Ce qu'ont en main les assaillants, en mots (« armés de branches et de pierres »).</summary>
-    private static string Armement(IEnumerable<Arme> armes)
+    private static Recit Armement(IEnumerable<Arme> armes)
     {
         var liste = armes.ToList();
-        var mots = new List<string>();
-        if (liste.Contains(Arme.Lance)) mots.Add("de lances à pointe de pierre");
-        if (liste.Contains(Arme.Hache)) mots.Add("de haches de pierre");
-        if (liste.Contains(Arme.Epieu)) mots.Add("d'épieux");
-        if (liste.Contains(Arme.Baton)) mots.Add("de branches");
-        if (liste.Contains(Arme.Pierre)) mots.Add("de pierres");
-        return mots.Count == 0 ? ", à mains nues" : $", armés {string.Join(" et ", mots)}";
+        Recit? mots = null;
+        foreach (var a in new[] { Arme.Lance, Arme.Hache, Arme.Epieu, Arme.Baton, Arme.Pierre })
+        {
+            if (!liste.Contains(a)) continue;
+            var mot = Recits.Recit.Seul($"guerre.arme.{a}");
+            mots = mots is null ? mot : new Recit("guerre.arme.et", ("a", mots), ("b", mot));
+        }
+        return mots is null ? Recits.Recit.Seul("guerre.armes.aucune") : new Recit("guerre.armes", ("a", mots));
     }
 
     /// <summary>
@@ -1102,7 +1089,7 @@ public sealed partial class Comportement
         if (defenseurs.Count == 0)
         {
             Noter(maintenant, TypeEvenement.Guerre, assaillants[0], null,
-                $"Les guerriers de la {Minuscule(c.Nom)} trouvent le camp de la {Minuscule(cible.Nom)} vide : ils rentrent.", raid.EvenementId);
+                new Recit("guerre.raid.vide", ("c", c), ("cible", cible)), raid.EvenementId);
             Rentrer(c, raid, maintenant);
             return;
         }
@@ -1146,42 +1133,36 @@ public sealed partial class Comportement
 
         var mortsAssaillants = tues.Count(t => t.Victime.CommunauteId != cible.Id);
         var mortsDefenseurs = tues.Count - mortsAssaillants;
-        var (nc, ncible) = (Minuscule(c.Nom), Minuscule(cible.Nom));
-        var aube = endormis > 0.5 ? "À l'aube, " : "Au petit jour, ";
-        var surpris = endormis > 0.5 ? "surprennent dans son sommeil" : "attaquent";
-        string Liste(IEnumerable<Humain> hs) => string.Join(", ", hs.Select(h => h.Nom));
-        var bilan = new List<string>();
-        if (mortsDefenseurs > 0) bilan.Add($"{Liste(tues.Where(t => t.Victime.CommunauteId == cible.Id).Select(t => t.Victime))} {(mortsDefenseurs > 1 ? "sont tués" : "est tué" + E(tues.First(t => t.Victime.CommunauteId == cible.Id).Victime))}");
-        if (mortsAssaillants > 0) bilan.Add($"parmi les assaillants, {Liste(tues.Where(t => t.Victime.CommunauteId != cible.Id).Select(t => t.Victime))} {(mortsAssaillants > 1 ? "tombent" : "tombe")}");
+        // Un seul : l'humain lui-même (pour l'accord) ; plusieurs : leurs noms, séparés par des virgules.
+        object Noms(IEnumerable<Humain> hs) { var l = hs.ToList(); return l.Count == 1 ? l[0] : new Liste(l, virgules: true); }
+        var bilan = new List<Recit>();
+        void Bilan(string un, string plusieurs, IEnumerable<Humain> hs) { var l = hs.ToList(); bilan.Add(new Recit(l.Count > 1 ? plusieurs : un, ("v", Noms(l)))); }
+        if (mortsDefenseurs > 0) Bilan("guerre.bilan.tue", "guerre.bilan.tue.pl", tues.Where(t => t.Victime.CommunauteId == cible.Id).Select(t => t.Victime));
+        if (mortsAssaillants > 0) Bilan("guerre.bilan.tombe", "guerre.bilan.tombe.pl", tues.Where(t => t.Victime.CommunauteId != cible.Id).Select(t => t.Victime));
         var touches = blesses.Where(b => tues.All(t => t.Victime != b) && enlevees.All(e => e.Captive != b)).Distinct().ToList();
-        if (enlevees.Count > 0) bilan.Add($"{Liste(enlevees.Select(e => e.Captive))} {(enlevees.Count > 1 ? "sont enlevées" : "est enlevée")}");
-        if (touches.Count > 0) bilan.Add($"{Liste(touches)} {(touches.Count > 1 ? "sont blessés" : "est blessé" + E(touches[0]))}");
-        if (bilan.Count == 0) bilan.Add("les défenseurs repoussent l'attaque sans perte de part et d'autre");
+        if (enlevees.Count > 0) Bilan("guerre.bilan.enleve", "guerre.bilan.enleve.pl", enlevees.Select(e => e.Captive));
+        if (touches.Count > 0) Bilan("guerre.bilan.blesse", "guerre.bilan.blesse.pl", touches);
+        if (bilan.Count == 0) bilan.Add(Recits.Recit.Seul("guerre.bilan.repousse"));
+        var bilanRecit = bilan.Skip(1).Aggregate(bilan[0], (a, b) => new Recit("guerre.bilan.suite", ("a", a), ("b", b)));
         var id = Noter(maintenant, TypeEvenement.Guerre, assaillants[0], humains[cible.FigureId - 1],
-            $"{aube}les guerriers de la {nc} {surpris} le camp de la {ncible}{Armement(assaillants.Select(a => armes[a.Id]))} : {string.Join(" ; ", bilan)}.", raid.EvenementId, significatif: true);
+            new Recit(endormis > 0.5 ? "guerre.assaut.sommeil" : "guerre.assaut", ("c", c), ("cible", cible),
+                ("armes", Armement(assaillants.Select(a => armes[a.Id]))), ("bilan", bilanRecit)), raid.EvenementId, significatif: true);
 
         foreach (var (victime, tueur, arme) in tues)
         {
             if (!victime.EstVivant) continue;
-            var coup = arme switch
-            {
-                Arme.Lance => $"est transpercé{E(victime)} par la lance à pointe de pierre de {tueur.Nom}",
-                Arme.Hache => $"tombe sous la hache de pierre de {tueur.Nom}",
-                Arme.Epieu => $"est transpercé{E(victime)} par l'épieu de {tueur.Nom}",
-                Arme.Baton => $"tombe sous les coups de branche de {tueur.Nom}",
-                Arme.Pierre => $"est abattu{E(victime)} à coups de pierres par {tueur.Nom}",
-                _ => $"meurt sous les coups de poing de {tueur.Nom}",
-            };
+            var coup = new Recit(arme is Arme.Lance or Arme.Hache or Arme.Epieu or Arme.Baton or Arme.Pierre ? $"guerre.coup.{arme}" : "guerre.coup.poings",
+                ("v", victime), ("t", tueur));
             // L'assaillant qui tue pèse plus lourd que le défenseur qui protège les siens.
             Tuer(victime, maintenant, CauseDeMort.Guerre,
-                $"{victime.Nom} {coup}, à {AgeEnMots(victime, maintenant)}, lors du raid de la {nc} contre la {ncible}.", id,
+                new Recit("guerre.mort.raid", ("v", victime), ("coup", coup), ("age", AgeEnMots(victime, maintenant)), ("c", c), ("cible", cible)), id,
                 tueur, victime.CommunauteId == cible.Id ? Regard.TuerAuCombat : Regard.LegitimeDefense);
             Social!.Offenser(tueur, victime, 15, victime.MortEvenementId, humains, maintenant);
         }
         foreach (var (captive, ravisseur) in enlevees) Enlever(captive, ravisseur, c, cible, id, humains, maintenant);
         foreach (var b in touches.Vivants().Where(b => b.Sante <= 0 && b.EstVivant))
         {
-            Tuer(b, maintenant, CauseDeMort.Guerre, $"{b.Nom} meurt de ses blessures, à {AgeEnMots(b, maintenant)}, après le raid de la {nc} contre la {ncible}.", id);
+            Tuer(b, maintenant, CauseDeMort.Guerre, new Recit("guerre.mort.blessures", ("v", b), ("age", AgeEnMots(b, maintenant)), ("c", c), ("cible", cible)), id);
         }
         // Ce que chacun en garde au fond de lui : le tueur, sa fierté ou son remords ; les attaqués, la peur qu'ils reviennent.
         // Le psychopathe ne garde ni remords ni fierté pour les siens : seulement ce qu'il y a gagné.

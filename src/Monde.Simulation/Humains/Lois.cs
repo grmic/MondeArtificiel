@@ -1,5 +1,6 @@
 using System.Globalization;
 using Monde.Simulation.Monde;
+using Monde.Simulation.Recits;
 
 namespace Monde.Simulation.Humains;
 
@@ -83,7 +84,7 @@ public sealed record Assemblage(Matiere Corps, int NCorps, Matiere Tete, int NTe
 
 /// <summary>Ce qu'un objet assemblé a donné à l'essai, et pourquoi.</summary>
 /// <param name="Raison">Ce que l'humain a vu arriver, dit simplement (pour le journal).</param>
-public readonly record struct Verdict(Effet Effet, double Qualite, string Raison)
+public readonly record struct Verdict(Effet Effet, double Qualite, Recit Raison)
 {
     public bool Reussi => Effet != Effet.Rien;
 }
@@ -178,17 +179,17 @@ public static class Lois
         var corps = De(a.Corps);
         var tete = De(a.Tete);
         if (a.Montage is not (Montage.Bout or Montage.Travers) || a.NTete != 1 || (corps.Forme & Forme.Long) == 0)
-            return Echec("les pièces ne tiennent pas comme une arme dans la main");
+            return Echec(Seul("lois.r.pasUneArme"));
         var lien = ForceDuLien(a.Lien, feu);
-        if (lien <= 0) return Echec(a.Lien == Matiere.Resine ? "la résine froide ne colle pas" : "rien ne retient la pierre contre le bois");
-        if (tete.Durete < corps.Durete + 0.2) return Echec("la pièce du bout n'est pas plus dure que le manche : elle s'écrase au premier coup");
+        if (lien <= 0) return Echec(a.Lien == Matiere.Resine ? Seul("lois.r.resineFroide") : Seul("lois.r.rienNeRetient"));
+        if (tete.Durete < corps.Durete + 0.2) return Echec(Seul("lois.r.boutPasDur"));
         // Le lien lâche d'autant plus vite que la main est maladroite et le lien faible.
-        if (alea.Reel() > 0.25 + 0.5 * lien + 0.3 * adresse) return Echec("au premier coup, le lien glisse et la pierre tombe");
+        if (alea.Reel() > 0.25 + 0.5 * lien + 0.3 * adresse) return Echec(Seul("lois.r.lienGlisse"));
         var qualite = Math.Clamp(0.3 + 0.4 * lien + 0.3 * adresse * alea.Reel(), 0, 1);
-        if (a.Montage == Montage.Bout && (tete.Forme & Forme.Pointu) != 0) return new(Effet.PointeEmmanchee, qualite, "la pointe de pierre entre loin dans le bois");
+        if (a.Montage == Montage.Bout && (tete.Forme & Forme.Pointu) != 0) return new(Effet.PointeEmmanchee, qualite, Seul("lois.r.pointeEntre"));
         if (a.Montage == Montage.Travers && tete.Masse >= 0.05 && (tete.Forme & Forme.Tranchant) != 0 || a.Montage == Montage.Travers && tete.Masse >= 0.4)
-            return new(Effet.TranchantEmmanche, qualite * (tete.Masse >= 0.4 ? 1 : 0.8), "le coup porté au bout du manche frappe bien plus fort qu'à main nue");
-        return Echec(a.Montage == Montage.Bout ? "la pierre au bout du bâton n'a pas de pointe : elle ne perce rien" : "la pierre en travers est trop légère pour frapper fort");
+            return new(Effet.TranchantEmmanche, qualite * (tete.Masse >= 0.4 ? 1 : 0.8), Seul("lois.r.coupFort"));
+        return Echec(a.Montage == Montage.Bout ? Seul("lois.r.pasDePointe") : Seul("lois.r.tropLegere"));
     }
 
     /// <summary>Force à la coupe d'un outil tenu en main (0 à 1) : une pierre tranchante seule, ou emmanchée en travers.</summary>
@@ -228,45 +229,45 @@ public static class Lois
         // La charge posée sur des pièces libres, couchées dessous.
         if (a.Montage == Montage.Dessous)
         {
-            if ((corps.Forme & Forme.Rond) == 0) return Echec("la charge posée sur ces pièces ne glisse pas mieux que sur le sol");
+            if ((corps.Forme & Forme.Rond) == 0) return Echec(Seul("lois.r.glissePasMieux"));
             if ((corps.Forme & Forme.Long) == 0)
-                return Echec("les pièces rondes roulent un peu, puis s'échappent de sous la charge, chacune de son côté");
-            if (a.NCorps < 2) return Echec("sur un seul tronc, la charge bascule et retombe");
+                return Echec(Seul("lois.r.echappent"));
+            if (a.NCorps < 2) return Echec(Seul("lois.r.seulTronc"));
             var roule = 0.4 * Sol(sol) + 0.02;
-            if (Sol(sol) >= 0.25) return Echec("les troncs s'enfoncent dans le sol mou et ne roulent plus");
+            if (Sol(sol) >= 0.25) return Echec(Seul("lois.r.solMou"));
             // Quelques centaines de mètres à l'heure : bon pour hisser une lourde charge, pas pour la porter au loin.
-            if (km / 0.4 > 3) return Echec("les troncs roulent, mais il faut sans cesse reporter celui de derrière devant : la route est bien trop longue ainsi");
-            return Force(roule * charge * Gravite, traction) ? new(Effet.Rouleaux, Math.Clamp(1 - roule * 5, 0.2, 1), "la charge avance sur les troncs qui roulent dessous")
-                : Echec("même sur les troncs, la charge est trop lourde à pousser");
+            if (km / 0.4 > 3) return Echec(Seul("lois.r.routeLongue"));
+            return Force(roule * charge * Gravite, traction) ? new(Effet.Rouleaux, Math.Clamp(1 - roule * 5, 0.2, 1), Seul("lois.r.avanceTroncs"))
+                : Echec(Seul("lois.r.tropLourdeTroncs"));
         }
         if (a.Montage is not (Montage.Cote or Montage.Axe) || (corps.Forme & Forme.Long) == 0)
-            return Echec("on ne peut rien poser sur cet objet");
-        if (lien <= 0) return Echec(a.Lien == Matiere.Resine ? "la résine froide ne colle pas : les pièces se séparent" : "les pièces non liées se séparent dès qu'on tire");
-        if (a.NCorps < 2) return Echec("une seule pièce ne fait pas une plate-forme : la charge glisse de côté");
+            return Echec(Seul("lois.r.rienPoser"));
+        if (lien <= 0) return Echec(a.Lien == Matiere.Resine ? Seul("lois.r.resineSeparent") : Seul("lois.r.nonLiees"));
+        if (a.NCorps < 2) return Echec(Seul("lois.r.seulePiece"));
         var porte = a.NCorps * corps.Resistance * (0.5 + 0.5 * lien);
-        if (charge > porte) return Echec("les pièces plient et cèdent sous la charge");
+        if (charge > porte) return Echec(Seul("lois.r.cedent"));
 
         if (a.Montage == Montage.Axe)
         {
-            if ((tete.Forme & Forme.Rond) == 0) return Echec("les pièces enfilées ne sont pas rondes : elles ne tournent pas");
-            if ((tete.Forme & Forme.Perce) == 0) return Echec("les rondelles ne tiennent pas sur le bâton : il faudrait qu'il les traverse");
-            if (a.NTete < 1) return Echec("rien ne tourne sous la charge");
+            if ((tete.Forme & Forme.Rond) == 0) return Echec(Seul("lois.r.pasRondes"));
+            if ((tete.Forme & Forme.Perce) == 0) return Echec(Seul("lois.r.pasPercees"));
+            if (a.NTete < 1) return Echec(Seul("lois.r.rienNeTourne"));
             var c = Sol(sol);
-            if (!Force(c * total * Gravite, traction)) return Echec("les rondelles s'enfoncent : il faut trop de force pour avancer");
+            if (!Force(c * total * Gravite, traction)) return Echec(Seul("lois.r.rondellesEnfoncent"));
             if (a.NTete == 1)
             {
                 // Une seule roue : celui qui pousse soulève les deux bras et porte une part de la charge.
-                if (a.NCorps < 2) return Echec("sur une seule roue, la charge verse de côté");
-                if (0.3 * total > soulever) return Echec("sur une seule roue, il faut soulever trop lourd pour garder l'équilibre");
-                return new(Effet.RouleSurAxe, Math.Clamp(1 - 2.5 * c, 0.2, 1), "sur sa rondelle qui tourne, la charge avance, tenue par les deux bras");
+                if (a.NCorps < 2) return Echec(Seul("lois.r.roueVerse"));
+                if (0.3 * total > soulever) return Echec(Seul("lois.r.roueLourd"));
+                return new(Effet.RouleSurAxe, Math.Clamp(1 - 2.5 * c, 0.2, 1), Seul("lois.r.brouette"));
             }
-            return new(Effet.RouleSurAxe, Math.Clamp(1 - 2.5 * c, 0.2, 1), "les rondelles tournent sous la charge, qui avance presque seule");
+            return new(Effet.RouleSurAxe, Math.Clamp(1 - 2.5 * c, 0.2, 1), Seul("lois.r.chariot"));
         }
 
         // Plate-forme traînée.
         var frottement = Frottement(sol);
-        if (!Force(frottement * total * Gravite, traction)) return Echec("la charge est trop lourde à traîner sur ce sol");
-        return new(Effet.Glisser, Math.Clamp(1.2 - 1.5 * frottement, 0.2, 1), "les branches liées glissent sur le sol avec leur charge");
+        if (!Force(frottement * total * Gravite, traction)) return Echec(Seul("lois.r.tropLourdeSol"));
+        return new(Effet.Glisser, Math.Clamp(1.2 - 1.5 * frottement, 0.2, 1), Seul("lois.r.glisse"));
     }
 
     /// <summary>Monter sur l'eau sur cet objet : il faut qu'il porte la charge (Archimède) et qu'il ne chavire pas.</summary>
@@ -275,13 +276,13 @@ public static class Lois
         var corps = De(a.Corps);
         if (a.Montage is not (Montage.Cote or Montage.Axe))
             return a.NCorps == 1 && corps.Densite < 1 && (corps.Forme & Forme.Rond) != 0
-                ? Echec("le tronc flotte, mais roule sur lui-même et renverse qui s'y tient")
-                : Echec("ces pièces ne font pas un plancher sur l'eau");
-        if (ForceDuLien(a.Lien, feu) <= 0) return Echec("les pièces non liées s'écartent dans le courant");
-        if (a.NCorps < 2) return Echec("une seule pièce roule sur elle-même et renverse qui monte dessus");
+                ? Echec(Seul("lois.r.troncRoule"))
+                : Echec(Seul("lois.r.pasPlancher"));
+        if (ForceDuLien(a.Lien, feu) <= 0) return Echec(Seul("lois.r.courant"));
+        if (a.NCorps < 2) return Echec(Seul("lois.r.seulePieceRoule"));
         var portance = Portance(a);
-        if (portance < charge) return Echec(portance <= 0 ? "le bois coule" : "le plancher s'enfonce sous son poids");
-        return new(Effet.Flottaison, Math.Clamp(portance / (2 * charge), 0.2, 1), "le bois lié le porte au-dessus de l'eau");
+        if (portance < charge) return Echec(portance <= 0 ? Seul("lois.r.coule") : Seul("lois.r.plancherEnfonce"));
+        return new(Effet.Flottaison, Math.Clamp(portance / (2 * charge), 0.2, 1), Seul("lois.r.porte"));
     }
 
     /// <summary>Ce que porte un objet sur l'eau en plus de son propre poids, en kg (poussée d'Archimède).</summary>
@@ -293,7 +294,7 @@ public static class Lois
 
     private static bool Force(double necessaire, double disponible) => necessaire <= disponible;
 
-    private static Verdict Echec(string raison) => new(Effet.Rien, 0, raison);
+    private static Verdict Echec(Recit raison) => new(Effet.Rien, 0, raison);
 
     // ------------------------------------------------------------------ Dire
 
@@ -301,77 +302,42 @@ public static class Lois
     /// L'objet décrit par ce qu'on en voit (pour le journal et la fiche), suivi d'un nom qu'un observateur d'aujourd'hui lui
     /// donnerait : ce nom est déduit de sa forme, il ne guide rien.
     /// </summary>
-    public static string Decrire(Assemblage a)
+    public static Recit Decrire(Assemblage a)
     {
-        var avec = a.Lien == Matiere.Aucune ? "" : $" avec {Physique.Nom(a.Lien)}";
+        object avec = a.Lien == Matiere.Aucune ? "" : new Recit("lois.avec", ("lien", Physique.Nom(a.Lien)));
         var corps = Nombre(a.Corps, a.NCorps);
         var (texte, nom) = a.Montage switch
         {
-            Montage.Bout => ($"{Physique.Nom(a.Tete)} {Lie(a.Tete, 1)}{avec} au bout {De(Physique.Nom(a.Corps))}", (De(a.Tete).Forme & Forme.Pointu) != 0 ? "une lance" : null),
-            Montage.Travers => ($"{Physique.Nom(a.Tete)} {Lie(a.Tete, 1)}{avec} en travers {De(Physique.Nom(a.Corps))}", "une hache"),
-            Montage.Cote => ($"{corps} {Lie(a.Corps, a.NCorps)} côte à côte{avec}", a.Corps == Matiere.Tronc || Portance(a) > 40 ? "un radeau" : "un traîneau"),
-            Montage.Dessous => ($"une charge posée sur {corps}", (De(a.Corps).Forme & Forme.Long) != 0 && a.NCorps > 1 ? "des rouleaux" : null),
-            Montage.Axe => ($"{corps} {Lie(a.Corps, a.NCorps)} côte à côte{avec}, sur {Nombre(a.Tete, a.NTete)} enfilée{(a.NTete > 1 ? "s" : "")} sur un bâton",
-                a.NTete == 1 ? "une brouette" : "un chariot"),
-            _ => ("un objet", null),
+            Montage.Bout => (new Recit("lois.bout", ("tete", Physique.Nom(a.Tete)), ("avec", avec), ("corps", Physique.Nom(a.Corps))),
+                (De(a.Tete).Forme & Forme.Pointu) != 0 ? "lance" : null),
+            Montage.Travers => (new Recit("lois.travers", ("tete", Physique.Nom(a.Tete)), ("avec", avec), ("corps", Physique.Nom(a.Corps))), "hache"),
+            Montage.Cote => (new Recit("lois.cote", ("corps", corps), ("m", Physique.Nom(a.Corps)), ("k", a.NCorps), ("avec", avec)),
+                a.Corps == Matiere.Tronc || Portance(a) > 40 ? "radeau" : "traineau"),
+            Montage.Dessous => (new Recit("lois.dessous", ("corps", corps)), (De(a.Corps).Forme & Forme.Long) != 0 && a.NCorps > 1 ? "rouleaux" : null),
+            Montage.Axe => (new Recit("lois.axe", ("corps", corps), ("m", Physique.Nom(a.Corps)), ("k", a.NCorps), ("avec", avec),
+                ("tete", Nombre(a.Tete, a.NTete)), ("kt", a.NTete)), a.NTete == 1 ? "brouette" : "chariot"),
+            _ => (Seul("lois.objet"), null),
         };
-        return nom is null ? texte : $"{texte} ({nom})";
+        return nom is null ? texte : new Recit("lois.nomme", ("objet", texte), ("nom", Seul($"lois.nom.{nom}")));
     }
 
     /// <summary>Le savoir sur un objet assemblé, tel que l'humain se le dit.</summary>
-    public static string Savoir(Effet e, Assemblage a) => e switch
+    public static Recit Savoir(Effet e, Assemblage a) => e switch
     {
-        Effet.PointeEmmanchee => $"{Majuscule(Physique.Nom(a.Tete))} {Lie(a.Tete)} au bout d'un bâton perce plus loin et plus fort.",
-        Effet.TranchantEmmanche => $"{Majuscule(Physique.Nom(a.Tete))} {Lie(a.Tete)} en travers d'un manche frappe bien plus fort.",
-        Effet.Glisser => $"{Majuscule(Nombre(a.Corps, a.NCorps))} {Lie(a.Corps, a.NCorps)} côte à côte font glisser une lourde charge.",
-        Effet.Rouleaux => $"Une charge posée sur {Nombre(a.Corps, a.NCorps)} avance quand ils roulent dessous.",
-        Effet.RouleSurAxe => a.NTete == 1
-            ? "Une charge posée sur une rondelle percée qui tourne autour d'un bâton avance en la tenant par deux bras."
-            : $"Une charge posée sur {Nombre(a.Tete, a.NTete)} qui tournent autour d'un bâton avance presque seule.",
-        Effet.Flottaison => $"{Majuscule(Nombre(a.Corps, a.NCorps))} {Lie(a.Corps, a.NCorps)} côte à côte portent un humain sur l'eau.",
-        Effet.Rien => $"{Majuscule(Decrire(a))} : cela ne marche pas.",
+        Effet.PointeEmmanchee or Effet.TranchantEmmanche => new Recit($"lois.savoir.{e}", ("tete", Physique.Nom(a.Tete))),
+        Effet.Glisser or Effet.Flottaison => new Recit($"lois.savoir.{e}", ("corps", Nombre(a.Corps, a.NCorps)), ("m", Physique.Nom(a.Corps)), ("k", a.NCorps)),
+        Effet.Rouleaux => new Recit("lois.savoir.Rouleaux", ("corps", Nombre(a.Corps, a.NCorps))),
+        Effet.RouleSurAxe => a.NTete == 1 ? Seul("lois.savoir.brouette") : new Recit("lois.savoir.RouleSurAxe", ("tete", Nombre(a.Tete, a.NTete))),
+        Effet.Rien => new Recit("lois.savoir.Rien", ("objet", Decrire(a))),
         _ => Decrire(a),
     };
 
     /// <summary>Famille d'un objet assemblé pour la chronologie : une roue seule et plusieurs roues sont deux trouvailles.</summary>
     public static string Structure(string? pieces) => Assemblage.Lire(pieces) is { Montage: Montage.Axe } a ? (a.NTete == 1 ? "axe:1" : "axe:2") : "";
 
-    private static string Nombre(Matiere m, int n)
-    {
-        if (n <= 1) return Physique.Nom(m);
-        var pluriel = m switch
-        {
-            Matiere.BoisSec => "bouts de bois sec",
-            Matiere.Rondelle => "rondelles de tronc",
-            Matiere.RondellePercee => "rondelles percées",
-            Matiere.BatonPointu => "bâtons pointus",
-            Matiere.Fibres or Matiere.GrandesFeuilles => Sans(Physique.Nom(m)),
-            _ => Sans(Physique.Nom(m)) + "s",
-        };
-        return $"{Chiffre(n)} {pluriel}";
-    }
+    /// <summary>« un galet », « deux galets », « trois bouts de bois sec ».</summary>
+    private static Recit Nombre(Matiere m, int n) => n <= 1 ? Physique.Nom(m)
+        : new Recit("lois.nombre", ("n", n <= 10 ? Seul($"chiffre.{n}") : n), ("m", Seul($"matiere.{m}.pl")));
 
-    /// <summary>« d'une branche », « de bois sec ».</summary>
-    private static string De(string nom) => nom.StartsWith("du ", StringComparison.Ordinal) ? "de " + nom[3..]
-        : nom.StartsWith("des ", StringComparison.Ordinal) ? "de " + nom[4..] : "d'" + nom;
-
-    /// <summary>Accord de « lié » avec le nom de la pièce.</summary>
-    private static string Lie(Matiere m, int n = 1) =>
-        (Physique.Nom(m).StartsWith("une ", StringComparison.Ordinal) ? "liée" : "lié") + (n > 1 ? "s" : "");
-
-    private static string Chiffre(int n) => n switch
-    {
-        2 => "deux", 3 => "trois", 4 => "quatre", 5 => "cinq", 6 => "six", 7 => "sept", 8 => "huit", 9 => "neuf", 10 => "dix",
-        _ => n.ToString(CultureInfo.InvariantCulture),
-    };
-
-    /// <summary>Le nom sans son article (« une branche » → « branche »).</summary>
-    private static string Sans(string nom)
-    {
-        foreach (var article in new[] { "un ", "une ", "du ", "de la ", "de l'", "des ", "de " })
-            if (nom.StartsWith(article, StringComparison.Ordinal)) return nom[article.Length..];
-        return nom;
-    }
-
-    private static string Majuscule(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+    private static Recit Seul(string cle) => Recits.Recit.Seul(cle);
 }

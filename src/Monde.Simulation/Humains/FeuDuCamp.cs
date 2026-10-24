@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -82,7 +84,7 @@ public sealed partial class Comportement
         if (!Moustiques(carte.BiomeEn(h.X, h.Y)) || _temperature < 18 || Installations.FoyerEn(h.X, h.Y) is null) return;
         if (alea.Reel() >= 0.0005 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
         Retenir(h, Geste.Approcher, Matiere.Aucune, Matiere.Feu, Effet.Fumee, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
-            recit: $"{h.Nom} se réveille près du feu : dans la fumée, les moustiques ne l'ont presque pas piqué{(h.Sexe == Sexe.Femme ? "e" : "")}.");
+            recit: new Recit("feu.moustiques", ("h", h)));
     }
 
     /// <summary>Un feu brûle sous la hutte où il se tient : la fumée reste à l'intérieur.</summary>
@@ -108,7 +110,7 @@ public sealed partial class Comportement
         h.Activite = Activite.Fabriquer;
         h.CibleX = h.CibleY = -1;
         var id = Retenir(h, Geste.Fumer, Matiere.Carcasse, Matiere.Feu, Effet.Fumage, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous,
-            recit: $"{h.Nom} suspend sa viande au-dessus du feu, dans la fumée : des jours plus tard, elle est sèche, sombre, et n'a pas pourri.");
+            recit: new Recit("feu.fumage", ("h", h)));
         Montrer(h, Geste.Fumer, Matiere.Carcasse, Matiere.Feu, Effet.Fumage, 0, Symptome.Aucun, tous, id);
         return true;
     }
@@ -139,7 +141,7 @@ public sealed partial class Comportement
     {
         if (h.Sait(Effet.Brulis) || alea.Reel() >= 0.3 * (0.3 + Ingeniosite(h))) return;
         Retenir(h, Geste.Incendier, Matiere.HerbeSeche, Matiere.Feu, Effet.Brulis, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
-            recit: $"{h.Nom} chasse au bord des flammes : les bêtes fuient le feu à découvert, et la prise est facile.");
+            recit: new Recit("feu.brulis", ("h", h)));
     }
 
     /// <summary>
@@ -160,7 +162,7 @@ public sealed partial class Comportement
         h.Activite = Activite.Chasser;
         h.CibleX = h.CibleY = -1;
         var id = Noter(_maintenant, TypeEvenement.Catastrophe, h, null,
-            $"{h.Nom} met le feu aux herbes sèches pour en débusquer les bêtes.");
+            new Recit("feu.debusquer", ("h", h)));
         var (x, y, le) = (h.X, h.Y, _maintenant);
         Tour.Differer(tous, t =>
         {

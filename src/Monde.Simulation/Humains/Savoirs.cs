@@ -1,4 +1,5 @@
 using Monde.Simulation.Monde;
+using Monde.Simulation.Recits;
 
 namespace Monde.Simulation.Humains;
 
@@ -531,228 +532,75 @@ public static class Physique
         _ => false,
     };
 
-    /// <summary>Nom court d'un effet, pour la chronologie des découvertes.</summary>
-    public static string NomEffet(Effet e) => e switch
+    private static Recit Seul(string cle) => Recits.Recit.Seul(cle);
+
+    private static Recit[] Noms<T>(Func<T, string> cle) where T : struct, Enum
     {
-        Effet.Eclat => "tailler un éclat de pierre",
-        Effet.Etincelle => "faire jaillir des étincelles",
-        Effet.Flamme => "allumer le feu",
-        Effet.Foyer => "entretenir un feu",
-        Effet.Chaleur => "se chauffer au feu",
-        Effet.Tiedeur => "échauffer le bois en le frottant",
-        Effet.Pointe => "tailler une pointe",
-        Effet.Durci => "durcir une pointe au feu",
-        Effet.Corde => "tordre des fibres en corde",
-        Effet.Couvert => "se vêtir",
-        Effet.Abri => "bâtir une hutte",
-        Effet.EauPortee => "porter l'eau dans une calebasse",
-        Effet.Tubercules => "fouir la terre pour des racines",
-        Effet.Cuisson => "cuire la viande",
-        Effet.Decoupe => "découper le gibier, garder sa peau",
-        Effet.Nage => "nager",
-        Effet.Soulagement => "soigner par les plantes",
-        Effet.Poison => "reconnaître une plante qui rend malade",
-        Effet.Visions => "les plantes à visions",
-        Effet.Brandon => "emporter le feu avec un brandon",
-        Effet.Chasse => "chasser avec une arme taillée",
-        Effet.Roule => "voir rouler ce qui est rond",
-        Effet.Flotte => "voir flotter le bois",
-        Effet.PointeEmmanchee => "emmancher une pointe de pierre",
-        Effet.TranchantEmmanche => "emmancher une pierre tranchante",
-        Effet.Glisser => "traîner une charge sur des branches liées",
-        Effet.Rouleaux => "faire rouler une charge sur des troncs",
-        Effet.Rondelle => "trancher un tronc en rondelles",
-        Effet.Percage => "percer le bois",
-        Effet.RouleSurAxe => "faire tourner des rondelles autour d'un axe",
-        Effet.Flottaison => "aller sur l'eau sur du bois lié",
-        Effet.Pansement => "soigner une plaie",
-        Effet.Rythme => "frapper un rythme",
-        Effet.Chant => "chanter",
-        Effet.Danse => "danser",
-        Effet.Ocre => "se parer d'ocre",
-        Effet.Peinture => "peindre sur la roche",
-        Effet.MainsPropres => "se laver les mains avant de manger",
-        Effet.EauVive => "boire l'eau qui court",
-        Effet.Latrines => "faire ses besoins loin du camp",
-        Effet.ViandeSaine => "jeter la viande gâtée",
-        Effet.Fumage => "fumer la viande pour la garder",
-        Effet.Fumee => "chasser les moustiques par la fumée",
-        Effet.Brulis => "chasser au feu",
-        Effet.Braises => "couvrir le feu pour garder la braise",
-        Effet.PorteFeu => "porter le feu dans une mèche qui couve",
-        Effet.FoyerDegage => "dégager le foyer et l'entourer de pierres",
-        Effet.PasDansLeVent => "ne pas allumer dans le vent",
-        Effet.EteindreEnPartant => "éteindre le feu en partant",
-        Effet.BrulisProtecteur => "brûler autour du camp pour arrêter les grands feux",
-        Effet.CacheDEau => "enterrer de l'eau pour la saison sèche",
-        Effet.Sechage => "sécher la viande et les fruits au soleil",
-        Effet.Provisions => "amasser des noix et des graines pour l'hiver",
-        Effet.CacheFroide => "garder la viande dans le froid",
-        _ => "rien",
-    };
+        var valeurs = Enum.GetValues<T>();
+        var noms = new Recit[valeurs.Max(v => Convert.ToInt32(v, System.Globalization.CultureInfo.InvariantCulture)) + 1];
+        foreach (var v in valeurs) noms[Convert.ToInt32(v, System.Globalization.CultureInfo.InvariantCulture)] = new Recit(cle(v));
+        return noms;
+    }
+
+    private static readonly Recit[] NomsEffets = Noms<Effet>(e => $"effet.{e}");
+    private static readonly Recit[] NomsGestes = Noms<Geste>(g => $"geste.nom.{g}");
+    private static readonly Recit[] NomsMatieres = Noms<Matiere>(m => $"matiere.{m}");
+    private static readonly Recit[] Verbes = Noms<Geste>(g => $"forme.{g}");
+    private static readonly Recit[] Liaisons = Noms<Geste>(g => $"forme.{g}.liaison");
+
+    /// <summary>Nom court d'un effet, pour la chronologie des découvertes.</summary>
+    public static Recit NomEffet(Effet e) => NomsEffets[(int)e];
 
     /// <summary>Nom d'une découverte dans la chronologie : une seule roue et plusieurs roues sont deux trouvailles.</summary>
-    public static string NomDecouverte(Effet e, string? pieces) => e == Effet.RouleSurAxe && Lois.Structure(pieces) == "axe:1"
-        ? "pousser une charge sur une seule rondelle qui tourne, tenue par deux bras"
+    public static Recit NomDecouverte(Effet e, string? pieces) => e == Effet.RouleSurAxe && Lois.Structure(pieces) == "axe:1"
+        ? Seul("decouverte.brouette")
         : NomEffet(e);
 
     /// <summary>Le geste et ses matières, en mots (« pousser un tronc sur l'eau »).</summary>
-    public static string Phrase(Geste g, Matiere a, Matiere b)
+    public static Recit Phrase(Geste g, Matiere a, Matiere b)
     {
         var f = Formes.FirstOrDefault(x => x.Geste == g);
-        var verbe = f?.Verbe ?? NomGeste(g);
-        if (b == Matiere.Aucune) return Elider(SansSeconde(g) is { } sol ? $"{verbe} {Nom(a)} sur {sol}" : $"{verbe} {Nom(a)}");
-        var premiere = a == Matiere.Aucune ? "ses mains" : Nom(a);
-        return $"{verbe} {premiere} {f?.Liaison ?? "et"} {(b == Matiere.Assemblage ? "son outil emmanché" : Nom(b))}"
-            .Replace(" de le ", " du ", StringComparison.Ordinal).Replace(" de les ", " des ", StringComparison.Ordinal);
+        var verbe = f is null ? NomGeste(g) : Verbes[(int)g];
+        if (b == Matiere.Aucune)
+            return SansSeconde(g) is not null
+                ? new Recit("geste.phrase.sol", ("verbe", verbe), ("a", Nom(a)), ("sol", Seul("intuition.leSol")))
+                : new Recit("geste.phrase.un", ("verbe", verbe), ("a", Nom(a)));
+        return new Recit("geste.phrase.deux", ("verbe", verbe), ("a", a == Matiere.Aucune ? Seul("intuition.sesMains") : Nom(a)),
+            ("liaison", f?.Liaison is null ? Seul("geste.et") : Liaisons[(int)g]), ("b", b == Matiere.Assemblage ? Seul("intuition.outilEmmanche") : Nom(b)));
     }
 
-    /// <summary>« se couvrir de de grandes feuilles » devient « se couvrir de grandes feuilles », « de une peau », « d'une peau ».</summary>
-    private static string Elider(string s) => s
-        .Replace(" de de ", " de ", StringComparison.Ordinal).Replace(" de des ", " de ", StringComparison.Ordinal)
-        .Replace(" de du ", " de ", StringComparison.Ordinal).Replace(" de une ", " d'une ", StringComparison.Ordinal)
-        .Replace(" de un ", " d'un ", StringComparison.Ordinal);
+    public static Recit NomGeste(Geste g) => NomsGestes[(int)g];
 
-    public static string NomGeste(Geste g) => g switch
-    {
-        Geste.Frapper => "frapper",
-        Geste.Frotter => "frotter",
-        Geste.Gratter => "racler",
-        Geste.Tordre => "tordre",
-        Geste.Entasser => "entasser",
-        Geste.Approcher => "approcher du feu",
-        Geste.SeCouvrir => "se couvrir de",
-        Geste.Remplir => "remplir",
-        Geste.Fouir => "fouir la terre avec",
-        Geste.Manger => "manger",
-        Geste.Appliquer => "appliquer",
-        Geste.Assembler => "assembler",
-        Geste.Pousser => "pousser",
-        Geste.Percer => "percer",
-        Geste.Trancher => "trancher",
-        Geste.Panser => "panser une plaie avec",
-        Geste.Chanter => "chanter",
-        Geste.Danser => "danser",
-        Geste.Peindre => "peindre avec",
-        Geste.Laver => "se laver les mains à",
-        Geste.Enfouir => "enfouir ses besoins loin du camp",
-        Geste.Puiser => "boire à",
-        Geste.Flairer => "flairer",
-        Geste.Fumer => "fumer",
-        Geste.Incendier => "mettre le feu à",
-        Geste.Couvrir => "couvrir de cendre",
-        Geste.Degager => "dégager le sol autour de",
-        Geste.Eteindre => "éteindre",
-        Geste.Patienter => "attendre que le vent tombe pour allumer",
-        Geste.Cacher => "cacher",
-        Geste.Secher => "sécher au soleil",
-        Geste.Amasser => "amasser",
-        _ => "nager",
-    };
-
-    public static string Nom(Matiere m) => m switch
-    {
-        Matiere.Galet => "un galet",
-        Matiere.Silex => "un silex",
-        Matiere.Pyrite => "une pierre brillante (pyrite)",
-        Matiere.Obsidienne => "une pierre noire et luisante (obsidienne)",
-        Matiere.BoisSec => "du bois sec",
-        Matiere.Branche => "une branche",
-        Matiere.GrandesFeuilles => "de grandes feuilles",
-        Matiere.Fibres => "des fibres",
-        Matiere.HerbeSeche => "de l'herbe sèche",
-        Matiere.Calebasse => "une calebasse",
-        Matiere.Argile => "de l'argile",
-        Matiere.Carcasse => "une bête tuée",
-        Matiere.Plante => "une plante",
-        Matiere.Eau => "l'eau",
-        Matiere.Feu => "le feu",
-        Matiere.Eclat => "un éclat de pierre",
-        Matiere.BatonPointu => "un bâton pointu",
-        Matiere.Epieu => "un épieu",
-        Matiere.Corde => "une corde",
-        Matiere.Peau => "une peau",
-        Matiere.Brandon => "un brandon",
-        Matiere.Tronc => "un tronc",
-        Matiere.Resine => "de la résine",
-        Matiere.Ocre => "de la terre rouge (ocre)",
-        Matiere.Rondelle => "une rondelle de tronc",
-        Matiere.RondellePercee => "une rondelle percée",
-        Matiere.Assemblage => "un objet assemblé",
-        Matiere.PorteFeu => "une mèche qui couve",
-        _ => "rien",
-    };
+    public static Recit Nom(Matiere m) => NomsMatieres[(int)m];
 
     /// <summary>Nom d'un objet porté : un objet assemblé est décrit par ses pièces.</summary>
-    public static string Nom(Objet o) => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { } a ? Lois.Decrire(a) : Nom(o.Matiere);
+    public static Recit Nom(Objet o) => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { } a ? Lois.Decrire(a) : Nom(o.Matiere);
 
     /// <summary>Le savoir en quelques mots, tel que l'humain se le dit.</summary>
-    public static string Decrire(Savoir s, string? plante = null) => s.Effet switch
+    public static Recit Decrire(Savoir s, object? plante = null) => s.Effet switch
     {
-        Effet.Eclat => $"Frapper {Nom(s.A)} contre {Nom(s.B)} en détache un éclat tranchant.",
-        Effet.Etincelle => $"Frapper {Nom(s.A)} contre {Nom(s.B)} fait jaillir des étincelles.",
-        Effet.Flamme when s.Geste == Geste.Frotter => "Frotter du bois sec contre du bois sec, longtemps, fait naître le feu.",
-        Effet.Flamme => $"Frapper {Nom(s.A)} contre {Nom(s.B)} au-dessus d'herbe sèche fait naître le feu.",
-        Effet.Foyer => "Mettre du bois sur le feu le fait durer.",
-        Effet.Chaleur => "Le feu chauffe.",
-        Effet.Tiedeur => "Le bois frotté devient chaud.",
-        Effet.Pointe => $"Racler une branche avec {Nom(s.B)} la rend pointue.",
-        Effet.Durci => "Une pointe passée au feu devient dure.",
-        Effet.Corde => "Des fibres tordues deviennent une corde.",
-        Effet.Couvert => $"Se couvrir {(s.A == Matiere.Peau ? "d'une peau" : "de feuilles")} protège du froid.",
-        Effet.Abri => "Des feuilles posées sur des branches font un abri.",
-        Effet.EauPortee when s.A == Matiere.Peau => "Une peau nouée en outre garde l'eau pour la route.",
-        Effet.EauPortee => "Une calebasse garde l'eau pour la route.",
-        Effet.Tubercules => $"Fouir la terre avec {Nom(s.A)} donne des racines à manger.",
-        Effet.Cuisson => "La viande passée au feu est meilleure.",
-        Effet.Decoupe => "Un éclat tranchant découpe la bête et lui ôte sa peau.",
-        Effet.Nage => "On peut flotter et avancer dans l'eau.",
-        Effet.Soulagement => $"{plante ?? "Cette plante"} soulage {Mal(s.Symptome)}.",
-        Effet.Poison => $"{plante ?? "Cette plante"} rend malade.",
-        Effet.Visions => $"{plante ?? "Cette plante"} fait voir d'autres mondes.",
-        Effet.Brandon => "Une branche approchée du feu emporte le feu avec elle.",
-        Effet.Chasse => $"Avec {Nom(s.A)}, on tue plus de bêtes.",
-        Effet.Roule => $"Poussé sur un sol dur, {Nom(s.A)} roule.",
-        Effet.Flotte => $"Posé sur l'eau, {Nom(s.A)} flotte.",
-        Effet.Percage => "Une pointe dure qu'on fait tourner longtemps perce le bois.",
-        Effet.Rondelle => "Un tronc tranché à grands coups donne des rondelles.",
-        Effet.Pansement when s.A == Matiere.Eau => "Une plaie lavée à l'eau guérit mieux.",
-        Effet.Pansement => "Une plaie pressée et couverte de feuilles guérit mieux.",
-        Effet.Rythme => $"Frapper {Nom(s.A)} contre {Nom(s.B)} en cadence fait un rythme qui plaît.",
-        Effet.Chant => "La voix qui monte et descend fait un chant.",
-        Effet.Danse => "Bouger en cadence avec les autres réjouit le cœur.",
-        Effet.Ocre => "La terre rouge écrasée colore la peau.",
-        Effet.Peinture => "L'ocre posée sur la roche y laisse une image qui reste.",
-        Effet.MainsPropres => "Se laver les mains à l'eau avant de manger garde des maux de ventre.",
-        Effet.EauVive => "L'eau qui court rend moins malade que l'eau qui dort.",
-        Effet.Latrines => "Faire ses besoins loin du camp et de l'eau, et les couvrir de terre, garde tout le monde des maux de ventre.",
-        Effet.ViandeSaine => "La viande qui sent mauvais rend malade : il faut la jeter.",
-        Effet.Fumage => "La viande suspendue longtemps dans la fumée ne pourrit pas : elle se garde des semaines.",
-        Effet.Fumee => "La fumée du feu chasse les moustiques.",
-        Effet.Brulis => "Devant le feu, les bêtes fuient et se découvrent : là où l'herbe brûle, la chasse est bonne.",
-        Effet.Braises => "Le feu couvert de cendre pour la nuit garde sa braise : au matin, un peu de bois le ranime.",
-        Effet.PorteFeu => s.A == Matiere.Corde ? "Une corde serrée approchée du feu couve sans flamber : on emporte le feu avec soi."
-            : "Des fibres tordues approchées du feu couvent sans flamber : on emporte le feu avec soi.",
-        Effet.FoyerDegage => "Un feu dont on a écarté l'herbe et qu'on entoure de pierres ne s'échappe pas.",
-        Effet.PasDansLeVent => "Dans le vent, sur l'herbe sèche, le feu s'échappe : on attend que le vent tombe.",
-        Effet.EteindreEnPartant => "Un feu qu'on laisse vif derrière soi peut gagner les herbes : on l'éteint en partant.",
-        Effet.BrulisProtecteur => "Le feu s'arrête au bord des terres déjà brûlées : brûler un peu autour du camp à la saison humide le protège des grands feux.",
-        Effet.CacheDEau => "Une calebasse bouchée, enterrée pleine, garde l'eau jusqu'à la saison sèche.",
-        Effet.Sechage => "La viande coupée en lanières et les fruits séchés au soleil se gardent des mois, si l'air est sec.",
-        Effet.Provisions => "Les noix et les graines amassées en automne se mangent encore en hiver.",
-        Effet.CacheFroide => "Dans le grand froid, la viande cachée sous des pierres ne pourrit pas.",
+        Effet.Eclat or Effet.Etincelle or Effet.Rythme => new Recit($"savoir.{s.Effet}", ("a", Nom(s.A)), ("b", Nom(s.B))),
+        Effet.Flamme when s.Geste == Geste.Frotter => Seul("savoir.Flamme.frotter"),
+        Effet.Flamme => new Recit("savoir.Flamme", ("a", Nom(s.A)), ("b", Nom(s.B))),
+        Effet.Pointe => new Recit("savoir.Pointe", ("b", Nom(s.B))),
+        Effet.Couvert => Seul(s.A == Matiere.Peau ? "savoir.Couvert.peau" : "savoir.Couvert"),
+        Effet.EauPortee when s.A == Matiere.Peau => Seul("savoir.EauPortee.peau"),
+        Effet.Tubercules or Effet.Chasse or Effet.Roule or Effet.Flotte => new Recit($"savoir.{s.Effet}", ("a", Nom(s.A))),
+        Effet.Soulagement => new Recit("savoir.Soulagement", ("plante", plante ?? Seul("savoir.cettePlante")), ("mal", Mal(s.Symptome))),
+        Effet.Poison or Effet.Visions => new Recit($"savoir.{s.Effet}", ("plante", plante ?? Seul("savoir.cettePlante"))),
+        Effet.Pansement when s.A == Matiere.Eau => Seul("savoir.Pansement.eau"),
+        Effet.PorteFeu => Seul(s.A == Matiere.Corde ? "savoir.PorteFeu.corde" : "savoir.PorteFeu"),
+        Effet.Foyer or Effet.Chaleur or Effet.Tiedeur or Effet.Durci or Effet.Corde or Effet.Abri or Effet.EauPortee or Effet.Cuisson or Effet.Decoupe
+            or Effet.Nage or Effet.Brandon or Effet.Percage or Effet.Rondelle or Effet.Pansement or Effet.Chant or Effet.Danse or Effet.Ocre
+            or Effet.Peinture or Effet.MainsPropres or Effet.EauVive or Effet.Latrines or Effet.ViandeSaine or Effet.Fumage or Effet.Fumee
+            or Effet.Brulis or Effet.Braises or Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant or Effet.BrulisProtecteur
+            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide => Seul($"savoir.{s.Effet}"),
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
-        _ => "Rien.",
+        _ => Seul("savoir.Rien"),
     };
 
-    public static string Mal(Symptome s) => s switch
-    {
-        Symptome.Ventre => "les maux de ventre",
-        Symptome.Fievre => "la fièvre",
-        Symptome.Plaie => "les plaies",
-        Symptome.Peau => "les maux de peau",
-        _ => "le mal",
-    };
+    /// <summary>Le mal que soulage un remède (« les maux de ventre »).</summary>
+    public static Recit Mal(Symptome s) => Seul($"mal.{s}");
 
     /// <summary>Signe que l'humain perçoit de sa maladie.</summary>
     public static Symptome SymptomeDe(Maladie m) => m switch

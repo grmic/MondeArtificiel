@@ -9,7 +9,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Une perte ou une retrouvaille de savoir, pour les marques de la courbe.</summary>
-    public sealed record MarqueProgres(long Secondes, long Evenement, bool Perdu, string Texte, long Cause = 0);
+    public sealed record MarqueProgres(long Secondes, long Evenement, bool Perdu, string Texte, long Cause = 0, Simulation.Recits.Recit? Recit = null);
 
     /// <summary>Migration vers la version 33 : mesures annuelles des savoirs vivants. Les mondes existants commencent à zéro.</summary>
     private static void MigrerVersion33(SqliteConnection connexion, SqliteTransaction transaction) =>
@@ -45,16 +45,20 @@ public sealed partial class DepotMonde
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
         commande.CommandText = """
-            SELECT secondes, id, texte, cause FROM journal
-            WHERE type = $t AND significatif = 1 AND (texte LIKE 'Plus personne ne sait%' OR texte LIKE 'Savoir retrouvé%')
+            SELECT secondes, id, texte, cause, forme, valeurs FROM journal
+            WHERE type = $t AND significatif = 1 AND (texte LIKE 'Plus personne ne sait%' OR texte LIKE 'Savoir retrouvé%'
+                OR forme IN (SELECT id FROM recits_formes WHERE cle IN ('perdu.savoir', 'ing.retrouve')))
             ORDER BY secondes, id;
             """;
         commande.Parameters.AddWithValue("$t", (int)TypeEvenement.Decouverte);
+        var formes = FormesRecits.Lire(connexion, null);
         using var l = commande.ExecuteReader();
         while (l.Read())
         {
             var texte = l.GetString(2);
-            marques.Add(new MarqueProgres(l.GetInt64(0), l.GetInt64(1), texte.StartsWith("Plus personne", StringComparison.Ordinal), texte, l.GetInt64(3)));
+            var recit = formes.Lire(l, 4, 5);
+            var perdu = recit is null ? texte.StartsWith("Plus personne", StringComparison.Ordinal) : recit.Cle == "perdu.savoir";
+            marques.Add(new MarqueProgres(l.GetInt64(0), l.GetInt64(1), perdu, recit?.Texte ?? texte, l.GetInt64(3), recit));
         }
         return marques;
     }

@@ -195,7 +195,7 @@ public sealed partial class Comportement
     {
         var qui = Invisible(h);
         var maniere = Cultes?.Get(h.ReligionId)?.Gestes is { } g ? $" (à la façon des fidèles : {g})" : "";
-        var malheur = Catastrophes?.Trouver(p.Parametre)?.Nom is { Length: > 0 } nom ? $"ce malheur ({char.ToLowerInvariant(nom[0])}{nom[1..]})" : "le malheur";
+        var malheur = Catastrophes?.Trouver(p.Parametre)?.NomFrancais is { Length: > 0 } nom ? $"ce malheur ({char.ToLowerInvariant(nom[0])}{nom[1..]})" : "le malheur";
         return p.Sujet switch
         {
             SujetPriere.Guerison when x is null => $"{h.Nom} supplie {qui} de {(h.Sexe == Sexe.Femme ? "la" : "le")} guérir{maniere}.",

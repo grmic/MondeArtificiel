@@ -920,17 +920,18 @@ public sealed class MondeSimule
         foreach (var (r, temoin) in habitees.OrderBy(p => p.Key))
         {
             var pluie = _ecosysteme.Pluies[r];
-            var ou = Lieux.Direction(Carte, temoin.X, temoin.Y);
-            string? texte = pluie switch
+            var ou = Lieux.DirectionR(Carte, temoin.X, temoin.Y);
+            var pourcent = Libelles.Pourcent(pluie);
+            var texte = pluie switch
             {
-                < 0.7 when avant[r] < 0.7 => $"La sécheresse se prolonge {ou} du continent : les pluies restent rares ({pluie:P0} de la normale).",
-                < 0.7 => $"Une sécheresse frappe les terres {ou} du continent : il ne tombe que {pluie:P0} des pluies habituelles.",
-                > 1.35 => $"Une année très arrosée {ou} du continent : les plantes et le gibier abondent.",
-                _ when avant[r] < 0.7 => $"Les pluies reviennent {ou} du continent.",
+                < 0.7 when avant[r] < 0.7 => new Recit("meteo.secheresse.suite", ("ou", ou), ("p", pourcent)),
+                < 0.7 => new Recit("meteo.secheresse", ("ou", ou), ("p", pourcent)),
+                > 1.35 => new Recit("meteo.arrosee", ("ou", ou)),
+                _ when avant[r] < 0.7 => new Recit("meteo.retour", ("ou", ou)),
                 _ => null,
             };
             // Deux régions dans la même direction donneraient deux fois la même ligne.
-            if (texte is not null && dejaDits.Add(texte)) Ajouter(new EvenementJournal(_secondes, TypeEvenement.Nature, 0, 0, texte));
+            if (texte is not null && dejaDits.Add(texte.Texte)) Ajouter(new EvenementJournal(_secondes, TypeEvenement.Nature, 0, 0, texte));
         }
     }
 
@@ -1054,23 +1055,22 @@ public sealed class MondeSimule
     /// Pourquoi un savoir s'est perdu : ce qui est arrivé aux derniers qui le détenaient (morts, ou oublié faute de s'en
     /// servir). Renvoie la phrase et l'événement à citer comme cause (la mort ou l'oubli du dernier).
     /// </summary>
-    private (string Texte, long Cause) PourquoiPerdu(Effet effet, List<int> detenteurs, Dictionary<(int, Effet), long> oublis)
+    private (object Texte, long Cause) PourquoiPerdu(Effet effet, List<int> detenteurs, Dictionary<(int, Effet), long> oublis)
     {
-        var faits = new List<(Humain Humain, string Sort)>();
+        var faits = new List<(Humain Humain, Recit Sort)>();
         long cause = 0;
         foreach (var id in detenteurs.Take(3))
         {
             var h = _humains[id - 1];
-            var e = h.Sexe == Sexe.Femme ? "e" : "";
             if (!h.EstVivant)
             {
-                var comment = Libelles.Cause(h.CauseDeMort);
-                faits.Add((h, $"est mort{e}{(comment.Length > 0 ? " " + comment : "")}"));
+                var comment = Libelles.CauseR(h.CauseDeMort);
+                faits.Add((h, new Recit(comment is Recit ? "perdu.mort.comment" : "perdu.mort", ("h", h), ("comment", comment))));
                 if (h.MortEvenementId > 0) cause = h.MortEvenementId;
             }
             else
             {
-                faits.Add((h, "l'a oublié faute de s'en servir"));
+                faits.Add((h, Recit.Seul("perdu.oublie")));
                 if (oublis.TryGetValue((id, effet), out var o) && o > 0) cause = o;
             }
         }
@@ -1078,9 +1078,10 @@ public sealed class MondeSimule
         if (detenteurs.Count == 1)
         {
             var (h, sort) = faits[0];
-            return ($" {h.Nom}, {(h.Sexe == Sexe.Femme ? "la dernière" : "le dernier")} qui savait, {sort}.", cause);
+            return (new Recit("perdu.dernier", ("h", h), ("sort", sort)), cause);
         }
-        return ($" Les derniers qui savaient : {string.Join(" ; ", faits.Select(f => $"{f.Humain.Nom} {f.Sort}"))}{(detenteurs.Count > 3 ? "…" : "")}.", cause);
+        var liste = new Liste(faits.Select(f => (object?)new Recit("perdu.fait", ("h", f.Humain), ("sort", f.Sort))).ToList(), virgules: true);
+        return (new Recit(detenteurs.Count > 3 ? "perdu.derniers.plus" : "perdu.derniers", ("faits", liste)), cause);
     }
 
     /// <summary>
@@ -1108,9 +1109,9 @@ public sealed class MondeSimule
         foreach (var (h, s) in _comportement.UserEtOublier(_humains, _secondes))
         {
             if (s.Effet is Effet.Chaleur or Effet.Tiedeur || s.Confiance < 0.5) continue;
-            var plante = s.Espece > 0 ? Flore.Get(s.Espece).Nom : null;
+            var plante = s.Espece > 0 ? Flore.Get(s.Espece).Dit : null;
             var oubli = new EvenementJournal(_secondes, TypeEvenement.Souvenir, h.Id, 0,
-                $"{h.Nom} ne se souvient plus de ce qu'{Pronom(h)} savait : « {Physique.Decrire(s, plante)} »") { Id = _numeros.Suivant(), CauseId = s.EvenementId };
+                new Recit("perdu.oubli", ("h", h), ("savoir", Physique.Decrire(s, plante)))) { Id = _numeros.Suivant(), CauseId = s.EvenementId };
             _comportement.Journal.Add(oubli);
             if (s.Espece == 0) oublis[(h.Id, s.Effet)] = oubli.Id;
         }
@@ -1120,7 +1121,7 @@ public sealed class MondeSimule
             var premier = _installations.Decouvertes.Find(d => d.Effet == perdu);
             var (pourquoi, cause) = PourquoiPerdu(perdu, detenteurs, oublis);
             _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Decouverte, 0, 0,
-                $"Plus personne ne sait : « {Physique.Decrire(dernier)} » Ce savoir est perdu.{pourquoi}")
+                new Recit("perdu.savoir", ("savoir", Physique.Decrire(dernier)), ("pourquoi", pourquoi)))
             {
                 Id = _numeros.Suivant(), CauseId = cause > 0 ? cause : premier?.EvenementId ?? 0, Significatif = true,
             });

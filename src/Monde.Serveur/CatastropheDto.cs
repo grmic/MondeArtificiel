@@ -68,7 +68,7 @@ public sealed record CatastropheDto(long Id, string Type, string Libelle, string
     {
         var cle = Types.GetValueOrDefault(c.Type, "autre");
         var cases = c.Cases.Count + c.Front.Count;
-        return new CatastropheDto(c.Id, cle, NomDuType(c.Type), c.Nom, c.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", c.Debut,
+        return new CatastropheDto(c.Id, cle, NomDuType(c.Type), L.Garde(c.Nom), c.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", c.Debut,
             L.Date(c.Debut), c.Fin is { } f ? L.Date(f) : null, c.Active,
             c.X, c.Y, c.Rayon, DecrireIntensite(c), c.Morts, c.Blesses, cases == 0 ? null : L.Surface(Echelle.KilometresCarres(cases)),
             c.Communautes.Where(id => id >= 1 && id <= communautes.Count).Select(id => new CommunauteRefDto(id, communautes[id - 1].Nom)).ToList(),
@@ -130,7 +130,7 @@ public sealed record GeologieDto(string Contexte, string Description, double Sei
             },
             Decrire(g), Math.Round(g.TauxM5ParAn * 100, 1), Math.Round(g.MagnitudeMax, 1),
             g.Failles.Select(f => new FailleDto(f.X1, f.Y1, f.X2, f.Y2, f.SousMarine)).ToList(),
-            g.Volcans.Select(v => new VolcanDto(v.Numero, v.Nom, v.X, v.Y, (int)Math.Round(v.ReposMoyenAns), eruptions.Contains(v.Numero))).ToList(),
+            g.Volcans.Select(v => new VolcanDto(v.Numero, v.Dit is { } dit ? L.Rediger(dit) : v.Nom, v.X, v.Y, (int)Math.Round(v.ReposMoyenAns), eruptions.Contains(v.Numero))).ToList(),
             Math.Round(monde.AnomalieTemperature, 1));
     }
 }
@@ -143,7 +143,7 @@ public sealed record MaladieDto(int Id, string Nom, string ApparueLe, double R0,
     {
         var (maintenant, humains) = monde.InstantaneHumains();
         var vivants = humains.Where(h => h.EstVivant).ToList();
-        return monde.Pathogenes().OrderByDescending(p => p.Id).Select(p => new MaladieDto(p.Id, p.Nom, L.Date(p.ApparuLe),
+        return monde.Pathogenes().OrderByDescending(p => p.Id).Select(p => new MaladieDto(p.Id, L.Rediger(p.Dit), L.Date(p.ApparuLe),
             // Transmission = R0 / (contacts × 24 h × durée) : voir Catastrophes.NouveauPathogene.
             Math.Round(p.Transmission * 2.5 * 24 * p.DureeJours, 2), Math.Round(p.Letalite * 100, 1),
             (int)Math.Round(p.IncubationJours), (int)Math.Round(p.DureeJours),
@@ -160,7 +160,7 @@ public sealed record MaladieDto(int Id, string Nom, string ApparueLe, double R0,
 public sealed record AlerteDto(long Catastrophe, string Type, string Texte, bool Grave)
 {
     public static AlerteDto Depuis(AlerteCatastrophe a) =>
-        new(a.CatastropheId, CatastropheDto.Types.GetValueOrDefault(a.Type, "autre"), a.Texte, a.Grave);
+        new(a.CatastropheId, CatastropheDto.Types.GetValueOrDefault(a.Type, "autre"), a.Texte is Simulation.Recits.Recit r ? L.Rediger(r) : a.Texte as string ?? "", a.Grave);
 }
 
 /// <summary>Demande de catastrophe (provoquée par l'Entité).</summary>

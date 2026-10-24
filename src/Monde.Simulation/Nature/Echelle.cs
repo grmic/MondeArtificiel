@@ -54,6 +54,22 @@ public static class Echelle
         _ => $"{Nombre(kilometres, 0)} km",
     };
 
+    /// <summary>La même distance, à écrire dans la langue de l'observateur.</summary>
+    public static Recit DistanceR(double kilometres) => kilometres switch
+    {
+        < 1 => new Recit("mesure.m", ("n", (long)(Math.Round(kilometres * 1000 / 50) * 50))),
+        < 10 => new Recit("mesure.km", ("n", Math.Round(kilometres, 1, MidpointRounding.AwayFromZero))),
+        _ => new Recit("mesure.km", ("n", (long)Math.Round(kilometres, MidpointRounding.AwayFromZero))),
+    };
+
+    /// <summary>La même surface, à écrire dans la langue de l'observateur.</summary>
+    public static Recit SurfaceR(double km2) => km2 switch
+    {
+        < 1 => new Recit("mesure.ha", ("n", (long)Math.Round(km2 * 100))),
+        < 100 => new Recit("mesure.km2", ("n", Math.Round(km2, 1, MidpointRounding.AwayFromZero))),
+        _ => new Recit("mesure.km2", ("n", (long)Math.Round(km2, MidpointRounding.AwayFromZero))),
+    };
+
     /// <summary>Surface en mots : « 40 hectares », « 3,8 km² », « 1 250 km² ».</summary>
     public static string Surface(double km2) => km2 switch
     {

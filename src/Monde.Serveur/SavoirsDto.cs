@@ -28,7 +28,7 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
             .Select(o => new NommeDto(o.Id, o.Nom, 0)).ToList();
         return new SavoirsDto(
             h.Savoirs.OrderByDescending(s => s.Confiance).ThenBy(s => s.AppriLe)
-                .Select(s => new SavoirDto(Physique.Decrire(s, s.Espece > 0 ? Majuscule(flore.Get(s.Espece).Nom) : null),
+                .Select(s => new SavoirDto(L.Rediger(Physique.Decrire(s, s.Espece > 0 ? flore.Get(s.Espece).Dit : null)),
                     (int)Math.Round(100 * s.Confiance), Origine(s.Origine), s.MaitreId, Nom(s.MaitreId),
                     L.Date(s.AppriLe), s.Essais, s.EvenementId, Eleves(s)))
                 .ToList(),
@@ -40,10 +40,8 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
             (int)Math.Round(100 * h.Nage));
     }
 
-    /// <summary>Nom d'un objet porté ; un objet assemblé garde la description de ses pièces (en français, comme les savoirs).</summary>
-    public static string NomObjet(Objet o) => o.Matiere == Matiere.Assemblage ? Physique.Nom(o) : L.T($"matiere.{o.Matiere}");
-
-    private static string Majuscule(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+    /// <summary>Nom d'un objet porté ; un objet assemblé est décrit par ses pièces.</summary>
+    public static string NomObjet(Objet o) => o.Matiere == Matiere.Assemblage ? L.Rediger(Physique.Nom(o)) : L.T($"matiere.{o.Matiere}");
 }
 
 /// <summary>Une découverte dans la chronologie du monde : la première fois qu'un effet a été obtenu.</summary>
@@ -110,7 +108,7 @@ public static class Decouvertes
             if (premiere > 1)
                 points.InsertRange(0, service.Depot.ReconstituerProgres(premiere, brutes).Select(m => new PointProgresDto(m.Annee, m.Savoirs, true)));
             marques = brutes.Select(m => new MarqueProgresDto(1 + m.Secondes / (double)Calendrier.SecondesParAn, L.Date(m.Secondes),
-                m.Evenement, m.Perdu, m.Texte, m.Cause)).ToList();
+                m.Evenement, m.Perdu, m.Recit is { } r ? L.Rediger(r) : m.Texte, m.Cause)).ToList();
         }
         var maintenant = monde.Secondes;
         points.Add(new PointProgresDto(1 + maintenant / (double)Calendrier.SecondesParAn, monde.SavoirsVivantsMaintenant(communaute), false));

@@ -2,6 +2,8 @@ using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>Vagues de froid, canicules et phénomènes du ciel (éclipses, comètes, bolides, aurores, impacts).</summary>
@@ -30,14 +32,14 @@ public sealed partial class Catastrophes
 
     private Catastrophe VagueDeFroid(double ecart, double jours, List<Humain> humains, long maintenant, Origine origine) =>
         Commencer(TypeCatastrophe.VagueDeFroid, _carte.Largeur / 2, _carte.Hauteur / 2, _carte.Largeur, ecart,
-            $"Vague de froid ({Decimal(ecart)} °C)",
-            $"Un froid mordant s'abat sur tout le continent : il fait {Decimal(-ecart)} °C de moins que d'habitude.",
+            new Recit("cat.nom.froid", ("t", DecimalR(ecart))),
+            new Recit("cat.froid", ("t", DecimalR(-ecart))),
             humains, maintenant, origine, duree: (long)(jours * Calendrier.SecondesParJour));
 
     private Catastrophe Canicule(double ecart, double jours, List<Humain> humains, long maintenant, Origine origine) =>
         Commencer(TypeCatastrophe.Canicule, _carte.Largeur / 2, _carte.Hauteur / 2, _carte.Largeur, ecart,
-            $"Canicule (+{Decimal(ecart)} °C)",
-            $"Une chaleur écrasante s'installe sur tout le continent : il fait {Decimal(ecart)} °C de plus que d'habitude.",
+            new Recit("cat.nom.canicule", ("t", DecimalR(ecart))),
+            new Recit("cat.canicule", ("t", DecimalR(ecart))),
             humains, maintenant, origine, duree: (long)(jours * Calendrier.SecondesParJour));
 
     // ───────────── Phénomènes du ciel ─────────────
@@ -131,9 +133,8 @@ public sealed partial class Catastrophes
         var megatonnes = Math.Min(EnergieMax, seuil * Math.Pow(1 - _alea.Reel(), -1 / 0.9));
         if (HiverDImpact(megatonnes) is not var (ecart, annees)) return;
         var hiver = Commencer(TypeCatastrophe.HiverDImpact, _carte.Largeur / 2, _carte.Hauteur / 2, 900, ecart,
-            $"Hiver d'impact venu d'un astéroïde tombé au loin ({Decimal(ecart)} °C)",
-            $"Un grondement roule dans le ciel, puis une brume sombre voile le soleil des semaines durant ; le froid s'installe ({Decimal(ecart)} °C). "
-            + "Loin d'ici, un astéroïde a frappé la Terre.",
+            new Recit("cat.nom.impactLointain", ("t", DecimalR(ecart))),
+            new Recit("cat.impactLointain", ("t", DecimalR(ecart))),
             humains, maintenant, duree: (long)(annees * Calendrier.SecondesParAn));
         hiver.Signalee = true;
     }
@@ -144,10 +145,8 @@ public sealed partial class Catastrophes
     {
         var totale = part >= 0.999;
         var c = Commencer(TypeCatastrophe.Eclipse, _carte.Largeur / 2, _carte.Hauteur / 2, _carte.Largeur, part,
-            totale ? "Éclipse totale de soleil" : $"Grande éclipse partielle de soleil ({part:P0})",
-            totale
-                ? "En plein jour, le soleil s'éteint : la nuit tombe quelques minutes, les étoiles paraissent, les bêtes se taisent, puis la lumière revient."
-                : "Une ombre ronge le soleil : pendant une heure, la lumière baisse étrangement.",
+            totale ? Recit.Seul("cat.nom.eclipseTotale") : new Recit("cat.nom.eclipse", ("p", Libelles.Pourcent(part))),
+            Recit.Seul(totale ? "cat.eclipseTotale" : "cat.eclipse"),
             humains, maintenant, origine, duree: Calendrier.SecondesParHeure);
         foreach (var h in humains)
         {
@@ -160,8 +159,8 @@ public sealed partial class Catastrophes
     private Catastrophe Comete(List<Humain> humains, long maintenant, Origine origine)
     {
         var jours = 20 + _alea.Reel() * 40;
-        var c = Commencer(TypeCatastrophe.Comete, _carte.Largeur / 2, _carte.Hauteur / 2, _carte.Largeur, jours, "Grande comète",
-            "Une étoile chevelue apparaît dans le ciel nocturne : sa longue traînée pâle brillera chaque nuit pendant des semaines.",
+        var c = Commencer(TypeCatastrophe.Comete, _carte.Largeur / 2, _carte.Hauteur / 2, _carte.Largeur, jours, Recit.Seul("cat.nom.comete"),
+            Recit.Seul("cat.comete"),
             humains, maintenant, origine, duree: (long)(jours * Calendrier.SecondesParJour));
         Contempler(c, humains, maintenant, nuit: true);
         return c;
@@ -170,8 +169,8 @@ public sealed partial class Catastrophes
     private Catastrophe Aurore(List<Humain> humains, long maintenant, Origine origine)
     {
         var nuits = 1 + _alea.Entier(3);
-        var c = Commencer(TypeCatastrophe.Aurore, _carte.Largeur / 2, _carte.Hauteur / 2, _carte.Largeur, nuits, "Aurore",
-            "Des voiles de lumière rouge et verte ondulent dans le ciel de la nuit.", humains, maintenant, origine,
+        var c = Commencer(TypeCatastrophe.Aurore, _carte.Largeur / 2, _carte.Hauteur / 2, _carte.Largeur, nuits, Recit.Seul("cat.nom.aurore"),
+            Recit.Seul("cat.aurore"), humains, maintenant, origine,
             duree: nuits * Calendrier.SecondesParJour);
         Contempler(c, humains, maintenant, nuit: true);
         return c;
@@ -195,10 +194,8 @@ public sealed partial class Catastrophes
         var x = _alea.Entier(_carte.Largeur);
         var y = _alea.Entier(_carte.Hauteur);
         var chute = Climat.EstPraticable(_carte.BiomeEn(x, y)) && _alea.Reel() < 0.1;
-        var c = Commencer(TypeCatastrophe.Bolide, x, y, 190, chute ? 1 : 0, chute ? $"Chute d'une météorite {Ou(x, y)}" : "Boule de feu",
-            chute
-                ? $"Une boule de feu raye la nuit dans un grondement de tonnerre ; une pierre fumante s'abat {Ou(x, y)}."
-                : "Une boule de feu raye le ciel nocturne et laisse une longue traînée lumineuse.",
+        var c = Commencer(TypeCatastrophe.Bolide, x, y, 190, chute ? 1 : 0, chute ? new Recit("cat.nom.meteorite", ("ou", Ou(x, y))) : Recit.Seul("cat.nom.bolide"),
+            chute ? new Recit("cat.meteorite", ("ou", Ou(x, y))) : Recit.Seul("cat.bolide"),
             humains, maintenant, origine, duree: Calendrier.SecondesParHeure);
         if (chute) c.Cases.Add(_carte.Indice(x, y));
         foreach (var h in humains.Vivants())
@@ -208,7 +205,7 @@ public sealed partial class Catastrophes
             {
                 c.Temoins.Add(h.Id);
                 Toucher(c, h);
-                Noter(maintenant, h, $"{h.Nom} voit une pierre fumante tomber du ciel tout près.", c.Id, type: TypeEvenement.Humeur);
+                Noter(maintenant, h, new Recit("cat.meteorite.vue", ("h", h)), c.Id, type: TypeEvenement.Humeur);
                 Effrayer(h, c, 40, maintenant);
             }
             else Impressionner(h, c, maintenant);
@@ -224,8 +221,8 @@ public sealed partial class Catastrophes
     {
         // Le rayon de destruction croît comme la racine cubique de l'énergie : environ 25 km pour 10 Mt.
         var rayon = Echelle.Cases(25 * Math.Cbrt(megatonnes / 10));
-        var c = Commencer(TypeCatastrophe.Impact, x, y, rayon, megatonnes, $"Chute d'un astéroïde {Ou(x, y)} ({megatonnes.ToString(megatonnes < 10 ? "0.#" : "N0", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"))} Mt)",
-            $"Un second soleil traverse le ciel et explose {Ou(x, y)} : le souffle couche les arbres à perte de vue et le ciel s'embrase.",
+        var c = Commencer(TypeCatastrophe.Impact, x, y, rayon, megatonnes, new Recit("cat.nom.impact", ("ou", Ou(x, y)), ("mt", Math.Round(megatonnes, megatonnes < 10 ? 1 : 0, MidpointRounding.AwayFromZero))),
+            new Recit("cat.impact", ("ou", Ou(x, y))),
             humains, maintenant, origine, duree: Calendrier.SecondesParHeure);
         foreach (var h in humains.Vivants())
         {
@@ -246,10 +243,8 @@ public sealed partial class Catastrophes
         foreach (var i in DansLeRayon(x, y, rayon)) c.Cases.Add(i);
         if (HiverDImpact(megatonnes) is var (ecart, annees))
         {
-            var hiver = Commencer(TypeCatastrophe.HiverDImpact, x, y, 900, ecart, $"Hiver d'impact après la chute de l'astéroïde ({Decimal(ecart)} °C)",
-                ecart > -5
-                    ? $"La poussière soulevée par l'impact voile le soleil : le ciel reste terne et la fraîcheur gagne tout le continent ({Decimal(ecart)} °C)."
-                    : $"Poussières et fumées noircissent le ciel : en plein jour il fait presque nuit, le froid s'installe ({Decimal(ecart)} °C) et rien ne pousse plus.",
+            var hiver = Commencer(TypeCatastrophe.HiverDImpact, x, y, 900, ecart, new Recit("cat.nom.hiverImpact", ("t", DecimalR(ecart))),
+                new Recit(ecart > -5 ? "cat.hiverImpact" : "cat.hiverImpact.nuit", ("t", DecimalR(ecart))),
                 humains, maintenant, origine, cause: c.Id, duree: (long)(annees * Calendrier.SecondesParAn));
             hiver.Signalee = true;
         }

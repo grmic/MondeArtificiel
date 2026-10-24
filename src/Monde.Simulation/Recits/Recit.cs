@@ -34,6 +34,9 @@ public sealed class Groupe(IReadOnlyList<Personne> membres) : IEquatable<Groupe>
     public override int GetHashCode() => Membres.Count;
 }
 
+/// <summary>Un nombre écrit avec un nombre fixe de décimales, dans la langue de l'observateur (« 6,0 », « -3,2 » : magnitudes, degrés).</summary>
+public sealed record Decimale(double Valeur, int Chiffres = 1);
+
 /// <summary>Une énumération : « a », « a et b », « a, b et c » (chaque élément est écrit à son tour).</summary>
 /// <remarks><paramref name="virgules"/> : seulement des virgules, sans « et » (« a bu, a dormi »).</remarks>
 public sealed class Liste(IReadOnlyList<object?> elements, bool virgules = false) : IEquatable<Liste>
@@ -184,6 +187,12 @@ public sealed class Recit : IEquatable<Recit>
             case double d:
                 w.WriteStartObject();
                 w.WriteNumber("r", d);
+                w.WriteEndObject();
+                break;
+            case Decimale x:
+                w.WriteStartObject();
+                w.WriteNumber("x", x.Valeur);
+                w.WriteNumber("p", x.Chiffres);
                 w.WriteEndObject();
                 break;
             case Personne p: EcrirePersonne(w, p, forme is not null); break;
@@ -350,6 +359,7 @@ public sealed class Recit : IEquatable<Recit>
                 }
                 if (e.TryGetProperty("k", out var k)) return new Recit(k.GetString() ?? "", e.TryGetProperty("a", out var a) ? LireArgs(a) : []);
                 if (e.TryGetProperty("r", out var r)) return r.GetDouble();
+                if (e.TryGetProperty("x", out var x)) return new Decimale(x.GetDouble(), e.TryGetProperty("p", out var pp) ? pp.GetInt32() : 1);
                 if (e.TryGetProperty("c", out var c)) return new RefCommunaute(c.GetInt32(), e.TryGetProperty("n", out var n) ? n.GetString() ?? "" : "");
                 if (e.TryGetProperty("l", out var li)) return new Liste(li.EnumerateArray().Select(x => LireValeur(x, formes)).ToList(), e.TryGetProperty("v", out var v) && v.ValueKind == JsonValueKind.True);
                 if (e.TryGetProperty("g", out var g)) return new Groupe(g.EnumerateArray().Select(x => LirePersonne(x, formes)).ToList());

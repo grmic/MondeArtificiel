@@ -2,6 +2,8 @@ using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>Catastrophes provoquées à la demande (par l'Entité, ou pour observer leurs effets).</summary>
@@ -51,7 +53,7 @@ public sealed partial class Catastrophes
         var h = humains.Vivants().Where(h => h.EstVivant && h.InfectionId == 0).MinBy(h => Distance(h.X, h.Y, x, y));
         if (h is null) return 0;
         var p = NouveauPathogene(h, maintenant);
-        var id = Noter(maintenant, h, $"{h.Nom} tombe malade d'un mal inconnu : {p.Nom} vient d'apparaître.", type: TypeEvenement.Maladie, origine: origine);
+        var id = Noter(maintenant, h, new Recit("cat.patho.apparait", ("h", h), ("m", p.Dit)), type: TypeEvenement.Maladie, origine: origine);
         _pathogenes[^1] = p with { EvenementId = id };
         Infecter(h, _pathogenes[^1], maintenant, id);
         return id;
@@ -69,12 +71,12 @@ public sealed partial class Catastrophes
         if (pathogeneId == 0)
         {
             var nouveau = NouveauPathogene(h, maintenant);
-            id = Noter(maintenant, h, $"{h.Nom} tombe malade d'un mal inconnu : {nouveau.Nom} vient d'apparaître.", cause, type: TypeEvenement.Maladie,
+            id = Noter(maintenant, h, new Recit("cat.patho.apparait", ("h", h), ("m", nouveau.Dit)), cause, type: TypeEvenement.Maladie,
                 origine: Origine.Entite);
             _pathogenes[^1] = nouveau with { EvenementId = id };
             pathogeneId = nouveau.Id;
         }
-        else id = Noter(maintenant, h, $"{h.Nom} attrape {_pathogenes[pathogeneId - 1].Nom}.", cause, type: TypeEvenement.Maladie, origine: Origine.Entite);
+        else id = Noter(maintenant, h, new Recit("cat.patho.attrape", ("h", h), ("m", _pathogenes[pathogeneId - 1].Dit)), cause, type: TypeEvenement.Maladie, origine: Origine.Entite);
         var p = _pathogenes[pathogeneId - 1];
         h.Immunites.RemoveAll(i => i.PathogeneId == p.Id);
         Infecter(h, p, maintenant, id);

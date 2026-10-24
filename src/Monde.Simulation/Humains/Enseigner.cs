@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -65,14 +67,13 @@ public sealed partial class Comportement
 
         var sait = eleve.Savoirs.Exists(s => s.Meme(lecon.Geste, lecon.A, lecon.B, lecon.Effet, lecon.Espece, lecon.Symptome) && s.Pieces == lecon.Pieces);
         var heritage = Heritage(eleve, lecon, lecon.Effet, lecon.Pieces, true);
-        string? recit = null;
+        Recit? recit = null;
         if (!sait)
         {
-            var guider = lecon.Geste is Geste.Manger or Geste.Appliquer ? $"{h.Nom} montre à {eleve.Nom} une plante et ce qu'elle fait"
-                : $"{h.Nom} guide la main de {eleve.Nom} et lui montre le geste, lentement";
+            var guider = new Recit(lecon.Geste is Geste.Manger or Geste.Appliquer ? "ens.plante" : "ens.geste", ("h", h), ("e", eleve));
             recit = lecon.MaitreId > 0 && lecon.MaitreId <= tous.Count
-                ? $"{guider} ; {Il(h)} l'avait appris de {tous[lecon.MaitreId - 1].Nom}."
-                : $"{guider}.";
+                ? new Recit("ens.apprisDe", ("guider", guider), ("h", h), ("m", tous[lecon.MaitreId - 1]))
+                : new Recit("ens.fin", ("guider", guider));
         }
         Retenir(eleve, lecon.Geste, lecon.A, lecon.B, lecon.Effet, lecon.Espece, lecon.Symptome, OrigineSavoir.Imitation, h.Id, tous,
             pieces: lecon.Pieces, recit: recit, heritage: heritage, karmaMaitre: sait ? 0 : Regard.Enseigner);

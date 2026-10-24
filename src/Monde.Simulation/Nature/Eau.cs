@@ -2,6 +2,8 @@ using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>Crues des rivières et tempêtes venues de la mer (cyclones).</summary>
@@ -65,13 +67,9 @@ public sealed partial class Catastrophes
         var rayon = (int)Math.Ceiling(cases.Max(i => Distance(i % _carte.Largeur, i / _carte.Largeur, cx, cy)));
         var jours = (2 + _alea.Reel() * 5) * ampleur;
         var subite = _alea.Reel() < ampleur switch { 1 => 0.15, 2 => 0.4, _ => 0.7 };
-        var texte = (subite, cause == 0) switch
-        {
-            (true, _) => $"Un orage violent jette un flot furieux dans le lit des rivières {LieuDe(cx, cy)} : la crue subite noie {Surface(cases.Count)} de terres.",
-            (false, true) => $"Après des pluies diluviennes, les rivières {LieuDe(cx, cy)} montent et débordent sur {Surface(cases.Count)} de terres.",
-            _ => $"Les rivières {LieuDe(cx, cy)} débordent sous les pluies de la tempête et noient {Surface(cases.Count)} de terres.",
-        };
-        var c = Commencer(TypeCatastrophe.Crue, cx, cy, rayon, ampleur, subite ? $"Crue subite {LieuDe(cx, cy)}" : $"Crue {LieuDe(cx, cy)}",
+        var texte = new Recit(subite ? "cat.crue.subite" : cause == 0 ? "cat.crue.pluies" : "cat.crue.tempete",
+            ("lieu", LieuDe(cx, cy)), ("s", SurfaceR(cases.Count)));
+        var c = Commencer(TypeCatastrophe.Crue, cx, cy, rayon, ampleur, new Recit(subite ? "cat.nom.crueSubite" : "cat.nom.crue", ("lieu", LieuDe(cx, cy))),
             texte, humains, maintenant, origine, cause: cause, parametre: subite ? 1 : 0,
             duree: (long)(jours * Calendrier.SecondesParJour), alerter: false);
         c.Cases = cases;
@@ -112,8 +110,8 @@ public sealed partial class Catastrophes
     {
         var rayon = 30 + 12 * categorie;
         var heures = 18 + _alea.Entier(31);
-        var c = Commencer(TypeCatastrophe.Cyclone, x, y, rayon, categorie, $"Tempête de catégorie {categorie} {Ou(x, y)}",
-            $"Une tempête venue de la mer (catégorie {categorie}) frappe les côtes {LieuDe(x, y)} : vents furieux et pluies torrentielles.",
+        var c = Commencer(TypeCatastrophe.Cyclone, x, y, rayon, categorie, new Recit("cat.nom.cyclone", ("n", categorie), ("ou", Ou(x, y))),
+            new Recit("cat.cyclone", ("n", categorie), ("lieu", LieuDe(x, y))),
             humains, maintenant, origine, duree: heures * Calendrier.SecondesParHeure);
 
         // Les arbres cassent, les fruits tombent, des bêtes périssent.

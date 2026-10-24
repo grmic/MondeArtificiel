@@ -20,7 +20,13 @@ public enum ContexteTectonique : byte
 public sealed record Faille(int X1, int Y1, int X2, int Y2, bool SousMarine);
 
 /// <summary>Un volcan actif et l'intervalle moyen entre deux éruptions.</summary>
-public sealed record Volcan(int Numero, int X, int Y, double ReposMoyenAns, string Nom);
+/// <param name="Nom">Nom en français (« le volcan du nord-ouest »).</param>
+/// <param name="Dit">Le même nom, à écrire dans la langue de l'observateur.</param>
+public sealed record Volcan(int Numero, int X, int Y, double ReposMoyenAns, string Nom, Recits.Recit? Dit = null)
+{
+    /// <summary>Son nom pour l'observateur (le nom français s'il n'a pas de récit).</summary>
+    public object Nomme => Dit ?? (object)Nom;
+}
 
 /// <summary>
 /// Géologie du continent, tirée de la graine une fois pour toutes (elle ne change pas la carte) :
@@ -250,7 +256,8 @@ public sealed class Geologie
         {
             var memes = bases.Count(b => b == bases[k]);
             var rang = bases.Take(k).Count(b => b == bases[k]) + 1;
-            return v with { Nom = memes > 1 ? $"{bases[k]} ({rang})" : bases[k] };
+            var dit = Recits.Recit.Seul($"volcan.{Lieux.Coin(carte, v.X, v.Y)}");
+            return v with { Nom = memes > 1 ? $"{bases[k]} ({rang})" : bases[k], Dit = memes > 1 ? new Recits.Recit("volcan.rang", ("v", dit), ("n", rang)) : dit };
         }).ToList();
     }
 }

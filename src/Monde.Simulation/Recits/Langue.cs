@@ -9,12 +9,13 @@ namespace Monde.Simulation.Recits;
 /// Une langue de l'observateur, lue dans <c>langues/xx.json</c>. Chaque clé donne un texte, ou ses formes selon le
 /// pluriel (one, other…, choisies par le paramètre <c>n</c>) ou le genre (m, f, choisies par le paramètre <c>g</c>).
 /// L'entrée <c>_langue</c> donne le code, le nom de la langue dans sa propre langue et l'écriture des nombres ;
-/// l'entrée <c>_grammaire</c>, les élisions (« de Ana » devient « d'Ana ») et la façon de lier une liste de noms.
+/// l'entrée <c>_grammaire</c>, les élisions (« de Ana » devient « d'Ana »), les contractions (« de le feu » devient
+/// « du feu ») et la façon de lier une liste de noms.
 /// <para>
 /// Dans un texte, <c>{x}</c> écrit le paramètre x, <c>{^x}</c> l'écrit avec une majuscule, et <c>{x:a|b}</c> choisit
 /// une forme d'après x : selon son genre si x est un humain ou un groupe (masculin|féminin), selon le pluriel si x est
 /// un nombre (dans l'ordre des formes de la langue, « # » valant le nombre), selon sa valeur si x est vrai ou faux
-/// (faux|vrai).
+/// (faux|vrai), selon le genre du nom qu'il écrit si x est un récit (entrée <c>clé.g</c> : « f » pour le féminin).
 /// </para>
 /// </summary>
 public sealed partial class Langue
@@ -37,6 +38,9 @@ public sealed partial class Langue
     /// <summary>Mot qui s'élide devant une voyelle → sa forme élidée (« de » → « d' »).</summary>
     public IReadOnlyDictionary<string, string> Elisions { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>Deux mots qui se contractent quand une valeur suit le premier : « de le » → « du », « de des » → « de ».</summary>
+    public IReadOnlyDictionary<string, string> Contractions { get; init; } = new Dictionary<string, string>();
+
     /// <summary>Liaison des deux derniers noms d'une liste (« et », « and »).</summary>
     public string Et { get; init; } = "et";
 
@@ -57,6 +61,7 @@ public sealed partial class Langue
                 ? v.GetString()! : defaut;
         var grammaire = entrees.GetValueOrDefault("_grammaire");
         var elisions = new Dictionary<string, string>(StringComparer.Ordinal);
+        var contractions = new Dictionary<string, string>(StringComparer.Ordinal);
         var pluriels = new List<string>();
         var et = code == "fr" ? "et" : "and";
         if (grammaire.ValueKind == JsonValueKind.Object)
@@ -64,6 +69,9 @@ public sealed partial class Langue
             if (grammaire.TryGetProperty("elisions", out var e) && e.ValueKind == JsonValueKind.Object)
                 foreach (var p in e.EnumerateObject())
                     if (p.Value.ValueKind == JsonValueKind.String) elisions[p.Name] = p.Value.GetString()!;
+            if (grammaire.TryGetProperty("contractions", out var c) && c.ValueKind == JsonValueKind.Object)
+                foreach (var p in c.EnumerateObject())
+                    if (p.Value.ValueKind == JsonValueKind.String) contractions[p.Name] = p.Value.GetString()!;
             if (grammaire.TryGetProperty("pluriels", out var pl) && pl.ValueKind == JsonValueKind.Array)
                 foreach (var x in pl.EnumerateArray())
                     if (x.ValueKind == JsonValueKind.String) pluriels.Add(x.GetString()!);
@@ -83,6 +91,7 @@ public sealed partial class Langue
             },
             Json = json,
             Elisions = elisions,
+            Contractions = contractions,
             Pluriels = pluriels.Count > 0 ? pluriels : ["one", "other"],
             Et = et,
         };
@@ -156,7 +165,11 @@ public sealed partial class Langue
                 trouve = true;
                 var morceau = deuxPoints < 0 ? Ecrire(v) : Forme(v, dedans[(deuxPoints + 1)..]);
                 if (majuscule) morceau = Majuscule(morceau);
-                if (deuxPoints < 0) Elider(texte, morceau);
+                if (deuxPoints < 0)
+                {
+                    morceau = Contracter(texte, morceau);
+                    Elider(texte, morceau);
+                }
                 texte.Append(morceau);
                 break;
             }
@@ -178,6 +191,7 @@ public sealed partial class Langue
             case Personne p: k = p.Femme ? 1 : 0; break;
             case Groupe g: k = g.Feminin ? 1 : 0; break;
             case bool b: k = b ? 1 : 0; break;
+            case Recit r: k = Texte(r.Cle + ".g", []) == "f" ? 1 : 0; break;
             case string s: k = s == "f" ? 1 : 0; break;
             case long or int or double:
                 {
@@ -208,6 +222,24 @@ public sealed partial class Langue
         texte.Remove(debut, fin - debut + 1).Append(elide);
     }
 
+    /// <summary>
+    /// Contraction du mot qui précède avec le premier mot de la valeur : « de » suivi de « le feu » donne « du feu »,
+    /// « de » suivi de « des fibres » donne « de fibres ». Le texte est raccourci du mot, la valeur rendue changée.
+    /// </summary>
+    private string Contracter(StringBuilder texte, string morceau)
+    {
+        if (Contractions.Count == 0 || morceau.Length == 0 || texte.Length < 2 || texte[^1] != ' ') return morceau;
+        var espace = morceau.IndexOf(' ');
+        if (espace <= 0) return morceau;
+        var fin = texte.Length - 1;
+        var debut = fin;
+        while (debut > 0 && char.IsLetter(texte[debut - 1])) debut--;
+        if (debut == fin) return morceau;
+        if (!Contractions.TryGetValue(string.Concat(texte.ToString(debut, fin - debut), " ", morceau.AsSpan(0, espace)), out var c)) return morceau;
+        texte.Remove(debut, fin - debut + 1);
+        return string.Concat(c, morceau.AsSpan(espace));
+    }
+
     private static bool Voyelle(char c) => "AEIOUÀÂÉÈÊËÎÏÔÛÙaeiouàâéèêëîïôûù".Contains(c);
 
     public static string Majuscule(string s) => s.Length == 0 || char.IsUpper(s[0]) ? s : char.ToUpperInvariant(s[0]) + s[1..];
@@ -223,6 +255,7 @@ public sealed partial class Langue
         Groupe g => Lister(g.Membres.Select(m => m.Nom).ToList()),
         Liste l => l.Virgules ? string.Join(", ", l.Elements.Select(Ecrire)) : Lister(l.Elements.Select(Ecrire).ToList()),
         int or long or short or byte => Nombre(Convert.ToDouble(v, CultureInfo.InvariantCulture), 0),
+        Decimale x => x.Valeur.ToString(x.Chiffres > 0 ? "0." + new string('0', x.Chiffres) : "0", Nombres),
         double d => Nombre(d, 2),
         float f => Nombre(f, 2),
         decimal m => Nombre((double)m, 2),

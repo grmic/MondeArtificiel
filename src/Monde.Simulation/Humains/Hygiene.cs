@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -193,23 +195,17 @@ public sealed partial class Comportement
         var choix = 0;
         while (choix < poids.Length - 1 && (tirage -= poids[choix]) >= 0) choix++;
 
-        var qui = enfantMort is null ? $"{h.Nom}, remis{(h.Sexe == Sexe.Femme ? "e" : "")} de ses maux de ventre," : $"{h.Nom}, qui a perdu {enfantMort.Nom} d'un mal de ventre,";
+        var qui = enfantMort is null ? new Recit("hyg.qui.remis", ("h", h)) : new Recit("hyg.qui.enfant", ("h", h), ("e", enfantMort));
         if (choix == 4)
         {
             // Une fausse cause : une plante d'ici, innocente ou non, qu'on croit désormais mauvaise.
             var espece = especes[alea.Entier(especes.Count)];
             Retenir(h, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Poison, espece.Numero, Symptome.Aucun, OrigineSavoir.Reflexion, 0, tous,
-                recit: $"{qui} se souvient d'avoir mangé {espece.Nom} : c'est elle, pense-t-{Il(h)}, qui l'a rendu malade.");
+                recit: new Recit("hyg.plante", ("qui", qui), ("plante", espece.Dit), ("h", h)));
             return;
         }
         var (effet, geste, matiere) = Hygiene.Pratiques[choix];
-        var recit = effet switch
-        {
-            Effet.MainsPropres => $"{qui} regarde ses mains, qui touchent tout puis portent la nourriture à la bouche. {Majuscule(Il(h))} se les lave désormais à l'eau avant de manger.",
-            Effet.Latrines => $"{qui} pense aux excréments laissés près du camp, où l'on mange et où l'on dort. {Majuscule(Il(h))} s'écarte désormais pour ses besoins et les couvre de terre.",
-            Effet.EauVive => $"{qui} pense à l'eau croupie qu'{Il(h)} a bue. {Majuscule(Il(h))} va désormais boire là où l'eau court.",
-            _ => $"{qui} se souvient de la viande qui sentait mauvais. {Majuscule(Il(h))} flaire désormais la viande et jette celle qui pue.",
-        };
+        var recit = new Recit(effet is Effet.MainsPropres or Effet.Latrines or Effet.EauVive ? $"hyg.{effet}" : "hyg.ViandeSaine", ("qui", qui), ("h", h));
         Retenir(h, geste, matiere, Matiere.Aucune, effet, 0, Symptome.Aucun, OrigineSavoir.Reflexion, 0, tous, recit: recit);
     }
 }

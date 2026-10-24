@@ -1,5 +1,7 @@
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -161,7 +163,7 @@ public sealed partial class Comportement
         var (hi, di, le) = (h.Id, demandeur.Id, _maintenant);
         if (alea.Reel() >= envie)
         {
-            Noter(_maintenant, TypeEvenement.Conflit, h, demandeur, $"{demandeur.Nom} demande à {h.Nom} {Quoi(ouvrage)} : {Il(h)} refuse.");
+            Noter(_maintenant, TypeEvenement.Conflit, h, demandeur, new Recit("ouv.refus", ("d", demandeur), ("h", h), ("quoi", Quoi(ouvrage))));
             Tour.Differer(tous, t =>
             {
                 if (t[di - 1].DemandeAId == hi) t[di - 1].DemandeAId = 0;
@@ -174,12 +176,12 @@ public sealed partial class Comportement
     }
 
     /// <summary>« de lui tailler une pointe », pour le journal.</summary>
-    private static string Quoi(Ouvrage o) => o switch
+    private static Recit Quoi(Ouvrage o) => Recit.Seul(o switch
     {
-        Ouvrage.Taille => "de lui tailler un outil",
-        Ouvrage.Assemblage => "de lui assembler une arme ou une hache",
-        _ => "de lui faire un vêtement de sa peau",
-    };
+        Ouvrage.Taille => "ouv.quoi.Taille",
+        Ouvrage.Assemblage => "ouv.quoi.Assemblage",
+        _ => "ouv.quoi.Peau",
+    });
 
     /// <summary>
     /// Fait l'ouvrage demandé avec ce qu'il a sous la main, et le remet après le pas. Null s'il n'a pas de quoi le faire maintenant
@@ -190,7 +192,7 @@ public sealed partial class Comportement
         var arme = demandeur.Porte(Matiere.Epieu) || demandeur.Porte(Matiere.BatonPointu) || demandeur.Objets.Exists(o => Lois.Chasse(o) > 0.8);
         Objet? produit = null;
         var vetement = false;
-        string fait;
+        Recit fait;
         switch (ouvrage)
         {
             case Ouvrage.Taille:
@@ -210,7 +212,7 @@ public sealed partial class Comportement
                 Retenir(h, s.Geste, s.A, s.B, s.Effet, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous);
                 Montrer(h, s.Geste, s.A, s.B, s.Effet, 0, Symptome.Aucun, tous, 0);
                 produit = new Objet(r.Produit, r.Qualite, 1);
-                fait = $"taille {Physique.Nom(r.Produit)}";
+                fait = new Recit("ouv.fait.taille", ("o", Physique.Nom(r.Produit)));
                 break;
             }
             case Ouvrage.Assemblage:
@@ -240,7 +242,7 @@ public sealed partial class Comportement
                 Retenir(h, Geste.Assembler, a.Corps, a.Tete, v.Effet, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous, pieces: a.Signature);
                 Montrer(h, Geste.Assembler, a.Corps, a.Tete, v.Effet, 0, Symptome.Aucun, tous, 0, a.Signature);
                 produit = new Objet(Matiere.Assemblage, v.Qualite, 1, Pieces: a.Signature);
-                fait = $"assemble {Lois.Decrire(a)}";
+                fait = new Recit("ouv.fait.assemble", ("o", Lois.Decrire(a)));
                 break;
             }
             default:
@@ -259,7 +261,7 @@ public sealed partial class Comportement
                 Montrer(h, s.Geste, s.A, s.B, s.Effet, 0, Symptome.Aucun, tous, 0);
                 produit = new Objet(Matiere.Peau, Math.Min(1, peau.Qualite * r.Qualite / 0.6), 1);
                 vetement = true;
-                fait = $"fait un vêtement de la peau de {demandeur.Nom}";
+                fait = new Recit("ouv.fait.vetement", ("d", demandeur));
                 break;
             }
         }
@@ -279,7 +281,7 @@ public sealed partial class Comportement
     /// paie d'une part de viande ou d'un objet ; ailleurs, l'artisan n'y gagne que de l'estime, et un généreux lui donne parfois
     /// quelque chose en retour. Celui qui ne l'attendait plus ne le reçoit pas : l'artisan le garde.
     /// </summary>
-    internal void Livrer(Humain artisan, Humain demandeur, Ouvrage ouvrage, Objet objet, bool vetement, string fait, IReadOnlyList<Humain> tous, long maintenant)
+    internal void Livrer(Humain artisan, Humain demandeur, Ouvrage ouvrage, Objet objet, bool vetement, Recit fait, IReadOnlyList<Humain> tous, long maintenant)
     {
         if (!demandeur.EstVivant || demandeur.DemandeAId != artisan.Id)
         {
@@ -298,7 +300,8 @@ public sealed partial class Comportement
         var p = demandeur.Personnalite;
         var asoi = Social?.CommunauteDe(demandeur) is { IdeeReserve: IdeeReserve.ASoi };
         var generosite = (0.5 * p.Agreabilite + 0.3 * p.Moral.Compassion + 0.2 * p.Moral.Fondements.Equite) * (1 - 0.8 * Psyche.Froideur(p));
-        var contre = "";
+        object contre = "";
+        var redevable = false;
         if (asoi || alea.Reel() < 0.35 * generosite)
         {
             var iv = demandeur.Objets.FindIndex(o => o.Matiere == Matiere.Carcasse);
@@ -313,15 +316,19 @@ public sealed partial class Comportement
                 var sienne = artisan.Objets.FindIndex(o => o.Matiere == Matiere.Carcasse);
                 if (sienne >= 0) artisan.Objets[sienne] = artisan.Objets[sienne] with { Qualite = Math.Min(1, artisan.Objets[sienne].Qualite + kg / 100) };
                 else Prendre(artisan, new Objet(Matiere.Carcasse, kg / 100, 1));
-                contre = asoi ? ", contre une part de viande" : " ; celui-ci lui donne en retour une part de viande";
+                contre = Recit.Seul(asoi ? "ouv.contre.viande" : "ouv.retour.viande");
             }
             else if (troc is not null && artisan.Objets.Count < ObjetsMax)
             {
                 demandeur.Objets.Remove(troc);
                 artisan.Objets.Add(troc);
-                contre = asoi ? $", contre {Physique.Nom(troc.Matiere)}" : $" ; celui-ci lui donne en retour {Physique.Nom(troc.Matiere)}";
+                contre = new Recit(asoi ? "ouv.contre" : "ouv.retour", ("o", Physique.Nom(troc.Matiere)));
             }
-            else if (asoi) contre = ", qui n'a rien à lui donner en échange et lui en reste redevable";
+            else if (asoi)
+            {
+                contre = Recit.Seul("ouv.redevable");
+                redevable = true;
+            }
         }
         switch (ouvrage)
         {
@@ -330,8 +337,8 @@ public sealed partial class Comportement
             default: artisan.ServisPeau++; break;
         }
         VieSociale.Gratitude(artisan, demandeur, asoi ? 2 : 4);
-        var id = Noter(maintenant, TypeEvenement.Entraide, artisan, demandeur, $"{demandeur.Nom} est venu{E(demandeur)} demander à {artisan.Nom}, qui le fait mieux, de l'aider : {artisan.Nom} {fait} pour {Lui(demandeur)}{contre}.",
-            karma: asoi && contre.Length > 0 && !contre.Contains("redevable") ? 0 : Regard.Partage);
+        var id = Noter(maintenant, TypeEvenement.Entraide, artisan, demandeur, new Recit("ouv.service", ("d", demandeur), ("a", artisan), ("fait", fait), ("contre", contre)),
+            karma: asoi && contre is Recit && !redevable ? 0 : Regard.Partage);
         Reconnaitre(artisan, ouvrage, tous, id, maintenant);
     }
 
@@ -354,14 +361,14 @@ public sealed partial class Comportement
         h.Specialite = ouvrage;
         h.SpecialiteDepuis = maintenant;
         if (ancien is not null) ancien.Specialite = Ouvrage.Aucun;
-        var role = ouvrage switch
+        var role = Recit.Seul(ouvrage switch
         {
-            Ouvrage.Taille => "taille la pierre pour eux",
-            Ouvrage.Assemblage => "fait leurs armes et leurs haches",
-            _ => "fait leurs vêtements de peau",
-        };
+            Ouvrage.Taille => "ouv.role.Taille",
+            Ouvrage.Assemblage => "ouv.role.Assemblage",
+            _ => "ouv.role.Peau",
+        });
         Noter(maintenant, TypeEvenement.Decouverte, h, ancien,
-            $"Les siens disent de {h.Nom} qu'{Il(h)} {role} : on vient le lui demander plutôt que de le faire soi-même{(ancien is null ? "" : $", comme on le demandait à {ancien.Nom}")}.",
+            ancien is null ? new Recit("ouv.reconnu", ("h", h), ("role", role)) : new Recit("ouv.reconnu.ancien", ("h", h), ("role", role), ("a", ancien)),
             cause);
     }
 

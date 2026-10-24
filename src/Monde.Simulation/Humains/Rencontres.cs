@@ -130,7 +130,7 @@ public sealed partial class VieSociale
             h.VisiteArriveeLe = 0;
             h.VisiteJusquA = (long)(jours * Calendrier.SecondesParJour);
             h.VisiteEvenementId = Noter(maintenant, TypeEvenement.Lien, h, hote,
-                $"{h.Nom} part voir {Parente(h, hote)}, qui vit avec la {Minuscule(chez.Nom)}, à {Lieux.Distance(h.X, h.Y, hote.X, hote.Y)} vers {Lieux.Vers(h.X, h.Y, hote.X, hote.Y)}.",
+                new Recit("renc.visite", ("h", h), ("qui", ParenteR(h, hote)), ("c", chez), ("d", Lieux.DistanceR(h.X, h.Y, hote.X, hote.Y)), ("vers", Lieux.VersR(h.X, h.Y, hote.X, hote.Y))),
                 communaute: h.CommunauteId, autreCommunaute: chez.Id);
         }
     }
@@ -158,10 +158,10 @@ public sealed partial class VieSociale
         {
             if (!r.Actif) continue;
             var (a, b) = (Communautes[r.HoteId - 1], Communautes[r.InviteeId - 1]);
-            string? pourquoi = !a.Active || !b.Active ? "l'un des deux groupes s'est défait"
-                : !EnBonsTermes(a.Id, b.Id) ? "la bonne entente entre les deux groupes s'est rompue"
-                : a.Disette || b.Disette ? "la nourriture vient à manquer"
-                : a.Raid is not null || b.Raid is not null ? "des guerriers partent en raid"
+            var pourquoi = !a.Active || !b.Active ? Recit.Seul("renc.pourquoi.defait")
+                : !EnBonsTermes(a.Id, b.Id) ? Recit.Seul("renc.pourquoi.entente")
+                : a.Disette || b.Disette ? Recit.Seul("renc.pourquoi.disette")
+                : a.Raid is not null || b.Raid is not null ? Recit.Seul("renc.pourquoi.raid")
                 : null;
             if (pourquoi is null && maintenant < r.Fin) continue;
             Finir(r, humains, maintenant, pourquoi);
@@ -236,14 +236,12 @@ public sealed partial class VieSociale
         }
         r.Participants = vont.Count;
         var premier = Rassemblements.Count == 1;
-        var (nh, ni) = (Minuscule(hote.Nom), Minuscule(invitee.Nom));
         r.EvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, humains[invitee.FigureId - 1],
-            $"{(premier ? "Pour la première fois au monde, deux communautés campent ensemble : l" : "L")}a {ni} vient camper avec la {nh}, autour de {figure.Nom}. "
-            + $"{vont.Count} humains se retrouvent pour quelques jours : on chantera, on dansera, on échangera des cadeaux.",
+            new Recit(premier ? "renc.debut.premier" : "renc.debut", ("ni", invitee), ("nh", hote), ("f", figure), ("n", vont.Count)),
             _debutsRelations.GetValueOrDefault(Paire(hote.Id, invitee.Id)), communaute: hote.Id, autreCommunaute: invitee.Id, significatif: premier);
     }
 
-    private void Finir(Rassemblement r, List<Humain> humains, long maintenant, string? pourquoi)
+    private void Finir(Rassemblement r, List<Humain> humains, long maintenant, Recit? pourquoi)
     {
         r.FiniLe = maintenant;
         foreach (var h in humains.Vivants())
@@ -254,15 +252,15 @@ public sealed partial class VieSociale
         }
         var (a, b) = (Communautes[r.HoteId - 1], Communautes[r.InviteeId - 1]);
         var jours = Math.Max(1, (int)Math.Round((maintenant - r.Debut) / (double)Calendrier.SecondesParJour));
-        var faits = new List<string>();
-        if (r.Cadeaux > 0) faits.Add(r.Cadeaux == 1 ? "un cadeau échangé" : $"{r.Cadeaux} cadeaux échangés");
-        if (r.Appris > 0) faits.Add(r.Appris == 1 ? "un geste appris de l'autre groupe" : $"{r.Appris} gestes appris de l'autre groupe");
-        if (r.Couples > 0) faits.Add(r.Couples == 1 ? "un couple formé entre les deux groupes" : $"{r.Couples} couples formés entre les deux groupes");
-        var bilan = faits.Count == 0 ? "on s'est vu, sans plus" : faits.Count == 1 ? faits[0] : string.Join(", ", faits.Take(faits.Count - 1)) + " et " + faits[^1];
+        var faits = new List<object?>();
+        if (r.Cadeaux > 0) faits.Add(new Recit("renc.bilan.cadeaux", ("n", r.Cadeaux)));
+        if (r.Appris > 0) faits.Add(new Recit("renc.bilan.appris", ("n", r.Appris)));
+        if (r.Couples > 0) faits.Add(new Recit("renc.bilan.couples", ("n", r.Couples)));
+        object bilan = faits.Count == 0 ? Recit.Seul("renc.bilan.rien") : new Liste(faits);
         var figure = humains[a.FigureId - 1];
         r.BilanEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null,
-            $"{(pourquoi is null ? "Fin" : "Fin précipitée")} du rassemblement de la {Minuscule(a.Nom)} et de la {Minuscule(b.Nom)}, après {jours} jour{(jours > 1 ? "s" : "")}"
-            + $"{(pourquoi is null ? "" : $" : {pourquoi}")}. Bilan : {bilan}. Chacun rentre chez soi.",
+            pourquoi is null ? new Recit("renc.fin", ("a", a), ("b", b), ("j", jours), ("bilan", bilan))
+                : new Recit("renc.fin.precipitee", ("a", a), ("b", b), ("j", jours), ("pourquoi", pourquoi), ("bilan", bilan)),
             r.EvenementId, communaute: a.Id, autreCommunaute: b.Id);
     }
 
@@ -305,7 +303,7 @@ public sealed partial class VieSociale
                 if (receveur is null) continue;
                 var don = d.Objets.Find(o => o.Matiere is not (Matiere.Carcasse or Matiere.Brandon or Matiere.PorteFeu)
                                              && !receveur.Objets.Exists(x => x.Matiere == o.Matiere && x.Pieces == o.Pieces));
-                string quoi;
+                Recit quoi;
                 if (don is not null && receveur.Objets.Count < 4)
                 {
                     d.Objets.Remove(don);
@@ -320,14 +318,14 @@ public sealed partial class VieSociale
                     if (reste <= 0.005) d.Objets.RemoveAt(iv);
                     else d.Objets[iv] = d.Objets[iv] with { Qualite = reste };
                     receveur.Faim = Math.Max(0, receveur.Faim - 10 * kg);
-                    quoi = "une part de viande";
+                    quoi = Recit.Seul("renc.cadeau.viande");
                 }
                 else continue;
                 r.Cadeaux++;
                 Gratitude(d, receveur, 6);
                 ChangerAffection(d, receveur, 3, maintenant);
                 var cadeau = Noter(maintenant, TypeEvenement.Partage, d, receveur,
-                    $"Au rassemblement, {d.Nom} offre {quoi} à {receveur.Nom}, de la {Minuscule(Communautes[receveur.CommunauteId - 1].Nom)}.",
+                    new Recit("renc.cadeau", ("d", d), ("quoi", quoi), ("r", receveur), ("c", Communautes[receveur.CommunauteId - 1])),
                     r.EvenementId, karma: Regard.Partage);
                 Jardin.Confier(receveur, TypeIntime.Opinion, d.Id, new Recit("js.cadeau", ("x", d)), 25, cadeau, maintenant, $"opinion:{d.Id}");
             }

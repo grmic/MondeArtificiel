@@ -1,6 +1,8 @@
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -55,7 +57,7 @@ public sealed partial class Comportement
         if (h.Sait(Effet.Sechage) || !Calendrier.Decomposer(_maintenant).EstJour || _temperature < 20 || Humide(carte.BiomeEn(h.X, h.Y))) return;
         if (Sec(h) < 0.6 || alea.Reel() >= 0.0005 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
         var id = Retenir(h, Geste.Secher, Matiere.Carcasse, Matiere.Aucune, Effet.Sechage, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
-            recit: $"{h.Nom} a laissé un morceau de viande sur une pierre chaude : des jours plus tard, il est sec et dur, et il n'a pas pourri.");
+            recit: new Recit("res.sechage", ("h", h)));
         Montrer(h, Geste.Secher, Matiere.Carcasse, Matiere.Aucune, Effet.Sechage, 0, Symptome.Aucun, tous, id);
     }
 
@@ -65,7 +67,7 @@ public sealed partial class Comportement
         if (h.Sait(Effet.CacheFroide) || _temperature >= 0) return;
         if (alea.Reel() >= 0.002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
         var id = Retenir(h, Geste.Cacher, Matiere.Carcasse, Matiere.Aucune, Effet.CacheFroide, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
-            recit: $"Dans le grand froid, la viande que {h.Nom} porte depuis des jours n'a pas pourri : elle a gelé.");
+            recit: new Recit("res.gel", ("h", h)));
         Montrer(h, Geste.Cacher, Matiere.Carcasse, Matiere.Aucune, Effet.CacheFroide, 0, Symptome.Aucun, tous, id);
     }
 
@@ -126,25 +128,16 @@ public sealed partial class Comportement
         }
         if (proche is not null) (x, y) = (proche.X, proche.Y);
         else if (JournalQuotidien)
-            id = Noter(_maintenant, TypeEvenement.Pensee, h, null, $"{h.Nom} met de côté {DecrireReserve(sorte, kg)}.", id);
+            id = Noter(_maintenant, TypeEvenement.Pensee, h, null, new Recit("res.metDeCote", ("h", h), ("r", DecrireReserve(sorte, kg))), id);
         h.Memoire.Retenir(sorte == SorteReserve.Eau ? TypeLieu.Eau : TypeLieu.Nourriture, x, y, _maintenant, Aptitude(h));
         var (le, ih, communaute, evenement) = (_maintenant, h.Id, h.CommunauteId, proche?.EvenementId ?? id);
         Tour.Differer(() => Installations.Reserver(x, y, sorte, kg, qualite, le, ih, communaute, evenement));
     }
 
     /// <summary>« 12 kg de viande séchée », « 4 litres d'eau ».</summary>
-    public static string DecrireReserve(SorteReserve sorte, double kg)
-    {
-        var n = Math.Max(1, Math.Round(kg));
-        return sorte switch
-        {
-            SorteReserve.Eau => $"{n} litre{(n > 1 ? "s" : "")} d'eau",
-            SorteReserve.ViandeSechee => $"{n} kg de viande séchée",
-            SorteReserve.FruitsSeches => $"{n} kg de fruits séchés",
-            SorteReserve.NoixGraines => $"{n} kg de noix et de graines",
-            _ => $"{n} kg de viande cachée dans le froid",
-        };
-    }
+    public static Recit DecrireReserve(SorteReserve sorte, double kg) =>
+        new(sorte is SorteReserve.Eau or SorteReserve.ViandeSechee or SorteReserve.FruitsSeches or SorteReserve.NoixGraines ? $"res.sorte.{sorte}" : "res.sorte.ViandeCachee",
+            ("n", (long)Math.Max(1, Math.Round(kg))));
 
     /// <summary>
     /// Loin de toute eau, une calebasse ou une outre pleine à la main, sans soif : qui sait cacher l'eau l'enterre, bouchée à l'argile
@@ -173,7 +166,7 @@ public sealed partial class Comportement
         if (h.Soif < 70 || h.EstEnfant(_maintenant) || h.Sait(Effet.CacheDEau) || !h.Sait(Effet.EauPortee)) return;
         if (alea.Reel() >= 0.0002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h)) || DistanceEau(h.X, h.Y) < 4) return;
         Retenir(h, Geste.Cacher, Matiere.Calebasse, Matiere.Aucune, Effet.CacheDEau, 0, Symptome.Aucun, OrigineSavoir.Reflexion, 0, tous,
-            recit: $"Assoiffé{E(h)} loin de toute eau, {h.Nom} se dit qu'une calebasse pleine, enterrée ici à la saison des pluies, {(h.Sexe == Sexe.Femme ? "l'aurait sauvée" : "l'aurait sauvé")}.");
+            recit: new Recit("res.cacheDEau", ("h", h)));
     }
 
     /// <summary>L'hiver affame : celui qui se souvient des noix de l'automne se promet d'en garder.</summary>
@@ -182,7 +175,7 @@ public sealed partial class Comportement
         if (h.Faim < 45 || h.EstEnfant(_maintenant) || h.Sait(Effet.Provisions) || Calendrier.Decomposer(_maintenant).Saison != Saison.Hiver) return;
         if (alea.Reel() >= 0.00002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h)) * (0.5 + h.Personnalite.Conscience)) return;
         Retenir(h, Geste.Amasser, Matiere.Plante, Matiere.Aucune, Effet.Provisions, 0, Symptome.Aucun, OrigineSavoir.Reflexion, 0, tous,
-            recit: $"L'hiver affame {h.Nom}. À l'automne, les noix et les graines jonchaient le sol : {Il(h)} se promet d'en garder.");
+            recit: new Recit("res.provisions", ("h", h)));
     }
 
     /// <summary>
@@ -370,17 +363,17 @@ public sealed partial class Comportement
             if (t.Id != auteur.Id && (t.CommunauteId == 0 || t.CommunauteId != r.CommunauteId)) continue;
             if (alea.Reel() < 0.35 * Perspicacite(t) * cache) { temoin = t; break; }
         }
-        var quoi = r.Sorte == SorteReserve.Eau ? "l'eau cachée" : "la réserve";
+        var quoi = Recits.Recit.Seul(r.Sorte == SorteReserve.Eau ? "res.quoi.eau" : "res.quoi.reserve");
         if (temoin is null)
         {
-            var id = Noter(maintenant, TypeEvenement.Vol, h, auteur, $"{h.Nom} puise en cachette dans {quoi} de {auteur.Nom}, sans être vu{E(h)}.", r.EvenementId,
+            var id = Noter(maintenant, TypeEvenement.Vol, h, auteur, new Recit("res.vol.cache", ("h", h), ("quoi", quoi), ("a", auteur)), r.EvenementId,
                 karma: Regard.Vol);
             if (communaute is not null) communaute.VolReserveEvenementId = id;
             return;
         }
         var texte = temoin.Id == auteur.Id
-            ? $"{auteur.Nom} surprend {h.Nom} en train de puiser dans {quoi} qu'{Il(auteur)} avait mise de côté."
-            : $"{temoin.Nom} voit {h.Nom} puiser dans {quoi} de {auteur.Nom}, et le lui dit.";
+            ? new Recit("res.vol.surpris", ("a", auteur), ("h", h), ("quoi", quoi))
+            : new Recit("res.vol.temoin", ("t", temoin), ("h", h), ("quoi", quoi), ("a", auteur));
         var vol = Noter(maintenant, TypeEvenement.Vol, h, auteur, texte, r.EvenementId, karma: Regard.Vol);
         if (communaute is not null) communaute.VolReserveEvenementId = vol;
         if (Social is not { } social) return;
@@ -441,7 +434,7 @@ public sealed partial class Comportement
             {
                 kg *= 0.2 + 0.3 * alea.Reel();
                 if (r.AuteurId > 0 && r.AuteurId <= humains.Count && humains[r.AuteurId - 1] is { EstVivant: true } a)
-                    Journal.Add(new EvenementJournal(maintenant, TypeEvenement.Pensee, a.Id, 0, $"Des bêtes ont fouillé la réserve de {a.Nom} : il n'en reste presque rien.")
+                    Journal.Add(new EvenementJournal(maintenant, TypeEvenement.Pensee, a.Id, 0, new Recit("res.betes", ("a", a)))
                     {
                         Id = Numeros.Suivant(), CauseId = r.EvenementId,
                     });
@@ -449,7 +442,7 @@ public sealed partial class Comportement
             if (etat <= 0 && r.AuteurId > 0 && r.AuteurId <= humains.Count && humains[r.AuteurId - 1] is { EstVivant: true } auteur && r.Kg >= 1)
             {
                 Journal.Add(new EvenementJournal(maintenant, TypeEvenement.Pensee, auteur.Id, 0,
-                    $"{Majuscule(DecrireReserve(r.Sorte, r.Kg))} que {auteur.Nom} avait mis de côté {(r.Sorte == SorteReserve.ViandeCachee ? "ont pourri" : "ont moisi")}.")
+                    new Recit(r.Sorte == SorteReserve.ViandeCachee ? "res.pourri" : "res.moisi", ("r", DecrireReserve(r.Sorte, r.Kg)), ("a", auteur)))
                 {
                     Id = Numeros.Suivant(), CauseId = r.EvenementId,
                 });
@@ -504,10 +497,8 @@ public sealed partial class Comportement
             var avant = c.IdeeReserve;
             c.IdeeReserve = aSoi ? IdeeReserve.ASoi : IdeeReserve.Commune;
             c.IdeeReserveLe = maintenant;
-            var texte = aSoi
-                ? $"Chez {Minuscule(c.Nom)}, on dit désormais que ce qu'on a mis de côté est à soi : y toucher sans demander, c'est voler."
-                : $"Chez {Minuscule(c.Nom)}, on dit désormais que les réserves sont à tous : chacun y puise selon sa faim.";
-            if (avant != IdeeReserve.Aucune) texte += aSoi ? " On ne partage plus comme avant." : " On ne garde plus pour soi seul.";
+            var texte = new Recit(aSoi ? "res.idee.aSoi" : "res.idee.commune", ("c", c),
+                ("fin", avant == IdeeReserve.Aucune ? "" : Recits.Recit.Seul(aSoi ? "res.idee.plusPartage" : "res.idee.plusGarde")));
             var e = new EvenementJournal(maintenant, TypeEvenement.Communaute, figure?.Id ?? 0, 0, texte)
             {
                 Id = Numeros.Suivant(), CauseId = aSoi ? c.VolReserveEvenementId : c.DisetteEvenementId, CommunauteId = c.Id, Significatif = true,

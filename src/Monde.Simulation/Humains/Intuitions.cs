@@ -1,3 +1,5 @@
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -55,19 +57,18 @@ public sealed partial class Comportement
         h.Activite = Activite.Experimenter;
         h.CibleX = h.CibleY = -1;
         var idee = Physique.Phrase(depart.Geste, a, b);
-        var question = $"{h.Nom} se demande : si {Physique.Phrase(depart.Geste, depart.A, depart.B)} sert à {Physique.NomEffet(depart.Effet)}, " +
-                       $"{idee} y servirait-il aussi ?";
+        var question = new Recit("idee.question", ("h", h), ("depart", Physique.Phrase(depart.Geste, depart.A, depart.B)), ("effet", Physique.NomEffet(depart.Effet)), ("idee", idee));
         var connu = h.Savoirs.Find(s => s.Geste == depart.Geste && s.A == a && s.B == b && s.Espece == 0);
         var r = Physique.Tenter(depart.Geste, a, b, Contexte(h, connu), alea);
         if (r.Effet != Effet.Rien)
         {
-            var effet = r.Effet == depart.Effet ? "Cela marche." : $"Ce n'est pas ce qu'{Il(h)} attendait : {Physique.NomEffet(r.Effet)}.";
-            Constater(h, depart.Geste, a, b, r, OrigineSavoir.Reflexion, tous, recit: $"{question} {Majuscule(Il(h))} essaie. {effet}");
+            var effet = r.Effet == depart.Effet ? Recits.Recit.Seul("idee.marche") : new Recit("idee.autreEffet", ("h", h), ("effet", Physique.NomEffet(r.Effet)));
+            Constater(h, depart.Geste, a, b, r, OrigineSavoir.Reflexion, tous, recit: new Recit("idee.essaie", ("question", question), ("h", h), ("effet", effet)));
             return true;
         }
         // Rien : il en conclut que cela ne se peut pas (à tort, peut-être : un seul essai ne prouve rien).
-        var id = Noter(_maintenant, TypeEvenement.Pensee, h, null, $"{question} {Majuscule(Il(h))} essaie : rien. {Majuscule(Il(h))} en conclut que cela ne se peut pas.");
-        Jardin.Confier(h, TypeIntime.Question, 0, $"J'ai cru qu'on pouvait {idee}. Ce n'est pas possible.", 20 + 20 * p.Ouverture, id, _maintenant, cle);
+        var id = Noter(_maintenant, TypeEvenement.Pensee, h, null, new Recit("idee.rien", ("question", question), ("h", h)));
+        Jardin.Confier(h, TypeIntime.Question, 0, new Recit("idee.impossible", ("idee", idee)), 20 + 20 * p.Ouverture, id, _maintenant, cle);
         return true;
     }
 }

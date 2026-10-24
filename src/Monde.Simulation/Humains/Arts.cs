@@ -138,12 +138,9 @@ public sealed partial class Comportement
         // Rare : une fois en quelques années pour toute une petite population de départ.
         var p = 0.00002 * (0.2 + art) * emotion * (h.EstEnfant(_maintenant) ? 1.5 : 1);
         if (alea.Reel() >= p) return;
-        var recit = h.EstEnfant(_maintenant) ? $"{h.Nom} joue en laissant sa voix monter et descendre"
-            : h.Chagrin > 40 ? $"Seul{E(h)} avec sa peine, {h.Nom} laisse sa voix monter et descendre"
-            : h.Humeur > 75 ? $"Dans sa joie, {h.Nom} laisse sa voix monter et descendre"
-            : $"{h.Nom} laisse sa voix monter et descendre, pour le plaisir";
+        var recit = new Recit(h.EstEnfant(_maintenant) ? "art.chant.enfant" : h.Chagrin > 40 ? "art.chant.peine" : h.Humeur > 75 ? "art.chant.joie" : "art.chant.plaisir", ("h", h));
         Retenir(h, Geste.Chanter, Matiere.Aucune, Matiere.Aucune, Effet.Chant, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous,
-            recit: $"{recit} : c'est un chant.");
+            recit: new Recit("art.chant", ("recit", recit)));
     }
 
     /// <summary>
@@ -160,11 +157,11 @@ public sealed partial class Comportement
         List<Humain> chanteurs = [h, .. choeur];
         var proches = tous.Vivants().Where(o => !chanteurs.Contains(o) && o.EstVivant && !o.EstBebe(_maintenant) && o.CaptifDe == 0 && Distance(o.X, o.Y, h.X, h.Y) <= 1
                                      && (o.DeuilDeId == mort.Id || o.AffectionPour(mort.Id) >= 30 || o.AffectionPour(h.Id) >= 30)).ToList();
-        var avec = choeur.Count == 0 ? "" : choeur.Count == 1 ? $", avec {choeur[0].Nom}"
-            : $", avec {string.Join(", ", choeur.Take(choeur.Count - 1).Select(o => o.Nom))} et {choeur[^1].Nom}";
-        var autour = proches.Count == 0 ? "" : proches.Count == 1 ? $" {proches[0].Nom} {(choeur.Count == 0 ? "l'écoute" : "les écoute")}."
-            : $" {proches.Count} proches {(choeur.Count == 0 ? "l'entourent" : "les entourent")}.";
-        var id = Noter(_maintenant, TypeEvenement.Art, h, mort, $"{h.Nom} chante sa peine pour {mort.Nom}{avec}.{autour}", h.DeuilEvenementId);
+        object avec = choeur.Count == 0 ? "" : new Recit("art.lamente.avec", ("g", new Groupe(choeur)));
+        object autour = proches.Count == 0 ? "" : proches.Count == 1
+            ? new Recit(choeur.Count == 0 ? "art.lamente.ecoute" : "art.lamente.ecouteTous", ("p", proches[0]))
+            : new Recit(choeur.Count == 0 ? "art.lamente.entourent" : "art.lamente.entourentTous", ("n", proches.Count));
+        var id = Noter(_maintenant, TypeEvenement.Art, h, mort, new Recit("art.lamente", ("h", h), ("m", mort), ("avec", avec), ("autour", autour)), h.DeuilEvenementId);
         foreach (var c in chanteurs)
         {
             _lamentations.Add((c.Id, mort.Id));
@@ -247,9 +244,9 @@ public sealed partial class Comportement
             }
             else if (!o.Savoirs.Exists(x => x.Effet == Effet.Danse) && alea.Reel() < 0.0005 * (0.3 + oa) * (0.4 + p.Extraversion) * (enfant ? 2 : 1))
             {
-                var son = chante ? $"au chant de {s.Nom}" : $"au rythme que frappe {s.Nom}";
+                var son = new Recit(chante ? "art.son.chant" : "art.son.rythme", ("s", s));
                 Retenir(o, Geste.Danser, Matiere.Aucune, Matiere.Aucune, Effet.Danse, 0, Symptome.Aucun, OrigineSavoir.Essai, s.Id, tous,
-                    recit: $"{o.Nom} se met à bouger en cadence {son}.");
+                    recit: new Recit("art.danse", ("o", o), ("son", son)));
                 danseurs.Add(o);
             }
         }
@@ -315,9 +312,9 @@ public sealed partial class Comportement
                 : souvenir.Recit is { } r ? r
                 : souvenir.Texte.IndexOf(" m'a raconté : ", StringComparison.Ordinal) is >= 0 and var k ? souvenir.Texte[(k + 15)..] : souvenir.Texte;
             var cle = souvenir.Cle.StartsWith("recit:", StringComparison.Ordinal) ? souvenir.Cle : "recit:" + souvenir.Cle;
-            var qui = auditeurs.Count == 1 ? auditeurs[0].Nom : $"{auditeurs.Count} des siens";
+            object qui = auditeurs.Count == 1 ? auditeurs[0] : new Recit("art.desSiens", ("n", auditeurs.Count));
             var id = Noter(_maintenant, TypeEvenement.Langage, s, auditeurs.Count == 1 ? auditeurs[0] : null,
-                $"{s.Nom} raconte à {qui}, à la veillée : « {Catalogues.Fr.Ecrire(fond)} »", souvenir.CauseId);
+                new Recit("art.raconte", ("s", s), ("qui", qui), ("fond", fond)), souvenir.CauseId);
             foreach (var o in auditeurs)
             {
                 Jardin.Confier(o, souvenir.Type, souvenir.SujetId, new Recit("js.raconte", ("s", s), ("fond", fond)), souvenir.Intensite * (0.4 + 0.3 * o.Personnalite.Ouverture),
@@ -335,11 +332,11 @@ public sealed partial class Comportement
         var c = s.CommunauteId;
         if (_fetes.TryGetValue(c, out var derniere) && _maintenant - derniere < 90 * Calendrier.SecondesParJour) return;
         _fetes[c] = _maintenant;
-        var groupe = c > 0 && Social is not null && c <= Social.Communautes.Count ? $" chez {Social.Communautes[c - 1].Nom}" : "";
-        var son = chante && rythme is not null ? $"au chant et au rythme de {s.Nom}" : chante ? $"au chant de {s.Nom}" : $"au rythme que frappe {s.Nom}";
+        object groupe = c > 0 && Social is not null && c <= Social.Communautes.Count ? new Recit("art.fete.chez", ("c", Social.Communautes[c - 1])) : "";
+        var son = new Recit(chante && rythme is not null ? "art.son.chantRythme" : chante ? "art.son.chant" : "art.son.rythme", ("s", s));
         var ocre = danseurs.Count(d => Humains.Arts.Connait(d, Effet.Ocre));
-        var pare = ocre == 0 ? "" : ocre * 2 >= danseurs.Count ? ", parés d'ocre" : ", certains parés d'ocre";
-        var id = Noter(_maintenant, TypeEvenement.Art, s, null, $"Fête{groupe} : {danseurs.Count} dansent {son}{pare}.");
+        object pare = ocre == 0 ? "" : Recits.Recit.Seul(ocre * 2 >= danseurs.Count ? "art.fete.pares" : "art.fete.certains");
+        var id = Noter(_maintenant, TypeEvenement.Art, s, null, new Recit("art.fete", ("groupe", groupe), ("n", danseurs.Count), ("son", son), ("pare", pare)));
         foreach (var d in danseurs)
             Jardin.Confier(d, TypeIntime.Joie, s.Id, Recits.Recit.Seul("js.fete"), 25 + 30 * d.Personnalite.Extraversion, id, _maintenant, "fete");
     }
@@ -378,20 +375,17 @@ public sealed partial class Comportement
         var mort = deuil && h.DeuilDeId <= tous.Count ? tous[h.DeuilDeId - 1] : null;
         var description = motif switch
         {
-            MotifPeint.Main => "une main rouge, l'ocre soufflée autour de la sienne posée sur la paroi",
-            MotifPeint.Bete => "une bête de profil, telle qu'on la voit à la chasse",
-            MotifPeint.Morts => $"une silhouette couchée, pour {mort?.Nom ?? "un mort"}",
-            MotifPeint.Entite => "une grande forme rayonnante : l'invisible, tel qu'on le rêve",
-            MotifPeint.Danse => "des silhouettes qui dansent en ronde",
-            _ => "des points et des lignes dont l'auteur seul sait le sens",
+            MotifPeint.Main or MotifPeint.Bete or MotifPeint.Entite or MotifPeint.Danse => Recits.Recit.Seul($"art.motif.{motif}"),
+            MotifPeint.Morts => mort is null ? Recits.Recit.Seul("art.motif.unMort") : new Recit("art.motif.Morts", ("m", mort)),
+            _ => Recits.Recit.Seul("art.motif.Signes"),
         };
         h.Activite = Activite.Fabriquer;
         var savait = h.Savoirs.Exists(s => s.Effet == Effet.Peinture);
         var id = Retenir(h, Geste.Peindre, Matiere.Ocre, Matiere.Aucune, Effet.Peinture, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous,
-            recit: $"{h.Nom} écrase de l'ocre et la pose sur la roche : {description}.");
+            recit: new Recit("art.peint.premier", ("h", h), ("d", description)));
         if (savait || id == 0)
-            id = Noter(_maintenant, TypeEvenement.Art, h, mort, $"{h.Nom} peint sur la roche {description}.", motif == MotifPeint.Morts ? h.DeuilEvenementId : 0);
-        var oeuvre = Installations.Peindre(h.X, h.Y, h.Id, _maintenant, motif, description, id, h.CommunauteId);
+            id = Noter(_maintenant, TypeEvenement.Art, h, mort, new Recit("art.peint", ("h", h), ("d", description)), motif == MotifPeint.Morts ? h.DeuilEvenementId : 0);
+        var oeuvre = Installations.Peindre(h.X, h.Y, h.Id, _maintenant, motif, description.Encoder(), id, h.CommunauteId);
         _vues.Add((h.Id, oeuvre.Id));
         h.Humeur = Math.Min(100, h.Humeur + 5);
         if (deuil) h.Chagrin = Math.Max(0, h.Chagrin - 5);
@@ -416,8 +410,8 @@ public sealed partial class Comportement
                 h.Humeur = Math.Min(100, h.Humeur + 2 * (0.5 + p.Ouverture));
                 var auteur = o.AuteurId >= 1 && o.AuteurId <= tous.Count ? tous[o.AuteurId - 1] : null;
                 var connu = auteur is not null && (h.LienAvec(auteur.Id) is not null || h.CommunauteId != 0 && h.CommunauteId == o.CommunauteId);
-                var question = connu ? $"{auteur!.Nom} a laissé sur la roche {o.Description}. Pourquoi a-t-on envie de laisser une trace ?"
-                    : $"Qui a laissé sur la roche {o.Description} ?";
+                object description = Recits.Recit.Decoder(o.Description) ?? (object)o.Description;
+                var question = connu ? new Recit("art.question.connu", ("a", auteur), ("d", description)) : new Recit("art.question", ("d", description));
                 Jardin.Confier(h, TypeIntime.Question, auteur?.Id ?? 0, question, 15 + 30 * p.Ouverture * (0.5 + Humains.Arts.Aptitude(h)),
                     o.EvenementId, _maintenant, $"oeuvre:{o.Id}");
                 if (o.Motif is MotifPeint.Entite or MotifPeint.Morts)

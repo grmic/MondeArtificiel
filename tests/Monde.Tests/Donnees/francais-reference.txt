@@ -3,7 +3,7 @@ Attirance	11	A002293F9A8513A7	Seikailail repousse les avances de Rukaeshe, qui n
 Catastrophe	6	D8F3324ED6E49623	Une boule de feu raye le ciel nocturne et laisse une longue traînée lumineuse.
 Communaute	1	4F1FCD33C62C7DB9	Une communauté se forme autour de Desougon : 6 humains vivent désormais ensemble.
 Croyance	5	F481BC8F8EFE4854	Vaemakaek croit davantage en l'invisible (16/100) : l'arbuste aux fleurs blanches lui a donné des visions.
-Decouverte	217	70974777B91FF0C4	Première fois au monde : Sesuheil pousse un galet : il roule loin devant. Sesuheil comprend : « Poussé sur un sol dur, un galet roule. »
+Decouverte	217	25C1C46BC18A97F7	Première fois au monde : Sesuheil pousse un galet : il roule loin devant. Sesuheil comprend : « Poussé sur un sol dur, un galet roule. »
 Entraide	70	20C238D2EE36E8B9	Taizae veille sur Vaemakaek, malade, et lui apporte à boire et à manger.
 FausseCouche	2	ACA10651C98C78B8	Tiafais perd l'enfant qu'elle portait.
 Grossesse	27	4D3787975DD4A09F	Liaveku attend un enfant de Liabiatak. Elle ne le sait pas encore.
@@ -14,4 +14,4 @@ Maladie	57	CD1C63977D36C682	Vaemakaek tombe malade : une pneumonie (personne ne 
 Partage	1813	2CA37F3B653911C5	Vaehi partage sa nourriture avec Fiajuro.
 Pensee	2230	88A5C4A4E6327768	Vaemakaek : « J'ai mal. Peut-être que cette plante m'aidera. »
 Pensees	1320	8118AD625FA6E500	Je mange ce que je trouve ici.
-Souvenir	1837	5710EE8B1864CCB3	Fidaifouk a oublié un coin où manger (en 60, 134).
+Souvenir	1837	0943682D6CB514DE	Fidaifouk a oublié un coin où manger (en 60, 134).

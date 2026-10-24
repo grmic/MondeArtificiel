@@ -44,7 +44,7 @@ public sealed partial class Comportement
         {
             var points = PointsImprudence(c.Negligence, mort);
             var faute = Noter(maintenant, TypeEvenement.Catastrophe, gardien, null,
-                $"C'est du feu de {gardien.Nom} qu'est parti l'incendie : {(mort ? "il a tué" : "il a blessé")} {Victimes(c.Victimes.Count)}.",
+                new Recit(mort ? "feu.faute.tue" : "feu.faute.blesse", ("h", gardien), ("v", Victimes(c.Victimes.Count))),
                 c.Id, karma: points);
             var p = gardien.Personnalite;
             var remords = 100 * Math.Clamp(0.5 * p.Moral.EmpathieEmotionnelle + 0.3 * p.Conscience + 0.2 * p.Moral.Compassion, 0, 1) * (1 - Psyche.Froideur(p));
@@ -66,12 +66,7 @@ public sealed partial class Comportement
         {
             if (!h.EstVivant || h.EstEnfant(maintenant) || h.Sait(c.Lecon)) continue;
             if (alea.Reel() >= (0.15 + 0.6 * Ingeniosite(h)) * poids * dommage) continue;
-            var recit = c.Lecon switch
-            {
-                Effet.EteindreEnPartant => $"{h.Nom} a vu le feu laissé vif dans un camp vide gagner les herbes.",
-                Effet.PasDansLeVent => $"{h.Nom} a vu le vent arracher des flammes au feu du camp et les jeter dans l'herbe sèche.",
-                _ => $"{h.Nom} a vu le feu du camp ramper dans l'herbe autour du foyer, puis s'enfuir.",
-            };
+            var recit = new Recit(c.Lecon is Effet.EteindreEnPartant or Effet.PasDansLeVent ? $"feu.lecon.{c.Lecon}" : "feu.lecon.FoyerDegage", ("h", h));
             var geste = c.Lecon switch { Effet.EteindreEnPartant => Geste.Eteindre, Effet.PasDansLeVent => Geste.Patienter, _ => Geste.Degager };
             Retenir(h, geste, Matiere.Aucune, Matiere.Feu, c.Lecon, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, humains, recit: recit);
         }
@@ -84,7 +79,7 @@ public sealed partial class Comportement
             co.IncendiesSouvenus.Add(c.Id);
             if (co.IncendiesSouvenus.Count > 5) co.IncendiesSouvenus.RemoveAt(0);
             Journal.Add(new EvenementJournal(maintenant, TypeEvenement.Catastrophe, gardien?.Id ?? 0, 0,
-                $"{co.Nom} n'oubliera pas l'incendie parti d'un camp, qui lui a pris {Victimes(morts)} : on dira aux enfants de garder le feu loin des herbes.")
+                new Recit("feu.souvenir", ("c", co), ("v", Victimes(morts))))
             {
                 Id = Numeros.Suivant(), CauseId = c.Id, CommunauteId = co.Id, Significatif = true,
             });
@@ -92,12 +87,11 @@ public sealed partial class Comportement
     }
 
     /// <summary>« un des leurs », « trois des leurs ».</summary>
-    private static string Victimes(int n) => n switch
+    private static Recit Victimes(int n) => n switch
     {
-        1 => "un des siens",
-        2 => "deux des siens",
-        3 => "trois des siens",
-        _ => $"{n} des siens",
+        1 => Recits.Recit.Seul("feu.victimes.un"),
+        2 or 3 => new Recit("feu.victimes", ("n", Recits.Recit.Seul($"chiffre.{n}"))),
+        _ => new Recit("feu.victimes", ("n", n)),
     };
 
     /// <summary>Ceux qui pleurent ou soignent une victime : son compagnon, ses parents, ses enfants, ses frères et sœurs, ses amis.</summary>
@@ -130,7 +124,7 @@ public sealed partial class Comportement
             if (!h.EstVivant || h.EstEnfant(maintenant) || h.Sait(Effet.BrulisProtecteur)) continue;
             if (alea.Reel() >= (0.05 + 0.25 * Ingeniosite(h)) * (0.3 + h.Personnalite.Ouverture)) continue;
             Retenir(h, Geste.Incendier, Matiere.HerbeSeche, Matiere.Feu, Effet.BrulisProtecteur, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, humains,
-                recit: $"{h.Nom} remarque que le feu s'est arrêté net au bord des terres brûlées naguère : il n'y trouvait plus rien à dévorer.");
+                recit: new Recit("feu.brulisProtecteur", ("h", h)));
         }
     }
 

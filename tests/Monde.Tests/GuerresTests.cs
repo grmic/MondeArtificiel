@@ -119,7 +119,7 @@ public sealed class GuerresTests
         var annonce = Assert.Single(social.Journal, j => j.Id == projet.EvenementId);
         Assert.True(annonce.Significatif);
         Assert.Contains("à préparer la guerre contre", annonce.Texte);
-        Assert.Contains(projet.Raison, annonce.Texte);
+        Assert.Contains(Monde.Simulation.Recits.Recit.Decoder(projet.Raison)!.Texte, annonce.Texte);
         Assert.Equal((a.Id, b.Id), (annonce.CommunauteId, annonce.AutreCommunauteId));
         Assert.Contains(tous[projet.InstigateurId - 1].Memoire.Jardin, x => x.Type == TypeIntime.Intention && x.CauseId == projet.EvenementId);
 

@@ -3,6 +3,8 @@ using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>Séismes, tsunamis et éruptions volcaniques.</summary>
@@ -10,6 +12,9 @@ public sealed partial class Catastrophes
 {
     /// <summary>Un nombre décimal à la française (« 6,4 »).</summary>
     internal static string Decimal(double v) => v.ToString("0.0", CultureInfo.InvariantCulture).Replace('.', ',');
+
+    /// <summary>Un décimal à un chiffre (« 6,4 »), écrit dans la langue de l'observateur.</summary>
+    internal static Decimale DecimalR(double v) => new(v);
 
     // ───────────── Séismes ─────────────
 
@@ -70,12 +75,9 @@ public sealed partial class Catastrophes
         // Rayon où on le sent (intensité III) : au-delà, presque personne ne le remarque.
         var portee = Math.Pow(10, (1.5 * magnitude + 2.5 - 3) / 3.5);
         var rayon = Echelle.Cases(Math.Sqrt(Math.Max(0, portee * portee - profondeur * profondeur)));
-        var m = Decimal(magnitude);
-        var ou = Ou(x, y);
-        var texte = sousMarin
-            ? $"La terre tremble : un séisme de magnitude {m} secoue les côtes {LieuDe(x, y)}, depuis le fond de la mer."
-            : $"La terre tremble : un séisme de magnitude {m} secoue les terres {LieuDe(x, y)}.";
-        var c = Commencer(TypeCatastrophe.Seisme, x, y, rayon, magnitude, $"Séisme de magnitude {m} {ou}", texte, humains, maintenant,
+        var m = DecimalR(magnitude);
+        var texte = new Recit(sousMarin ? "cat.seisme.mer" : "cat.seisme", ("m", m), ("lieu", LieuDe(x, y)));
+        var c = Commencer(TypeCatastrophe.Seisme, x, y, rayon, magnitude, new Recit("cat.nom.seisme", ("m", m), ("ou", Ou(x, y))), texte, humains, maintenant,
             origine, direction: profondeur, duree: Calendrier.SecondesParHeure);
         Secouer(c, magnitude, humains, maintenant);
 
@@ -119,7 +121,7 @@ public sealed partial class Catastrophes
         foreach (var communaute in ressentie)
         {
             if (communaute > Communautes.Count) continue;
-            Noter(maintenant, null, $"Toute la {Minuscule(Communautes[communaute - 1].Nom)} a senti la terre trembler.", c.Id, communaute);
+            Noter(maintenant, null, new Recit("cat.seisme.ressenti", ("c", Communautes[communaute - 1])), c.Id, communaute);
             c.Communautes.Add(communaute);
         }
     }
@@ -143,7 +145,7 @@ public sealed partial class Catastrophes
         var magnitude = c.Intensite - 1.2 + 0.25 * Biologie.Normale(_alea);
         c.Duree = maintenant - c.Debut + Calendrier.SecondesParHeure;
         if (magnitude < 4.5) return;
-        Noter(maintenant, null, $"Une forte réplique (magnitude {Decimal(magnitude)}) secoue de nouveau les terres {LieuDe(c.X, c.Y)}.", c.Id);
+        Noter(maintenant, null, new Recit("cat.replique", ("m", DecimalR(magnitude)), ("lieu", LieuDe(c.X, c.Y))), c.Id);
         Secouer(c, magnitude, humains, maintenant);
     }
 
@@ -207,13 +209,13 @@ public sealed partial class Catastrophes
         if (cases.Count == 0) return null;
         // L'onde file à 400 à 700 km/h au large : de quelques minutes à une heure avant d'atteindre la côte.
         var delai = 600 + (long)(Echelle.Kilometres(plusProche) / 500 * Calendrier.SecondesParHeure);
-        var c = Commencer(TypeCatastrophe.Tsunami, x, y, (int)portee, hauteur, $"Vague géante de {hauteur:0} m {Ou(x, y)}",
-            $"Au large, la mer se soulève : une vague géante d'environ {hauteur:0} m court vers les côtes.", humains, maintenant, origine,
+        var c = Commencer(TypeCatastrophe.Tsunami, x, y, (int)portee, hauteur, new Recit("cat.nom.tsunami", ("m", new Decimale(hauteur, 0)), ("ou", Ou(x, y))),
+            new Recit("cat.tsunami", ("m", new Decimale(hauteur, 0))), humains, maintenant, origine,
             cause: cause, alerter: false);
         c.Cases = cases;
         c.Prochaine = maintenant + delai;
         // Le danger n'existe que sur les côtes noyées : l'alerte vaut s'il y a quelqu'un là.
-        if (!c.Signalee && humains.Vivants().Any(h => h.EstVivant && cases.Contains(_carte.Indice(h.X, h.Y)))) Signaler(c, Journal[^1].Texte);
+        if (!c.Signalee && humains.Vivants().Any(h => h.EstVivant && cases.Contains(_carte.Indice(h.X, h.Y)))) Signaler(c, Journal[^1].Recit ?? (object)Journal[^1].Texte);
         return c;
     }
 
@@ -221,7 +223,7 @@ public sealed partial class Catastrophes
     {
         c.Phase = 1;
         c.Duree = maintenant - c.Debut + 6 * Calendrier.SecondesParHeure;
-        Noter(maintenant, null, $"La vague géante déferle sur les côtes et noie {Surface(c.Cases.Count)} de terres basses.", c.Id);
+        Noter(maintenant, null, new Recit("cat.tsunami.deferle", ("s", SurfaceR(c.Cases.Count))), c.Id);
         foreach (var h in humains)
         {
             if (h.EstVivant && c.Cases.Contains(_carte.Indice(h.X, h.Y))) Frapper(h, c, 0.5, 0.3, CauseDeMort.Noyade, humains, maintenant);
@@ -288,8 +290,8 @@ public sealed partial class Catastrophes
     {
         var avant = vei <= 2 ? 1 + _alea.Reel() * 6 : 5 + _alea.Reel() * 55;
         var activite = vei <= 2 ? 10 + _alea.Reel() * 80 : 3 + _alea.Reel() * 12;
-        var c = Commencer(TypeCatastrophe.Eruption, v.X, v.Y, RayonsCendres[vei], vei, $"Éruption {De(v.Nom)} (indice d'explosivité {vei})",
-            $"{Majuscule(v.Nom)} gronde : la terre tremble à ses pieds et une fumée s'élève de son sommet.", humains, maintenant, origine,
+        var c = Commencer(TypeCatastrophe.Eruption, v.X, v.Y, RayonsCendres[vei], vei, new Recit("cat.nom.eruption", ("v", v.Nomme), ("n", vei)),
+            new Recit("cat.eruption.gronde", ("v", v.Nomme)), humains, maintenant, origine,
             parametre: v.Numero, duree: (long)((avant + activite) * Calendrier.SecondesParJour));
         c.Prochaine = maintenant + (long)(avant * Calendrier.SecondesParJour);
         foreach (var h in humains)
@@ -299,21 +301,12 @@ public sealed partial class Catastrophes
         return c;
     }
 
-    /// <summary>« du volcan du nord », « de l'… ».</summary>
-    private static string De(string nom) => nom.StartsWith("le ", StringComparison.Ordinal) ? "du " + nom[3..] : "de " + nom;
-
     private void Paroxysme(Catastrophe c, List<Humain> humains, long maintenant)
     {
         c.Phase = 1;
         var v = VolcanDe(c);
         var vei = Vei(c);
-        var texte = vei switch
-        {
-            <= 2 => $"{Majuscule(v.Nom)} entre en éruption : des coulées de lave descendent ses pentes.",
-            <= 4 => $"{Majuscule(v.Nom)} explose : une colonne de cendres monte jusqu'au ciel et des nuées brûlantes dévalent ses flancs.",
-            _ => $"{Majuscule(v.Nom)} explose avec une violence inouïe : le fracas s'entend dans tout le continent, des nuées brûlantes "
-                 + "rasent tout alentour et le jour devient nuit sous les cendres.",
-        };
+        var texte = new Recit(vei switch { <= 2 => "cat.eruption.lave", <= 4 => "cat.eruption.explose", _ => "cat.eruption.inouie" }, ("v", v.Nomme));
         Noter(maintenant, null, texte, c.Id);
         Signaler(c, texte);
 
@@ -357,8 +350,8 @@ public sealed partial class Catastrophes
         {
             var ecart = vei == 6 ? -0.8 - 0.4 * _alea.Reel() : -2 - _alea.Reel();
             var annees = vei == 6 ? 2 : 3;
-            var hiver = Commencer(TypeCatastrophe.HiverVolcanique, c.X, c.Y, 900, ecart, $"Hiver volcanique après l'éruption {De(v.Nom)}",
-                $"Un voile de cendres et de soufre obscurcit le ciel : le soleil pâlit, et le froid gagne tout le continent ({Decimal(ecart)} °C).",
+            var hiver = Commencer(TypeCatastrophe.HiverVolcanique, c.X, c.Y, 900, ecart, new Recit("cat.nom.hiverVolcanique", ("v", v.Nomme)),
+                new Recit("cat.hiverVolcanique", ("t", DecimalR(ecart))),
                 humains, maintenant, c.Origine, cause: c.Id, duree: annees * Calendrier.SecondesParAn);
             hiver.Signalee = true;
             // Un volcan proche de la mer peut s'effondrer en partie dans l'eau : une vague géante s'ensuit (Krakatoa, 1883).
@@ -390,9 +383,8 @@ public sealed partial class Catastrophes
     private void HiverLointain(double ecart, double annees, bool grave, List<Humain> humains, long maintenant)
     {
         var hiver = Commencer(TypeCatastrophe.HiverVolcanique, _carte.Largeur / 2, _carte.Hauteur / 2, 900, ecart,
-            $"Hiver volcanique venu d'une éruption lointaine ({Decimal(ecart)} °C)",
-            $"Le soleil pâlit derrière un voile laiteux, les couchers de soleil virent au rouge sang et un froid inhabituel s'installe ({Decimal(ecart)} °C). "
-            + "Loin au-delà des mers, un volcan géant a explosé : personne ici ne peut le savoir.",
+            new Recit("cat.nom.hiverLointain", ("t", DecimalR(ecart))),
+            new Recit("cat.hiverLointain", ("t", DecimalR(ecart))),
             humains, maintenant, alerter: grave, duree: (long)(annees * Calendrier.SecondesParAn));
         hiver.Signalee = true;
     }

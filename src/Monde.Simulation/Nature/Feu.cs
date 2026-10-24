@@ -2,6 +2,8 @@ using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>Incendies : allumés par la foudre, poussés par le vent, éteints par la pluie ou faute de combustible.</summary>
@@ -77,17 +79,11 @@ public sealed partial class Catastrophes
     {
         var i = _carte.Indice(x, y);
         var ou = Ou(x, y);
-        var quoi = _carte.BiomeEn(x, y) switch
-        {
-            Biome.PlaineDeFougeres => "aux fougères",
-            Biome.ForetDeConiferes => "à la forêt de conifères",
-            Biome.ForetTropicale => "à la forêt",
-            Biome.Montagne => "aux broussailles des montagnes",
-            Biome.Marais => "aux roseaux du marais",
-            _ => "aux broussailles",
-        };
-        var texte = cause == 0 ? $"La foudre met le feu {quoi} {ou}." : $"Le feu prend {quoi} {ou}.";
-        var c = Commencer(TypeCatastrophe.Incendie, x, y, 1, 0, $"Incendie {ou}", texte, humains, maintenant, origine,
+        var biome = _carte.BiomeEn(x, y);
+        var quoi = Recit.Seul(biome is Biome.PlaineDeFougeres or Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.Montagne or Biome.Marais
+            ? $"cat.feu.quoi.{biome}" : "cat.feu.quoi.broussailles");
+        var texte = new Recit(cause == 0 ? "cat.feu.foudre" : "cat.feu.prend", ("quoi", quoi), ("ou", ou));
+        var c = Commencer(TypeCatastrophe.Incendie, x, y, 1, 0, new Recit("cat.nom.incendie", ("ou", ou)), texte, humains, maintenant, origine,
             direction: _alea.Reel() * 2 * Math.PI, cause: cause);
         c.Front[i] = maintenant + (2 + _alea.Entier(4)) * Calendrier.SecondesParHeure;
         Ravager(c, i, 0, 0.3, 0.9);
@@ -137,8 +133,8 @@ public sealed partial class Catastrophes
         {
             if (!h.EstVivant || h.EstBebe(maintenant)) continue;
             if (!_danger.TryGetValue(_carte.Indice(h.X, h.Y), out var d) || d.Source != c || !c.Temoins.Add(h.Id)) continue;
-            Signaler(c, $"L'incendie {Lieu(c)} menace des humains.");
-            Noter(maintenant, h, $"{h.Nom} voit les flammes dévorer tout autour et sent la chaleur du feu.", c.Id, type: TypeEvenement.Pensee);
+            Signaler(c, new Recit("cat.feu.menace", ("lieu", Lieu(c))));
+            Noter(maintenant, h, new Recit("cat.feu.voit", ("h", h)), c.Id, type: TypeEvenement.Pensee);
             Effrayer(h, c, 15, maintenant);
         }
 
@@ -154,7 +150,7 @@ public sealed partial class Catastrophes
             if (_alea.Reel() >= 0.22 * _ecosysteme.PluieEn(_carte.Indice(c.X, c.Y))) continue;
             foreach (var i in c.Front.Keys) c.Cases.Add(i);
             c.Front.Clear();
-            Noter(maintenant, null, $"La pluie tombe sur l'incendie {Lieu(c)}.", c.Id);
+            Noter(maintenant, null, new Recit("cat.feu.pluie", ("lieu", Lieu(c))), c.Id);
         }
     }
 }

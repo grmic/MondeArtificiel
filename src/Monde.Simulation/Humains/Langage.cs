@@ -157,7 +157,7 @@ public static class Idees
     public static string Libelle(string idee, Flore? flore = null)
     {
         if (Libelles.TryGetValue(idee, out var l)) return l;
-        if (idee.StartsWith("savoir:", StringComparison.Ordinal) && int.TryParse(idee[7..], out var e)) return Physique.NomEffet((Effet)e);
+        if (idee.StartsWith("savoir:", StringComparison.Ordinal) && int.TryParse(idee[7..], out var e)) return Physique.NomEffet((Effet)e).Texte;
         if (idee.StartsWith("plante:", StringComparison.Ordinal) && int.TryParse(idee[7..], out var p) && flore is not null) return flore.Get(p).Nom;
         return idee;
     }

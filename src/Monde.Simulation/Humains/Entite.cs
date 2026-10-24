@@ -391,7 +391,7 @@ public sealed partial class Comportement
                     return "Crue, mais démentie par ce qu'il a vécu.";
                 }
                 Retenir(h, Geste.Manger, Matiere.Plante, Matiere.Aucune, Effet.Poison, param, Symptome.Aucun, OrigineSavoir.Entite, 0, tous,
-                    recit: $"La voix a averti {h.Nom}.");
+                    recit: new Recit("ing.voixAverti", ("h", h)));
                 Garder(h, new Impulsion(parole, mode, 0, param, force, maintenant, maintenant, maintenant, Reponse.Accomplie, reception));
                 return "Crue : il se gardera de cette plante.";
             }

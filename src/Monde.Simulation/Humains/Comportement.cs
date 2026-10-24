@@ -486,7 +486,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// Mort causée par une catastrophe ou une épidémie, avec son récit : notée comme les autres (journal, deuil des proches),
     /// et rattachée à sa cause.
     /// </summary>
-    internal void Tuer(Humain h, long maintenant, CauseDeMort cause, string texte, long causeId, Humain? tueur = null, double karmaTueur = 0)
+    internal void Tuer(Humain h, long maintenant, CauseDeMort cause, object texte, long causeId, Humain? tueur = null, double karmaTueur = 0)
     {
         if (!h.EstVivant) return;
         PerduPourSonSoignant(h, maintenant);

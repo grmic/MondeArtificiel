@@ -88,7 +88,11 @@ public sealed class Catastrophe
     public double Intensite { get; init; }
 
     /// <summary>Nom pour l'observateur : « Séisme de magnitude 6,4 au nord-ouest ».</summary>
+    /// <remarks>Depuis la 0.30.4, un récit encodé (<see cref="Recits.Recit.Encoder"/>) ; avant, la phrase française.</remarks>
     public required string Nom { get; set; }
+
+    /// <summary>Le nom en français, qu'il soit gardé en récit ou en phrase.</summary>
+    public string NomFrancais => Recits.Recit.Decoder(Nom)?.Texte ?? Nom;
 
     public int Morts { get; set; }
     public int Blesses { get; set; }
@@ -182,8 +186,31 @@ public sealed class Catastrophe
 /// <param name="DureeJours">Durée moyenne de la maladie (on est contagieux pendant ce temps).</param>
 /// <param name="Letalite">Part des malades qui en meurent, pour un adulte en bonne santé.</param>
 /// <param name="ImmuniteAns">Durée de l'immunité après guérison (0 : à vie).</param>
+/// <param name="Nom">Nom en français (« la peste », « la grippe (souche 4) ») : il est enregistré tel quel.</param>
 public sealed record Pathogene(int Id, string Nom, double Transmission, double IncubationJours, double DureeJours, double Letalite,
-    double ImmuniteAns, long ApparuLe, long EvenementId);
+    double ImmuniteAns, long ApparuLe, long EvenementId)
+{
+    /// <summary>Clé de chaque nom de maladie (<c>patho.*</c>).</summary>
+    private static readonly Dictionary<string, string> Cles = new(StringComparer.Ordinal)
+    {
+        ["la peste"] = "peste", ["la fièvre de Lassa"] = "lassa", ["le charbon"] = "charbon", ["la grippe"] = "grippe",
+        ["la variole du singe"] = "varioleSinge", ["la fièvre récurrente"] = "fievreRecurrente", ["la leptospirose"] = "leptospirose",
+        ["la tularémie"] = "tularemie", ["la salmonellose"] = "salmonellose", ["la brucellose"] = "brucellose", ["la fièvre Q"] = "fievreQ",
+        ["la psittacose"] = "psittacose", ["l'hantavirose"] = "hantavirose",
+    };
+
+    /// <summary>Son nom, à écrire dans la langue de l'observateur (un nom inconnu reste tel quel).</summary>
+    public Recits.Recit Dit
+    {
+        get
+        {
+            var i = Nom.IndexOf(" (souche ", StringComparison.Ordinal);
+            if (!Cles.TryGetValue(i < 0 ? Nom : Nom[..i], out var cle)) return new Recits.Recit("patho.brut", ("nom", Nom));
+            var nom = Recits.Recit.Seul($"patho.{cle}");
+            return i >= 0 && int.TryParse(Nom[(i + 9)..^1], out var souche) ? new Recits.Recit("patho.souche", ("m", nom), ("n", souche)) : nom;
+        }
+    }
+}
 
 /// <summary>Immunité d'un humain contre une maladie, jusqu'à une date (null : à vie).</summary>
 public sealed record Immunite(int PathogeneId, long? Jusqua);

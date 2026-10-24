@@ -1,5 +1,7 @@
 using Monde.Simulation.Monde;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Humains;
 
 /// <summary>
@@ -16,8 +18,16 @@ namespace Monde.Simulation.Humains;
 /// <param name="Vermifuge">Chasse les vers (0 à 1).</param>
 /// <param name="Psychotrope">Fait voir et entendre des choses étranges (0 à 1).</param>
 public sealed record Espece(int Numero, string Nom, Biome[] Biomes, double Toxicite, double Astringente, double Febrifuge,
-    double Antipaludique, double Antiseptique, double Vermifuge, double Psychotrope)
+    double Antipaludique, double Antiseptique, double Vermifuge, double Psychotrope, int Forme = -1, int Trait = -1)
 {
+    /// <summary>
+    /// Le nom à écrire dans la langue de l'observateur (« la fougère aux baies rouges », « the fern with red berries ») :
+    /// un récit fait de sa forme et de son trait, ou le nom français d'une espèce faite sans eux.
+    /// </summary>
+    public object Dit => Forme < 0 || Trait < 0 ? Nom : _dit ??= new Recit("plante", ("forme", Recit.Seul($"plante.forme.{Forme}")), ("trait", Recit.Seul($"plante.trait.{Trait}")));
+
+    private Recit? _dit;
+
     /// <summary>Effet réel de la plante, mangée (ou appliquée), sur un mal donné : 0 si elle n'y fait rien.</summary>
     public double Efficacite(Maladie m, Geste geste) => (m, geste) switch
     {
@@ -61,12 +71,19 @@ public sealed class Flore
             for (var k = 0; k < n; k++)
             {
                 string nom;
-                do nom = $"{Formes[alea.Entier(Formes.Length)]} {Traits[alea.Entier(Traits.Length)]}"; while (!noms.Add(nom));
+                int forme, trait;
+                do
+                {
+                    forme = alea.Entier(Formes.Length);
+                    trait = alea.Entier(Traits.Length);
+                    nom = $"{Formes[forme]} {Traits[trait]}";
+                }
+                while (!noms.Add(nom));
                 double Vertu(double p) => alea.Reel() < p ? 0.3 + 0.6 * alea.Reel() : 0;
                 var humide = b is Biome.ForetTropicale or Biome.Marais;
                 especes.Add(new Espece(especes.Count + 1, nom, [b],
                     Toxicite: Vertu(0.12), Astringente: Vertu(0.25), Febrifuge: Vertu(0.1), Antipaludique: humide ? Vertu(0.08) : 0,
-                    Antiseptique: Vertu(0.15), Vermifuge: Vertu(0.1), Psychotrope: Vertu(0.05)));
+                    Antiseptique: Vertu(0.15), Vermifuge: Vertu(0.1), Psychotrope: Vertu(0.05), Forme: forme, Trait: trait));
             }
         }
         Especes = especes;

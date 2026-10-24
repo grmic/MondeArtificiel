@@ -1,6 +1,8 @@
 using Monde.Simulation.Humains;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>
@@ -50,8 +52,8 @@ public sealed partial class Catastrophes
         var p = _pathogenes.Count > 0 && _alea.Reel() < 0.5 ? _pathogenes[_alea.Entier(_pathogenes.Count)] : NouveauPathogene(h, maintenant);
         if (EstImmunise(h, p, maintenant)) return;
         var texte = p.ApparuLe == maintenant
-            ? $"{h.Nom} a attrapé une maladie nouvelle en dépeçant une bête : {p.Nom}, que personne ne sait nommer."
-            : $"{h.Nom} a attrapé {p.Nom} en dépeçant une bête.";
+            ? new Recit("cat.patho.nouvelle", ("h", h), ("m", p.Dit))
+            : new Recit("cat.patho.depece", ("h", h), ("m", p.Dit));
         var id = Noter(maintenant, h, texte, p.EvenementId, type: TypeEvenement.Maladie);
         if (p.ApparuLe == maintenant)
         {
@@ -98,7 +100,7 @@ public sealed partial class Catastrophes
 
     private Pathogene? PathogeneDe(Humain h) => h.InfectionId > 0 && h.InfectionId <= _pathogenes.Count ? _pathogenes[h.InfectionId - 1] : null;
 
-    private string NomPathogene(int id) => id > 0 && id <= _pathogenes.Count ? _pathogenes[id - 1].Nom : "la maladie";
+    private Recit NomPathogene(int id) => id > 0 && id <= _pathogenes.Count ? _pathogenes[id - 1].Dit : Recit.Seul("patho.inconnue");
 
     /// <summary>
     /// Chaque heure : les malades contagieux (dès la veille des premiers signes, et jusqu'à la guérison) contaminent
@@ -139,7 +141,7 @@ public sealed partial class Catastrophes
                     foreach (var v in voisins)
                     {
                         if (v.Id == m.Id || v.InfectionId != 0 || EstImmunise(v, p, maintenant) || _alea.Reel() >= risque * Epargne(v, maintenant)) continue;
-                        var id = Noter(maintenant, v, $"{v.Nom} attrape {p.Nom} auprès de {m.Nom}.", m.InfectionEvenementId,
+                        var id = Noter(maintenant, v, new Recit("cat.patho.contagion", ("v", v), ("m", p.Dit), ("h", m)), m.InfectionEvenementId,
                             type: TypeEvenement.Maladie);
                         Infecter(v, p, maintenant, id);
                     }
@@ -161,7 +163,7 @@ public sealed partial class Catastrophes
             {
                 m.MaladeJusqua = m.GuerisonLe;
                 m.Maladie = Maladie.Aucune;
-                Noter(maintenant, m, $"{m.Nom} tombe malade : {p.Nom}.", m.InfectionEvenementId, type: TypeEvenement.Maladie);
+                Noter(maintenant, m, new Recit("cat.patho.malade", ("h", m), ("m", p.Dit)), m.InfectionEvenementId, type: TypeEvenement.Maladie);
             }
             if (maintenant < m.GuerisonLe) continue;
             Guerir(m, p, humains, maintenant);
@@ -183,7 +185,7 @@ public sealed partial class Catastrophes
         if (_alea.Reel() < Math.Min(0.95, p.Letalite * fragilite) && Comportement is not null)
         {
             // Le mort garde la maladie qui l'a emporté (pour le bilan de chaque maladie).
-            Comportement.Tuer(m, maintenant, CauseDeMort.Maladie, $"{m.Nom} meurt de {p.Nom}, à {Comportement.AgeEnMots(m, maintenant)}.", evenement);
+            Comportement.Tuer(m, maintenant, CauseDeMort.Maladie, new Recit("cat.patho.mort", ("h", m), ("m", p.Dit), ("age", Comportement.AgeEnMots(m, maintenant))), evenement);
             if (_liste.FirstOrDefault(c => c.Active && c.Type == TypeCatastrophe.Epidemie && c.Parametre == p.Id) is { } epidemie)
             {
                 epidemie.Morts++;
@@ -199,7 +201,7 @@ public sealed partial class Catastrophes
         m.MaladeJusqua = Math.Min(m.MaladeJusqua, maintenant);
         m.Immunites.RemoveAll(i => i.PathogeneId == p.Id);
         m.Immunites.Add(new Immunite(p.Id, p.ImmuniteAns > 0 ? maintenant + (long)(p.ImmuniteAns * Calendrier.SecondesParAn) : null));
-        Noter(maintenant, m, $"{m.Nom} guérit de {p.Nom}.", evenement, type: TypeEvenement.Maladie);
+        Noter(maintenant, m, new Recit("cat.patho.guerit", ("h", m), ("m", p.Dit)), evenement, type: TypeEvenement.Maladie);
     }
 
     /// <summary>
@@ -220,8 +222,8 @@ public sealed partial class Catastrophes
             {
                 if (malades.Count < 4) continue;
                 var premier = malades.MinBy(h => h.InfecteLe)!;
-                epidemie = Commencer(TypeCatastrophe.Epidemie, cx, cy, rayon, malades.Count, $"Épidémie de {p.Nom}",
-                    $"{Majuscule(p.Nom)} se répand {Ou(cx, cy)} : déjà {malades.Count} malades.", humains, maintenant,
+                epidemie = Commencer(TypeCatastrophe.Epidemie, cx, cy, rayon, malades.Count, new Recit("cat.nom.epidemie", ("m", p.Dit)),
+                    new Recit("cat.epidemie", ("m", p.Dit), ("ou", Ou(cx, cy)), ("n", malades.Count)), humains, maintenant,
                     cause: premier.InfectionEvenementId, parametre: p.Id);
             }
             epidemie.Rayon = Math.Max(epidemie.Rayon, rayon);

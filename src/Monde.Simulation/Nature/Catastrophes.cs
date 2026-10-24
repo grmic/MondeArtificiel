@@ -2,11 +2,14 @@ using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>Une alerte pour l'observateur : une catastrophe touche des humains, ou un phénomène frappe les esprits.</summary>
 /// <param name="Grave">Vrai pour une catastrophe qui menace des vies (le monde peut alors se mettre en pause).</param>
-public sealed record AlerteCatastrophe(long CatastropheId, TypeCatastrophe Type, string Texte, bool Grave);
+/// <param name="Texte">Ce qui est annoncé : un récit, ou une phrase française déjà écrite.</param>
+public sealed record AlerteCatastrophe(long CatastropheId, TypeCatastrophe Type, object Texte, bool Grave);
 
 /// <summary>
 /// Les catastrophes naturelles et les phénomènes du ciel : leur survenue spontanée, leur déroulement, ce qu'elles font
@@ -361,20 +364,15 @@ public sealed partial class Catastrophes
         c.Front.Clear();
         var texte = c.Type switch
         {
-            TypeCatastrophe.Incendie => $"L'incendie {Lieu(c)} s'éteint après avoir brûlé {Surface(c.Cases.Count)}.",
-            TypeCatastrophe.Crue => $"Les eaux de la crue {Lieu(c)} se retirent.",
-            TypeCatastrophe.Cyclone => $"La tempête {Lieu(c)} s'apaise.",
-            TypeCatastrophe.VagueDeFroid => "Le grand froid prend fin : la douceur revient.",
-            TypeCatastrophe.Canicule => "La canicule prend fin.",
-            TypeCatastrophe.Eruption => $"{Majuscule(VolcanDe(c).Nom)} se rendort.",
-            TypeCatastrophe.HiverVolcanique => "Le ciel s'éclaircit : le voile de l'éruption s'est dissipé et la chaleur revient.",
-            TypeCatastrophe.HiverDImpact => "Les poussières de l'impact sont enfin retombées : le soleil revient, la chaleur aussi, et les plantes repoussent.",
-            TypeCatastrophe.Comete => "La comète disparaît du ciel.",
-            TypeCatastrophe.Aurore => "Les lueurs du ciel s'éteignent.",
-            TypeCatastrophe.Epidemie => $"Plus personne n'est malade de {NomPathogene(c.Parametre)} : l'épidémie est finie.",
+            TypeCatastrophe.Incendie => new Recit("cat.fin.Incendie", ("lieu", Lieu(c)), ("s", SurfaceR(c.Cases.Count))),
+            TypeCatastrophe.Crue or TypeCatastrophe.Cyclone => new Recit($"cat.fin.{c.Type}", ("lieu", Lieu(c))),
+            TypeCatastrophe.Eruption => new Recit("cat.fin.Eruption", ("v", VolcanDe(c).Nomme)),
+            TypeCatastrophe.VagueDeFroid or TypeCatastrophe.Canicule or TypeCatastrophe.HiverVolcanique or TypeCatastrophe.HiverDImpact
+                or TypeCatastrophe.Comete or TypeCatastrophe.Aurore => Recit.Seul($"cat.fin.{c.Type}"),
+            TypeCatastrophe.Epidemie => new Recit("cat.fin.Epidemie", ("m", NomPathogene(c.Parametre))),
             _ => null,
         };
-        if (texte is not null) Noter(maintenant, null, texte + Bilan(c), c.Id);
+        if (texte is not null) Noter(maintenant, null, Bilan(c) is { } bilan ? new Recit("cat.bilan", ("t", texte), ("b", bilan)) : texte, c.Id);
         Pertes(c, maintenant);
         if (c.Type == TypeCatastrophe.Incendie) ApresLIncendie(c, humains, maintenant);
         c.SuitesJusqua = DureeDesSuites(c, maintenant);
@@ -418,27 +416,30 @@ public sealed partial class Catastrophes
         foreach (var c in _liste)
         {
             if (c.Active || c.SuitesJusqua <= 0 || c.SuitesJusqua > maintenant || c.SuitesJusqua <= maintenant - Calendrier.SecondesParJour) continue;
-            var duree = Echelle.Duree(c.SuitesJusqua - (c.Fin ?? c.Debut));
-            var bilan = new List<string>();
-            if (c.Morts > 0) bilan.Add(c.Morts == 1 ? "1 mort sur le coup" : $"{c.Morts} morts sur le coup");
-            if (c.Blesses > 0) bilan.Add(c.Blesses == 1 ? "1 blessé" : $"{c.Blesses} blessés");
-            if (c.MortsSuites > 0) bilan.Add(c.MortsSuites == 1 ? "1 mort de faim, de froid ou de maladie dans les terres dévastées"
-                : $"{c.MortsSuites} morts de faim, de froid ou de maladie dans les terres dévastées");
-            Noter(maintenant, null, $"Les terres ravagées par {TypesCatastrophe.Nom(c.Type)} {Lieu(c)} ont reverdi, {duree} après. "
-                + (bilan.Count == 0 ? "Personne n'en est mort." : $"Bilan : {string.Join(", ", bilan)}."), c.Id,
+            var duree = Echelle.DureeR(c.SuitesJusqua - (c.Fin ?? c.Debut));
+            var bilan = new List<object?>();
+            if (c.Morts > 0) bilan.Add(new Recit("cat.n.mortsCoup", ("n", c.Morts)));
+            if (c.Blesses > 0) bilan.Add(new Recit("cat.n.blesses", ("n", c.Blesses)));
+            if (c.MortsSuites > 0) bilan.Add(new Recit("cat.n.mortsSuites", ("n", c.MortsSuites)));
+            Noter(maintenant, null, new Recit(bilan.Count == 0 ? "cat.reverdi.personne" : "cat.reverdi",
+                    ("cat", NomR(c.Type)), ("lieu", Lieu(c)), ("duree", duree), ("b", new Liste(bilan, virgules: true))), c.Id,
                 significatif: c.Morts + c.MortsSuites > 0);
             Pertes(c, maintenant, suites: true);
         }
     }
 
-    /// <summary>« (3 morts, 2 blessés) », ou rien.</summary>
-    private static string Bilan(Catastrophe c)
+    /// <summary>« 3 morts, 2 blessés », ou null.</summary>
+    private static Liste? Bilan(Catastrophe c)
     {
-        if (c.Morts == 0 && c.Blesses == 0) return "";
-        var morts = c.Morts switch { 0 => null, 1 => "1 mort", var n => $"{n} morts" };
-        var blesses = c.Blesses switch { 0 => null, 1 => "1 blessé", var n => $"{n} blessés" };
-        return $" Bilan : {string.Join(", ", new[] { morts, blesses }.Where(s => s is not null))}.";
+        if (c.Morts == 0 && c.Blesses == 0) return null;
+        var bilan = new List<object?>();
+        if (c.Morts > 0) bilan.Add(new Recit("cat.n.morts", ("n", c.Morts)));
+        if (c.Blesses > 0) bilan.Add(new Recit("cat.n.blesses", ("n", c.Blesses)));
+        return new Liste(bilan, virgules: true);
     }
+
+    /// <summary>« le séisme », « la crue », dans la langue de l'observateur.</summary>
+    internal static Recit NomR(TypeCatastrophe t) => Recit.Seul($"catastropheNom.{t}");
 
     /// <summary>Chaque communauté qui a perdu des siens le note dans son histoire.</summary>
     private void Pertes(Catastrophe c, long maintenant, bool suites = false)
@@ -446,9 +447,7 @@ public sealed partial class Catastrophes
         foreach (var (communaute, morts) in c.PertesParCommunaute.OrderBy(p => p.Key))
         {
             if (morts == 0 || communaute <= 0 || communaute > Communautes.Count) continue;
-            var nom = Communautes[communaute - 1].Nom;
-            var quand = suites ? $"dans les suites {TypesCatastrophe.De(c.Type)}" : $"dans {TypesCatastrophe.Nom(c.Type)}";
-            Noter(maintenant, null, $"La {Minuscule(nom)} a perdu {(morts == 1 ? "l'un des siens" : $"{morts} des siens")} {quand}.",
+            Noter(maintenant, null, new Recit(suites ? "cat.pertes.suites" : "cat.pertes", ("c", Communautes[communaute - 1]), ("n", morts), ("cat", NomR(c.Type))),
                 c.Id, communaute);
         }
         c.PertesParCommunaute.Clear();
@@ -502,18 +501,17 @@ public sealed partial class Catastrophes
 
     private void Tuer(Humain h, Catastrophe c, CauseDeMort cause, List<Humain> humains, long maintenant)
     {
-        var e = h.Sexe == Sexe.Femme ? "e" : "";
         var comment = cause switch
         {
-            CauseDeMort.Noyade => c.Type == TypeCatastrophe.Tsunami ? $"est emporté{e} par la vague géante" : $"se noie, emporté{e} par {TypesCatastrophe.Nom(c.Type)}",
-            CauseDeMort.Brulure => c.Type == TypeCatastrophe.Impact ? "périt dans le souffle de feu tombé du ciel" : $"périt dans les flammes de l'incendie",
-            CauseDeMort.Eboulement => "meurt écrasé" + e + " sous les rochers que le séisme a fait tomber",
-            CauseDeMort.Eruption => "périt dans l'éruption " + VolcanDe(c).Nom[3..],
-            CauseDeMort.Accident => $"meurt dans {TypesCatastrophe.Nom(c.Type)}",
-            _ => $"meurt dans {TypesCatastrophe.Nom(c.Type)}",
+            CauseDeMort.Noyade when c.Type == TypeCatastrophe.Tsunami => new Recit("cat.mort.vague", ("h", h)),
+            CauseDeMort.Noyade => new Recit("cat.mort.noye", ("h", h), ("cat", NomR(c.Type))),
+            CauseDeMort.Brulure => Recit.Seul(c.Type == TypeCatastrophe.Impact ? "cat.mort.souffle" : "cat.mort.flammes"),
+            CauseDeMort.Eboulement => new Recit("cat.mort.ecrase", ("h", h)),
+            CauseDeMort.Eruption => new Recit("cat.mort.eruption", ("v", VolcanDe(c).Nomme)),
+            _ => new Recit("cat.mort.dans", ("cat", NomR(c.Type))),
         };
         if (Comportement is null) return;
-        Comportement.Tuer(h, maintenant, cause, $"{h.Nom} {comment}, à {Comportement.AgeEnMots(h, maintenant)}.", c.Id);
+        Comportement.Tuer(h, maintenant, cause, new Recit("cat.mort", ("h", h), ("comment", comment), ("age", Comportement.AgeEnMots(h, maintenant))), c.Id);
         c.Morts++;
         c.Victimes.Add(h.Id);
         if (h.CommunauteId > 0) c.PertesParCommunaute[h.CommunauteId] = c.PertesParCommunaute.GetValueOrDefault(h.CommunauteId) + 1;
@@ -540,18 +538,10 @@ public sealed partial class Catastrophes
         }
         c.Blesses++;
         c.Victimes.Add(h.Id);
-        var e = h.Sexe == Sexe.Femme ? "e" : "";
-        var comment = c.Type switch
-        {
-            TypeCatastrophe.Seisme => $"est blessé{e} par des pierres tombées pendant le séisme",
-            TypeCatastrophe.Incendie => $"est brûlé{e} en fuyant l'incendie",
-            TypeCatastrophe.Crue => $"réchappe de justesse à la crue, meurtri{e}",
-            TypeCatastrophe.Tsunami => $"survit à la vague géante, blessé{e}",
-            TypeCatastrophe.Eruption => $"est brûlé{e} par les cendres de l'éruption",
-            TypeCatastrophe.Cyclone => $"est blessé{e} par une branche arrachée par la tempête",
-            _ => $"est blessé{e} par {TypesCatastrophe.Nom(c.Type)}",
-        };
-        Noter(maintenant, h, $"{h.Nom} {comment}.", c.Id);
+        Noter(maintenant, h, c.Type is TypeCatastrophe.Seisme or TypeCatastrophe.Incendie or TypeCatastrophe.Crue or TypeCatastrophe.Tsunami
+                or TypeCatastrophe.Eruption or TypeCatastrophe.Cyclone
+            ? new Recit($"cat.blesse.{c.Type}", ("h", h))
+            : new Recit("cat.blesse", ("h", h), ("cat", NomR(c.Type))), c.Id);
         Toucher(c, h);
     }
 
@@ -587,8 +577,7 @@ public sealed partial class Catastrophes
         h.Humeur = Math.Max(0, h.Humeur - gain / 4);
         if (gain >= 60 && avant < 50)
         {
-            var e = h.Sexe == Sexe.Femme ? "e" : "";
-            Noter(maintenant, h, $"{h.Nom} est terrifié{e} par {TypesCatastrophe.Nom(c.Type)}.", c.Id, type: TypeEvenement.Humeur);
+            Noter(maintenant, h, new Recit("cat.terrifie", ("h", h), ("cat", NomR(c.Type))), c.Id, type: TypeEvenement.Humeur);
         }
         Toucher(c, h);
         // Une frayeur marquante laisse une croyance ou une question (une seule fois par catastrophe).
@@ -616,16 +605,9 @@ public sealed partial class Catastrophes
         VieSociale.Rejouir(h, force);
         if (p.Transcendance > 0.7 || (p.Transcendance > 0.55 && p.Ouverture > 0.7))
         {
-            var e = h.Sexe == Sexe.Femme ? "e" : "";
-            var quoi = c.Type switch
-            {
-                TypeCatastrophe.Eclipse => "le soleil noirci, saisi" + e + " par ce mystère",
-                TypeCatastrophe.Comete => "l'étoile chevelue, et ne peut en détacher les yeux",
-                TypeCatastrophe.Bolide => "la traînée de feu dans la nuit, émerveillé" + e,
-                TypeCatastrophe.Aurore => "les voiles de lumière qui dansent dans le ciel",
-                _ => TypesCatastrophe.Nom(c.Type),
-            };
-            Noter(maintenant, h, $"{h.Nom} contemple {quoi}.", c.Id, type: TypeEvenement.Humeur);
+            Noter(maintenant, h, TypesCatastrophe.EstPhenomene(c.Type)
+                ? new Recit($"cat.contemple.{c.Type}", ("h", h))
+                : new Recit("cat.contemple", ("h", h), ("cat", NomR(c.Type))), c.Id, type: TypeEvenement.Humeur);
             Jardin.Interpreter(h, c.Type, c.Id, 50, _alea, maintenant);
         }
     }
@@ -735,12 +717,12 @@ public sealed partial class Catastrophes
 
     // ───────────── Journal et noms ─────────────
 
-    private long Noter(long maintenant, Humain? h, string texte, long cause = 0, int communaute = 0, int autreCommunaute = 0,
+    private long Noter(long maintenant, Humain? h, object texte, long cause = 0, int communaute = 0, int autreCommunaute = 0,
         TypeEvenement type = TypeEvenement.Catastrophe, Origine origine = Origine.Naturelle, bool significatif = false)
     {
-        var e = new EvenementJournal(maintenant, type, h?.Id ?? 0, 0, texte, origine)
+        var e = new EvenementJournal(maintenant, type, h?.Id ?? 0, 0, texte as string, origine)
         {
-            Id = Numeros.Suivant(), CauseId = cause, CommunauteId = communaute, AutreCommunauteId = autreCommunaute,
+            Recit = texte as Recit, Id = Numeros.Suivant(), CauseId = cause, CommunauteId = communaute, AutreCommunauteId = autreCommunaute,
             Significatif = significatif,
         };
         Journal.Add(e);
@@ -751,7 +733,7 @@ public sealed partial class Catastrophes
     /// Une catastrophe commence : le journal l'annonce, et l'observateur est alerté si des humains sont dans la zone
     /// (ou pour un phénomène du ciel que tous peuvent voir).
     /// </summary>
-    private Catastrophe Commencer(TypeCatastrophe type, int x, int y, int rayon, double intensite, string nom, string texte,
+    private Catastrophe Commencer(TypeCatastrophe type, int x, int y, int rayon, double intensite, Recit nom, object texte,
         List<Humain> humains, long maintenant, Origine origine = Origine.Naturelle, double direction = 0, int parametre = 0, long cause = 0, long duree = 0, bool alerter = true)
     {
         // Significative si elle menace des humains, ou si tous peuvent la voir (phénomène du ciel).
@@ -761,7 +743,7 @@ public sealed partial class Catastrophes
         var c = new Catastrophe
         {
             Id = id, Type = type, Origine = origine, Debut = maintenant, X = x, Y = y, Rayon = rayon, Intensite = intensite,
-            Nom = nom, Direction = direction, Parametre = parametre, Duree = duree,
+            Nom = nom.Encoder(), Direction = direction, Parametre = parametre, Duree = duree,
         };
         _liste.Add(c);
         if (phenomene) Alertes.Add(new AlerteCatastrophe(id, type, texte, Grave: false));
@@ -769,31 +751,29 @@ public sealed partial class Catastrophes
         return c;
     }
 
-    private void Signaler(Catastrophe c, string texte)
+    private void Signaler(Catastrophe c, object texte)
     {
         if (c.Signalee) return;
         c.Signalee = true;
         Alertes.Add(new AlerteCatastrophe(c.Id, c.Type, texte, Grave: true));
     }
 
-    private string Lieu(Catastrophe c) => LieuDe(c.X, c.Y);
+    private Recit Lieu(Catastrophe c) => LieuDe(c.X, c.Y);
 
     /// <summary>« du nord-ouest », « de l'est », « du centre du continent ».</summary>
-    private string LieuDe(int x, int y) => Lieux.Direction(_carte, x, y) switch
-    {
-        "au centre" => "du centre du continent",
-        var d when d.StartsWith("à l'", StringComparison.Ordinal) => "de l'" + d[4..],
-        var d => "du " + d[3..],
-    };
+    private Recit LieuDe(int x, int y) => Recit.Seul($"lieu.de.{Lieux.Coin(_carte, x, y)}");
 
     /// <summary>« au nord-ouest du continent ».</summary>
-    private string Ou(int x, int y) => Lieux.Direction(_carte, x, y) + " du continent";
+    private Recit Ou(int x, int y) => Recit.Seul($"lieu.ou.{Lieux.Coin(_carte, x, y)}");
 
     /// <summary>Surface en km² d'un nombre de cases, en mots.</summary>
     public static string Surface(int cases) => Echelle.Surface(cases);
 
+    /// <summary>Surface en km² d'un nombre de cases, à écrire dans la langue de l'observateur.</summary>
+    private static Recit SurfaceR(int cases) => Echelle.SurfaceR(Echelle.KilometresCarres(cases));
+
     private Volcan VolcanDe(Catastrophe c) =>
-        Geologie.Volcans.FirstOrDefault(v => v.Numero == c.Parametre) ?? new Volcan(0, c.X, c.Y, 100, "le volcan");
+        Geologie.Volcans.FirstOrDefault(v => v.Numero == c.Parametre) ?? new Volcan(0, c.X, c.Y, 100, "le volcan", Recit.Seul("volcan.inconnu"));
 
     private static string Majuscule(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 

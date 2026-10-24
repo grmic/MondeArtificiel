@@ -659,7 +659,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                         }).ToList(),
                     c.Active && c.Projet is { } projet
                         ? new ProjetDto(projet.InstigateurId, humains[projet.InstigateurId - 1].Nom, projet.CibleId, toutes[projet.CibleId - 1].Nom,
-                            projet.Raison, L.Date(projet.Depuis),
+                            L.Garde(projet.Raison), L.Date(projet.Depuis),
                             projet.AlliesSollicites.Select(a => toutes[a - 1].Nom).ToList(), projet.EvenementId,
                             L.Date(projet.Debat))
                         : null,
@@ -683,7 +683,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
                         .Select(m => new SoignantDto(m.Id, m.Nom, Lib.Soignant(m)!, m.Gueris, m.Perdus)).ToList(),
                     Lib.Style(membres.Where(m => !m.EstBebe(maintenant)).ToList(), oeuvres[c.Id]),
                     oeuvres[c.Id].OrderByDescending(o => o.Le).Take(12)
-                        .Select(o => new OeuvreDto(o.Id, o.AuteurId, humains[o.AuteurId - 1].Nom, L.Date(o.Le), o.Description, o.EvenementId))
+                        .Select(o => new OeuvreDto(o.Id, o.AuteurId, humains[o.AuteurId - 1].Nom, L.Date(o.Le), L.Garde(o.Description), o.EvenementId))
                         .ToList(),
                     LangueDto.Depuis(c, toutes, humains, membres, monde.Flore));
             }).ToList();

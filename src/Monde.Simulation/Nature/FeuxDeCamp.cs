@@ -2,6 +2,8 @@ using Monde.Simulation.Humains;
 using Monde.Simulation.Monde;
 using Monde.Simulation.Temps;
 
+using Monde.Simulation.Recits;
+
 namespace Monde.Simulation.Nature;
 
 /// <summary>
@@ -87,10 +89,10 @@ public sealed partial class Catastrophes
                          + (!garde && gardien.Savoirs.Exists(s => s.Effet == Effet.EteindreEnPartant && s.Confiance >= 0.5) ? 0.2 : 0);
             negligence = Math.Clamp(negligence, 0, 1);
         }
-        var comment = !garde ? "laissé sans personne pour le garder" : ventFort ? "que le vent attise" : "trop près des herbes";
+        var comment = Recit.Seul(!garde ? "cat.camp.seul" : ventFort ? "cat.camp.vent" : "cat.camp.herbes");
         var texte = gardien is null
-            ? $"Le feu d'un camp, {comment}, gagne les herbes."
-            : $"Le feu de {gardien.Nom}, {comment}, gagne les herbes.";
+            ? new Recit("cat.camp.feu", ("comment", comment))
+            : new Recit("cat.camp.feuDe", ("h", gardien), ("comment", comment));
         var id = Noter(maintenant, gardien, texte, f.EvenementId, significatif: true);
         var c = Allumer(depart % _carte.Largeur, depart / _carte.Largeur, humains, maintenant, Origine.Naturelle, id);
         c.ResponsableId = gardien?.Id ?? 0;
@@ -173,7 +175,7 @@ public sealed partial class Catastrophes
                 _ecosysteme.Degats[j] = (ushort)Math.Max(_ecosysteme.Degats[j], 3500 + _alea.Entier(2000));
                 _ecosysteme.Plantes[j] = (ushort)(_ecosysteme.Plantes[j] * 0.8);
             }
-            var id = Noter(maintenant, brule, $"{brule.Nom} brûle les herbes autour du camp pendant la saison humide : le feu reste petit, et l'on reste à le surveiller.",
+            var id = Noter(maintenant, brule, new Recit("cat.camp.brulis", ("h", brule)),
                 communaute: co.Id);
             Comportement?.AvoirBruleAutourDuCamp(brule, humains, maintenant);
             // Même petit, il peut gagner plus loin s'il fait plus sec qu'on ne croyait.
