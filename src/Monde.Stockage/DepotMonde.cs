@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 36;
+    public const int VersionSchema = 37;
 
     private readonly string _connexion;
 
@@ -588,6 +588,15 @@ public sealed partial class DepotMonde
         if (actuelle < 35) MigrerVersion35(connexion, transaction);
         // Version 36 : jardin secret enregistré comme récits.
         if (actuelle < 36) MigrerVersion36(connexion, transaction);
+        // Version 37 : génération de la carte (0 pour les mondes d'avant la 0.31.3, dont la carte ne change pas) et mer
+        // entre les continents.
+        if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
+        {
+            Executer(connexion, transaction, """
+                ALTER TABLE etat ADD COLUMN generation INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE etat ADD COLUMN ecart INTEGER NOT NULL DEFAULT 0;
+                """);
+        }
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -597,7 +606,7 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = "SELECT graine, secondes, pas, vitesse, alea0, alea1, alea2, alea3, couples, largeur, hauteur, continents, placement FROM etat WHERE id = 1;";
+        commande.CommandText = "SELECT graine, secondes, pas, vitesse, alea0, alea1, alea2, alea3, couples, largeur, hauteur, continents, placement, generation, ecart FROM etat WHERE id = 1;";
         EtatMonde etat;
         using (var lecteur = commande.ExecuteReader())
         {
@@ -613,7 +622,7 @@ public sealed partial class DepotMonde
             if (!lecteur.IsDBNull(8))
             {
                 var configuration = new ConfigurationMonde(etat.Graine, lecteur.GetInt32(8), lecteur.GetInt32(9), lecteur.GetInt32(10), lecteur.GetInt32(11),
-                    lecteur.GetInt32(12));
+                    lecteur.GetInt32(12), lecteur.GetInt32(13), (EcartContinents)lecteur.GetInt32(14));
                 if (configuration.Erreur() is { } erreur) throw new InvalidDataException($"Réglages du monde invalides dans {CheminFichier} : {erreur}");
                 etat = etat with { Configuration = configuration };
             }
@@ -1038,15 +1047,16 @@ public sealed partial class DepotMonde
             commande.Transaction = transaction;
             commande.CommandText = """
                 INSERT INTO etat (id, graine, secondes, pas, vitesse, modifie_le, alea0, alea1, alea2, alea3,
-                                  couples, largeur, hauteur, continents, placement)
+                                  couples, largeur, hauteur, continents, placement, generation, ecart)
                 VALUES (1, $graine, $secondes, $pas, $vitesse, $modifie, $a0, $a1, $a2, $a3,
-                        $couples, $largeur, $hauteur, $continents, $placement)
+                        $couples, $largeur, $hauteur, $continents, $placement, $generation, $ecart)
                 ON CONFLICT (id) DO UPDATE SET
                     graine = excluded.graine, secondes = excluded.secondes, pas = excluded.pas,
                     vitesse = excluded.vitesse, modifie_le = excluded.modifie_le,
                     alea0 = excluded.alea0, alea1 = excluded.alea1, alea2 = excluded.alea2, alea3 = excluded.alea3,
                     couples = excluded.couples, largeur = excluded.largeur, hauteur = excluded.hauteur,
-                    continents = excluded.continents, placement = excluded.placement;
+                    continents = excluded.continents, placement = excluded.placement,
+                    generation = excluded.generation, ecart = excluded.ecart;
                 """;
             commande.Parameters.AddWithValue("$graine", unchecked((long)etat.Graine));
             commande.Parameters.AddWithValue("$secondes", etat.Secondes);
@@ -1063,6 +1073,8 @@ public sealed partial class DepotMonde
             commande.Parameters.AddWithValue("$hauteur", c is null ? DBNull.Value : (object)c.Hauteur);
             commande.Parameters.AddWithValue("$continents", c is null ? DBNull.Value : (object)c.Continents);
             commande.Parameters.AddWithValue("$placement", c?.Placement ?? 1);
+            commande.Parameters.AddWithValue("$generation", c?.Generation ?? 0);
+            commande.Parameters.AddWithValue("$ecart", (int)(c?.Ecart ?? EcartContinents.Proches));
             commande.ExecuteNonQuery();
         }
 

@@ -79,16 +79,20 @@ app.MapGet("/api/etat", () => Results.Ok(new
 
 // Carte du monde courant, ou aperçu d'autres réglages. Les paramètres sont facultatifs (absents : ceux du monde
 // courant) : graine (0 à 4 294 967 295), couples, largeur et hauteur en cases, continents, placement des couples
-// (0 : sur tous les continents, n : sur le n-ième par la taille). Une valeur mal formée
+// (0 : sur tous les continents, n : sur le n-ième par la taille), ecart (mer entre les continents : 0 proches, 1 éloignés,
+// 2 mélangés). Avec au moins un paramètre, c'est l'aperçu d'un monde neuf, donc de la dernière génération de cartes. Une valeur mal formée
 // est refusée par la liaison de paramètres (400) ; des réglages hors limites aussi (400) ; un continent trop petit
 // pour les couples demandés donne 422 avec la raison.
-app.MapGet("/api/carte", (uint? graine, int? couples, int? largeur, int? hauteur, int? continents, int? placement,
+app.MapGet("/api/carte", (uint? graine, int? couples, int? largeur, int? hauteur, int? continents, int? placement, int? ecart,
     ServiceMonde service, ServiceCarte cartes) =>
 {
     var actuelle = service.Monde.Configuration;
     var nombre = continents ?? actuelle.Continents;
     var configuration = new ConfigurationMonde(graine ?? (uint)actuelle.Graine, couples ?? actuelle.Couples,
-        largeur ?? actuelle.Largeur, hauteur ?? actuelle.Hauteur, nombre, placement ?? Math.Min(actuelle.Placement, nombre));
+        largeur ?? actuelle.Largeur, hauteur ?? actuelle.Hauteur, nombre, placement ?? Math.Min(actuelle.Placement, nombre),
+        graine is null && couples is null && largeur is null && hauteur is null && continents is null && placement is null && ecart is null
+            ? actuelle.Generation : ConfigurationMonde.GenerationActuelle,
+        ecart is { } voulu ? (EcartContinents)voulu : actuelle.Ecart);
     if (Lib.Erreur(configuration) is { } erreur) return Results.Problem(erreur, statusCode: StatusCodes.Status400BadRequest);
     try
     {

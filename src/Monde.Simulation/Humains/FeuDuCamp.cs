@@ -20,7 +20,7 @@ namespace Monde.Simulation.Humains;
 public sealed partial class Comportement
 {
     /// <summary>Terres humides et chaudes, où les moustiques abondent.</summary>
-    private static bool Moustiques(Biome b) => b is Biome.Marais or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere;
+    private static bool Moustiques(Biome b) => b is Biome.Marais or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere or Biome.Mangrove;
 
     private bool FoyerProche(int x, int y)
     {
@@ -152,7 +152,7 @@ public sealed partial class Comportement
     {
         if (Catastrophes is null || h.EstEnfant(_maintenant) || h.Faim < 50 || TerreEnFeu(h)) return false;
         if (!h.Savoirs.Exists(s => s.Effet == Effet.Brulis && s.Confiance >= 0.5)) return false;
-        if (carte.BiomeEn(h.X, h.Y) is not (Biome.PlaineDeFougeres or Biome.ForetDeConiferes) || Sec(h) < 0.6) return false;
+        if (carte.BiomeEn(h.X, h.Y) is not (Biome.PlaineDeFougeres or Biome.ForetDeConiferes or Biome.ForetDeFeuillus or Biome.Lande) || Sec(h) < 0.6) return false;
         if (ecosysteme.Gibier[carte.Indice(h.X, h.Y)] >= 2000) return false;
         var flamme = h.Savoirs.Find(s => s.Effet == Effet.Flamme && s.Confiance >= 0.3 && APortee(h, s.A) && APortee(h, s.B));
         if (!PorteLeFeu(h) && flamme is null) return false;

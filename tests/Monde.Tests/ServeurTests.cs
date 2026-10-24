@@ -165,7 +165,7 @@ public sealed class ServeurTests(UsineTest usine) : IClassFixture<UsineTest>
         Assert.Equal(42u, carte.Graine);
         Assert.Equal(carte.Largeur * carte.Hauteur, carte.Biomes.Length);
         Assert.Equal(33, carte.Emplacements.Length);
-        Assert.Equal(12, carte.NomsBiomes.Length);
+        Assert.Equal(Enum.GetValues<Monde.Simulation.Monde.Biome>().Length, carte.NomsBiomes.Length);
     }
 
     [Fact]

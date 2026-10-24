@@ -206,9 +206,9 @@ public static class Idees
             Biome.Lac => "lac",
             Biome.Plage => "rivage",
             Biome.Montagne or Biome.SommetEnneige => "montagnes",
-            Biome.Marais => "marais",
+            Biome.Marais or Biome.Mangrove => "marais",
             Biome.Desert => "sables",
-            Biome.ForetDeConiferes or Biome.ForetTropicale => "foret",
+            Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.ForetDeFeuillus => "foret",
             _ => "fougeres",
         });
         return l;

@@ -477,9 +477,9 @@ public static class Physique
                 if (!(EstBois(a) || a is Matiere.BatonPointu or Matiere.Epieu)) return default;
                 var terre = c.Biome switch
                 {
-                    Biome.PlaineDeFougeres or Biome.ForetTropicale or Biome.Marais => 1.0,
-                    Biome.ForetDeConiferes or Biome.Plage => 0.5,
-                    Biome.Desert => 0.4,
+                    Biome.PlaineDeFougeres or Biome.ForetTropicale or Biome.Marais or Biome.ForetDeFeuillus => 1.0,
+                    Biome.ForetDeConiferes or Biome.Plage or Biome.Lande => 0.5,
+                    Biome.Desert or Biome.Mangrove => 0.4,
                     _ => 0.1,
                 };
                 return Chance(terre * (0.25 + 0.35 * h + (a == Matiere.BatonPointu ? 0.1 : 0))) ? new(Effet.Tubercules, Matiere.Aucune, 1) : default;
@@ -624,19 +624,21 @@ public static class Physique
         if ((roches & 2) != 0) yield return Matiere.Silex;
         if ((roches & 4) != 0) yield return Matiere.Pyrite;
         if (volcanProche && (roches & 8) != 0) yield return Matiere.Obsidienne;
-        if (b is Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Marais or Biome.Montagne)
+        if (b is Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Marais or Biome.Montagne
+              or Biome.ForetDeFeuillus or Biome.Mangrove or Biome.Lande)
         {
             yield return Matiere.BoisSec;
             yield return Matiere.Branche;
         }
         else if (b is Biome.Desert or Biome.Plage) yield return Matiere.BoisSec;
-        if (b is Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Marais) yield return Matiere.GrandesFeuilles;
-        if (b is Biome.ForetTropicale or Biome.Marais or Biome.Riviere) yield return Matiere.Fibres;
-        if (saisonSeche && b is Biome.PlaineDeFougeres or Biome.ForetDeConiferes or Biome.Desert or Biome.Montagne) yield return Matiere.HerbeSeche;
+        if (b is Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Marais or Biome.ForetDeFeuillus) yield return Matiere.GrandesFeuilles;
+        if (b is Biome.ForetTropicale or Biome.Marais or Biome.Riviere or Biome.ForetDeFeuillus or Biome.Mangrove) yield return Matiere.Fibres;
+        if (saisonSeche && b is Biome.PlaineDeFougeres or Biome.ForetDeConiferes or Biome.Desert or Biome.Montagne || b == Biome.Lande) yield return Matiere.HerbeSeche;
         if (b is Biome.ForetTropicale or Biome.Marais) yield return Matiere.Calebasse;
-        if (b is Biome.Riviere or Biome.Marais || carte.Terrain.Roches[carte.Indice(x, y)] == Nature.Roche.Schiste) yield return Matiere.Argile;
+        if (b is Biome.Riviere or Biome.Marais or Biome.Mangrove || carte.Terrain.Roches[carte.Indice(x, y)] == Nature.Roche.Schiste) yield return Matiere.Argile;
         // Arbres tombés : là où il y a des arbres (les forêts, les fougères arborescentes, les rives).
-        if (b is Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere or Biome.Marais) yield return Matiere.Tronc;
+        if (b is Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere or Biome.Marais
+            or Biome.ForetDeFeuillus or Biome.Mangrove) yield return Matiere.Tronc;
         if (b is Biome.ForetDeConiferes) yield return Matiere.Resine;
         // Terre rouge (oxydes de fer) : dans les roches des montagnes et des déserts, les grès rouges et les latérites des
         // forêts chaudes, et par endroits dans les plaines et sur les berges.

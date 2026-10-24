@@ -153,6 +153,7 @@ public static class Lois
         Biome.PlaineDeFougeres => 0.35,
         Biome.Desert or Biome.Plage => 0.55,
         Biome.Marais => 0.55,
+        Biome.Mangrove => 0.65,
         Biome.Montagne => 0.5,
         _ => 0.45,
     };
@@ -162,9 +163,9 @@ public static class Lois
     {
         Biome.PlaineDeFougeres => 0.05,
         Biome.Plage or Biome.Desert => 0.25,
-        Biome.Marais => 0.35,
+        Biome.Marais or Biome.Mangrove => 0.35,
         Biome.Montagne or Biome.SommetEnneige => 0.3,
-        Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.Riviere => 0.15,
+        Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.ForetDeFeuillus or Biome.Riviere => 0.15,
         _ => 0.1,
     };
 

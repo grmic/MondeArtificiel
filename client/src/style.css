@@ -319,4 +319,5 @@ p.bilan-prieres { font-size: 0.9em; }
   display: flex; flex-direction: column; gap: 4px;
   padding: 8px 12px; border-radius: 10px; background: var(--panneau); font-size: 0.9rem;
 }
+.panneau-calques[hidden] { display: none; }
 .panneau-calques label { display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }

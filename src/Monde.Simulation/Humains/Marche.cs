@@ -60,7 +60,8 @@ public static class Marche
 
     /// <summary>
     /// Facilité de la marche selon le terrain (1 : sentier plat et dégagé). Ordres de grandeur tirés des coefficients
-    /// de terrain de Soule et Goldman (1972 : broussailles 1,2 à 1,5, marécage 1,8, sable mou 2,1, neige plus encore)
+    /// de terrain de Soule et Goldman (1972 : broussailles 1,2 à 1,5, marécage 1,8, sable mou 2,1, neige plus encore ; une mangrove, enchevêtrement
+    /// de racines dans la vase, est pire qu'un marais)
     /// et du facteur « hors sentier » de Tobler (1993 : 0,6) ; traverser une rivière à gué est lent.
     /// </summary>
     public static double FacteurTerrain(Biome b) => b switch
@@ -71,6 +72,9 @@ public static class Marche
         Biome.Desert => 0.85,
         Biome.Plage => 0.75,
         Biome.Marais => 0.5,
+        Biome.Mangrove => 0.35,
+        Biome.ForetDeFeuillus => 0.8,
+        Biome.Lande => 0.8,
         Biome.Montagne => 0.75,
         Biome.SommetEnneige => 0.45,
         Biome.Riviere => 0.4,

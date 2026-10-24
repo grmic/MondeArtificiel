@@ -441,11 +441,11 @@ public sealed partial class VieSociale
         if (N(Biome.Lac) >= 2) resultat.Add(new("lac"));
         if (N(Biome.Plage) + N(Biome.EauPeuProfonde) >= 3) resultat.Add(new("rivage"));
         if (N(Biome.Montagne) + N(Biome.SommetEnneige) >= 4) resultat.Add(new("montagnes"));
-        if (N(Biome.Marais) >= 4) resultat.Add(new("marais"));
+        if (N(Biome.Marais) + N(Biome.Mangrove) >= 4) resultat.Add(new("marais"));
         if (N(Biome.Desert) >= 4) resultat.Add(new("sables"));
-        var forets = N(Biome.ForetDeConiferes) + N(Biome.ForetTropicale);
-        if (forets > 0 && forets >= N(Biome.PlaineDeFougeres)) resultat.Add(new("foret"));
-        else if (N(Biome.PlaineDeFougeres) > 0) resultat.Add(new("fougeres"));
+        var forets = N(Biome.ForetDeConiferes) + N(Biome.ForetTropicale) + N(Biome.ForetDeFeuillus);
+        if (forets > 0 && forets >= N(Biome.PlaineDeFougeres) + N(Biome.Lande)) resultat.Add(new("foret"));
+        else if (N(Biome.PlaineDeFougeres) + N(Biome.Lande) > 0) resultat.Add(new("fougeres"));
         return resultat;
     }
 

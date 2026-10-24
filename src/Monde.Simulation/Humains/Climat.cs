@@ -33,6 +33,9 @@ public static class Climat
     {
         Biome.ForetDeConiferes => 0.6,
         Biome.ForetTropicale => 0.5,
+        Biome.ForetDeFeuillus => 0.5,
+        Biome.Mangrove => 0.2,
+        Biome.Lande => 0.05,
         Biome.Montagne => 0.4,
         Biome.Marais => 0.1,
         _ => 0,

@@ -80,6 +80,9 @@ const COULEURS: [number, number, number][] = [
   [220, 190, 120], // Désert
   [130, 120, 110], // Montagne
   [240, 240, 245], // Sommet enneigé
+  [75, 135, 55],   // Forêt de feuillus
+  [55, 105, 95],   // Mangrove
+  [165, 150, 105], // Lande sèche
 ];
 
 function decoderBase64(texte: string): Uint8Array {

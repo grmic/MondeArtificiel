@@ -55,7 +55,8 @@ public sealed partial class Comportement
         var pluie = Math.Clamp(1.4 - ecosysteme.PluieEn(i), 0.2, 1.2);
         var terrain = carte.BiomeEn(h.X, h.Y) switch
         {
-            Biome.Marais or Biome.ForetTropicale or Biome.Riviere => 0.5,
+            Biome.Marais or Biome.ForetTropicale or Biome.Riviere or Biome.Mangrove => 0.5,
+            Biome.Lande => 1.1,
             Biome.Desert => 1.2,
             _ => 1.0,
         };

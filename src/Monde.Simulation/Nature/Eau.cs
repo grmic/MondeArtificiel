@@ -153,7 +153,7 @@ public sealed partial class Catastrophes
             var abri = Climat.Abri(biome);
             if (c.Temoins.Add(h.Id)) Effrayer(h, c, 15 + 8 * categorie, maintenant);
             if (abri < 0.4) h.Froid = Math.Min(100, h.Froid + 8 * (1 - abri));
-            var foret = biome is Biome.ForetDeConiferes or Biome.ForetTropicale;
+            var foret = Biomes.EstForet(biome);
             var (mort, blessure) = foret ? (0.0003 * categorie, 0.0015 * categorie) : abri < 0.4 ? (0.0002 * categorie, 0.001 * categorie) : (0, 0);
             if (mort > 0 && _alea.Reel() < blessure + mort) Frapper(h, c, mort / (mort + blessure), 1, CauseDeMort.Accident, humains, maintenant);
         }

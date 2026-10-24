@@ -16,8 +16,17 @@ namespace Monde.Simulation.Monde;
 /// Où partent les couples : sur le n-ième continent par la taille (1 : le plus grand, par défaut), ou répartis sur tous
 /// (<see cref="PlacementTous"/>).
 /// </param>
-public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement = 1)
+/// <param name="Generation">
+/// Version de la génération de la carte : 0 pour les mondes créés avant la 0.31.3 (douze terrains), qui gardent ainsi
+/// leur carte ; <see cref="GenerationActuelle"/> pour les mondes neufs (forêt de feuillus, mangrove, lande sèche).
+/// </param>
+/// <param name="Ecart">Mer entre les continents (s'il y en a plusieurs).</param>
+public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement = 1,
+    int Generation = 0, EcartContinents Ecart = EcartContinents.Proches)
 {
+    /// <summary>Génération des mondes neufs : 1 depuis la 0.31.3.</summary>
+    public const int GenerationActuelle = 1;
+
     /// <summary>Couples répartis sur tous les continents, en proportion de leurs terres habitables.</summary>
     public const int PlacementTous = 0;
 
@@ -34,12 +43,19 @@ public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, 
     public static ConfigurationMonde ParDefaut(ulong graine) =>
         new(graine, CouplesParDefaut, TailleParDefaut, TailleParDefaut, 1);
 
+    /// <summary>Réglages d'un monde neuf créé sans choix : ceux d'origine, avec la génération d'aujourd'hui.</summary>
+    public static ConfigurationMonde Nouvelle(ulong graine) => ParDefaut(graine) with { Generation = GenerationActuelle };
+
+    /// <summary>Les réglages d'origine, quelle que soit la génération de la carte.</summary>
+    public bool EstOrigine => this == ParDefaut(Graine) || this == Nouvelle(Graine);
+
     /// <summary>Premier défaut des réglages (la place pour les couples est vérifiée à la génération).</summary>
     public ProblemeConfiguration Probleme() =>
         Couples is < CouplesMin or > CouplesMax ? ProblemeConfiguration.Couples
         : Largeur is < TailleMin or > TailleMax || Hauteur is < TailleMin or > TailleMax ? ProblemeConfiguration.Taille
         : Continents is < ContinentsMin or > ContinentsMax ? ProblemeConfiguration.Continents
         : Placement < PlacementTous || Placement > Continents ? ProblemeConfiguration.Placement
+        : Generation is < 0 or > GenerationActuelle || !Enum.IsDefined(Ecart) ? ProblemeConfiguration.Generation
         : ProblemeConfiguration.Aucun;
 
     /// <summary>Premier défaut des réglages, ou null s'ils sont valides (la place pour les couples est vérifiée à la génération).</summary>
@@ -50,6 +66,7 @@ public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, 
             $"La carte doit mesurer entre {Echelle.Distance(Echelle.Kilometres(TailleMin))} et {Echelle.Distance(Echelle.Kilometres(TailleMax))} de côté.",
         ProblemeConfiguration.Continents => $"Le nombre de continents doit être compris entre {ContinentsMin} et {ContinentsMax}.",
         ProblemeConfiguration.Placement => "Le continent de départ des couples doit être l'un des continents du monde.",
+        ProblemeConfiguration.Generation => "Ce monde vient d'une version plus récente de l'application.",
         _ => null,
     };
 
@@ -70,4 +87,17 @@ public enum ProblemeConfiguration : byte
     Taille = 2,
     Continents = 3,
     Placement = 4,
+    Generation = 5,
+}
+
+/// <summary>
+/// Mer entre les continents. Proches : des détroits de quelques dizaines de kilomètres, comme entre la Sonde et l'Australie
+/// à l'ère glaciaire (50 à 90 km ; Bird et al., 2019) ; éloignés : plus de 200 km de mer ouverte, hors de vue ; mélangés :
+/// des deux.
+/// </summary>
+public enum EcartContinents : byte
+{
+    Proches = 0,
+    Eloignes = 1,
+    Melanges = 2,
 }

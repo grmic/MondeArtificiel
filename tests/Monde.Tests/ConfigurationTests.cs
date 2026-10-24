@@ -153,7 +153,7 @@ public sealed class ConfigurationTests
                 var actuelle = await connexion.InvokeAsync<ConfigurationDto>("Configuration");
                 Assert.Equal((42u, 33, 256, 256, 1, true), (actuelle.Graine, actuelle.Couples, actuelle.Largeur, actuelle.Hauteur, actuelle.Continents, actuelle.Origine));
                 Assert.Contains("1 continent", actuelle.Resume);
-                Assert.Equal(("0.31.2", "MicG"), (actuelle.Version, actuelle.Auteur));
+                Assert.Equal(("0.31.3", "MicG"), (actuelle.Version, actuelle.Auteur));
 
                 // Aperçu : possible ou non, avec la raison ; le monde courant ne change pas.
                 var apercu = await connexion.InvokeAsync<ApercuDto>("ApercuConfiguration", new DemandeConfiguration(5, 10, 300, 250, 2));
@@ -204,6 +204,8 @@ public sealed class ConfigurationTests
                 await connexion.StartAsync();
                 var reprise = await connexion.InvokeAsync<ConfigurationDto>("Configuration");
                 Assert.Equal((6u, 10, 300, 250, 2), (reprise.Graine, reprise.Couples, reprise.Largeur, reprise.Hauteur, reprise.Continents));
+                // Un monde créé depuis la 0.31.3 a la carte de la dernière génération, et la garde.
+                Assert.Equal((ConfigurationMonde.GenerationActuelle, 0), (reprise.Generation, reprise.Ecart));
                 Assert.Equal(20, (await connexion.InvokeAsync<List<HumainDto>>("Humains")).Count);
             }
         }

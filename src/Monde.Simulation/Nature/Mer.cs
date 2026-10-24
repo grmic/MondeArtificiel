@@ -28,6 +28,9 @@ public enum Rivage : byte
     Estuaire = 4,
     Delta = 5,
     Marecage = 6,
+
+    /// <summary>Mangrove : racines dans l'eau, vase et chenaux ; on n'y aborde qu'en suivant un chenal.</summary>
+    Mangrove = 7,
 }
 
 /// <summary>Une île (terre trop petite pour être un continent) et la mer qui la sépare de la terre la plus proche.</summary>
@@ -62,6 +65,9 @@ public sealed class Mer
     /// l'air chaud et humide de ce monde voile bien avant. Hypothèse retenue : 120 km.
     /// </summary>
     public const double VueMaxKm = 120;
+
+    /// <summary>Au-delà, deux terres ne sont plus voisines par la mer : aucun passage n'est noté.</summary>
+    public const double DistanceMaxPassageKm = 300;
 
     private readonly int _largeur;
 
@@ -210,7 +216,7 @@ public sealed class Mer
                 var (a, b) = ma < mb ? (origine[i], origine[j]) : (origine[j], origine[i]);
                 var km = Math.Max(0, Echelle.Kilometres(a % l, a / l, b % l, b / l) - Echelle.KilometresParCase);
                 var cle = (Math.Min(ma, mb), Math.Max(ma, mb));
-                if (km < 300 && (!passages.TryGetValue(cle, out var p) || km < p.Km)) passages[cle] = (km, a, b);
+                if (km < DistanceMaxPassageKm && (!passages.TryGetValue(cle, out var p) || km < p.Km)) passages[cle] = (km, a, b);
             }
         }
 
@@ -241,6 +247,7 @@ public sealed class Mer
             {
                 Biome.Riviere or Biome.Lac => terrain.Debit[i] >= 20 && terrain.Pente[i] <= 1 ? Rivage.Delta : Rivage.Estuaire,
                 Biome.Marais => Rivage.Marecage,
+                Biome.Mangrove => Rivage.Mangrove,
                 _ when terrain.Falaise[i] || terrain.Pente[i] >= 3 => Rivage.Falaise,
                 Biome.Plage => Rivage.Plage,
                 _ when dure && terrain.Pente[i] >= 1 => Rivage.CoteRocheuse,

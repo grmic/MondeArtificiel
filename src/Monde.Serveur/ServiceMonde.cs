@@ -43,7 +43,7 @@ public sealed class ServiceMonde
         if (etat is null)
         {
             var graine = configuration.GetValue<uint>("Monde:Graine", 42);
-            etat = MondeSimule.Nouveau(ConfigurationMonde.ParDefaut(graine));
+            etat = MondeSimule.Nouveau(ConfigurationMonde.Nouvelle(graine));
             journal.LogInformation("Nouveau monde créé (graine {Graine}) dans {Fichier}", graine, Depot.CheminFichier);
         }
         else

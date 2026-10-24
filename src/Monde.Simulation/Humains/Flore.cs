@@ -59,15 +59,18 @@ public sealed class Flore
 
     private readonly Dictionary<Biome, Espece[]> _parBiome;
 
-    public Flore(ulong graine)
+    /// <param name="nouveauxTerrains">La carte porte des terrains de la génération 1 (feuillus, mangrove, lande) : leurs
+    /// espèces sont tirées après toutes les autres, qui restent donc les mêmes que sur une carte plus ancienne.</param>
+    public Flore(ulong graine, bool nouveauxTerrains = false)
     {
         var alea = new Alea(graine ^ 0x464C4F5245UL);
         var especes = new List<Espece>();
         var noms = new HashSet<string>();
         var terres = new[] { Biome.Marais, Biome.PlaineDeFougeres, Biome.ForetDeConiferes, Biome.ForetTropicale, Biome.Desert, Biome.Montagne, Biome.Plage, Biome.Riviere };
+        if (nouveauxTerrains) terres = [.. terres, Biome.ForetDeFeuillus, Biome.Mangrove, Biome.Lande];
         foreach (var b in terres)
         {
-            var n = b is Biome.ForetTropicale ? 9 : b is Biome.Plage or Biome.Desert or Biome.Riviere ? 4 : 6;
+            var n = b is Biome.ForetTropicale ? 9 : b is Biome.ForetDeFeuillus ? 8 : b is Biome.Plage or Biome.Desert or Biome.Riviere or Biome.Mangrove ? 4 : b is Biome.Lande ? 5 : 6;
             for (var k = 0; k < n; k++)
             {
                 string nom;
@@ -80,7 +83,7 @@ public sealed class Flore
                 }
                 while (!noms.Add(nom));
                 double Vertu(double p) => alea.Reel() < p ? 0.3 + 0.6 * alea.Reel() : 0;
-                var humide = b is Biome.ForetTropicale or Biome.Marais;
+                var humide = b is Biome.ForetTropicale or Biome.Marais or Biome.Mangrove;
                 especes.Add(new Espece(especes.Count + 1, nom, [b],
                     Toxicite: Vertu(0.12), Astringente: Vertu(0.25), Febrifuge: Vertu(0.1), Antipaludique: humide ? Vertu(0.08) : 0,
                     Antiseptique: Vertu(0.15), Vermifuge: Vertu(0.1), Psychotrope: Vertu(0.05), Forme: forme, Trait: trait));

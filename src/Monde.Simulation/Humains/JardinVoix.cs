@@ -954,6 +954,9 @@ public static partial class Jardin
             Biome.Riviere => [new V(Recit.Seul("jv.sEmerveiller.13"), 0.8)],
             Biome.Lac => [new V(Recit.Seul("jv.sEmerveiller.14"), 0.8, 2)],
             Biome.Marais => [new V(Recit.Seul("jv.sEmerveiller.15"), 0.8)],
+            Biome.ForetDeFeuillus => [new V(Recit.Seul("jv.sEmerveiller.18"), 0.8)],
+            Biome.Mangrove => [new V(Recit.Seul("jv.sEmerveiller.19"), 0.8, 2)],
+            Biome.Lande => [new V(Recit.Seul("jv.sEmerveiller.20"), 0.8)],
             _ => [new V(Recit.Seul("jv.sEmerveiller.16"), 0.8)],
         });
         if (bebe is not null) options.Add(new(new Recit("jv.sEmerveiller.17", ("b", bebe)), 0.6 + p.Attachement));

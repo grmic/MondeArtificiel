@@ -158,6 +158,8 @@ public sealed partial class Catastrophes
     {
         Biome.ForetTropicale => 10,
         Biome.ForetDeConiferes => 7,
+        Biome.ForetDeFeuillus => 5,
+        Biome.Mangrove => 2,
         Biome.Marais or Biome.PlaineDeFougeres => 2,
         _ => 1,
     };

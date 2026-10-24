@@ -112,7 +112,7 @@ public sealed partial class Catastrophes
             // Sans maisons, on ne meurt pas écrasé sous un toit : les morts viennent des éboulements en terrain pentu
             // et, plus rarement, des arbres qui tombent.
             var pente = EstPentu(h.X, h.Y);
-            var foret = _carte.BiomeEn(h.X, h.Y) is Biome.ForetDeConiferes or Biome.ForetTropicale;
+            var foret = Biomes.EstForet(_carte.BiomeEn(h.X, h.Y));
             var mort = pente && intensite >= 7 ? 0.01 * Math.Pow(intensite - 6, 2) : foret && intensite >= 8 ? 0.003 * (intensite - 7) : 0;
             var blessure = pente && intensite >= 6.5 ? 0.04 * (intensite - 6) : intensite >= 8 ? 0.02 * (intensite - 7) : 0;
             if (mort > 0 || blessure > 0) Frapper(h, c, mort, blessure, CauseDeMort.Eboulement, humains, maintenant);

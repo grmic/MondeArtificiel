@@ -11,15 +11,18 @@ public sealed partial class Catastrophes
 {
     /// <summary>
     /// Probabilité par heure qu'une case en feu enflamme une case voisine de ce terrain, par temps normal :
-    /// les fougères sèches et les conifères brûlent vite, la forêt tropicale humide mal, le marais presque pas.
+    /// la lande sèche, les fougères et les conifères brûlent vite, les feuillus
+    /// et la forêt tropicale humide mal, le marais et la mangrove presque pas.
     /// </summary>
     private static double Inflammabilite(Biome b) => b switch
     {
+        Biome.Lande => 0.06,
         Biome.PlaineDeFougeres => 0.05,
         Biome.ForetDeConiferes => 0.045,
+        Biome.ForetDeFeuillus => 0.02,
         Biome.ForetTropicale => 0.012,
         Biome.Montagne => 0.01,
-        Biome.Marais or Biome.Desert => 0.004,
+        Biome.Marais or Biome.Desert or Biome.Mangrove => 0.004,
         _ => 0,
     };
 
@@ -81,6 +84,7 @@ public sealed partial class Catastrophes
         var ou = Ou(x, y);
         var biome = _carte.BiomeEn(x, y);
         var quoi = Recit.Seul(biome is Biome.PlaineDeFougeres or Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.Montagne or Biome.Marais
+                                         or Biome.ForetDeFeuillus or Biome.Mangrove or Biome.Lande
             ? $"cat.feu.quoi.{biome}" : "cat.feu.quoi.broussailles");
         var texte = new Recit(cause == 0 ? "cat.feu.foudre" : "cat.feu.prend", ("quoi", quoi), ("ou", ou));
         var c = Commencer(TypeCatastrophe.Incendie, x, y, 1, 0, new Recit("cat.nom.incendie", ("ou", ou)), texte, humains, maintenant, origine,

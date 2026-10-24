@@ -63,7 +63,7 @@ public static class Maladies
     public static Maladie Choisir(Humain h, Biome biome, Saison saison, int population, long maintenant, Alea alea, bool fumee = false)
     {
         var enfant = h.AgeEnAnnees(maintenant) < 5;
-        var humide = biome is Biome.Marais or Biome.ForetTropicale or Biome.PlaineDeFougeres;
+        var humide = biome is Biome.Marais or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Mangrove;
         var poids = new double[Liste.Count];
         for (var i = 0; i < Liste.Count; i++)
         {

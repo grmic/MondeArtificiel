@@ -61,6 +61,7 @@ public static partial class Lib
             ("max", L.Distance(Simulation.Nature.Echelle.Kilometres(ConfigurationMonde.TailleMax)))),
         ProblemeConfiguration.Continents => L.T("config.erreur.continents", ("min", ConfigurationMonde.ContinentsMin), ("max", ConfigurationMonde.ContinentsMax)),
         ProblemeConfiguration.Placement => L.T("config.erreur.placement"),
+        ProblemeConfiguration.Generation => L.T("config.erreur.generation"),
         _ => null,
     };
 
@@ -76,6 +77,7 @@ public static partial class Lib
     public static string Message(Exception e) => e switch
     {
         ContinentsInsuffisants c => L.T("config.erreur.continentsInsuffisants", ("n", c.Disponibles), ("rang", c.Demande)),
+        CarteTropPetitePourEloignes c => L.T("config.erreur.tropPetitePourEloignes", ("km", L.Distance(c.Kilometres))),
         _ => e.Message,
     };
 

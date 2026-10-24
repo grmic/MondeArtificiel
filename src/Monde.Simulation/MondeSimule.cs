@@ -181,7 +181,7 @@ public sealed class MondeSimule
         _social.ChargerRelations(etat.Relations ?? []);
         _social.ChargerRassemblements(etat.Rassemblements ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
-        Flore = new Flore(etat.Graine);
+        Flore = new Flore(etat.Graine, carte.Biomes.Any(b => b >= (byte)Biome.ForetDeFeuillus));
         _social.Flore = Flore;
         _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes, etat.Oeuvres, etat.Braises, etat.Reserves);
         _social.Installations = _installations;

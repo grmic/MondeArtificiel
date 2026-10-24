@@ -26,7 +26,7 @@ public static class GenerateurContinent
     /// <exception cref="InvalidOperationException">Le continent est trop petit pour le nombre de couples demandé.</exception>
     public static Carte Generer(ConfigurationMonde configuration)
     {
-        var (graine, couples, largeur, hauteur, continents, placement) = configuration;
+        var (graine, couples, largeur, hauteur, continents, placement, generation, ecart) = configuration;
         ArgumentOutOfRangeException.ThrowIfLessThan(largeur, ConfigurationMonde.TailleMin);
         ArgumentOutOfRangeException.ThrowIfLessThan(hauteur, ConfigurationMonde.TailleMin);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(largeur, ConfigurationMonde.TailleMax);
@@ -45,7 +45,7 @@ public static class GenerateurContinent
         var abondance = new Bruit(alea.Suivant());
 
         // Un hasard à part pour placer les continents : le monde d'origine (un seul continent) reste identique.
-        var centres = continents == 1 ? null : PlacerContinents(new Alea(graine ^ 0x434F4E54494EUL), continents, largeur, hauteur);
+        var centres = continents == 1 ? null : PlacerContinents(new Alea(graine ^ 0x434F4E54494EUL), continents, largeur, hauteur, ecart);
         var altitudes = CalculerAltitudes(relief, largeur, hauteur, centres);
         var biomes = new byte[n];
         var climat = new double[n];
@@ -71,7 +71,7 @@ public static class GenerateurContinent
                         : Biome.Lac);
                     continue;
                 }
-                biomes[i] = (byte)ChoisirBiome(h, temperature, humide);
+                biomes[i] = (byte)ChoisirBiome(h, temperature, humide, generation);
             }
         }
 
@@ -116,7 +116,8 @@ public static class GenerateurContinent
     /// Centre et demi-taille (en cases) de chaque continent : la carte est découpée en une grille de cellules à peu près
     /// carrées, au moins une par continent ; chaque continent occupe une cellule tirée au hasard, son centre légèrement décalé.
     /// </summary>
-    private static (double X, double Y, double Rx, double Ry)[] PlacerContinents(Alea alea, int nombre, int largeur, int hauteur)
+    private static (double X, double Y, double Rx, double Ry)[] PlacerContinents(Alea alea, int nombre, int largeur, int hauteur,
+        EcartContinents ecart = EcartContinents.Proches)
     {
         var (colonnes, lignes) = (nombre, 1);
         var meilleur = double.MaxValue;
@@ -126,18 +127,40 @@ public static class GenerateurContinent
             {
                 if (c * r < nombre || c * r > nombre + 1) continue;
                 // Cellules les plus carrées possible, puis le moins de cellules vides.
-                var ecart = Math.Abs(Math.Log(largeur / (double)c / (hauteur / (double)r))) + (c * r - nombre) * 0.3;
-                if (ecart < meilleur) (meilleur, colonnes, lignes) = (ecart, c, r);
+                var defaut = Math.Abs(Math.Log(largeur / (double)c / (hauteur / (double)r))) + (c * r - nombre) * 0.3;
+                if (defaut < meilleur) (meilleur, colonnes, lignes) = (defaut, c, r);
             }
         }
         var cellules = Enumerable.Range(0, colonnes * lignes).ToList();
         alea.Melanger(cellules);
         double cw = largeur / (double)colonnes, ch = hauteur / (double)lignes;
+        // Les terres s'étendent jusqu'à environ 0,85 de la demi-cellule : pour des continents éloignés, centrés dans leur
+        // cellule, on les rétrécit jusqu'à laisser 220 km de mer entre deux voisins (10 % de marge pour les caps : sur 42
+        // cartes de 2 à 4 continents, le détroit le plus étroit mesurait de 208 à plus de 300 km, 225 en médiane). Il faut
+        // au moins 40 km de terre à chacun.
+        const double etendue = 0.85;
+        var mer = Echelle.Cases(200) * 1.1;
+        double fx = 1, fy = 1;
+        if (ecart == EcartContinents.Eloignes)
+        {
+            fx = colonnes == 1 ? 1 : (cw - mer) / (etendue * cw);
+            fy = lignes == 1 ? 1 : (ch - mer) / (etendue * ch);
+            if (Math.Min(fx * cw, fy * ch) / 2 < Echelle.Cases(20))
+            {
+                var cellule = mer + Echelle.Cases(40) * etendue;
+                throw new CarteTropPetitePourEloignes(Echelle.Kilometres(cellule));
+            }
+        }
         return [.. cellules.Take(nombre).Order().Select(k =>
         {
-            var x = (k % colonnes + 0.5 + (alea.Reel() - 0.5) * 0.2) * cw;
-            var y = (k / colonnes + 0.5 + (alea.Reel() - 0.5) * 0.2) * ch;
-            return (x, y, cw / 2, ch / 2);
+            // Éloignés : centres au milieu de leur cellule (le hasard est tiré quand même, pour la suite des tirages).
+            var decalage = ecart == EcartContinents.Eloignes ? 0 : 0.2;
+            var x = (k % colonnes + 0.5 + (alea.Reel() - 0.5) * decalage) * cw;
+            var y = (k / colonnes + 0.5 + (alea.Reel() - 0.5) * decalage) * ch;
+            // Mélangés : chaque continent a sa taille, de 55 % de sa cellule à toute la cellule (assez pour rester un
+            // continent, au moins un quart du plus grand) ; les détroits vont de quelques kilomètres à plus de cent.
+            var f = ecart == EcartContinents.Melanges ? 0.55 + 0.45 * alea.Reel() : 1;
+            return (x, y, cw / 2 * fx * f, ch / 2 * fy * f);
         })];
     }
 
@@ -234,14 +257,23 @@ public static class GenerateurContinent
         }
     }
 
-    private static Biome ChoisirBiome(double h, double temperature, double humide)
+    /// <summary>
+    /// Terrain d'une case selon l'altitude, la chaleur et l'humidité. Depuis la génération 1 : la mangrove sur les rivages
+    /// bas, chauds et humides ; la lande sèche entre la plaine et le désert ; la forêt de feuillus dans la zone tiède, entre
+    /// les conifères (plus frais) et la forêt tropicale.
+    /// </summary>
+    private static Biome ChoisirBiome(double h, double temperature, double humide, int generation = 0)
     {
+        var neuve = generation >= 1;
         if (h > 0.6) return temperature < 0.4 ? Biome.SommetEnneige : Biome.Montagne;
         if (h > 0.28) return Biome.Montagne;
+        if (neuve && h < 0.006 && temperature > 0.72 && humide > 0.5) return Biome.Mangrove;
         if (h < 0.006) return humide > 0.62 ? Biome.Marais : Biome.Plage;
         if (h < 0.04 && humide > 0.62) return Biome.Marais;
         if (humide < 0.36) return Biome.Desert;
+        if (neuve && humide < 0.42) return Biome.Lande;
         if (temperature > 0.72) return humide > 0.52 ? Biome.ForetTropicale : Biome.PlaineDeFougeres;
+        if (neuve && humide > 0.5 && temperature > 0.6) return Biome.ForetDeFeuillus;
         return humide > 0.5 ? Biome.ForetDeConiferes : Biome.PlaineDeFougeres;
     }
 
@@ -352,8 +384,13 @@ public static class GenerateurContinent
         return (niveau, aval, debit);
     }
 
+    // Feuillus : fruits, noix et graines, plus que sous les conifères ; mangrove : coquillages, crabes et poissons, peu à
+    // cueillir ; lande : maigre.
     private static (int Gibier, int Plantes) RessourcesDeBase(Biome biome) => biome switch
     {
+        Biome.ForetDeFeuillus => (60, 65),
+        Biome.Mangrove => (55, 25),
+        Biome.Lande => (25, 20),
         Biome.PlaineDeFougeres => (60, 55),
         Biome.ForetDeConiferes => (55, 40),
         Biome.ForetTropicale => (70, 80),
@@ -558,6 +595,13 @@ public static class GenerateurContinent
         }
         return distance;
     }
+}
+
+/// <summary>La carte est trop petite pour laisser plus de 200 km de mer entre des continents éloignés.</summary>
+public sealed class CarteTropPetitePourEloignes(double kilometres)
+    : InvalidOperationException($"Pour des continents éloignés, chaque continent a besoin d'environ {Echelle.Distance(kilometres)} de carte : agrandissez-la ou réduisez le nombre de continents.")
+{
+    public double Kilometres { get; } = kilometres;
 }
 
 /// <summary>La carte a moins de continents que le rang demandé pour le départ des couples.</summary>

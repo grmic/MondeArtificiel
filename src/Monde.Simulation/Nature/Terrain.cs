@@ -262,7 +262,7 @@ public sealed class Terrain
                 _ when dVolcan <= 6 + 10 * detail[i] => geologie.Contexte == ContexteTectonique.Rift ? Roche.Basalte : Roche.Volcanique,
                 _ when geologie.Contexte == ContexteTectonique.Rift && alt > 0.02
                        && Geologie.DistanceAuxFailles(geologie.Failles, x, y) <= 10 + 14 * detail[i] => Roche.Basalte,
-                _ when b is Biome.Marais or Biome.Plage => Roche.Alluvions,
+                _ when b is Biome.Marais or Biome.Plage or Biome.Mangrove => Roche.Alluvions,
                 _ when b == Biome.Riviere || alt < 0.12 && pente[i] <= 1 && Vallee(carte, debit, x, y) => Roche.Alluvions,
                 _ when b == Biome.Desert && Cuvette(carte, x, y) => Roche.Evaporites,
                 _ when alt > 0.28 => geologie.Contexte == ContexteTectonique.MargeActive && s < 0.35 ? Roche.Volcanique
@@ -308,7 +308,7 @@ public sealed class Terrain
             var z = Zone(carte, x, y);
             var r = 0;
             if (roches[i] is Roche.Granite or Roche.Basalte or Roche.Volcanique or Roche.Gres || z.U1 < 0.15) r |= 1;
-            var silex = silexEnPlace[i] || silexRoule[i] && b is Biome.Riviere or Biome.Plage or Biome.Marais;
+            var silex = silexEnPlace[i] || silexRoule[i] && b is Biome.Riviere or Biome.Plage or Biome.Marais or Biome.Mangrove;
             if (silex) r |= 2;
             if (silex ? z.U3 < 0.35 : roches[i] == Roche.Schiste ? z.U3 < 0.15 : z.U3 < 0.02) r |= 4;
             if (roches[i] == Roche.Volcanique || roches[i] == Roche.Basalte && volcans.Any(v => Math.Abs(v.X - x) <= 16 && Math.Abs(v.Y - y) <= 16)) r |= 8;
@@ -330,9 +330,15 @@ public sealed class Terrain
                 _ when roches[i] == Roche.Evaporites => (Sol.Salin, 0.06),
                 _ when b == Biome.Desert => (Sol.Desertique, 0.12),
                 _ when b == Biome.Marais => (Sol.Tourbeux, 0.35),
+                // Vase de mangrove : riche en matière organique mais salée et gorgée d'eau.
+                _ when b == Biome.Mangrove => (Sol.Tourbeux, 0.3),
                 _ when roches[i] == Roche.Alluvions => (Sol.Alluvial, 0.9),
                 _ when roches[i] is Roche.Basalte or Roche.Volcanique => (Sol.Volcanique, 0.85),
                 _ when b == Biome.ForetTropicale => (Sol.Lateritique, 0.3),
+                // Lande : sol mince et lessivé (podzol sur grès, sinon terre acide pauvre).
+                _ when b == Biome.Lande => (roches[i] == Roche.Gres ? Sol.Sableux : Sol.Acide, 0.25),
+                // Les feuilles mortes des feuillus font des sols bruns, sauf sur le calcaire.
+                _ when b == Biome.ForetDeFeuillus && roches[i] is not (Roche.Calcaire or Roche.Craie) => (Sol.Brun, 0.7),
                 _ when roches[i] is Roche.Calcaire or Roche.Craie => (Sol.Calcaire, 0.55),
                 _ when roches[i] == Roche.Gres => (Sol.Sableux, 0.35),
                 _ when roches[i] == Roche.Schiste => (Sol.Brun, 0.7),

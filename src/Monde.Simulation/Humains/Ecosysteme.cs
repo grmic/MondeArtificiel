@@ -94,6 +94,9 @@ public sealed class Ecosysteme
     {
         Biome.PlaineDeFougeres or Biome.Marais or Biome.Plage => 1.5,
         Biome.ForetTropicale => 3,
+        Biome.Lande => 3,
+        Biome.ForetDeFeuillus => 5,
+        Biome.Mangrove => 6,
         Biome.ForetDeConiferes => 8,
         Biome.Desert or Biome.Montagne or Biome.SommetEnneige => 10,
         _ => 2,

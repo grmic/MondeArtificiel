@@ -12,6 +12,10 @@ interface Configuration {
   continents: number;
   /** Où partent les couples : 0 sur tous les continents, n sur le n-ième par la taille (1 : le plus grand). */
   placement: number;
+  /** Mer entre les continents : 0 proches, 1 éloignés (plus de 200 km), 2 mélangés. */
+  ecart: number;
+  /** Génération de la carte : 0 avant la 0.31.3, 1 depuis (feuillus, mangrove, lande). */
+  generation: number;
   origine: boolean;
   kilometresParCase: number;
   couplesMin: number;
@@ -39,6 +43,7 @@ export interface Reglages {
   hauteur: number;
   continents: number;
   placement: number;
+  ecart: number;
 }
 
 /** Une sauvegarde restaurable (possible : faux si elle vient d'une version plus récente ou est illisible). */
@@ -85,6 +90,17 @@ export class PanneauConfiguration {
     const ligne = el("label", "reglage");
     const choix = el("select");
     ligne.append(el("span", "libelle", t("config.depart")), choix, el("span", "aide", t("config.departAide")));
+    return { ligne, choix };
+  })();
+  private readonly ecart = (() => {
+    const ligne = el("label", "reglage");
+    const choix = el("select");
+    for (const v of [0, 1, 2]) {
+      const o = el("option", undefined, t(`config.ecart.${v}`));
+      o.value = String(v);
+      choix.append(o);
+    }
+    ligne.append(el("span", "libelle", t("config.ecart")), choix, el("span", "aide", t("config.ecartAide")));
     return { ligne, choix };
   })();
   private readonly actuel = el("p");
@@ -155,7 +171,7 @@ export class PanneauConfiguration {
     creer.addEventListener("click", () => this.demanderCreation());
     boutons.append(apercu, revenir, creer);
     this.continents.entree.addEventListener("input", () => this.remplirPlacement(Number(this.placement.choix.value)));
-    formulaire.append(this.graine.ligne, this.couples.ligne, this.largeur.ligne, this.hauteur.ligne, this.continents.ligne, this.placement.ligne,
+    formulaire.append(this.graine.ligne, this.couples.ligne, this.largeur.ligne, this.hauteur.ligne, this.continents.ligne, this.placement.ligne, this.ecart.ligne,
       boutons, this.message);
     formulaire.addEventListener("submit", (ev) => {
       ev.preventDefault();
@@ -261,6 +277,7 @@ export class PanneauConfiguration {
     this.hauteur.entree.value = String(km(c.hauteur));
     this.continents.entree.value = String(c.continents);
     this.remplirPlacement(c.placement);
+    this.ecart.choix.value = String(c.ecart);
     this.message.textContent = "";
     await this.lireSauvegardes();
     if (section) (section === "sauvegardes" ? this.titreSauvegardes : this.titreNouveau).scrollIntoView({ block: "start" });
@@ -489,6 +506,8 @@ export class PanneauConfiguration {
       return o;
     }));
     this.placement.choix.value = String(options.some(([v]) => v === voulu) ? voulu : 1);
+    // Un seul continent : pas de mer entre eux.
+    this.ecart.choix.disabled = nombre === 1;
   }
 
   fermer(): void {
@@ -522,7 +541,8 @@ export class PanneauConfiguration {
     if (graine === null || couples === null || largeur === null || hauteur === null || continents === null) return null;
     const cases = (km: number) => Math.min(c.tailleMax, Math.max(c.tailleMin, Math.round(km / c.kilometresParCase)));
     const placement = Number(this.placement.choix.value);
-    return { graine, couples, largeur: cases(largeur), hauteur: cases(hauteur), continents, placement: placement <= continents ? placement : 1 };
+    return { graine, couples, largeur: cases(largeur), hauteur: cases(hauteur), continents, placement: placement <= continents ? placement : 1,
+      ecart: Number(this.ecart.choix.value) };
   }
 
   private async apercu(): Promise<boolean> {

@@ -1068,8 +1068,8 @@ public sealed partial class Comportement
         var biome = carte.BiomeEn(h.X, h.Y);
         var branches = biome switch
         {
-            Monde.Biome.ForetDeConiferes or Monde.Biome.ForetTropicale => 0.8,
-            Monde.Biome.PlaineDeFougeres or Monde.Biome.Marais => 0.5,
+            Monde.Biome.ForetDeConiferes or Monde.Biome.ForetTropicale or Monde.Biome.ForetDeFeuillus => 0.8,
+            Monde.Biome.PlaineDeFougeres or Monde.Biome.Marais or Monde.Biome.Mangrove => 0.5,
             Monde.Biome.Desert or Monde.Biome.SommetEnneige => 0.1,
             _ => 0.3,
         };

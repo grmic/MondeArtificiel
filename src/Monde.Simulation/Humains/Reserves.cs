@@ -26,7 +26,7 @@ public sealed partial class Comportement
     private const double SoifParLitre = 30;
 
     /// <summary>Terres trop humides pour sécher quoi que ce soit : tout y moisit.</summary>
-    private static bool Humide(Biome b) => b is Biome.Marais or Biome.ForetTropicale or Biome.Riviere;
+    private static bool Humide(Biome b) => b is Biome.Marais or Biome.ForetTropicale or Biome.Riviere or Biome.Mangrove;
 
     private static bool EstNourriture(SorteReserve s) => s != SorteReserve.Eau;
 

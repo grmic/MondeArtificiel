@@ -62,8 +62,10 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
                 new(T("couples"), N(monde.Configuration.Couples, 0), T("couples.aide", ("n", N(monde.Configuration.Couples * 2, 0)))),
                 new(T("continents"), N(monde.Configuration.Continents, 0)),
                 new(T("depart"), Lib.Placement(monde.Configuration)),
+                .. monde.Configuration.Continents > 1 ? [new MesureDto(T("merEntre"), T($"merEntre.{monde.Configuration.Ecart}"))] : Array.Empty<MesureDto>(),
+                new(T("generation"), T($"generation.{monde.Configuration.Generation}"), T("generation.aide")),
                 new(T("graine"), monde.Graine.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    T(monde.Configuration == ConfigurationMonde.ParDefaut(monde.Graine) ? "graine.origine" : "graine.choisie")),
+                    T(monde.Configuration.EstOrigine ? "graine.origine" : "graine.choisie")),
             ]),
             new(T("echelle"), [
                 new(T("carte"), T("carte.valeur", ("l", Km(g.LargeurCarteKm)), ("h", Km(g.HauteurCarteKm))),
