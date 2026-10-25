@@ -45,8 +45,9 @@ public sealed class EntretienJournal(ServiceMonde service, ILogger<EntretienJour
     {
         var maintenant = service.Monde.Secondes;
         var depuis = Math.Max(0, maintenant - Calendrier.SecondesParAn);
-        // Lecture seule : elle ne bloque pas les sauvegardes, même longue sur un gros monde.
-        var mesure = service.Depot.MesurerJournal(depuis);
+        // Lecture seule : elle ne bloque pas les sauvegardes, même longue sur un gros monde ; un nouveau monde attend qu'elle finisse.
+        Monde.Stockage.MesureJournal mesure;
+        lock (service.VerrouLectureLongue) mesure = service.Depot.MesurerJournal(depuis);
         service.MesureJournal = mesure;
         service.PeriodeMesure = maintenant - depuis;
     }

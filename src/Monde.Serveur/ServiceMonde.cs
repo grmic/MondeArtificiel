@@ -12,6 +12,13 @@ namespace Monde.Serveur;
 public sealed class ServiceMonde
 {
     private readonly Lock _verrou = new();
+
+    /// <summary>
+    /// Pris pendant les longues lectures faites sans <see cref="_verrou"/> (mesure du journal) : un nouveau monde l'attend, car
+    /// une lecture en cours empêche de déplacer le fichier du monde, qu'il faudrait alors copier en entier (très long sur un
+    /// gros monde).
+    /// </summary>
+    public Lock VerrouLectureLongue { get; } = new();
     private readonly ILogger<ServiceMonde> _journal;
     private const string CleRedemarrage = "redemarrage";
     private const string ClePauseCatastrophe = "pause_catastrophe";
@@ -238,6 +245,7 @@ public sealed class ServiceMonde
         {
             PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence,
         };
+        lock (VerrouLectureLongue)
         lock (_verrou)
         {
             if (garderAncien)
