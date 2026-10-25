@@ -244,11 +244,15 @@ public sealed class JournalEtMemoireTests : IDisposable
 
         var journal = await connexion.InvokeAsync<List<EvenementDto>>("Journal", new FiltreJournal(Limite: 10));
         Assert.True(journal.Count <= 10);
+        // Tous les types à la fois, comme le filtre par défaut du navigateur (bien plus de 20).
+        var tous = EvenementDto.Cles.Values.ToArray();
+        Assert.True(tous.Length > 20);
+        await connexion.InvokeAsync<List<EvenementDto>>("Journal", new FiltreJournal(tous, Limite: 10));
 
         await Assert.ThrowsAsync<HubException>(() => connexion.InvokeAsync<List<EvenementDto>>("Journal", new FiltreJournal(["inconnu"])));
         await Assert.ThrowsAsync<HubException>(() => connexion.InvokeAsync<List<EvenementDto>>("Journal", new FiltreJournal(Limite: 0)));
         await Assert.ThrowsAsync<HubException>(() => connexion.InvokeAsync<List<EvenementDto>>("Journal", new FiltreJournal(Limite: 501)));
         await Assert.ThrowsAsync<HubException>(() => connexion.InvokeAsync<List<EvenementDto>>("Journal",
-            new FiltreJournal(Enumerable.Repeat("mort", 21).ToArray())));
+            new FiltreJournal(Enumerable.Repeat("mort", EvenementDto.Cles.Count + 1).ToArray())));
     }
 }

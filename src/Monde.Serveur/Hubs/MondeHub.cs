@@ -535,7 +535,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// <summary>Journal filtré, du plus récent au plus ancien (500 événements au plus par demande).</summary>
     public List<EvenementDto> Journal(FiltreJournal filtre)
     {
-        if (filtre.Types is { Length: > 20 } || filtre.Limite is < 1 or > Stockage.DepotMonde.LimiteJournal)
+        if (!filtre.EstValide)
         {
             throw new HubException(L.T("erreur.filtreJournal"));
         }

@@ -75,7 +75,12 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 /// <param name="Communaute">Chronologie d'une communauté : les événements qui la concernent.</param>
 /// <param name="Significatifs">Seulement les événements significatifs.</param>
 public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, long? AvantId = null, int Limite = 100, int? Communaute = null,
-    bool Significatifs = false);
+    bool Significatifs = false)
+{
+    /// <summary>Au plus un exemplaire de chaque type connu, et une limite entre 1 et la limite du dépôt.</summary>
+    public bool EstValide => (Types is not { } t || t.Length <= EvenementDto.Cles.Count)
+        && Limite is >= 1 and <= Stockage.DepotMonde.LimiteJournal;
+}
 
 public sealed record LieuDto(string Type, int X, int Y, string VuLe, int Visites);
 
