@@ -35,7 +35,7 @@ Le monde est sauvegardé toutes les 10 secondes et à l'arrêt du serveur (Ctrl+
 - Windows : `%LOCALAPPDATA%\MondeArtificiel\mondes\monde.db`
 - Linux : `~/.local/share/MondeArtificiel/mondes/monde.db`
 
-Au redémarrage, le monde reprend à la date enregistrée (en pause, sauf réglage contraire). Pour repartir de zéro, utilise le bouton « ⚙ Configuration » de la page (voir plus bas) puis « Créer ce monde » ; la même fenêtre sauvegarde et restaure un monde. L'ancien monde est copié dans `monde-avant-reinitialisation.db` à côté (seule la dernière copie est gardée). Le dossier se change avec le réglage `Monde:Dossier`.
+Au redémarrage, le monde reprend à la date enregistrée (en pause, sauf réglage contraire). Pour repartir de zéro, utilise le bouton « ⚙ Configuration » de la page (voir plus bas) puis « Créer ce monde » ; la même fenêtre sauvegarde et restaure un monde. L'ancien monde est copié dans `monde-avant-reinitialisation.db` à côté (seule la dernière copie est gardée). Le dossier se change avec le réglage `Monde:Dossier`. Le [manuel de la base de données](docs/manuel-base-de-donnees.md) détaille les fichiers, les sauvegardes, la taille du journal et la copie pour analyse.
 
 Les fondateurs (33 couples par défaut, de 14 à 40 ans, nombre et emplacement réglables) apparaissent sur la carte : point orange pour une femme, bleu pour un homme, croix grise pour un mort. Le compteur « Vivants » est en haut. Survoler un humain affiche son nom, son âge, ce qu'il fait et ses besoins (faim, soif, fatigue, froid, santé). Les noms sont tirés au hasard pour l'observateur ; au départ les humains n'ont pas de langage, puis chaque communauté forge le sien (voir plus bas), et les noms dans sa langue s'ajoutent.
 
