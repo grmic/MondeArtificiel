@@ -48,6 +48,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
         [TypeEvenement.Mots] = "mots",
         [TypeEvenement.Religion] = "religion",
         [TypeEvenement.Geste] = "geste",
+        [TypeEvenement.Mer] = "mer",
     };
 
 
@@ -243,7 +244,7 @@ public sealed record FicheDto(
                 .Select(x => new IntimeDto(Date(x.Secondes), TypeIntime(x.Type), x.SujetId, x.SujetId > 0 && x.SujetId != id ? Nom(x.SujetId) : null,
                     x.Recit is { } r ? L.Rediger(r) : x.Brut ?? "", (int)Math.Round(x.Intensite), x.CauseId, L.Ancien(x.Recit))).ToList(),
             h.Memoire.Lieux.OrderBy(l => l.Type).ThenByDescending(l => l.Rappels).ThenByDescending(l => l.VuLe)
-                .Select(l => new LieuDto(l.Type switch { TypeLieu.Eau => "eau", TypeLieu.Nourriture => "nourriture", TypeLieu.Gisement => "gisement", _ => "abri" },
+                .Select(l => new LieuDto(l.Type switch { TypeLieu.Eau => "eau", TypeLieu.Nourriture => "nourriture", TypeLieu.Gisement => "gisement", TypeLieu.TerreAuLoin => "terre", _ => "abri" },
                     l.X, l.Y, Date(l.VuLe), l.Rappels + 1)).ToList(),
             h.Liens.OrderByDescending(l => Math.Abs(l.Affection)).ThenByDescending(l => l.Familiarite)
                 .Select(l => new LienDto(l.Id, Nom(l.Id), (int)Math.Round(l.Familiarite), (int)Math.Round(l.Affection),

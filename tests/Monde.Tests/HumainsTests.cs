@@ -89,7 +89,9 @@ public sealed class HumainsTests
             var (maintenant, humains) = monde.InstantaneHumains();
             Assert.All(humains, h =>
             {
-                Assert.True(Climat.EstPraticable(Carte.BiomeEn(h.X, h.Y)), $"{h.Nom} est dans l'eau en ({h.X}, {h.Y})");
+                // En mer, ou sur son radeau au-dessus d'eaux basses (0.31.5 : un bateau de mer se garde sur le rivage où l'on vit).
+                var aBord = h.Mer.EnMer || h.Objets.Exists(o => Assemblage.Lire(o.Pieces) is { Montage: Montage.Cote or Montage.Creuse });
+                Assert.True(Climat.EstPraticable(Carte.BiomeEn(h.X, h.Y)) || aBord, $"{h.Nom} est dans l'eau en ({h.X}, {h.Y})");
                 Assert.InRange(h.Sante, 0, 100);
                 Assert.InRange(h.Faim, 0, 100);
                 // Un bébé vivant est dans les bras de sa mère vivante, si elle y est attachée (sinon elle peut le délaisser).

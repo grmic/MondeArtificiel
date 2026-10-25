@@ -488,6 +488,7 @@ public sealed partial class Comportement
         Effet.Roule => "ing.question.Roule",
         Effet.Flotte => "ing.question.Flotte",
         Effet.Flottaison => "ing.question.Flottaison",
+        Effet.Navigation => "ing.question.Navigation",
         Effet.RouleSurAxe => "ing.question.RouleSurAxe",
         Effet.Pansement => "ing.question.Pansement",
         Effet.Rythme => "ing.question.Rythme",

@@ -121,6 +121,23 @@ public sealed partial class Catastrophes
 
     public bool EstDangereuse(int indice) => _danger.ContainsKey(indice);
 
+    /// <summary>
+    /// Hauteur des vagues (m) qu'une tempête lève sur cette case de mer : 6 m environ pour la plus faible, 14 m pour la plus
+    /// forte près de son centre, moins vers ses bords (0 hors d'une tempête).
+    /// </summary>
+    public double TempeteEn(int x, int y)
+    {
+        var houle = 0.0;
+        foreach (var c in _liste)
+        {
+            if (!c.Active || c.Type != TypeCatastrophe.Cyclone || c.Rayon <= 0) continue;
+            var d = Math.Max(Math.Abs(x - c.X), Math.Abs(y - c.Y));
+            if (d > c.Rayon) continue;
+            houle = Math.Max(houle, (4 + 2 * c.Intensite) * (1 - 0.7 * d / c.Rayon));
+        }
+        return houle;
+    }
+
     /// <summary>Des flammes brûlent sur cette case ou à côté (front d'un incendie).</summary>
     public bool BruleAutour(int x, int y)
     {

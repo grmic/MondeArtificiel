@@ -7,7 +7,9 @@ namespace Monde.Serveur;
 /// Réglages demandés par le navigateur pour un nouveau monde (taille en cases ; graine absente : au hasard ; écart : mer entre
 /// les continents, 0 proches, 1 éloignés, 2 mélangés). Un monde neuf a toujours la carte de la dernière génération.
 /// </summary>
-public sealed record DemandeConfiguration(long? Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement = 1, int Ecart = 0)
+/// <param name="GarderAncien">À la création d'un monde : garder une copie de l'ancien (vrai par défaut).</param>
+public sealed record DemandeConfiguration(long? Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement = 1, int Ecart = 0,
+    bool GarderAncien = true)
 {
     /// <summary>Réglages validés ; la graine absente est tirée au hasard.</summary>
     /// <exception cref="ArgumentException">Graine ou réglages hors limites (message lisible).</exception>

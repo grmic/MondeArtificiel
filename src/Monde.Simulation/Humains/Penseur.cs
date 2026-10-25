@@ -93,6 +93,18 @@ public static class Penseur
             Activite.Veiller => Choix("p.veiller.1", "p.veiller.2"),
             Activite.ChercherLeFeu => Choix("p.chercherFeu.1", "p.chercherFeu.2"),
             Activite.Nager => Choix("p.nager.1", "p.nager.2"),
+            Activite.Naviguer => h.Mer switch
+            {
+                { Motif: MotifMer.Passager } => P("p.mer.passager"),
+                { EnMer: false } => P("p.mer.rivage"),
+                { Motif: MotifMer.Peche } => P("p.mer.peche"),
+                { Motif: MotifMer.Curiosite } => Choix("p.mer.curiosite.1", "p.mer.curiosite.2"),
+                { Motif: MotifMer.Expedition } => P("p.mer.expedition"),
+                { Motif: MotifMer.Colon } => P("p.mer.colon"),
+                { Motif: MotifMer.Retour } => P("p.mer.retour"),
+                _ => null,
+            },
+            Activite.Pecher => Choix("p.pecher.1", "p.pecher.2"),
             Activite.Soigner => Choix("p.soigner.1", "p.soigner.2"),
             Activite.Repos when h.Reserves < 10 && h.Faim > 50 => Choix("p.affame.1", "p.affame.2"),
             Activite.Repos when h.EstDeprime => Choix("p.deprime.1", "p.deprime.2"),

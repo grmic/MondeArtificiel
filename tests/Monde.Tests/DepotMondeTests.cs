@@ -472,6 +472,27 @@ public sealed class DepotMondeTests : IDisposable
     }
 
     [Fact]
+    public void Recommencer_SansCopie_EffaceLAncienMonde_EtLaissePasserLaCopiePrecedente()
+    {
+        var depot = new DepotMonde(Fichier);
+        depot.Enregistrer(MondeSimule.Nouveau(42) with { Secondes = 5_000_000 });
+        depot.EcrireReglage("redemarrage", "vitesse");
+        ExecuterSql(Fichier, "CREATE TABLE temoin (x);");
+        var dossier = Path.GetDirectoryName(Fichier)!;
+        var copie = Path.Combine(dossier, "avant.db");
+        File.WriteAllText(copie, "copie précédente");
+
+        var neuf = MondeSimule.Nouveau(7);
+        depot.Recommencer(neuf);
+
+        Assert.Equal(neuf, depot.Charger());
+        Assert.Equal("vitesse", depot.LireReglage("redemarrage"));
+        Assert.False(TableExiste(Fichier, "temoin"));   // fichier neuf : l'ancien est effacé
+        Assert.Equal("copie précédente", File.ReadAllText(copie));
+        Assert.Empty(Directory.GetFiles(dossier, "monde-efface-*"));
+    }
+
+    [Fact]
     public void RecommencerApresCopie_FichierOccupe_CopieEtEfface()
     {
         var depot = new DepotMonde(Fichier);

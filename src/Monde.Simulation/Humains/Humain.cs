@@ -61,6 +61,51 @@ public enum Activite : byte
     Rentrer = 33,
     /// <summary>Aller demander à celui qui fait mieux que soi de faire un objet pour soi, et attendre qu'il l'ait fait.</summary>
     Demander = 34,
+    /// <summary>Aller vers la mer pour s'y embarquer, préparer un bateau, ou être en mer.</summary>
+    Naviguer = 35,
+    /// <summary>Pêcher en mer, depuis son bateau.</summary>
+    Pecher = 36,
+}
+
+/// <summary>Pourquoi un humain prend la mer.</summary>
+public enum MotifMer : byte
+{
+    Aucun = 0,
+    /// <summary>Pêcher au large de sa côte, et revenir.</summary>
+    Peche = 1,
+    /// <summary>Voir ce qu'il y a au large, et revenir le raconter.</summary>
+    Curiosite = 2,
+    /// <summary>Aller voir une terre aperçue ou dont on lui a parlé, y rester quelques jours, et revenir.</summary>
+    Expedition = 3,
+    /// <summary>Aller vivre sur une autre terre.</summary>
+    Colon = 4,
+    /// <summary>Rentrer chez soi par la mer.</summary>
+    Retour = 5,
+    /// <summary>Sur une terre lointaine, pour quelques jours, avant de rentrer.</summary>
+    Sejour = 6,
+    /// <summary>Enfant emmené sur le bateau d'un parent.</summary>
+    Passager = 7,
+}
+
+/// <summary>
+/// Un voyage par mer, de sa décision au retour (voir <see cref="Comportement"/>, Navigation) : où l'on embarque, où l'on
+/// va, depuis quand, le bateau en chantier et la position fine sur l'eau (en fractions de case).
+/// </summary>
+/// <param name="EnMer">Sur l'eau (sinon : en route vers le rivage, ou en train de préparer le bateau).</param>
+/// <param name="RiveX">Rivage où l'on embarque.</param>
+/// <param name="CibleX">Où l'on va : un point de la terre visée, un coin de pêche, ou un point au large.</param>
+/// <param name="Depuis">Début de l'étape en cours (décision, départ en mer) ; pour un séjour, sa fin prévue.</param>
+/// <param name="Dx">Position sur l'eau, en fraction de case autour de la case de l'humain.</param>
+/// <param name="Cap">Erreur de cap (degrés) faite en partant, corrigée dès que le but est en vue.</param>
+/// <param name="Ouvrage">Avancement du bateau en chantier (0 à 1).</param>
+/// <param name="Projet">Signature du bateau imaginé (voir <see cref="Assemblage"/>), vide sinon.</param>
+/// <param name="PiloteId">Pour un passager : celui qui mène le bateau.</param>
+/// <param name="Masse">Terre d'où l'on est parti.</param>
+/// <param name="Vu">Une terre inconnue a été aperçue pendant ce voyage.</param>
+public readonly record struct Traversee(MotifMer Motif, bool EnMer, int RiveX, int RiveY, int CibleX, int CibleY, long Depuis,
+    double Dx = 0, double Dy = 0, double Cap = 0, double Ouvrage = 0, string? Projet = null, int PiloteId = 0, int Masse = 0, bool Vu = false)
+{
+    public bool Active => Motif != MotifMer.Aucun;
 }
 
 /// <summary>Ce que les siens viennent demander à quelqu'un de faire pour eux, parce qu'il le fait mieux qu'eux.</summary>
@@ -539,6 +584,15 @@ public sealed class Humain
 
     /// <summary>Aisance dans l'eau, de 0 (ne sait pas nager) à 1, acquise en nageant.</summary>
     public double Nage { get; set; }
+
+    /// <summary>Voyage par mer en cours ou en préparation (Motif Aucun : aucun).</summary>
+    public Traversee Mer { get; set; }
+
+    /// <summary>
+    /// Terre de son peuple (numéro de masse de terre, voir <see cref="Nature.Mer.Masse"/>) : celle de sa mère, ou celle où il
+    /// vit quand on ne la connaît pas (0 : pas encore établie). Rencontrer quelqu'un d'une autre terre est un premier contact.
+    /// </summary>
+    public int Continent { get; set; }
 
     /// <summary>Jusqu'à quand ses repas cuits le protègent un peu des maladies du ventre.</summary>
     public long CuitJusqua { get; set; }

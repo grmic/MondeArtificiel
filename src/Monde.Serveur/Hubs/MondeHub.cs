@@ -210,7 +210,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     }
 
     /// <summary>
-    /// Crée un monde neuf avec ces réglages (graine absente : au hasard). L'ancien monde est gardé en copie.
+    /// Crée un monde neuf avec ces réglages (graine absente : au hasard). L'ancien monde est gardé en copie, sauf si l'on a
+    /// décoché la case.
     /// Des réglages impossibles sont refusés sans rien changer.
     /// </summary>
     public async Task<HorlogeDto> CreerMonde(DemandeConfiguration demande)
@@ -218,7 +219,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         MondeSimule monde;
         try
         {
-            monde = service.Reinitialiser(demande.Valider());
+            monde = service.Reinitialiser(demande.Valider(), demande.GarderAncien);
         }
         catch (Exception e) when (e is ArgumentException or InvalidOperationException)
         {

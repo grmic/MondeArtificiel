@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 38;
+    public const int VersionSchema = 39;
 
     private readonly string _connexion;
 
@@ -592,6 +592,8 @@ public sealed partial class DepotMonde
         // entre les continents.
         // Version 38 : journal ancien rangé par paquets compressés.
         if (actuelle < 38) MigrerVersion38(connexion, transaction);
+        // Version 39 : voyages par mer, terre du peuple de chacun, premières avec les terres d'outre-mer.
+        if (actuelle < 39) MigrerVersion39(connexion, transaction);
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """
@@ -812,6 +814,7 @@ public sealed partial class DepotMonde
             LireSanteNature(commande, humains);
             LireSavoirs(commande, humains);
             LireLangage(commande, humains);
+            LireMer(commande, humains);
         }
         var (foyers, huttes, decouvertes, oeuvres) = LireInstallations(commande);
         var (braises, reserves) = LireFeuxEtReserves(commande);
@@ -821,6 +824,8 @@ public sealed partial class DepotMonde
         if (progres.Count > 0) etat = etat with { Progres = progres };
         var rassemblements = LireRassemblements(commande);
         if (rassemblements.Count > 0) etat = etat with { Rassemblements = rassemblements };
+        var outremer = LireOutremer(commande);
+        if (outremer.Count > 0) etat = etat with { Outremer = outremer };
         if (oeuvres.Count > 0) etat = etat with { Oeuvres = oeuvres };
         if (foyers.Count > 0) etat = etat with { Foyers = foyers };
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };
@@ -1041,7 +1046,7 @@ public sealed partial class DepotMonde
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
-                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions; " + EffacerSavoirs + EffacerLangage + EffacerCultes + EffacerGestes);
+                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions; DELETE FROM outremer; " + EffacerSavoirs + EffacerLangage + EffacerCultes + EffacerGestes);
         }
 
         using (var commande = connexion.CreateCommand())
@@ -1213,11 +1218,13 @@ public sealed partial class DepotMonde
             EnregistrerSanteNature(connexion, transaction, tous);
             EnregistrerSavoirs(connexion, transaction, tous);
             EnregistrerLangage(connexion, transaction, tous);
+            EnregistrerMer(connexion, transaction, tous);
         }
         if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Braises is not null || etat.Reserves is not null) EnregistrerFeuxEtReserves(connexion, transaction, etat);
         if (etat.Progres is not null) EnregistrerProgres(connexion, transaction, etat.Progres);
         if (etat.Rassemblements is not null) EnregistrerRassemblements(connexion, transaction, etat.Rassemblements);
+        if (etat.Outremer is not null) EnregistrerOutremer(connexion, transaction, etat.Outremer);
         if (etat.Religions is not null || etat.Prieres is not null || etat.LieuxSacres is not null || etat.Propheties is not null)
             EnregistrerCultes(connexion, transaction, etat);
         if (etat.EffetsEntite is not null || etat.SouvenirsEntite is not null) EnregistrerGestes(connexion, transaction, etat);
@@ -1546,6 +1553,32 @@ public sealed partial class DepotMonde
             CopierVers(copie);
             Enregistrer(etat, remplacer: true);
             return;
+        }
+        Initialiser();
+        foreach (var (cle, valeur) in reglages) EcrireReglage(cle, valeur);
+        Enregistrer(etat);
+    }
+
+    /// <summary>
+    /// Recommence avec un monde neuf sans garder l'ancien : le fichier est effacé (sa place rendue au disque) et recréé avec
+    /// les mêmes réglages. Si une autre connexion empêche de l'effacer, les tables sont vidées et remplies à la place.
+    /// </summary>
+    public void Recommencer(EtatMonde etat)
+    {
+        var reglages = LireReglages();
+        var temporaire = Path.Combine(Path.GetDirectoryName(CheminFichier)!, $"monde-efface-{Guid.NewGuid():N}.tmp");
+        if (!Renommer(temporaire))
+        {
+            Enregistrer(etat, remplacer: true);
+            return;
+        }
+        try
+        {
+            File.Delete(temporaire);
+        }
+        catch (IOException)
+        {
+            // Rien de grave : le fichier effacé reste à côté, il ne sera plus jamais lu.
         }
         Initialiser();
         foreach (var (cle, valeur) in reglages) EcrireReglage(cle, valeur);

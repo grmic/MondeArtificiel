@@ -91,6 +91,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Numéro de la prochaine prière (0 : d'après les prières connues).</summary>
     public int ProchainePriere { get; init; }
+
+    /// <summary>Premières des groupes avec les terres d'outre-mer : terres vues, abordées, peuples rencontrés (null : aucune).</summary>
+    public IReadOnlyList<DecouverteOutremer>? Outremer { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -194,6 +197,7 @@ public sealed class MondeSimule
             Numeros = _numeros, Comportement = _comportement, Communautes = _communautes,
         };
         _comportement.Catastrophes = _catastrophes;
+        _comportement.Outremer = _social.Outremer = new Outremer(etat.Outremer);
         _cultes = new Cultes(etat.Religions, etat.Prieres, etat.LieuxSacres, etat.Propheties, etat.EffetsEntite, etat.SouvenirsEntite);
         if (etat.ProchainePriere > _cultes.ProchainePriere) _cultes.ProchainePriere = etat.ProchainePriere;
         _comportement.Cultes = _social.Cultes = _cultes;
@@ -285,6 +289,7 @@ public sealed class MondeSimule
                     EffetsEntite = _cultes.Effets.ToList(),
                     SouvenirsEntite = _cultes.Souvenirs.ToList(),
                     ProchainePriere = _cultes.ProchainePriere,
+                    Outremer = _comportement.Outremer.Liste.ToList(),
                 };
             }
         }
@@ -972,6 +977,7 @@ public sealed class MondeSimule
                     TypeLieu.Eau => "eau",
                     TypeLieu.Nourriture => "nourriture",
                     TypeLieu.Gisement => "gisement",
+                    TypeLieu.TerreAuLoin => "terre",
                     _ => "abri",
                 };
                 object fois = l.Rappels > 0 ? new Recit("j.oubli.fois", ("h", h), ("n", l.Rappels + 1)) : "";

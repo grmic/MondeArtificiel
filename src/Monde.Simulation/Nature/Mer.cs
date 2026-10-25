@@ -49,7 +49,7 @@ public readonly record struct Vent(double Depuis, double Vitesse);
 
 /// <summary>
 /// La mer autour des terres : ses fonds, ses rivages, ses îles et les passages entre les terres, les vents dominants et
-/// les courants de surface. Rien ne s'en sert encore pour naviguer (0.32.4) : la mer est décrite une fois pour toutes,
+/// les courants de surface. Les humains la lisent pour voir au large et naviguer (0.31.5, voir <c>Humains/Navigation.cs</c>) : elle est décrite une fois pour toutes,
 /// à partir de la graine et de la carte, comme le <see cref="Terrain"/>.
 /// </summary>
 public sealed class Mer

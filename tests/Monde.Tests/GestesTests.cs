@@ -22,12 +22,12 @@ public sealed class GestesTests : IDisposable
         if (Directory.Exists(_dossier)) Directory.Delete(_dossier, recursive: true);
     }
 
-    /// <summary>Un monde de six mois, où deux communautés se sont formées : enregistré une fois, relu par chaque test.</summary>
+    /// <summary>Un monde d'un an, où des communautés se sont formées : enregistré une fois, relu par chaque test.</summary>
     private static readonly Lazy<string> Base = new(() =>
     {
         var fichier = Path.Combine(Path.GetTempPath(), "monde-gestes-base-" + Guid.NewGuid().ToString("N") + ".db");
         var monde = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42));
-        monde.AvancerDe(180 * Jour);
+        monde.AvancerDe(360 * Jour);
         new DepotMonde(fichier).Enregistrer(monde.Etat);
         AppDomain.CurrentDomain.ProcessExit += (_, _) => File.Delete(fichier);
         return fichier;

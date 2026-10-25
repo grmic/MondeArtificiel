@@ -584,6 +584,9 @@ export class PanneauConfiguration {
         largeur: Math.round(r.largeur * km), hauteur: Math.round(r.hauteur * km), continents: t("config.nContinents", { n: r.continents }),
         placement: this.placement.choix.selectedOptions[0]?.textContent ?? "" });
     }
+    // La copie de l'ancien monde est proposée à chaque fois (cochée par défaut).
+    const garder = this.dialogue.querySelector<HTMLInputElement>("#garderAncienMonde");
+    if (garder) garder.checked = true;
     this.dialogue.returnValue = "";
     this.dialogue.showModal();
   }
@@ -591,10 +594,11 @@ export class PanneauConfiguration {
   private async creer(): Promise<void> {
     const r = this.lire();
     if (!r) return;
+    const garder = this.dialogue.querySelector<HTMLInputElement>("#garderAncienMonde")?.checked ?? true;
     this.message.textContent = t("config.creation");
     this.informer(t("config.creationInfo"));
     try {
-      await connexion.invoke("CreerMonde", r);
+      await connexion.invoke("CreerMonde", { ...r, garderAncien: garder });
       this.message.textContent = t("config.cree");
     } catch (e) {
       // Le serveur renvoie la raison (réglages impossibles) ; rien n'a changé.

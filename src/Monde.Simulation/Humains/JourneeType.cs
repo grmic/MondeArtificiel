@@ -16,7 +16,7 @@ public sealed class JourneeType
     [
         Activite.Boire, Activite.Cueillir, Activite.Chasser, Activite.ChercherEau, Activite.ChercherNourriture, Activite.ChercherAbri,
         Activite.SAbriter, Activite.Explorer, Activite.Migrer, Activite.RejoindrePartenaire, Activite.RejoindreProche, Activite.SuivreParent,
-        Activite.VeillerEnfant, Activite.Experimenter, Activite.Fabriquer, Activite.Veiller, Activite.Nager, Activite.Repos, Activite.Dormir,
+        Activite.VeillerEnfant, Activite.Experimenter, Activite.Fabriquer, Activite.Veiller, Activite.Nager, Activite.Pecher, Activite.Repos, Activite.Dormir,
     ];
 
     public void Compter(int humain, Activite activite)

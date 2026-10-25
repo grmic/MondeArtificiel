@@ -61,6 +61,8 @@ public enum TypeEvenement : byte
     Religion = 31,
     /// <summary>Geste de l'Entité sur un humain ou une communauté : mort, maladie, guérison, famine, bénédiction…</summary>
     Geste = 32,
+    /// <summary>Terres vues au large, voyages par mer, premiers pas sur une autre terre, premiers contacts, naufrages.</summary>
+    Mer = 33,
 }
 
 /// <summary>

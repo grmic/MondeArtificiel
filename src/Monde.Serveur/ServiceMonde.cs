@@ -224,10 +224,12 @@ public sealed class ServiceMonde
 
     /// <summary>
     /// Remplace le monde par un monde neuf (an 1, deux humains par couple de départ), en pause, avec ses réglages.
-    /// L'ancien monde est d'abord enregistré puis gardé (fichier renommé) dans <see cref="CheminCopieAvantReinitialisation"/> (seule la dernière copie est gardée).
+    /// Si <paramref name="garderAncien"/>, l'ancien monde est d'abord enregistré puis gardé (fichier renommé) dans
+    /// <see cref="CheminCopieAvantReinitialisation"/> (seule la dernière copie est gardée) ; sinon il est effacé, et la copie
+    /// précédente, s'il y en a une, reste telle quelle.
     /// </summary>
     /// <exception cref="InvalidOperationException">Les réglages ne laissent pas la place aux couples : rien n'est changé.</exception>
-    public MondeSimule Reinitialiser(ConfigurationMonde configuration)
+    public MondeSimule Reinitialiser(ConfigurationMonde configuration, bool garderAncien = true)
     {
         if (configuration.Erreur() is { } erreur) throw new ArgumentException(erreur, nameof(configuration));
         // La carte est générée avant de toucher à l'ancien monde : un réglage impossible ne détruit rien.
@@ -238,12 +240,17 @@ public sealed class ServiceMonde
         };
         lock (_verrou)
         {
-            Sauvegarder();
-            Depot.RecommencerApresCopie(CheminCopieAvantReinitialisation, nouveau.Etat);
+            if (garderAncien)
+            {
+                Sauvegarder();
+                Depot.RecommencerApresCopie(CheminCopieAvantReinitialisation, nouveau.Etat);
+            }
+            else Depot.Recommencer(nouveau.Etat);
             _monde = nouveau;
         }
-        _journal.LogInformation("Monde réinitialisé ({Configuration}) ; ancien monde copié dans {Copie}",
-            configuration, CheminCopieAvantReinitialisation);
+        if (garderAncien)
+            _journal.LogInformation("Monde réinitialisé ({Configuration}) ; ancien monde copié dans {Copie}", configuration, CheminCopieAvantReinitialisation);
+        else _journal.LogInformation("Monde réinitialisé ({Configuration}) ; ancien monde effacé sans copie", configuration);
         return nouveau;
     }
 

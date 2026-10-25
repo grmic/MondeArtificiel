@@ -26,6 +26,7 @@ public sealed partial class Comportement
         Couper = 1,
         Rapporter = 2,
         Traverser = 3,
+        Naviguer = 4,
     }
 
     private static Effet[] EffetsDe(Besoin b) => b switch
@@ -33,7 +34,8 @@ public sealed partial class Comportement
         Besoin.Chasser => [Effet.PointeEmmanchee],
         Besoin.Couper => [Effet.TranchantEmmanche],
         Besoin.Rapporter => [Effet.RouleSurAxe, Effet.Glisser, Effet.Rouleaux],
-        _ => [Effet.Flottaison],
+        Besoin.Naviguer => [Effet.Navigation],
+        _ => [Effet.Flottaison, Effet.Navigation],
     };
 
     /// <summary>
@@ -55,13 +57,17 @@ public sealed partial class Comportement
     private int Combien(Humain h, Matiere m)
     {
         if (m == Matiere.Aucune) return 99;
+        if (_autour is { } autour && autour.Contains(m)) return 99;
         if (Physique.Disponibles(carte, h.X, h.Y, Sec(h) > 0.55, VolcanProche(h.X, h.Y)).Contains(m)) return 99;
         return h.Objets.Count(o => o.Matiere == m);
     }
 
     private bool APiecesPour(Humain h, Assemblage a) =>
         Combien(h, a.Corps) >= a.NCorps && (a.NTete == 0 || Combien(h, a.Tete) >= a.NTete) && Combien(h, a.Lien) >= 1
-        && (a.Lien != Matiere.Resine || FeuIci(h));
+        && (a.Lien != Matiere.Resine || FeuIci(h))
+        // Évider un tronc : le feu pour ronger le bois, ou du moins un outil qui tranche bien.
+        && (a.Montage != Montage.Creuse || (FeuIci(h) || h.Sait(Effet.Foyer)) && h.Objets.Exists(o => Lois.Coupe(o) > 0.05)
+            || h.Objets.Exists(o => Lois.Coupe(o) >= 0.3));
 
     /// <summary>
     /// Un lien auquel il pense : la corde qu'il porte, des lianes s'il sait en tordre une, la résine chauffée près du feu.
@@ -85,6 +91,7 @@ public sealed partial class Comportement
         {
             Besoin.Chasser or Besoin.Couper => Lois.Emmancher(a, FeuIci(h), AdressePour(h, null), alea),
             Besoin.Rapporter => Lois.Transporter(a, charge, carte.BiomeEn(h.X, h.Y), Lois.Traction(vigueur), Lois.Soulever(vigueur), FeuIci(h), km),
+            Besoin.Naviguer => Lois.TenirLaMer(a, 0.5 + 0.5 * h.Personnalite.Adresse, charge, FeuIci(h)),
             _ => Lois.Flotter(a, charge, FeuIci(h)),
         };
     }
@@ -126,6 +133,8 @@ public sealed partial class Comportement
             }
             case Besoin.Rapporter:
                 return ImaginerTransport(h, charge);
+            case Besoin.Naviguer:
+                return ImaginerBateau(h, charge);
             default:
                 return ImaginerRadeau(h, charge);
         }
@@ -197,6 +206,41 @@ public sealed partial class Comportement
                 new Recit("inv.agrippe", ("h", h), ("m", QueNom(m))));
         return (new Assemblage(m, n, Matiere.Aucune, 0, lien, Montage.Cote),
             new Recit("inv.radeau", ("h", h), ("m", QueNom(m)), ("lien", Physique.Nom(lien))));
+    }
+
+    /// <summary>
+    /// Un bateau pour la mer : un radeau plus grand et mieux lié de ce qu'il a vu flotter (troncs, roseaux, calebasses) ;
+    /// ou, à qui sait que le tronc flotte, que la calebasse creuse garde l'eau dehors comme dedans et que le feu ronge le bois,
+    /// l'idée d'évider un tronc.
+    /// </summary>
+    private (Assemblage, Recit)? ImaginerBateau(Humain h, double charge)
+    {
+        var idees = new List<(Assemblage, Recit, double)>();
+        var lien = ChoisirLien(h);
+        foreach (var m in h.Savoirs.Where(s => s.Effet == Effet.Flotte && Combien(h, s.A) > 0).Select(s => s.A).Distinct().OrderBy(m => m))
+        {
+            if (lien == Matiere.Aucune) break;
+            var n = m switch
+            {
+                Matiere.Tronc => 4 + alea.Entier(5),
+                Matiere.Roseau => 10 + alea.Entier(11),
+                Matiere.Calebasse => 12 + alea.Entier(9),
+                _ => 8 + alea.Entier(6),
+            };
+            n = Math.Min(n, Combien(h, m));
+            idees.Add((new Assemblage(m, n, Matiere.Aucune, 0, lien, Montage.Cote),
+                new Recit("inv.bateau.radeau", ("h", h), ("m", QueNom(m)), ("lien", Physique.Nom(lien))), h.Sait(Effet.Flottaison) ? 2 : 1));
+        }
+        if (h.Savoirs.Exists(s => s.Effet == Effet.Flotte && s.A == Matiere.Tronc) && Combien(h, Matiere.Tronc) > 0
+            && (h.Sait(Effet.EauPortee) || h.Savoirs.Exists(s => s.A == Matiere.Calebasse)) && (h.Sait(Effet.Foyer) || h.Sait(Effet.Flamme)))
+            idees.Add((new Assemblage(Matiere.Tronc, 1, Matiere.Aucune, 0, Matiere.Aucune, Montage.Creuse), new Recit("inv.bateau.coque", ("h", h)), 1.2));
+        if (idees.Count == 0) return null;
+        var x = alea.Reel() * idees.Sum(i => i.Item3);
+        foreach (var (a, pensee, poids) in idees)
+        {
+            if ((x -= poids) <= 0) return (a, pensee);
+        }
+        return (idees[^1].Item1, idees[^1].Item2);
     }
 
     // ------------------------------------------------------------------ Essayer, retenir, transmettre
@@ -273,6 +317,7 @@ public sealed partial class Comportement
         Montage.Travers => 1,
         Montage.Axe => 2,
         Montage.Cote when Lois.Portance(a) > 40 => 3,
+        Montage.Creuse => 3,
         _ => 2,
     };
 
@@ -506,7 +551,8 @@ public sealed partial class Comportement
 
     /// <summary>Le radeau qu'il a assemblé (et pas encore laissé sur la rive).</summary>
     private static Objet? Radeau(Humain h) =>
-        h.Objets.Find(o => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { Montage: Montage.Cote } a && Lois.Portance(a) > 40);
+        h.Objets.Find(o => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { } a
+                           && (a.Montage == Montage.Cote && Lois.Portance(a) > 40 || a.Montage == Montage.Creuse));
 
     /// <summary>
     /// Le radeau reste au bord tant qu'on n'est pas parti ; une fois l'eau traversée, on le laisse sur la rive ; la viande
@@ -530,6 +576,13 @@ public sealed partial class Comportement
             if (Radeau(h) != o) continue;
             var surLEau = !Climat.EstPraticable(carte.BiomeEn(h.X, h.Y));
             if (surLEau) h.Objets[i] = o with { Plein = true };
+            else if (TientLaMer(o) && (h.Mer.Active || DistanceMer(h.X, h.Y) <= 3))
+            {
+                // Un bateau de mer reste tiré sur le rivage où l'on vit : il s'use en un an ou deux.
+                var usure = o.Usure - MondeSimule.SecondesParPas / (1.5 * Calendrier.SecondesParAn);
+                if (usure <= 0) h.Objets.RemoveAt(i);
+                else h.Objets[i] = o with { Usure = usure, Plein = false };
+            }
             else if (o.Plein) h.Objets.RemoveAt(i);
             else if (o.Usure <= 0.03) h.Objets.RemoveAt(i);
             else h.Objets[i] = o with { Usure = o.Usure - 0.03 };

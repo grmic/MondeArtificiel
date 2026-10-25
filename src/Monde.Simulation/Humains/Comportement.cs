@@ -115,10 +115,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (!h.EstVivant) return;
         // La soif fait nager même épuisé, au risque de se noyer : on ne reste pas mourir sur une rive sans eau douce.
         SuivreSesObjets(h);
-        _nageur = PeutNager(h) || h.Nage >= 0.4 && h.Soif >= 60 && h.Froid < 50 || Radeau(h) is not null;
+        if (h.Continent == 0) EtablirContinent(h, tous);
+        // Un bateau de mer tiré sur le rivage ne sert qu'à prendre la mer (voir Navigation.cs) : on ne marche pas sur l'eau avec.
+        _nageur = PeutNager(h) || h.Nage >= 0.4 && h.Soif >= 60 && h.Froid < 50 || Radeau(h) is { } r && (r.Plein || !TientLaMer(r));
         _gueMax = GueMax(h);
         Ramasser(h);
         Remarquer(h);
+        RegarderLeLarge(h, tous);
+        RencontrerOutremer(h, tous);
         ObserverLeFeu(h, tous);
         DecouvrirLaBraise(h, tous);
         SentirLaFumee(h, tous);
@@ -177,7 +181,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     {
         Activite.Boire or Activite.ChercherEau or Activite.Cueillir or Activite.Chasser or Activite.ChercherNourriture
             or Activite.SAbriter or Activite.ChercherAbri or Activite.Dormir or Activite.Repos or Activite.Explorer
-            or Activite.Nager or Activite.Veiller or Activite.Fabriquer or Activite.Experimenter
+            or Activite.Nager or Activite.Veiller or Activite.Fabriquer or Activite.Experimenter or Activite.Pecher
             or Activite.RejoindreProche or Activite.SuivreParent => true,
         Activite.RejoindrePartenaire => motif != Motif.Desir,
         Activite.Migrer => motif != Motif.Guide,
@@ -187,7 +191,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private static bool EstRoutine(Activite a, Motif motif) => a switch
     {
         Activite.Boire or Activite.Cueillir or Activite.Chasser or Activite.Dormir or Activite.Repos or Activite.Explorer
-            or Activite.SAbriter or Activite.Experimenter or Activite.Fabriquer or Activite.Veiller or Activite.Nager => true,
+            or Activite.SAbriter or Activite.Experimenter or Activite.Fabriquer or Activite.Veiller or Activite.Nager or Activite.Pecher => true,
         Activite.ChercherEau or Activite.ChercherNourriture or Activite.ChercherAbri => motif is Motif.Vu or Motif.Aucun,
         Activite.RejoindrePartenaire => motif != Motif.Desir,
         Activite.RejoindreProche or Activite.SuivreParent or Activite.VeillerEnfant => true,
@@ -509,6 +513,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var date = Calendrier.Decomposer(maintenant);
         var danger = Catastrophes?.DangerEn(h.X, h.Y);
 
+        // En mer, le bateau d'abord : on ne descend pas à terre parce qu'on a soif.
+        if (h.Mer.EnMer)
+        {
+            Voguer(h, tous);
+            return;
+        }
+
         // Dans l'eau, qui ne peut plus nager ou s'y endort regagne la rive la plus proche, même à bout de forces ; un nageur
         // en état de le faire poursuit sa traversée.
         if (!Climat.EstPraticable(carte.BiomeEn(h.X, h.Y)) && (!_nageur || h.Activite == Activite.Dormir) && RegagnerLaRive(h)) return;
@@ -631,6 +642,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             Avancer(h, enfant.X, enfant.Y, Activite.VeillerEnfant);
             return;
         }
+        // Un voyage par mer décidé : aller au rivage, construire le bateau, attendre le beau temps.
+        if (PreparerLeDepart(h, tous)) return;
         // En visite chez un proche, au camp d'un rassemblement, ou sur le chemin du retour.
         if (AllerAilleurs(h, tous, out var ailleurs)) return;
         // Un ouvrage demandé à plus habile que soi, qu'on attend ; un ouvrage qu'on vous demande.
@@ -688,6 +701,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (AvoirUneIdee(h, tous)) return;
         if (Enseigner(h, tous)) return;
         if (Experimenter(h, tous)) return;
+        if (!ailleurs && !abattu && PrendreLaMer(h, tous)) return;
         if (!ailleurs && alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
         {
             Explorer(h);
@@ -1123,6 +1137,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 var pas = PremierPasDuChemin(carte.Indice(h.X, h.Y), carte.Indice(cibleX, cibleY));
                 if (pas < 0)
                 {
+                    // La mer sépare de la terre où le groupe veut aller : chacun prépare la traversée.
+                    if (activite == Activite.Migrer && PartirParLaMer(h, cibleX, cibleY))
+                    {
+                        h.CibleX = h.CibleY = -1;
+                        h.Detour = false;
+                        return;
+                    }
                     // L'eau barre la route : au bord, on peut avoir l'idée (ou refaire) de quoi la traverser.
                     if (!_nageur && Traverser(h, _tous)) return;
                     // Inaccessible : on abandonne cette destination.
@@ -1296,6 +1317,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>Calcule d'avance ce que les humains liront en même temps pendant un pas simultané.</summary>
     internal void Preparer()
     {
+        PreparerLaMer();
         EauDouceAPortee(0, 0);
         DistanceEau(0, 0);
     }

@@ -1,17 +1,18 @@
-Accouplement	890	FEEC7CC42F6D785A	Feidiapa et Binopak s'accouplent.
-Attirance	29	3D98C171C8EA6CD8	Kianais repousse les avances de Humu : il tient à sa compagne Naegi.
-Catastrophe	9	B192F97E8DC03B61	Une boule de feu raye le ciel nocturne et laisse une longue traînée lumineuse.
-Communaute	1	96D23ED1754DDFD5	Une communauté se forme autour de Liabiatak : 6 humains vivent désormais ensemble.
-Croyance	5	F8E49662750F9050	Zaepoudaen croit davantage en l'invisible (14/100) : l'arbuste aux fleurs blanches lui a donné des visions.
-Decouverte	257	227FC37278AD0C21	Première fois au monde : Sesuheil pousse un galet : il roule loin devant. Sesuheil comprend : « Poussé sur un sol dur, un galet roule. »
-Entraide	47	5E6C717153C492F2	Feidiapa veille sur Binopak, malade, et lui apporte à boire et à manger.
-FausseCouche	3	EFE069973893BAF5	Zaepoudaen perd l'enfant qu'elle portait.
-Grossesse	26	F3D5F4C7E9E80CD8	Feidiapa attend un enfant de Binopak. Elle ne le sait pas encore.
-Humeur	1	83AEB3656D085BB1	Jasaiju contemple la traînée de feu dans la nuit, émerveillé.
-Journee	15840	2E5AD70D41700FC8	Journée de Thezabeil : a cueilli 3 fois, est allée vers l'eau 2 fois, a exploré 15 fois, a rejoint son compagnon 7 fois, s'est reposée 18 fois, a dormi 2 fois.
-Lien	49	CE5629CEF0828ACC	Tathoji et Fozekias se sont attachés l'un à l'autre.
-Maladie	46	6FACFE87FBBC38C2	Tiafais tombe malade : le paludisme (personne ne sait la nommer).
-Partage	2063	887C547B811E2DE8	Binopak partage sa nourriture avec Feidiapa.
-Pensee	2892	8E39084D9DC2DBEF	Vaemakaek : « J'ai soif. Je me souviens d'une eau vers le sud. »
-Pensees	1320	87C229814EFF2901	Rien ne presse.
-Souvenir	1943	6CD0BB58B94CEEAF	Sesuheil a oublié un point d'eau (en 33, 123).
+Accouplement	891	DFF66B16E771E5A1	Fameilai et Zofaim s'accouplent.
+Attirance	20	746B98E440611472	Theizasiak repousse les avances de Razous : il tient à sa compagne Zaepoudaen.
+Catastrophe	13	3B615D7412CE0ECA	Une tempête venue de la mer (catégorie 3) frappe les côtes du sud-est : vents furieux et pluies torrentielles.
+Communaute	1	7C38C37AC200638D	Une communauté se forme autour de Humu : 6 humains vivent désormais ensemble.
+Croyance	1	D2A6E603D1E57FBA	Vaemakaek croit davantage en l'invisible (10/100) : l'arbuste aux fleurs blanches lui a donné des visions.
+Decouverte	217	8F52ED673A8BA757	Première fois au monde : Sesuheil pousse un galet : il roule loin devant. Sesuheil comprend : « Poussé sur un sol dur, un galet roule. »
+Entraide	73	E171EF1795FBB8DE	Sheisokei veille sur Sekaer, malade, et lui apporte à boire et à manger.
+FausseCouche	4	84D9A855AF77E526	Liaveku perd l'enfant qu'elle portait.
+Grossesse	30	4E27CF8998C4E51A	Puthuvus attend un enfant de Nerail. Elle ne le sait pas encore.
+Humeur	6	0DA9D3AE3210DB6F	Dovovael est terrifiée par la tempête.
+Journee	15840	CEA81B862C437452	Journée de Thezabeil : a cueilli 3 fois, est allée vers l'eau 2 fois, a exploré 15 fois, a rejoint son compagnon 7 fois, s'est reposée 18 fois, a dormi 2 fois.
+Lien	47	0F813A81AEADDFE6	Thezabeil et Sesuheil se sont attachés l'un à l'autre.
+Maladie	60	BD378FD4D9729B1D	Sekaer tombe malade : une dysenterie (personne ne sait la nommer).
+Mer	18	FCA5BC1D30FC1B04	Vaemakaek aperçoit une île au loin, vers l'est, à quelque 22 km.
+Partage	2288	D1ED5B9E67377819	Haita partage sa nourriture avec Thaimedai.
+Pensee	2745	1F53F93E9FAA56E4	Zofaim : « Je m'unis à Fameilai. »
+Pensees	1320	15F40ABD7537C875	Tout est calme. Je me repose.
+Souvenir	2077	A8D602D5AD8AC29F	Sesuheil a oublié un point d'eau (en 33, 123).

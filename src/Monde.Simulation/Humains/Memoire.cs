@@ -13,6 +13,9 @@ public enum TypeLieu : byte
 
     /// <summary>Un gisement remarqué (sel, cuivre natif, ocre jaune du soufre…) : on ne s'en sert pas encore, on s'en souvient.</summary>
     Gisement = 3,
+
+    /// <summary>Une terre de l'autre côté de la mer : vue de ses yeux, devinée à des signes, ou racontée.</summary>
+    TerreAuLoin = 4,
 }
 
 /// <summary>Un lieu dont l'humain se souvient.</summary>
@@ -83,8 +86,11 @@ public sealed class Memoire
     /// <summary>Durée de vie moyenne d'un souvenir, en jours.</summary>
     public static double Stabilite(LieuConnu lieu, double aptitude) => StabiliteDeBaseJours * Facteur(aptitude) * Math.Pow(1 + lieu.Rappels, 1.5);
 
-    /// <summary>Retient (ou rafraîchit) un lieu. Si la place manque, le souvenir le plus faible de ce type est oublié.</summary>
-    public void Retenir(TypeLieu type, int x, int y, long maintenant, double aptitude = 100)
+    /// <summary>
+    /// Retient (ou rafraîchit) un lieu. Si la place manque, le souvenir le plus faible de ce type est oublié.
+    /// <paramref name="rappels"/> : force d'un souvenir nouveau qui frappe plus qu'un lieu ordinaire (une terre au loin).
+    /// </summary>
+    public void Retenir(TypeLieu type, int x, int y, long maintenant, double aptitude = 100, int rappels = 0)
     {
         // Deux lieux à moins de 3 cases l'un de l'autre sont le même endroit.
         var i = Lieux.FindIndex(l => l.Type == type && Math.Max(Math.Abs(l.X - x), Math.Abs(l.Y - y)) < 3);
@@ -93,12 +99,12 @@ public sealed class Memoire
             var l = Lieux[i];
             // Un rappel compte une fois par jour au plus : c'est le retour espacé qui renforce le souvenir.
             var rappel = maintenant - l.VuLe >= Calendrier.SecondesParJour / 2 ? 1 : 0;
-            Lieux[i] = new LieuConnu(type, x, y, maintenant, l.Rappels + rappel);
+            Lieux[i] = new LieuConnu(type, x, y, maintenant, Math.Max(l.Rappels + rappel, rappels));
             return;
         }
         var memeType = Lieux.Where(l => l.Type == type).ToList();
         if (memeType.Count >= Capacite(aptitude)) Lieux.Remove(memeType.MinBy(l => (l.Rappels, l.VuLe))!);
-        Lieux.Add(new LieuConnu(type, x, y, maintenant));
+        Lieux.Add(new LieuConnu(type, x, y, maintenant, rappels));
     }
 
     /// <summary>Arrivé sur un lieu connu sans rien y trouver : un souvenir faible s'efface, un souvenir solide s'affaiblit.</summary>

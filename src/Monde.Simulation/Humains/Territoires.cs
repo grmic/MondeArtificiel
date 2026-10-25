@@ -102,7 +102,8 @@ public sealed partial class VieSociale
             if (adultes.Count == 0) continue;
             // Le camp reste où vivent ceux qui sont restés : ceux qui campent chez un autre groupe ou rendent visite à un proche
             // ne le déplacent pas. S'ils sont tous partis, il ne bouge pas.
-            var auCamp = adultes.Where(h => h.VisiteChezId == 0 && !h.Rentrer && (h.RassemblementId == 0 || RassemblementDe(h)?.HoteId == c.Id)).ToList();
+            var auCamp = adultes.Where(h => h.VisiteChezId == 0 && !h.Rentrer && (h.RassemblementId == 0 || RassemblementDe(h)?.HoteId == c.Id)
+                                            && !h.Mer.EnMer && h.Mer.Motif != MotifMer.Sejour).ToList();
             if (auCamp.Count > 0)
             {
                 c.CentreX = (int)Math.Round(auCamp.Average(h => h.X));
@@ -119,6 +120,7 @@ public sealed partial class VieSociale
             c.Disette = false;
             c.DestinationX = c.DestinationY = -1;
         }
+        PrendreLaMer(actives, membres, carte, maintenant);
         Relier(humains, actives, membres, maintenant);
         Rencontres(humains, actives, membres, maintenant);
         Guerroyer(humains, actives, membres, maintenant);

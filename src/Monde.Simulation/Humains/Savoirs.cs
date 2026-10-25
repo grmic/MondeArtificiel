@@ -60,6 +60,8 @@ public enum Matiere : byte
     Assemblage = 28,
     /// <summary>Porte-feu : corde ou mèche de fibres qui couve sans flamber, et garde le feu des heures durant.</summary>
     PorteFeu = 29,
+    /// <summary>Botte de roseaux (ou de joncs, de papyrus) serrés : légère, elle flotte longtemps avant de s'imbiber.</summary>
+    Roseau = 30,
 }
 
 /// <summary>Gestes à la portée de tout humain. Ce qu'ils produisent dépend de la matière, pas d'une découverte programmée.</summary>
@@ -238,6 +240,10 @@ public enum Effet : byte
     Provisions = 53,
     /// <summary>Dans le froid, sous des pierres ou dans une fosse, la viande ne pourrit pas.</summary>
     CacheFroide = 54,
+    /// <summary>Un bateau qui tient la mer : il porte sa charge et ne se défait pas dans les vagues.</summary>
+    Navigation = 55,
+    /// <summary>Une branche plate poussée contre l'eau fait avancer plus vite que les mains.</summary>
+    Pagaie = 56,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -594,7 +600,7 @@ public static class Physique
             or Effet.Nage or Effet.Brandon or Effet.Percage or Effet.Rondelle or Effet.Pansement or Effet.Chant or Effet.Danse or Effet.Ocre
             or Effet.Peinture or Effet.MainsPropres or Effet.EauVive or Effet.Latrines or Effet.ViandeSaine or Effet.Fumage or Effet.Fumee
             or Effet.Brulis or Effet.Braises or Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant or Effet.BrulisProtecteur
-            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide => Seul($"savoir.{s.Effet}"),
+            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide or Effet.Pagaie => Seul($"savoir.{s.Effet}"),
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => Seul("savoir.Rien"),
     };
@@ -635,6 +641,8 @@ public static class Physique
         if (b is Biome.ForetTropicale or Biome.Marais or Biome.Riviere or Biome.ForetDeFeuillus or Biome.Mangrove) yield return Matiere.Fibres;
         if (saisonSeche && b is Biome.PlaineDeFougeres or Biome.ForetDeConiferes or Biome.Desert or Biome.Montagne || b == Biome.Lande) yield return Matiere.HerbeSeche;
         if (b is Biome.ForetTropicale or Biome.Marais) yield return Matiere.Calebasse;
+        // Roseaux, joncs et papyrus poussent les pieds dans l'eau douce ou saumâtre.
+        if (b is Biome.Marais or Biome.Riviere or Biome.Mangrove) yield return Matiere.Roseau;
         if (b is Biome.Riviere or Biome.Marais or Biome.Mangrove || carte.Terrain.Roches[carte.Indice(x, y)] == Nature.Roche.Schiste) yield return Matiere.Argile;
         // Arbres tombés : là où il y a des arbres (les forêts, les fougères arborescentes, les rives).
         if (b is Biome.ForetDeConiferes or Biome.ForetTropicale or Biome.PlaineDeFougeres or Biome.Riviere or Biome.Marais

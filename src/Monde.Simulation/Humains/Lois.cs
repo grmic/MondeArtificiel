@@ -42,6 +42,8 @@ public enum Montage : byte
     Dessous = 3,
     /// <summary>Les secondes pièces enfilées sur un bâton fixé sous les premières, liées côte à côte.</summary>
     Axe = 4,
+    /// <summary>Une pièce unique évidée (au feu et à l'outil tranchant) : une coque.</summary>
+    Creuse = 5,
 }
 
 /// <summary>
@@ -78,8 +80,10 @@ public sealed record Assemblage(Matiere Corps, int NCorps, Matiere Tete, int NTe
         }
     }
 
-    /// <summary>Masse totale, en kg.</summary>
-    public double Masse => NCorps * Lois.De(Corps).Masse + NTete * Lois.De(Tete).Masse + Lois.De(Lien).Masse;
+    /// <summary>Masse totale, en kg ; une coque creusée ne garde qu'environ un tiers du bois.</summary>
+    public double Masse => Montage == Montage.Creuse
+        ? NCorps * Lois.De(Corps).Masse * Lois.PartGardeeCreusee
+        : NCorps * Lois.De(Corps).Masse + NTete * Lois.De(Tete).Masse + Lois.De(Lien).Masse;
 }
 
 /// <summary>Ce qu'un objet assemblé a donné à l'essai, et pourquoi.</summary>
@@ -143,6 +147,9 @@ public static class Lois
         Matiere.PorteFeu => new(Forme.Long, 0.05, 0.3, 0.9),
         Matiere.Rondelle => new(Forme.Rond | Forme.Plat, 0.3, 9, 0.6, Resistance: 80),
         Matiere.RondellePercee => new(Forme.Rond | Forme.Plat | Forme.Perce, 0.3, 8.5, 0.6, Resistance: 70),
+        // Une botte de roseaux serrés, de la taille d'un bras : tiges creuses, densité apparente vers 0,3 tant qu'elles ne
+        // sont pas gorgées d'eau (Heyerdahl, Tigris, 1979 : les bottes de papyrus ou de berdi tiennent des semaines).
+        Matiere.Roseau => new(Forme.Long, 0.02, 6, 0.3, Resistance: 15),
         _ => new(Forme.Aucune, 0, 0, 1),
     };
 
@@ -275,6 +282,12 @@ public static class Lois
     public static Verdict Flotter(Assemblage a, double charge, bool feu)
     {
         var corps = De(a.Corps);
+        if (a.Montage == Montage.Creuse)
+        {
+            if (a.NCorps != 1 || a.Corps != Matiere.Tronc) return Echec(Seul("lois.r.pasUneCoque"));
+            var porte = Portance(a);
+            return porte < charge ? Echec(Seul("lois.r.coqueEnfonce")) : new(Effet.Flottaison, Math.Clamp(porte / (2 * charge), 0.2, 1), Seul("lois.r.coquePorte"));
+        }
         if (a.Montage is not (Montage.Cote or Montage.Axe))
             return a.NCorps == 1 && corps.Densite < 1 && (corps.Forme & Forme.Rond) != 0
                 ? Echec(Seul("lois.r.troncRoule"))
@@ -289,8 +302,75 @@ public static class Lois
     /// <summary>Ce que porte un objet sur l'eau en plus de son propre poids, en kg (poussée d'Archimède).</summary>
     public static double Portance(Assemblage a)
     {
+        // Une coque déplace le volume du tronc entier, et ne pèse plus qu'une part de son bois.
+        if (a.Montage == Montage.Creuse) return a.NCorps * De(a.Corps).Masse * (1 / Math.Max(0.05, De(a.Corps).Densite) - PartGardeeCreusee);
         double Net(Matiere m, int n) => n * De(m).Masse * (1 / Math.Max(0.05, De(m).Densite) - 1);
         return Net(a.Corps, a.NCorps) + Net(a.Tete, a.NTete);
+    }
+
+    // ------------------------------------------------------------------ La mer
+
+    /// <summary>Part du bois qui reste d'un tronc évidé en coque (estimation : parois de quelques centimètres).</summary>
+    public const double PartGardeeCreusee = 0.35;
+
+    /// <summary>
+    /// Hauteur des vagues (significative, en mètres) que l'objet supporte sans se défaire ni se remplir. Des pièces liées
+    /// côte à côte tiennent d'autant mieux que le lien est solide et qu'elles sont nombreuses ; une coque creusée, basse
+    /// sur l'eau, se remplit dès que la mer se creuse (estimations : les radeaux de balsa et les bateaux de roseaux ont
+    /// traversé des océans, les pirogues monoxyles restent des embarcations côtières ; McGrail, 2001).
+    /// </summary>
+    public static double HouleMax(Assemblage a, double qualite)
+    {
+        var q = 0.6 + 0.4 * Math.Clamp(qualite, 0, 1);
+        if (a.Montage == Montage.Creuse) return (0.7 + 0.4 * qualite) * (a.NCorps == 1 ? 1 : 0);
+        if (a.Montage != Montage.Cote || Portance(a) <= 0) return 0;
+        var matiere = a.Corps switch
+        {
+            Matiere.Tronc => 1.0,
+            Matiere.Roseau => 0.9,
+            Matiere.Branche => 0.7,
+            Matiere.BoisSec => 0.6,
+            _ => 0.5,
+        };
+        return matiere * (0.5 + 2.5 * De(a.Lien).Lien * Math.Min(1, a.NCorps / 4.0)) * q;
+    }
+
+    /// <summary>Hauteur des vagues au-dessous de laquelle un bateau mérite d'aller en mer (et pas seulement sur un lac).</summary>
+    public const double HouleDeMer = 0.8;
+
+    /// <summary>
+    /// Mettre l'objet à l'eau, au bord de la mer, et le charger : il faut qu'il porte la charge et qu'il tienne dans les
+    /// vagues qui viennent mourir sur le rivage.
+    /// </summary>
+    public static Verdict TenirLaMer(Assemblage a, double qualite, double charge, bool feu)
+    {
+        var flotte = Flotter(a, charge, feu);
+        if (!flotte.Reussi) return flotte;
+        var houle = HouleMax(a, qualite);
+        if (houle < HouleDeMer) return Echec(a.Montage == Montage.Creuse ? Seul("lois.r.coqueRemplie") : Seul("lois.r.vagueDefait"));
+        return new(Effet.Navigation, Math.Clamp(houle / 3, 0.2, 1), a.Montage == Montage.Creuse ? Seul("lois.r.coqueTient") : Seul("lois.r.tientLaMer"));
+    }
+
+    /// <summary>
+    /// Vitesse de croisière, en km/h, en pagayant : environ 4 à 5 km/h pour une pirogue, 1,5 à 2,8 km/h pour un radeau
+    /// (d'autant plus lent qu'il est large) ; à mains nues ou avec une branche, sept dixièmes de cela.
+    /// </summary>
+    public static double Vitesse(Assemblage a, bool pagaie)
+    {
+        var v = a.Montage == Montage.Creuse ? 4.5 : Math.Clamp(3.0 - 0.1 * a.NCorps, 1.5, 2.8) * (a.Corps == Matiere.Roseau ? 1.2 : 1);
+        // Sans pagaie, à mains nues ou avec une branche : on avance, mais moins vite.
+        return pagaie ? v : 0.7 * v;
+    }
+
+    /// <summary>
+    /// Risque de chavirer ou de se défaire en une heure, selon la hauteur des vagues rapportée à ce que l'objet supporte :
+    /// presque nul par mer calme, quelques pour cent par heure quand elle est deux à trois fois trop forte (estimation).
+    /// </summary>
+    public static double RisqueParHeure(double houle, double houleMax)
+    {
+        if (houleMax <= 0) return 1;
+        var r = houle / houleMax;
+        return Math.Min(0.5, 0.0004 * r * r * r * r);
     }
 
     private static bool Force(double necessaire, double disponible) => necessaire <= disponible;
@@ -315,6 +395,7 @@ public static class Lois
             Montage.Cote => (new Recit("lois.cote", ("corps", corps), ("m", Physique.Nom(a.Corps)), ("k", a.NCorps), ("avec", avec)),
                 a.Corps == Matiere.Tronc || Portance(a) > 40 ? "radeau" : "traineau"),
             Montage.Dessous => (new Recit("lois.dessous", ("corps", corps)), (De(a.Corps).Forme & Forme.Long) != 0 && a.NCorps > 1 ? "rouleaux" : null),
+            Montage.Creuse => (new Recit("lois.creuse", ("corps", corps)), a.Corps == Matiere.Tronc ? "pirogue" : null),
             Montage.Axe => (new Recit("lois.axe", ("corps", corps), ("m", Physique.Nom(a.Corps)), ("k", a.NCorps), ("avec", avec),
                 ("tete", Nombre(a.Tete, a.NTete)), ("kt", a.NTete)), a.NTete == 1 ? "brouette" : "chariot"),
             _ => (Seul("lois.objet"), null),
@@ -330,6 +411,7 @@ public static class Lois
         Effet.Rouleaux => new Recit("lois.savoir.Rouleaux", ("corps", Nombre(a.Corps, a.NCorps))),
         Effet.RouleSurAxe => a.NTete == 1 ? Seul("lois.savoir.brouette") : new Recit("lois.savoir.RouleSurAxe", ("tete", Nombre(a.Tete, a.NTete))),
         Effet.Rien => new Recit("lois.savoir.Rien", ("objet", Decrire(a))),
+        Effet.Navigation => new Recit("lois.savoir.Navigation", ("objet", Decrire(a))),
         _ => Decrire(a),
     };
 
