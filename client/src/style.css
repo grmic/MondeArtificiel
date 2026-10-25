@@ -321,3 +321,11 @@ p.bilan-prieres { font-size: 0.9em; }
 }
 .panneau-calques[hidden] { display: none; }
 .panneau-calques label { display: flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+
+/* Rubrique « Journal et taille de la base » (0.31.4) */
+.config-panneau .journal-base .reglage { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0.3rem 0; }
+.config-panneau .journal-base .reglage .libelle { flex: 1 1 100%; }
+.config-panneau .journal-base .reglage input.ans { width: 6rem; flex: 0 0 auto; }
+.config-panneau .journal-base .reglage .aide { flex: 1 1 100%; }
+.config-panneau .journal-base .avertissement { font-size: 0.85rem; border-left: 3px solid #d9822b; padding-left: 8px; }
+.config-panneau .journal-base h4 { margin: 0.8rem 0 0.2rem; }

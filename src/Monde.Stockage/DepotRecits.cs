@@ -104,6 +104,14 @@ public sealed partial class DepotMonde
                 ? (brut ?? "", DBNull.Value, DBNull.Value)
                 : ("", Numero(recit), recit.Valeurs(Numero) is { Length: > 0 } v ? v : DBNull.Value);
 
+        /// <summary>Le récit d'une forme et de ses valeurs (lues d'un paquet du journal), ou null sans forme.</summary>
+        public Recit? Lire(int? forme, string? valeurs)
+        {
+            if (forme is not { } f) return null;
+            var (cle, noms) = Forme(f);
+            return Recit.LireValeurs(cle, noms, valeurs, Forme, Humain);
+        }
+
         /// <summary>Le récit d'une ligne (colonnes forme et valeurs), ou null pour une phrase d'avant la 0.30.1.</summary>
         public Recit? Lire(SqliteDataReader l, int forme, int valeurs)
         {

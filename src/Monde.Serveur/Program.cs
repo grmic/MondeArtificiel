@@ -19,6 +19,7 @@ builder.Services.AddSingleton<FiltreLangue>();
 builder.Services.AddSingleton<ServiceMonde>();
 builder.Services.AddSingleton<ServiceCarte>();
 builder.Services.AddHostedService<MoteurSimulation>();
+builder.Services.AddHostedService<EntretienJournal>();
 
 var app = builder.Build();
 

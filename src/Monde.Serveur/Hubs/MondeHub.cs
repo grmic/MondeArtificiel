@@ -140,6 +140,37 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return ConfigurationDto.Depuis(service);
     }
 
+    /// <summary>Rubrique « Journal et taille de la base » : réglages, taille et rythme mesurés.</summary>
+    public JournalBaseDto JournalBase() => JournalBaseDto.Depuis(service);
+
+    /// <summary>Conservation (années, 0 = illimitée) et compression du journal ; l'entretien suit en arrière-plan.</summary>
+    public JournalBaseDto ChoisirJournalBase(int conserverAns, int quotidienAns, bool effacerMarquants, bool effacerSuivis, bool compresser, int compresserAns)
+    {
+        try
+        {
+            service.ReglagesJournal = new ReglagesJournal(conserverAns, quotidienAns, effacerMarquants, effacerSuivis, compresser, compresserAns);
+        }
+        catch (ArgumentException e)
+        {
+            throw new HubException(e.Message);
+        }
+        return JournalBaseDto.Depuis(service);
+    }
+
+    /// <summary>
+    /// Humains suivis dans un navigateur (leur journal est gardé quand le journal ancien est effacé). Chaque navigateur
+    /// envoie ses suivis en se connectant, puis chaque changement ; un humain n'est retiré que si on cesse de le suivre.
+    /// </summary>
+    public void SignalerSuivis(int[] ajoutes, int[] retires) => service.Depot.ChangerSuivis(ajoutes ?? [], retires ?? []);
+
+    /// <summary>Copie du monde pour un client SQL (journal en clair, phrase rédigée), dans le dossier « analyses ».</summary>
+    public async Task<string> CopierPourAnalyse(int? anDebut, int? anFin)
+    {
+        if (anDebut is < 1 || anFin is < 1 || anDebut > anFin) throw new HubException(L.T("journalBase.periodeInvalide"));
+        var (chemin, lignes) = await Task.Run(() => service.CopierPourAnalyse(L.Ecrire, anDebut, anFin));
+        return L.T("journalBase.copieFaite", ("n", lignes), ("chemin", chemin));
+    }
+
     /// <summary>Cœurs donnés au calcul : 1 = l'un après l'autre (classique), 0 = tous, 2 ou plus = ce nombre, en même temps.</summary>
     public ConfigurationDto ChoisirCoeurs(int coeurs)
     {
@@ -349,6 +380,24 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     {
         if (priere < 1) throw new HubException(L.T("erreur.priere"));
         var texte = service.Monde.Refuser(priere, signe);
+        service.Sauvegarder();
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
+        return L.Rediger(texte);
+    }
+
+    /// <summary>L'Entité exauce toutes les prières en attente. Renvoie le bilan en mots.</summary>
+    public async Task<string> ExaucerToutes()
+    {
+        var texte = service.Monde.ExaucerToutes();
+        service.Sauvegarder();
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
+        return L.Rediger(texte);
+    }
+
+    /// <summary>L'Entité refuse toutes les prières en attente, en secret (par défaut) ou par un signe. Renvoie le bilan en mots.</summary>
+    public async Task<string> RefuserToutes(bool signe = false)
+    {
+        var texte = service.Monde.RefuserToutes(signe);
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return L.Rediger(texte);

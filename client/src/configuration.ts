@@ -1,5 +1,6 @@
 import { afficherAlertes, alertesAffichees } from "./catastrophes";
 import { connexion } from "./connexion";
+import { RubriqueJournalBase } from "./journalbase";
 import { el } from "./fiche";
 import { choisirLangue, langue, languesDisponibles, t } from "./langue";
 
@@ -111,6 +112,7 @@ export class PanneauConfiguration {
   private readonly listeSauvegardes = el("ul", "liste sauvegardes");
   private readonly journalQuotidien = el("input");
   private readonly messageJournal = el("p", "message-config");
+  private readonly journalBase = new RubriqueJournalBase();
   private readonly coeurs = (() => {
     const ligne = el("label", "reglage");
     const choix = el("select");
@@ -204,6 +206,8 @@ export class PanneauConfiguration {
       etiquetteQuotidien,
       el("p", "discret", t("config.quotidienAide")),
       this.messageJournal,
+      el("h3", undefined, t("journalBase.titre")),
+      this.journalBase.element,
       el("h3", undefined, t("config.alertes")),
       this.caseAlertes(),
       el("p", "discret", t("config.alertesAide")),
@@ -253,6 +257,7 @@ export class PanneauConfiguration {
     this.apropos.textContent = t("config.apropos", { version: c.version, auteur: c.auteur });
     this.journalQuotidien.checked = c.journalQuotidien;
     this.messageJournal.textContent = "";
+    void this.journalBase.remplir();
     this.remplirCoeurs(c);
     this.messageCoeurs.textContent = "";
     this.remplirClemence(c.clemence);

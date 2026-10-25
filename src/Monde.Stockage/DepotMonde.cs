@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 37;
+    public const int VersionSchema = 38;
 
     private readonly string _connexion;
 
@@ -590,6 +590,8 @@ public sealed partial class DepotMonde
         if (actuelle < 36) MigrerVersion36(connexion, transaction);
         // Version 37 : génération de la carte (0 pour les mondes d'avant la 0.31.3, dont la carte ne change pas) et mer
         // entre les continents.
+        // Version 38 : journal ancien rangé par paquets compressés.
+        if (actuelle < 38) MigrerVersion38(connexion, transaction);
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """
@@ -921,7 +923,7 @@ public sealed partial class DepotMonde
         }
         if (offenses.Count > 0) etat = etat with { Offenses = offenses };
 
-        commande.CommandText = "SELECT coalesce(max(id), 0) + 1 FROM journal;";
+        commande.CommandText = "SELECT max(coalesce((SELECT max(id) FROM journal), 0), coalesce((SELECT max(dernier) FROM journal_blocs), 0)) + 1;";
         etat = etat with { ProchainIdJournal = Convert.ToInt64(commande.ExecuteScalar()) };
         return humains.Count > 0 ? etat with { Humains = humains } : etat;
     }
@@ -1035,7 +1037,7 @@ public sealed partial class DepotMonde
         if (remplacer)
         {
             Executer(connexion, transaction,
-                "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; " +
+                "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; DELETE FROM journal_blocs; DELETE FROM journal_blocs_cles; DELETE FROM journal_suivis; DELETE FROM journal_purge; " +
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
@@ -1457,8 +1459,28 @@ public sealed partial class DepotMonde
         }
         commande.Parameters.AddWithValue("$limite", limite);
         var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
-        commande.CommandText = $"SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs FROM journal {where} ORDER BY id DESC LIMIT $limite;";
-        return LireEvenements(commande, FormesRecits.Lire(connexion, null));
+        commande.CommandText = $"SELECT {ColonnesJournal} FROM journal {where} ORDER BY id DESC LIMIT $limite;";
+        // Table et paquets lus dans la même transaction : un paquet rangé entre les deux lectures ne compte pas deux fois.
+        using var transaction = connexion.BeginTransaction(deferred: true);
+        commande.Transaction = transaction;
+        var lignes = new List<LigneJournal>();
+        using (var l = commande.ExecuteReader())
+        {
+            while (l.Read()) lignes.Add(LireLigne(l));
+        }
+        // Les faits marquants ne sont jamais rangés : pour eux, la table suffit. Sinon, les paquets ne sont ouverts que si
+        // la table n'a pas déjà de quoi remplir la page avec des lignes plus récentes que tout ce qui est rangé.
+        if (!significatifs)
+        {
+            using var rangees = connexion.CreateCommand();
+            rangees.Transaction = transaction;
+            rangees.CommandText = "SELECT coalesce(max(dernier), 0) FROM journal_blocs;";
+            var dernierRange = Convert.ToInt64(rangees.ExecuteScalar());
+            if (dernierRange > 0 && (lignes.Count < limite || lignes[^1].Id < dernierRange))
+                lignes.AddRange(LireArchives(connexion, transaction, types, humain, avantId, limite, communaute));
+        }
+        var formes = FormesRecits.Lire(connexion, transaction);
+        return [.. lignes.OrderByDescending(x => x.Id).Take(limite).Select(x => VersEvenement(x, formes))];
     }
 
     /// <summary>Un événement du journal enregistré, par son numéro (null s'il n'existe pas).</summary>
@@ -1466,23 +1488,17 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = "SELECT id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs FROM journal WHERE id = $id;";
+        using var transaction = connexion.BeginTransaction(deferred: true);
+        commande.Transaction = transaction;
+        commande.CommandText = $"SELECT {ColonnesJournal} FROM journal WHERE id = $id;";
         commande.Parameters.AddWithValue("$id", id);
-        return LireEvenements(commande, FormesRecits.Lire(connexion, null)).FirstOrDefault();
-    }
-
-    private static List<EvenementJournal> LireEvenements(SqliteCommand commande, FormesRecits formes)
-    {
-        var resultat = new List<EvenementJournal>();
-        using var l = commande.ExecuteReader();
-        while (l.Read())
+        LigneJournal? ligne = null;
+        using (var l = commande.ExecuteReader())
         {
-            var recit = formes.Lire(l, 13, 14);
-            resultat.Add(new EvenementJournal(l.GetInt64(1), (TypeEvenement)l.GetByte(2), l.GetInt32(3), l.GetInt32(4), recit is null ? l.GetString(5) : null,
-                (Origine)l.GetByte(6)) { Recit = recit, Id = l.GetInt64(0), CauseId = l.GetInt64(7), CommunauteId = l.GetInt32(8), AutreCommunauteId = l.GetInt32(9), Significatif = l.GetBoolean(10),
-                Karma = l.GetDouble(11), KarmaAutre = l.GetDouble(12) });
+            if (l.Read()) ligne = LireLigne(l);
         }
-        return resultat;
+        ligne ??= LireArchive(connexion, transaction, id);
+        return ligne is { } x ? VersEvenement(x, FormesRecits.Lire(connexion, transaction)) : null;
     }
 
     /// <summary>Lit un réglage de l'application (null s'il n'a jamais été enregistré).</summary>

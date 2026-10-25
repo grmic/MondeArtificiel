@@ -1243,6 +1243,55 @@ public sealed class MondeSimule
     }
 
     /// <summary>
+    /// Une prière à laquelle l'Entité peut encore répondre : en attente, pas déjà refusée en secret, pas un simple
+    /// remerciement, et celui qui prie (ou la communauté, pour une prière collective) est encore là.
+    /// </summary>
+    private bool Repondable(Priere p) =>
+        p.Issue == IssuePriere.EnAttente && p.Refus == RefusPriere.Aucun && p.Sujet != SujetPriere.Remerciement
+        && (p.CommunauteId != 0 || _humains[p.HumainId - 1].EstVivant);
+
+    /// <summary>
+    /// L'Entité exauce d'un coup toutes les prières en attente, de la plus ancienne à la plus récente, chacune comme si elle
+    /// l'exauçait seule (journal compris). Une prière peut devenir impossible en chemin : celui qu'une vengeance visait est
+    /// déjà mort, celui qui priait a été frappé par une prière exaucée avant la sienne. Renvoie, en mots, le bilan.
+    /// </summary>
+    public Recit ExaucerToutes()
+    {
+        lock (_verrou)
+        {
+            var ids = _cultes.Prieres.Where(Repondable).OrderBy(p => p.Id).Select(p => p.Id).ToList();
+            if (ids.Count == 0) return Recit.Seul("pri.r.aucuneEnAttente");
+            var exaucees = 0;
+            foreach (var id in ids)
+            {
+                if (_comportement.Exaucer(id, _humains, _secondes).Cle == "pri.r.exaucee") exaucees++;
+            }
+            VerserJournal();
+            return new Recit("pri.r.toutesExaucees", ("n", exaucees), ("m", ids.Count - exaucees));
+        }
+    }
+
+    /// <summary>
+    /// L'Entité refuse d'un coup toutes les prières en attente, en secret ou par un signe, chacune comme si elle la refusait
+    /// seule. Renvoie, en mots, le bilan.
+    /// </summary>
+    public Recit RefuserToutes(bool signe)
+    {
+        lock (_verrou)
+        {
+            var ids = _cultes.Prieres.Where(Repondable).OrderBy(p => p.Id).Select(p => p.Id).ToList();
+            if (ids.Count == 0) return Recit.Seul("pri.r.aucuneEnAttente");
+            var refusees = 0;
+            foreach (var id in ids)
+            {
+                if (_comportement.Refuser(id, signe, _humains, _secondes).Cle is not ("pri.r.inconnue" or "pri.r.close" or "pri.r.dejaRefusee")) refusees++;
+            }
+            VerserJournal();
+            return new Recit(signe ? "pri.r.toutesRefuseesSigne" : "pri.r.toutesRefuseesSecret", ("n", refusees));
+        }
+    }
+
+    /// <summary>
     /// L'Entité fait un geste sur un humain (<see cref="Gestes.SurHumain"/>) ou sur une communauté. Les bornes de durée et de
     /// force sont imposées. Renvoie, en mots, ce qui s'est passé, ou pourquoi le geste ne peut avoir lieu.
     /// </summary>

@@ -55,8 +55,19 @@ export function estSuivi(genre: Suivi["genre"], id: number): boolean {
 }
 
 export function basculerSuivi(genre: Suivi["genre"], id: number, nom: string): void {
-  liste = estSuivi(genre, id) ? liste.filter((s) => !(s.genre === genre && s.id === id)) : [...liste, { genre, id, nom }];
+  const retire = estSuivi(genre, id);
+  liste = retire ? liste.filter((s) => !(s.genre === genre && s.id === id)) : [...liste, { genre, id, nom }];
   enregistrer();
+  if (genre === "humain") void connexion.invoke("SignalerSuivis", retire ? [] : [id], retire ? [id] : []).catch(() => undefined);
+}
+
+/**
+ * Dit au serveur quels humains sont suivis ici : leur journal est gardé quand le journal ancien est effacé.
+ * À chaque connexion, car les suivis vivent dans ce navigateur.
+ */
+export async function signalerSuivis(): Promise<void> {
+  const humains = liste.filter((s) => s.genre === "humain").map((s) => s.id);
+  if (humains.length > 0) await connexion.invoke("SignalerSuivis", humains, []).catch(() => undefined);
 }
 
 /** Nouveau monde : les numéros ne désignent plus les mêmes humains. */

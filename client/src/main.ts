@@ -1,4 +1,4 @@
-import { oublierSuivis, PanneauSuivis } from "./suivis";
+import { oublierSuivis, PanneauSuivis, signalerSuivis } from "./suivis";
 import { chargerCarte, distanceEnMots, VueCarte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { Calques } from "./calques";
@@ -387,6 +387,7 @@ async function demarrer(): Promise<void> {
     await horloge.synchroniser();
     montrerHumains(await connexion.invoke<HumainVue[]>("Humains"));
     void calques.recharger();
+    void signalerSuivis();
     await journal.recharger();
   });
 

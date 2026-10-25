@@ -18,6 +18,12 @@ public sealed class ServiceMonde
     private const string CleJournalQuotidien = "journal_quotidien";
     private const string CleCoeurs = "coeurs";
     private const string CleClemence = "clemence";
+    private const string CleJournalConserver = "journal_conserver_ans";
+    private const string CleJournalQuotidienConserver = "journal_quotidien_conserver_ans";
+    private const string CleJournalEffacerMarquants = "journal_effacer_marquants";
+    private const string CleJournalEffacerSuivis = "journal_effacer_suivis";
+    private const string CleJournalCompresser = "journal_compresser";
+    private const string CleJournalCompresserAns = "journal_compresser_ans";
     private volatile MondeSimule _monde;
     private volatile bool _reprendreVitesse;
     private volatile bool _pauseSurCatastrophe;
@@ -49,6 +55,10 @@ public sealed class ServiceMonde
         else
         {
             journal.LogInformation("Monde repris dans {Fichier}", Depot.CheminFichier);
+            // Après un gros archivage ou un effacement, le fichier garde sa taille tant qu'il n'est pas compacté.
+            journal.LogInformation("Vérification de la place libre dans le fichier du monde…");
+            var gagne = Depot.CompacterSiUtile();
+            if (gagne > 0) journal.LogInformation("Fichier du monde compacté : {Mo} Mo rendus au disque", gagne >> 20);
         }
 
         var carte = GenerateurContinent.Generer(etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine));
@@ -107,6 +117,44 @@ public sealed class ServiceMonde
             _journalQuotidien = value;
             _monde.JournalQuotidien = value;
         }
+    }
+
+    /// <summary>Conservation et compression du journal (rubrique « Journal et taille de la base »), relues à chaque usage.</summary>
+    public ReglagesJournal ReglagesJournal
+    {
+        get => new(Entier(CleJournalConserver, 0), Entier(CleJournalQuotidienConserver, 0),
+            Depot.LireReglage(CleJournalEffacerMarquants) == "oui", Depot.LireReglage(CleJournalEffacerSuivis) == "oui",
+            Depot.LireReglage(CleJournalCompresser) == "oui", Math.Max(1, Entier(CleJournalCompresserAns, 1)));
+        set
+        {
+            if (value.Erreur() is { } erreur) throw new ArgumentException(erreur);
+            var c = System.Globalization.CultureInfo.InvariantCulture;
+            Depot.EcrireReglage(CleJournalConserver, value.ConserverAns.ToString(c));
+            Depot.EcrireReglage(CleJournalQuotidienConserver, value.QuotidienAns.ToString(c));
+            Depot.EcrireReglage(CleJournalEffacerMarquants, value.EffacerMarquants ? "oui" : "non");
+            Depot.EcrireReglage(CleJournalEffacerSuivis, value.EffacerSuivis ? "oui" : "non");
+            Depot.EcrireReglage(CleJournalCompresser, value.Compresser ? "oui" : "non");
+            Depot.EcrireReglage(CleJournalCompresserAns, value.CompresserAns.ToString(c));
+        }
+    }
+
+    private int Entier(string cle, int defaut) =>
+        int.TryParse(Depot.LireReglage(cle), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var v)
+            ? v : defaut;
+
+    /// <summary>Dernière mesure de la taille et du rythme du journal (faite en arrière-plan), null avant la première.</summary>
+    public MesureJournal? MesureJournal { get; set; }
+
+    /// <summary>Durée du monde (secondes) couverte par les lignes récentes de <see cref="MesureJournal"/>.</summary>
+    public long PeriodeMesure { get; set; }
+
+    /// <summary>
+    /// Fait <paramref name="travail"/> sur la base pendant que ni sauvegarde, ni restauration, ni nouveau monde n'a lieu
+    /// (entretien du journal, copie pour analyse).
+    /// </summary>
+    public T SurLaBase<T>(Func<DepotMonde, MondeSimule, T> travail)
+    {
+        lock (_verrou) return travail(Depot, _monde);
     }
 
     /// <summary>Cœurs logiques de cette machine.</summary>
@@ -202,6 +250,30 @@ public sealed class ServiceMonde
     /// <summary>Dossier des sauvegardes faites à la demande (à côté du monde).</summary>
     public string DossierSauvegardes => Path.Combine(Path.GetDirectoryName(Depot.CheminFichier)!, "sauvegardes");
 
+    /// <summary>Dossier des copies pour analyse (à côté des sauvegardes).</summary>
+    public string DossierAnalyses => Path.Combine(Path.GetDirectoryName(Depot.CheminFichier)!, "analyses");
+
+    /// <summary>
+    /// Copie du monde lisible par un client SQL : tout le journal en clair (archives comprises) avec sa phrase rédigée par
+    /// <paramref name="rediger"/>, limité aux années <paramref name="anDebut"/> à <paramref name="anFin"/> si elles sont données.
+    /// Le monde continue de tourner pendant la copie. Rend le chemin du fichier et le nombre de lignes du journal.
+    /// </summary>
+    public (string Chemin, long Lignes) CopierPourAnalyse(Func<Monde.Simulation.EvenementJournal, string> rediger, int? anDebut, int? anFin)
+    {
+        Sauvegarder();
+        Directory.CreateDirectory(DossierAnalyses);
+        var date = Calendrier.Decomposer(_monde.Secondes);
+        var periode = anDebut is null && anFin is null ? "" : $"-an{anDebut ?? 1}-{anFin ?? date.Annee}";
+        var nom = $"analyse-an{date.Annee}{periode}-{DateTime.Now:yyyyMMdd-HHmmss}";
+        var chemin = Path.Combine(DossierAnalyses, nom + ".db");
+        for (var k = 2; File.Exists(chemin); k++) chemin = Path.Combine(DossierAnalyses, $"{nom}-{k}.db");
+        long? debut = anDebut is { } a ? (a - 1) * Calendrier.SecondesParAn : null;
+        long? fin = anFin is { } b ? b * Calendrier.SecondesParAn - 1 : null;
+        var lignes = Depot.CopierPourAnalyse(chemin, rediger, debut, fin);
+        _journal.LogInformation("Copie pour analyse ({Lignes} lignes du journal) dans {Fichier}", lignes, chemin);
+        return (chemin, lignes);
+    }
+
     /// <summary>
     /// Fichiers que l'on peut restaurer : les sauvegardes faites à la demande (et avant chaque restauration), plus la copie
     /// gardée avant la dernière création d'un monde. Clé : le nom affiché et demandé par le navigateur.
@@ -295,4 +367,24 @@ public sealed class ServiceMonde
             return restaure;
         }
     }
+}
+
+/// <summary>
+/// Conservation du journal : années gardées (0 = illimitée) pour tout le journal et pour la vie quotidienne, cases
+/// « Effacer aussi… », et compression du journal plus ancien que <see cref="CompresserAns"/> ans.
+/// </summary>
+public sealed record ReglagesJournal(int ConserverAns, int QuotidienAns, bool EffacerMarquants, bool EffacerSuivis, bool Compresser, int CompresserAns)
+{
+    public const int AnsMax = 1_000_000;
+
+    /// <summary>Message lisible si une durée est hors limites, sinon null.</summary>
+    public string? Erreur() =>
+        ConserverAns is < 0 or > AnsMax || QuotidienAns is < 0 or > AnsMax || CompresserAns is < 1 or > AnsMax
+            ? L.T("journalBase.erreurAns", ("max", AnsMax)) : null;
+
+    /// <summary>Ce qu'il faut effacer à la date <paramref name="maintenant"/> (secondes du monde).</summary>
+    public ReglesPurge Regles(long maintenant) => new(
+        ConserverAns > 0 ? maintenant - ConserverAns * Calendrier.SecondesParAn : null,
+        QuotidienAns > 0 ? maintenant - QuotidienAns * Calendrier.SecondesParAn : null,
+        EffacerMarquants, EffacerSuivis);
 }

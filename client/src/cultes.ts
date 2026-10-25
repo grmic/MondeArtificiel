@@ -155,10 +155,20 @@ export class PanneauPrieres {
     const etiquetteSigne = el("label", "case-config");
     etiquetteSigne.append(this.signe, " " + t("priere.parUnSigne"));
     etiquetteSigne.title = t("priere.parUnSigneAide");
+    const toutes = el("div", "boutons prieres-toutes");
+    const exaucerToutes = el("button", "exaucer", t("prieres.exaucerToutes"));
+    exaucerToutes.type = "button";
+    exaucerToutes.title = t("prieres.exaucerToutesAide");
+    exaucerToutes.addEventListener("click", () => void this.repondreATout(true));
+    const refuserToutes = el("button", "refuser", t("prieres.refuserToutes"));
+    refuserToutes.type = "button";
+    refuserToutes.title = t("prieres.refuserToutesAide");
+    refuserToutes.addEventListener("click", () => void this.repondreATout(false));
+    toutes.append(exaucerToutes, " ", refuserToutes);
     const corps = el("div", "corps");
     corps.append(
       el("p", "discret", t("prieres.aide")),
-      etiquette, etiquetteSigne, this.resultat, this.liste,
+      etiquette, etiquetteSigne, toutes, this.resultat, this.liste,
     );
     racine.append(tete(t("prieres.titre"), () => this.fermer()), corps);
   }
@@ -197,6 +207,28 @@ export class PanneauPrieres {
     li.querySelectorAll<HTMLButtonElement>("button.exaucer, button.refuser").forEach((b) => b.setAttribute("disabled", ""));
     const texte = await connexion.invoke<string>("Refuser", p.id, this.signe.checked).catch(() => t("commun.pasDeReponse"));
     this.resultat.textContent = t("priere.resultat", { nom: p.collective ?? p.nom, texte });
+    await this.charger();
+  }
+
+  /** Exauce ou refuse d'un coup toutes les prières en attente, après confirmation (le nombre, et les vengeances à exaucer). */
+  private async repondreATout(exaucer: boolean): Promise<void> {
+    const enAttente = (await connexion.invoke<Priere[]>("Prieres", true).catch(() => null))?.filter((p) => p.exaucable);
+    if (!enAttente) {
+      this.resultat.textContent = t("commun.pasDeReponse");
+      return;
+    }
+    if (enAttente.length > 0) {
+      const question = exaucer
+        ? t("prieres.confirmerExaucer", { n: enAttente.length, v: enAttente.filter((p) => p.sujet === t("sujetPriere.Vengeance")).length })
+        : t("prieres.confirmerRefuser", { n: enAttente.length, maniere: t(this.signe.checked ? "prieres.parUnSigne" : "prieres.enSecret") });
+      if (!window.confirm(question)) return;
+    }
+    this.racine.querySelectorAll<HTMLButtonElement>("button.exaucer, button.refuser").forEach((b) => b.setAttribute("disabled", ""));
+    const texte = exaucer
+      ? await connexion.invoke<string>("ExaucerToutes").catch(() => t("commun.pasDeReponse"))
+      : await connexion.invoke<string>("RefuserToutes", this.signe.checked).catch(() => t("commun.pasDeReponse"));
+    this.racine.querySelectorAll<HTMLButtonElement>("button.exaucer, button.refuser").forEach((b) => b.removeAttribute("disabled"));
+    this.resultat.textContent = texte;
     await this.charger();
   }
 
