@@ -147,7 +147,7 @@ public sealed partial class Comportement
     // ───────────── Recevoir, comprendre, croire ─────────────
 
     /// <summary>Note la manifestation au journal (★) ; une apparition adressée à un seul est vue de ceux qui sont là.</summary>
-    private long Recevoir(Humain h, ModeParole mode, Recit phrase, IReadOnlyList<Humain> tous, long maintenant, bool ensemble)
+    private long Recevoir(Humain h, ModeParole mode, Recit phrase, IReadOnlyList<Humain> tous, long maintenant, bool ensemble, bool significatif = true)
     {
         var signe = ((h.Id + maintenant / 600) % 4) switch
         {
@@ -163,7 +163,7 @@ public sealed partial class Comportement
             ModeParole.Signe => new Recit("ent.recoit.signe", ("h", h), ("s", signe), ("ph", phrase)),
             _ => new Recit("ent.recoit.apparition", ("h", h), ("ph", phrase)),
         };
-        var id = NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, 0, significatif: true);
+        var id = NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, 0, significatif: significatif);
         if (mode == ModeParole.Apparition) NouveauLieu(h.X, h.Y, new Recit("lieuSacre.presence", ("h", h)).Encoder(), id, maintenant);
         // Quand tout un groupe la voit à la fois, chacun la reçoit pour lui-même : pas de témoins à part.
         if (mode != ModeParole.Apparition || ensemble) return id;
@@ -528,6 +528,8 @@ public sealed partial class Comportement
         for (var k = 0; k < h.Impulsions.Count; k++)
         {
             var i = h.Impulsions[k];
+            // Une parole adressée au groupe se débat et s'accomplit ensemble (voir VieSociale.Mandats).
+            if (Paroles.Collective(i.Parole)) continue;
             if (i.Reponse is not (Reponse.Acceptee or Reponse.Differee or Reponse.AMoitie) || Durable(i.Parole) && i.Reponse != Reponse.Differee) continue;
             if (maintenant < i.AgirLe) continue;
             var x = i.CibleId > 0 ? tous[i.CibleId - 1] : null;

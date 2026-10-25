@@ -59,6 +59,29 @@ interface Resultat {
   resultat: string;
 }
 
+/** Une communauté que l'on peut viser : distance entre les camps et relation avec celle qui reçoit la parole. */
+interface Cible {
+  cle: string;
+  libelle: string;
+  /** Le nom au fil d'une phrase (« la communauté d'Ana »). */
+  phrase: string;
+  km: number;
+  relation: string;
+  code: string;
+}
+
+interface ChoixParolesCommunaute {
+  paroles: Parole[];
+  modes: Choix[];
+  directions: Choix[];
+  communautes: Cible[];
+}
+
+interface ResultatGroupe {
+  membres: Resultat[];
+  groupe: string[];
+}
+
 /** À qui l'Entité s'adresse : des humains et/ou tous les membres de communautés ; près de qui chercher, et dans quel groupe. */
 export interface Destinataires {
   humains: number[];
@@ -189,8 +212,32 @@ export class FormulaireEntite {
   private readonly resultat = el("ul", "liste discret");
   private choix: ChoixParoles | null = null;
 
-  constructor(private readonly dest: () => Destinataires) {
+  /**
+   * <paramref name="groupe"/> : la communauté de la fiche, à qui l'on peut aussi parler comme à un groupe (deux onglets :
+   * « À la communauté » et « À chacun de ses membres »).
+   */
+  constructor(private readonly dest: () => Destinataires, groupe?: () => number) {
     this.bloc.append(el("summary", "entite", t("entite.parleOuInspire")));
+    const membres = el("div");
+    if (groupe) {
+      const auGroupe = this.parlerAuGroupe(groupe);
+      const onglets = el("div", "onglets");
+      const boutons = [t("entite.aLaCommunaute"), t("entite.aChacun")].map((texte, i) => {
+        const b = el("button", i === 0 ? "actif" : undefined, texte);
+        b.type = "button";
+        b.addEventListener("click", () => {
+          auGroupe.hidden = i !== 0;
+          membres.hidden = i !== 1;
+          boutons.forEach((x, j) => x.classList.toggle("actif", j === i));
+          this.resultat.replaceChildren();
+        });
+        return b;
+      });
+      onglets.append(...boutons);
+      membres.hidden = true;
+      this.bloc.append(onglets, auGroupe);
+    }
+    this.bloc.append(membres);
     const action = el("select");
     remplir(action, [{ cle: "parler", libelle: t("entite.parler") }, { cle: "inspirer", libelle: t("entite.inspirerAmour") }]);
     const parler = this.parler();
@@ -200,8 +247,117 @@ export class FormulaireEntite {
       parler.hidden = action.value !== "parler";
       inspirer.hidden = action.value !== "inspirer";
     });
-    this.bloc.append(ligne(t("entite.queFaire"), action), parler, inspirer, this.resultat,
-      el("p", "discret", t("entite.rienGaranti")));
+    membres.append(ligne(t("entite.queFaire"), action), parler, inspirer);
+    this.bloc.append(this.resultat, el("p", "discret", t("entite.rienGaranti")));
+  }
+
+  /**
+   * Parler à la communauté entière, envers une ou plusieurs autres (ou vers une direction) : chaque adulte la reçoit et
+   * dit ce qu'il en pense, puis le groupe en débat le jour venu.
+   */
+  private parlerAuGroupe(groupe: () => number): HTMLElement {
+    const bloc = el("div");
+    const parole = el("select");
+    const mode = el("select");
+    const direction = el("select");
+    const ligneDirection = ligne(t("entite.vers"), direction);
+    const cibles = el("div", "cibles");
+    const ligneCibles = el("div");
+    ligneCibles.append(el("span", "discret", t("entite.envers")), cibles);
+    const apercu = el("p", "entite");
+    const bouton = el("button", undefined, t("entite.parler"));
+    bouton.type = "button";
+    let choix: ChoixParolesCommunaute | null = null;
+    let phraseDite = "";
+    const actuelle = () => choix?.paroles.find((p) => p.cle === parole.value);
+    const cochees = () => Array.from(cibles.querySelectorAll<HTMLInputElement>("input:checked"));
+    const accorder = () => {
+      const p = actuelle();
+      if (!p || !choix) return;
+      const versDirection = p.precision === "direction";
+      ligneDirection.hidden = !versDirection;
+      ligneCibles.hidden = versDirection;
+      const noms = cochees().map((c) => c.dataset.nom ?? "");
+      const extra = versDirection ? direction.selectedOptions[0]?.textContent ?? ""
+        : noms.length === 0 ? "…" : noms.length === 1 ? noms[0] : t("entite.etListe", { debut: noms.slice(0, -1).join(t("commun.virgule")), fin: noms[noms.length - 1] });
+      phraseDite = p.modele.replace("{extra}", extra);
+      apercu.textContent = t("entite.apercuGroupe", { mode: mode.selectedOptions[0]?.textContent ?? "", phrase: phraseDite });
+      bouton.classList.toggle("danger", p.nuit);
+    };
+    const charger = async () => {
+      try {
+        choix = await connexion.invoke<ChoixParolesCommunaute | null>("ChoixParolesCommunaute", groupe());
+      } catch {
+        choix = null;
+      }
+      if (!choix) {
+        this.ecrire([t("commun.pasDeReponse")]);
+        return;
+      }
+      const avant = parole.value;
+      parole.replaceChildren();
+      for (const rubrique of [...new Set(choix.paroles.map((p) => p.rubrique))]) {
+        const g = el("optgroup");
+        g.label = rubrique;
+        for (const p of choix.paroles.filter((x) => x.rubrique === rubrique)) {
+          const o = el("option", undefined, p.libelle);
+          o.value = p.cle;
+          g.append(o);
+        }
+        parole.append(g);
+      }
+      if (avant) parole.value = avant;
+      remplir(mode, choix.modes);
+      if (!mode.value) mode.value = "Voix";
+      remplir(direction, choix.directions);
+      const avantCibles = new Set(cochees().map((c) => c.value));
+      cibles.replaceChildren(...choix.communautes.map((c) => {
+        const l = el("label");
+        const case_ = el("input");
+        case_.type = "checkbox";
+        case_.value = c.cle;
+        case_.dataset.nom = c.phrase;
+        case_.checked = avantCibles.has(c.cle);
+        case_.addEventListener("change", accorder);
+        l.append(case_, ` ${c.libelle} `, el("span", "discret", t("entite.cibleDetail", { km: c.km, relation: c.relation })));
+        return l;
+      }));
+      if (choix.communautes.length === 0) cibles.append(el("span", "discret", t("entite.aucuneAutre")));
+      accorder();
+    };
+    for (const s of [parole, mode, direction]) s.addEventListener("change", accorder);
+    this.bloc.addEventListener("toggle", () => {
+      if (this.bloc.open) void charger();
+    });
+    bouton.addEventListener("click", async () => {
+      const p = actuelle();
+      if (!p) return;
+      const ids = cochees().map((c) => Number(c.value));
+      if (p.precision !== "direction" && ids.length === 0) {
+        this.ecrire([t("entite.choisirCommunaute")]);
+        return;
+      }
+      if (p.nuit && !window.confirm(t("entite.confirmer", { phrase: phraseDite || p.libelle }))) return;
+      bouton.disabled = true;
+      try {
+        const r = await connexion.invoke<ResultatGroupe>("ParlerACommunaute", {
+          communaute: groupe(),
+          parole: p.cle,
+          mode: mode.value,
+          cibles: p.precision === "direction" ? [] : ids,
+          direction: p.precision === "direction" ? Number(direction.value) : 0,
+        });
+        this.ecrire([...r.groupe, ...(r.membres.length === 0 ? [t("entite.personneRecu")]
+          : r.membres.map((x) => t("priere.resultat", { nom: x.nom, texte: x.resultat })))]);
+      } catch (e) {
+        this.ecrire([e instanceof Error && e.message.includes("HubException") ? e.message.split("HubException: ").pop() ?? t("commun.refuse") : t("entite.paroleEchec")]);
+      } finally {
+        bouton.disabled = false;
+      }
+    });
+    bloc.append(ligne(t("entite.parole"), parole), ligne(t("agir.comment"), mode), ligneCibles, ligneDirection, apercu, bouton,
+      el("p", "discret", t("entite.groupeAide")));
+    return bloc;
   }
 
   /** Un autre destinataire : on referme le formulaire et l'on efface les réponses d'avant. */

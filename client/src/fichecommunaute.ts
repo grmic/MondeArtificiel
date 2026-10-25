@@ -16,6 +16,13 @@ interface Personne { id: number; nom: string; detail: string }
 interface CatastropheResume { id: number; libelle: string; nom: string; origine: string; debut: string; morts: number }
 interface Membre { id: number; nom: string; sexe: string; age: number; qi: number; karma: number; croyance: number; etape: string; role: string | null }
 
+/** Une parole de l'Entité adressée au groupe, ou à un autre groupe contre celui-ci (visee), et ce qu'il en est advenu. */
+interface Mandat {
+  id: number; le: string; mode: string; phrase: string; cibleId: number; visee: boolean; communauteId: number; communaute: string | null;
+  etat: string; code: string; reception: string; evenement: number;
+}
+interface Autorite { figure: number; nomFigure: string; autorite: string; crainte: string; emprise: number; tyran: boolean }
+
 interface FicheCommunaute {
   base: Communaute;
   age: string;
@@ -60,6 +67,8 @@ interface FicheCommunaute {
   marquants: Evenement[];
   entite: Evenement[];
   membres: Membre[];
+  autorite: Autorite | null;
+  paroles: Mandat[] | null;
 }
 
 const ACTUALISATION_MS = 10000;
@@ -249,6 +258,12 @@ export class PanneauFicheCommunaute {
       figure.append(t("fc.figure"), this.lienHumain(c.figure, c.nomFigure),
         " · " + t("fc.position", { x: c.x, y: c.y, rayon: distanceDeCases(c.rayon) }));
       corps.append(figure);
+      const a = f.autorite;
+      if (a) {
+        const p = el("p", a.tyran ? "alerte" : "discret", t("fc.autorite", { autorite: a.autorite, crainte: a.crainte, emprise: a.emprise }));
+        p.title = t("fc.autoriteAide");
+        corps.append(p);
+      }
     }
     const boutons = el("div", "boutons");
     if (!c.disperseeLe) boutons.append(this.bouton(t("commun.voirSurCarte"), t("fc.centrer"), () => this.centrer(c.x, c.y)));
@@ -698,6 +713,19 @@ export class PanneauFicheCommunaute {
       for (const p of x.prieres) ul.append(lignePriere(p, this.ouvrirHumain));
       s.append(el("h4", undefined, t("fc.prieresRecentes")), ul);
     }
+    const paroles = f.paroles ?? [];
+    if (paroles.length > 0) {
+      const ul = el("ul", "liste");
+      for (const m of paroles) {
+        const li = el("li", m.visee ? "alerte" : "entite");
+        li.append(m.visee ? t("fc.paroleVisant", { le: m.le, c: m.communaute ?? "…", mode: m.mode, phrase: m.phrase })
+          : t("fc.paroleRecue", { le: m.le, mode: m.mode, phrase: m.phrase }), " ", el("strong", undefined, m.etat));
+        if (!m.visee) li.append(el("span", "discret", ` · ${m.reception}`));
+        if (m.evenement > 0) li.append(" ", boutonCause(li, m.evenement, t("commun.pourquoi")));
+        ul.append(li);
+      }
+      s.append(el("h4", undefined, t("fc.parolesGroupe")), ul);
+    }
     s.append(el("h4", undefined, t("fc.gestesGroupe")));
     if (f.entite.length === 0) s.append(el("p", "discret", t("fc.aucunGeste")));
     else {
@@ -773,7 +801,7 @@ export class PanneauFicheCommunaute {
     if (!this.entite) {
       this.entite = new FormulaireEntite(() => ({
         humains: [], communautes: [c.id], pres: c.figure, communaute: c.id, libelle: t("fc.chaqueMembre", { nom: c.nom, nomMin: minuscule(c.nom) }),
-      }));
+      }), () => this.id);
     }
     this.geste ??= new FormulaireGeste(false, () => ({ id: this.id, nom: this.nom }));
     return [this.entite.bloc, this.geste.bloc];

@@ -97,6 +97,10 @@ public sealed partial class Comportement
         Parole.PlanteDangereuse => (Precepte.Interdit, param),
         Parole.JeSuisCelleQuiVousAFaits or Parole.PorteMaParole => (Precepte.Createur, 0),
         Parole.Frappe or Parole.Tue => (Precepte.Chatiment, 1),
+        Parole.FaitesLaGuerre or Parole.ChassezDeLeursTerres or Parole.Exterminez => (Precepte.GuerreSainte, param),
+        Parole.FaitesLaPaix => (Precepte.Paix, 0),
+        Parole.PartagezAvec => (Precepte.Partager, 0),
+        Parole.PortezMaParoleA => (Precepte.Createur, 0),
         _ => null,
     };
 
@@ -359,8 +363,12 @@ public sealed partial class Comportement
     /// </summary>
     private void Precher(List<Humain> vivants, IReadOnlyList<Humain> tous, long maintenant)
     {
+        // Ceux que leur groupe a envoyés porter la parole de l'Entité chez un autre prêchent tous, et avec ardeur.
+        Mandat? Mission(Humain h) => Social?.Mission(h) is { Parole: Parole.PortezMaParoleA } m ? m : null;
+        var missionnaires = Social is { Mandats.Count: > 0 } ? vivants.Where(h => Mission(h) is not null).ToList() : [];
         var precheurs = vivants.Where(h => h.ReligionId != 0 && h.CaptifDe == 0 && !h.EstEnfant(maintenant)
-            && (h.Role != RoleReligieux.Aucun || h.Ferveur >= 0.7 && h.Personnalite.Extraversion >= 0.6)).ToList();
+            && (h.Role != RoleReligieux.Aucun || h.Ferveur >= 0.7 && h.Personnalite.Extraversion >= 0.6 || missionnaires.Contains(h))).ToList();
+        if (missionnaires.Count > 0) ParlerDeLEntite(missionnaires.Where(h => h.ReligionId == 0).ToList(), vivants, Mission, maintenant);
         if (precheurs.Count == 0) return;
         var parCase = new Dictionary<int, List<Humain>>();
         foreach (var h in vivants)
@@ -374,7 +382,8 @@ public sealed partial class Comportement
         {
             if (pr.ReligionId == 0) continue;
             var r = Cultes!.Religions[pr.ReligionId - 1];
-            var poids = pr.Role switch { RoleReligieux.Prophete => 1, RoleReligieux.Pretre => 0.6, _ => 0.25 };
+            var mission = missionnaires.Count > 0 ? Mission(pr) : null;
+            var poids = pr.Role switch { RoleReligieux.Prophete => 1, RoleReligieux.Pretre => 0.6, _ => 0.25 } * (mission is null ? 1 : 3);
             var cred = pr.SourceProphete switch { SourceProphete.Imposteur => 0.7, SourceProphete.Entite => 1.2, _ => 1 };
             var prestige = 1 + 0.3 * Math.Min(pr.Miracles, 10);
             var entendus = 0;
@@ -395,7 +404,11 @@ public sealed partial class Comportement
                         var reseau = 1 + 2 * Math.Max(0, o.AffectionPour(pr.Id)) / 100 + 0.5 * proches;
                         var autre = o.ReligionId != 0 ? 0.5 * (1 - o.Ferveur) : 1;
                         var chance = 0.004 * poids * (0.3 + pr.Personnalite.Charisme) * prestige * cred * recept * reseau * autre * Crise(o);
-                        if (alea.Reel() < chance) Convertir(o, r, pr, tous, maintenant);
+                        if (alea.Reel() < chance)
+                        {
+                            Convertir(o, r, pr, tous, maintenant);
+                            if (mission is not null && o.CommunauteId == mission.CibleId) Social!.Converti(mission);
+                        }
                         else if (pr.SourceProphete == SourceProphete.Imposteur && po.Moral.EmpathieCognitive > 0.7 && Croyances.Analytique(o) > 0.5
                                  && alea.Reel() < 0.002)
                         {
@@ -405,6 +418,32 @@ public sealed partial class Comportement
                         else if (alea.Reel() < 0.003 * (1 - recept) * (1 - po.Agreabilite)) Social?.ChangerAffection(o, pr, -2, maintenant);
                     }
                 }
+        }
+    }
+
+    /// <summary>
+    /// Les envoyés sans religion parlent de l'Entité à ceux qui les entourent chez l'autre groupe : ce qu'ils ont entendu, ce
+    /// qu'elle veut. Celui qui les écoute peut se mettre à croire en elle, d'autant plus qu'il est porté vers l'invisible.
+    /// </summary>
+    private void ParlerDeLEntite(List<Humain> envoyes, List<Humain> vivants, Func<Humain, Mandat?> mission, long maintenant)
+    {
+        foreach (var pr in envoyes)
+        {
+            if (mission(pr) is not { } m) continue;
+            var entendus = 0;
+            foreach (var o in vivants)
+            {
+                if (entendus >= 8) break;
+                if (o.CommunauteId != m.CibleId || o.AgeEnAnnees(maintenant) < 7 || Distance(o.X, o.Y, pr.X, pr.Y) > 2) continue;
+                entendus++;
+                var po = o.Personnalite;
+                var recept = 0.15 + 0.85 * (0.5 * o.Croyance / 100 + 0.5 * po.Transcendance);
+                if (alea.Reel() >= 0.01 * (0.3 + pr.Personnalite.Charisme) * recept * (1 + Math.Max(0, o.AffectionPour(pr.Id)) / 50)) continue;
+                var id = Noter(maintenant, TypeEvenement.Religion, o, pr, new Recit("mandat.ecoute", ("o", o), ("p", pr)), m.EtatEvenementId);
+                Croyances.Ajouter(o, 8 * (0.5 + po.Transcendance), new Recit("cro.envoye", ("p", pr), ("o", o)), id, maintenant);
+                Confier(o, TypeIntime.Croyance, pr.Id, Recits.Recit.Seul("js.religion.entite"), 30 + 40 * po.Transcendance, id, maintenant, "croyance:entite");
+                Social!.Converti(m);
+            }
         }
     }
 

@@ -166,6 +166,11 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 .catastrophes-panneau .entite-bloc { margin: 4px 0 12px; }
 .entite-bloc summary { cursor: pointer; }
 .entite-bloc .ligne { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+/* Les lignes sont en « display: flex », qui l'emporterait sur l'attribut hidden. */
+.entite-bloc [hidden] { display: none; }
+.entite-bloc .onglets { display: flex; gap: 4px; margin: 6px 0; }
+.entite-bloc .onglets button.actif { border-color: #9a7fd0; background: #33284a; }
+.entite-bloc .cibles { display: flex; flex-direction: column; gap: 2px; margin: 4px 0 4px 8px; max-height: 12em; overflow-y: auto; }
 .entite-bloc input[type=number] { width: 5rem; }
 .entite-bloc input[hidden] { display: none; }
 .entite-bloc button { cursor: pointer; }

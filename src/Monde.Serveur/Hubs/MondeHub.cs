@@ -467,6 +467,38 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return Resultats(resultats);
     }
 
+    /// <summary>Paroles qu'on peut adresser à une communauté entière, et les communautés qu'elles peuvent viser (null : elle n'existe plus).</summary>
+    public ChoixParolesCommunauteDto? ChoixParolesCommunaute(int communaute) => ParolesEntite.ChoixCommunaute(service, communaute);
+
+    /// <summary>
+    /// L'Entité parle à une communauté entière, envers d'autres ou vers une direction : chaque adulte la reçoit et dit ce qu'il
+    /// en pense ; le groupe en débattra le jour venu. Renvoie ce que chacun en a fait et quand le groupe en débattra.
+    /// </summary>
+    public async Task<ResultatParoleCommunauteDto> ParlerACommunaute(DemandeParoleCommunaute demande)
+    {
+        var monde = service.Monde;
+        if (!Enum.TryParse<Simulation.Humains.Parole>(demande.Parole, out var parole) || !Enum.IsDefined(parole) || !Simulation.Humains.Paroles.Collective(parole)
+            || !Enum.TryParse<Simulation.Humains.ModeParole>(demande.Mode, out var mode) || !Enum.IsDefined(mode) || mode == Simulation.Humains.ModeParole.Penchant)
+        {
+            throw new HubException(L.T("erreur.parole"));
+        }
+        var communautes = monde.Communautes();
+        if (demande.Communaute < 1 || demande.Communaute > communautes.Count || !communautes[demande.Communaute - 1].Active)
+            throw new HubException(L.T("erreur.communaute"));
+        var cibles = (demande.Cibles ?? []).Distinct().Take(20).ToList();
+        if (Simulation.Humains.Paroles.VeutCommunaute(parole)
+            && (cibles.Count == 0 || cibles.Any(c => c < 1 || c > communautes.Count || c == demande.Communaute || !communautes[c - 1].Active)))
+            throw new HubException(L.T("erreur.cibles"));
+        if (parole == Simulation.Humains.Parole.PartezVers && demande.Direction is < 0 or > 7) throw new HubException(L.T("erreur.precision"));
+        var (resultats, mandats) = monde.ParlerACommunaute(demande.Communaute, parole, mode, cibles, demande.Direction);
+        service.Sauvegarder();
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
+        var groupe = mandats.Select(m => L.T("mandat.resultat", ("c", m.CibleId > 0 ? L.CommunautePhrase(communautes[m.CibleId - 1].Nom) : L.T($"direction.{m.Direction}")),
+            ("v", m.Veulent), ("hes", m.Hesitent), ("r", m.Refusent), ("i", m.Incredules + m.Incompris), ("date", L.Date(m.DebatLe))))
+            .ToList();
+        return new ResultatParoleCommunauteDto(Resultats(resultats), groupe);
+    }
+
     /// <summary>L'Entité inspire un penchant amoureux (ou une passion) à des humains, pour quelqu'un ou pour qui le monde choisit.</summary>
     public async Task<List<ResultatParoleDto>> Inspirer(DemandePenchant demande)
     {

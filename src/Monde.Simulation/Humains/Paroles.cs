@@ -44,6 +44,18 @@ public enum Parole : byte
     Tue = 22,
     // Désigner (suite).
     PorteMaParole = 23,
+    // À une communauté, envers une autre (voir ParolesCollectives) : le groupe en débat avant d'agir.
+    FaitesLaGuerre = 24,
+    FaitesLaPaix = 25,
+    AlliezVous = 26,
+    AllezALaRencontre = 27,
+    EnseignezVosSavoirs = 28,
+    PortezMaParoleA = 29,
+    PartagezAvec = 30,
+    UnissezVous = 31,
+    PartezVers = 32,
+    ChassezDeLeursTerres = 33,
+    Exterminez = 34,
 }
 
 /// <summary>Comment l'Entité se fait entendre.</summary>
@@ -124,6 +136,21 @@ public static class Paroles
     /// <summary>Paroles qui ordonnent de faire du mal.</summary>
     public static bool Nuit(Parole p) => p is Parole.Frappe or Parole.Tue;
 
+    /// <summary>Paroles adressées à une communauté entière, que le groupe débat avant d'agir.</summary>
+    public static bool Collective(Parole p) => p >= Parole.FaitesLaGuerre && p <= Parole.Exterminez;
+
+    /// <summary>Paroles collectives qui visent une autre communauté (toutes sauf « Partez vers… »).</summary>
+    public static bool VeutCommunaute(Parole p) => Collective(p) && p != Parole.PartezVers;
+
+    /// <summary>Paroles collectives qui ordonnent de nuire à une autre communauté.</summary>
+    public static bool NuitAuxAutres(Parole p) => p is Parole.ChassezDeLeursTerres or Parole.Exterminez;
+
+    /// <summary>Paroles collectives qui obligent le groupe à vivre près de l'autre (à portée de raid ou de rassemblement).</summary>
+    public static bool Approcher(Parole p) => p is Parole.FaitesLaGuerre or Parole.AllezALaRencontre or Parole.ChassezDeLeursTerres or Parole.Exterminez;
+
+    /// <summary>Paroles collectives de guerre.</summary>
+    public static bool Guerriere(Parole p) => p is Parole.FaitesLaGuerre or Parole.ChassezDeLeursTerres or Parole.Exterminez;
+
     /// <summary>Les huit directions de « Pars vers… ».</summary>
     public static readonly string[] Directions = ["le nord", "le nord-est", "l'est", "le sud-est", "le sud", "le sud-ouest", "l'ouest", "le nord-ouest"];
 
@@ -136,6 +163,7 @@ public static class Paroles
     public static Recit Phrase(Parole p, Humain? cible, object? extra, bool feminin = false) => p switch
     {
         Parole.NeVaPasALaGuerre when extra is not null => new Recit("phrase.NeVaPasALaGuerre.c", ("c", extra)),
+        _ when Collective(p) => new Recit($"phrase.{p}.c", ("c", extra)),
         _ => new Recit($"phrase.{p}", ("cible", cible), ("extra", extra), ("g", feminin ? "f" : "m")),
     };
 }

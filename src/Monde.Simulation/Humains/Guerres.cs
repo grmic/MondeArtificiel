@@ -287,7 +287,7 @@ public sealed partial class VieSociale
             var meilleure = 0.0;
             foreach (var b in actives)
             {
-                if (b.Id == a.Id || a.SoumiseAId == b.Id || b.SoumiseAId == a.Id) continue;
+                if (b.Id == a.Id || a.SoumiseAId == b.Id || b.SoumiseAId == a.Id || Treve(a.Id, b.Id)) continue;
                 var relation = RelationEntre(a.Id, b.Id);
                 if (relation is not (EtatRelation.Hostiles or EtatRelation.EnGuerre or EtatRelation.Rivales)) continue;
                 var distance = Math.Max(Math.Abs(a.CentreX - b.CentreX), Math.Abs(a.CentreY - b.CentreY));
@@ -298,6 +298,8 @@ public sealed partial class VieSociale
                 var vengeance = Vengeance(adultes[a.Id], b.Id, humains);
                 var faim = a.Disette && distance <= a.Rayon + b.Rayon + 8 ? 0.5 : 0;
                 var motivation = vengeance + faim + 0.4 * a.Bellicisme + (relation == EtatRelation.EnGuerre ? 0.2 : 0) + Croisade(adultes[a.Id], adultes[b.Id]);
+                // L'Entité a ordonné de les chasser ou de les exterminer : le groupe y revient sans cesse.
+                if (MeneContre(a.Id, b.Id, Parole.Exterminez) || MeneContre(a.Id, b.Id, Parole.ChassezDeLeursTerres)) motivation += 0.8;
                 // De simples rivaux ne se battent que poussés par la faim ou la vengeance.
                 if (relation == EtatRelation.Rivales) motivation -= 0.4;
                 if (motivation <= 0) continue;
@@ -330,8 +332,17 @@ public sealed partial class VieSociale
         return (long)(Math.Clamp(jours, 2, 28) * Calendrier.SecondesParJour);
     }
 
-    /// <summary>Chaque jour : les groupes dont le jour du débat est venu débattent de leur projet de guerre.</summary>
+    /// <summary>
+    /// Chaque jour : les groupes dont le jour du débat est venu débattent de leur projet de guerre, puis des paroles que
+    /// l'Entité leur a adressées (voir <see cref="SuivreLesMandats"/>).
+    /// </summary>
     public void Debattre(List<Humain> humains, List<Communaute> communautes, long maintenant)
+    {
+        DebattreDesProjets(humains, communautes, maintenant);
+        SuivreLesMandats(humains, maintenant);
+    }
+
+    private void DebattreDesProjets(List<Humain> humains, List<Communaute> communautes, long maintenant)
     {
         var dus = communautes.Where(c => c.Active && c.Projet is { } p && p.Debat <= maintenant).ToList();
         if (dus.Count == 0) return;
@@ -595,7 +606,7 @@ public sealed partial class VieSociale
     {
         foreach (var cle in _pactes.Keys.ToList())
         {
-            if (RelationEntre(cle.A, cle.B) == EtatRelation.Alliees && Communautes[cle.A - 1].Active && Communautes[cle.B - 1].Active) continue;
+            if ((RelationEntre(cle.A, cle.B) == EtatRelation.Alliees || Serment(cle.A, cle.B)) && Communautes[cle.A - 1].Active && Communautes[cle.B - 1].Active) continue;
             var (a, b) = (Communautes[cle.A - 1], Communautes[cle.B - 1]);
             if (a.Active && b.Active)
             {
@@ -736,6 +747,8 @@ public sealed partial class VieSociale
             }
 
             if (maintenant - g.DernierSangLe < CalmeAvantPaix || a.Raid?.CibleId == b.Id || b.Raid?.CibleId == a.Id) continue;
+            // Une guerre d'extermination voulue par l'Entité ne connaît pas de paix.
+            if (MeneContre(a.Id, b.Id, Parole.Exterminez) || MeneContre(b.Id, a.Id, Parole.Exterminez)) continue;
             var lassitude = Math.Min(1, (g.MortsA + g.MortsB) / 4.0);
             var vengeance = Math.Max(Vengeance(adultes[a.Id], b.Id, humains), Vengeance(adultes[b.Id], a.Id, humains));
             var p = PaixParSemaine * (fa.Personnalite.Agreabilite + fb.Personnalite.Agreabilite) * (0.5 + lassitude) * (1 - 0.7 * vengeance);
@@ -800,7 +813,9 @@ public sealed partial class VieSociale
         var autre = humains[vainqueur.FigureId - 1];
         g.Fin = maintenant;
         g.VainqueurId = vainqueur.Id;
-        if (adultes.Count <= 3)
+        // Qui veut les chasser ou les exterminer n'accepte ni leur soumission ni leurs survivants : ils doivent fuir.
+        var sansQuartier = MeneContre(vainqueur.Id, vaincu.Id, Parole.Exterminez) || MeneContre(vainqueur.Id, vaincu.Id, Parole.ChassezDeLeursTerres);
+        if (adultes.Count <= 3 && !sansQuartier)
         {
             g.Issue = IssueGuerre.Absorption;
             g.FinEvenementId = Noter(maintenant, TypeEvenement.Guerre, figure, autre,
@@ -814,7 +829,7 @@ public sealed partial class VieSociale
             return;
         }
         var p = figure.Personnalite;
-        if (p.Prudence + p.Agreabilite > 1 + alea.Reel() * 0.4)
+        if (!sansQuartier && p.Prudence + p.Agreabilite > 1 + alea.Reel() * 0.4)
         {
             g.Issue = IssueGuerre.Soumission;
             vaincu.SoumiseAId = vainqueur.Id;
@@ -1094,6 +1109,7 @@ public sealed partial class Comportement
             Rentrer(c, raid, maintenant);
             return;
         }
+        var exterminer = Social!.MeneContre(c.Id, cible.Id, Parole.Exterminez);
         var endormis = defenseurs.Count(h => h.Activite == Activite.Dormir) / (double)defenseurs.Count;
         var surprise = 1 + 0.8 * endormis;
         var nombre = Math.Clamp(defenseurs.Count / (double)assaillants.Count, 0.5, 2);
@@ -1108,17 +1124,17 @@ public sealed partial class Comportement
         {
             var debout = defenseurs.Vivants().Where(d => d.EstVivant && tues.All(t => t.Victime != d) && enlevees.All(e => e.Captive != d)).ToList();
             if (debout.Count == 0) break;
-            // Les hommes font face les premiers ; les femmes se défendent aussi.
-            var poids = debout.Select(d => d.Sexe == Sexe.Homme ? 3.0 : 1.0).ToList();
+            // Les hommes font face les premiers ; les femmes se défendent aussi. Qui veut exterminer frappe sans distinction.
+            var poids = debout.Select(d => d.Sexe == Sexe.Homme && !exterminer ? 3.0 : 1.0).ToList();
             var tirage = alea.Reel() * poids.Sum();
             var k = 0;
             while (k < debout.Count - 1 && (tirage -= poids[k]) > 0) k++;
             var d = debout[k];
             double fa = Force(a, maintenant), fd = Force(d, maintenant);
-            var pTuer = Math.Min(0.6, 0.22 * surprise * 2 * fa / (fa + fd) * Puissance(armes[a.Id]));
+            var pTuer = Math.Min(exterminer ? 0.8 : 0.6, 0.22 * surprise * 2 * fa / (fa + fd) * Puissance(armes[a.Id]) * (exterminer ? 1.5 : 1));
             var pMourir = Math.Min(0.5, 0.12 / surprise * nombre * 2 * fd / (fa + fd) * Puissance(armes[d.Id]));
             var u = alea.Reel();
-            if (u < pTuer && d.Sexe == Sexe.Femme && alea.Reel() < ChanceDEnlever(a, d, maintenant)) enlevees.Add((d, a));
+            if (u < pTuer && d.Sexe == Sexe.Femme && !exterminer && alea.Reel() < ChanceDEnlever(a, d, maintenant)) enlevees.Add((d, a));
             else if (u < pTuer) tues.Add((d, a, armes[a.Id]));
             else if (u < pTuer + pMourir) tues.Add((a, d, armes[d.Id]));
             else if (u < pTuer + pMourir + 0.3)

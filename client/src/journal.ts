@@ -157,6 +157,17 @@ export class PanneauJournal {
     tete.append(boutons);
 
     const filtres = el("div", "filtres");
+    // Tout cocher ou tout décocher d'un coup (sans compter « Faits marquants seulement », qui n'est pas un type).
+    for (const [texte, tous] of [[t("journal.toutSelectionner"), true], [t("journal.rienSelectionner"), false]] as const) {
+      const b = el("button", "puce lien", texte);
+      b.type = "button";
+      b.addEventListener("click", () => {
+        this.types = new Set(tous ? TYPES.map(([cle]) => cle) : []);
+        filtres.querySelectorAll<HTMLInputElement>("input[data-cle]").forEach((c) => (c.checked = tous));
+        void this.recharger();
+      });
+      filtres.append(b);
+    }
     for (const [cle] of TYPES) {
       const libelle = t(`journal.type.${cle}`);
       const etiquette = el("label", "puce");

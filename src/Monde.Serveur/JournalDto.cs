@@ -588,7 +588,7 @@ public sealed record CommunauteDto(int Id, string Nom, string FondeeLe, string? 
     };
 
 
-    private static string Etat(EtatRelation e, bool pacte) => e switch
+    internal static string Etat(EtatRelation e, bool pacte) => e switch
     {
         EtatRelation.Alliees => L.T(pacte ? "relation.pacte" : "relation.alliee"),
         EtatRelation.EnGuerre => L.T("relation.guerre"),

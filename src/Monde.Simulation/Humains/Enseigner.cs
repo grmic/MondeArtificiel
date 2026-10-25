@@ -31,7 +31,10 @@ public sealed partial class Comportement
         if (h.Savoirs.Count == 0 || h.AgeEnAnnees(_maintenant) < 9 || h.Humeur < 25 || h.CaptifDe > 0) return false;
         var p = h.Personnalite;
         // Celui que les siens disent spécialiste montre plus volontiers : s'il mourait sans élève, son geste mourrait avec lui.
-        var patience = (0.3 + 0.35 * p.Conscience + 0.35 * p.Agreabilite) * (0.5 + p.Moral.EmpathieCognitive) * (h.Specialite != Ouvrage.Aucun ? 1.5 : 1);
+        // Celui que les siens ont envoyé enseigner chez un autre groupe sur la parole de l'Entité ne fait guère que cela.
+        var envoye = h.RassemblementId != 0 && Social?.Mission(h) is { Parole: Parole.EnseignezVosSavoirs };
+        var patience = (0.3 + 0.35 * p.Conscience + 0.35 * p.Agreabilite) * (0.5 + p.Moral.EmpathieCognitive) * (h.Specialite != Ouvrage.Aucun ? 1.5 : 1)
+                       * (envoye ? 12 : 1);
         if (alea.Reel() >= 0.004 * patience) return false;
 
         // L'élève : quelqu'un d'éveillé sur la même case, ses enfants d'abord, puis ceux qu'il aime, puis les curieux.
@@ -44,7 +47,7 @@ public sealed partial class Comportement
             if (o.Id == h.Id || !o.EstVivant || o.X != h.X || o.Y != h.Y || o.EstBebe(_maintenant) || o.Activite == Activite.Dormir) continue;
             var parent = o.MereId == h.Id || o.PereId == h.Id;
             var affection = h.AffectionPour(o.Id);
-            if (affection < 0 || jaloux && !parent && affection < 50) continue;
+            if (affection < 0 || jaloux && !parent && affection < 50 && !envoye) continue;
             var proche = parent ? 3 : 1 + Math.Max(0, affection) / 50;
             // Les enfants viennent d'eux-mêmes regarder et demander ; parmi les adultes, surtout les curieux.
             var demande = o.EstEnfant(_maintenant) ? 1.5 : 0.4 + o.Personnalite.Ouverture;

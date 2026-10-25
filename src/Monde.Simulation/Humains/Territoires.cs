@@ -241,6 +241,8 @@ public sealed partial class VieSociale
 
                 // La guerre ne s'éteint pas d'elle-même : il faut la paix, une défaite ou la disparition d'un des groupes.
                 if (avant == EtatRelation.EnGuerre) continue;
+                // Un serment d'alliance juré sur la parole de l'Entité tient tant que l'amitié ne tourne pas à l'inimitié.
+                if (avant == EtatRelation.Alliees && affection > SeuilInimitie && Serment(a.Id, b.Id)) continue;
                 var apres = avant switch
                 {
                     EtatRelation.Alliees when affection >= FinAlliance => EtatRelation.Alliees,

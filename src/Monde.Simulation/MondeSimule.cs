@@ -94,6 +94,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Premières des groupes avec les terres d'outre-mer : terres vues, abordées, peuples rencontrés (null : aucune).</summary>
     public IReadOnlyList<DecouverteOutremer>? Outremer { get; init; }
+
+    /// <summary>Paroles de l'Entité adressées à des communautés, et ce qu'elles en ont fait (null : aucune).</summary>
+    public IReadOnlyList<Mandat>? Mandats { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -181,6 +184,7 @@ public sealed class MondeSimule
         _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
         _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros, Carte = carte };
         _social.ChargerGuerres(etat.Guerres ?? []);
+        _social.ChargerMandats(etat.Mandats ?? []);
         _social.ChargerRelations(etat.Relations ?? []);
         _social.ChargerRassemblements(etat.Rassemblements ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
@@ -290,6 +294,7 @@ public sealed class MondeSimule
                     SouvenirsEntite = _cultes.Souvenirs.ToList(),
                     ProchainePriere = _cultes.ProchainePriere,
                     Outremer = _comportement.Outremer.Liste.ToList(),
+                    Mandats = _social.Mandats.Select(m => m.Copier()).ToList(),
                 };
             }
         }
@@ -1178,6 +1183,38 @@ public sealed class MondeSimule
             VerserJournal();
             return resultats;
         }
+    }
+
+    /// <summary>
+    /// L'Entité parle à toute une communauté, envers d'autres (<paramref name="cibles"/>) ou vers une direction : chaque adulte
+    /// la reçoit, la comprend, y croit ou non et dit ce qu'il en pense ; le groupe en débattra le jour venu. Renvoie, pour
+    /// chacun, ce qu'il en a fait, et les mandats créés (un par communauté visée ; aucun si la communauté n'existe plus).
+    /// </summary>
+    public (List<(int Humain, Recit Resultat)> Resultats, List<Mandat> Mandats) ParlerACommunaute(int communaute, Parole parole, ModeParole mode,
+        IReadOnlyCollection<int> cibles, int direction)
+    {
+        lock (_verrou)
+        {
+            if (!Paroles.Collective(parole) || communaute < 1 || communaute > _communautes.Count || _communautes[communaute - 1] is not { Active: true } a)
+                return ([], []);
+            var visees = Paroles.VeutCommunaute(parole)
+                ? cibles.Distinct().Where(id => id >= 1 && id <= _communautes.Count && id != a.Id && _communautes[id - 1].Active).Select(id => _communautes[id - 1]).ToList()
+                : [];
+            if (Paroles.VeutCommunaute(parole) && visees.Count == 0) return ([], []);
+            var resultats = new List<(int, Recit)>();
+            foreach (var h in _humains.Vivants().Where(h => h.EstVivant && h.CommunauteId == a.Id && !h.EstEnfant(_secondes) && h.CaptifDe == 0).OrderBy(h => h.Id).ToList())
+                resultats.Add((h.Id, _comportement.RecevoirPourLeGroupe(h, parole, mode, a, visees, direction, _humains, _secondes)));
+            VerserJournal();
+            var mandats = _social.Recevoir(a, parole, mode, visees, direction, _humains, _secondes);
+            VerserJournal();
+            return (resultats, mandats.Select(m => m.Copier()).ToList());
+        }
+    }
+
+    /// <summary>Paroles adressées à des communautés et ce qu'elles en ont fait (copies).</summary>
+    public List<Mandat> Mandats()
+    {
+        lock (_verrou) return _social.Mandats.Select(m => m.Copier()).ToList();
     }
 
     /// <summary>
