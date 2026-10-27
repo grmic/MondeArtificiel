@@ -7,8 +7,9 @@ namespace Monde.Simulation.Humains;
 /// <param name="Couvert">Couvert de cendre pour la nuit : quand le bois est consumé, sa braise couve jusqu'au matin.</param>
 /// <param name="Degage">L'herbe a été écartée autour et des pierres l'entourent : il gagne rarement les herbes.</param>
 /// <param name="EntretenuParId">Dernier humain qui l'a nourri (0 : son allumeur) ; c'est à lui qu'on s'en prend s'il s'échappe.</param>
+/// <param name="Charbon">Part du charbon de bois dans ce qui brûle (0 à 1) : il chauffe plus fort (voir <see cref="Chimie.Thermique"/>).</param>
 public sealed record Foyer(int Id, int X, int Y, double Heures, long AllumeLe, int AllumeurId, long EvenementId, bool Couvert = false,
-    bool Degage = false, int EntretenuParId = 0)
+    bool Degage = false, int EntretenuParId = 0, double Charbon = 0)
 {
     /// <summary>Humain qui en a la garde : le dernier qui l'a nourri, sinon celui qui l'a allumé.</summary>
     public int GardienId => EntretenuParId != 0 ? EntretenuParId : AllumeurId;
@@ -251,12 +252,14 @@ public sealed class Installations
         else Allumer(x, y, heures, maintenant, humainId, evenementId, degage);
     }
 
-    public void Alimenter(Foyer f, double heures, int humainId = 0, bool degage = false) =>
+    /// <param name="charbon">Part de charbon de bois dans ce qu'on ajoute (0 : du bois).</param>
+    public void Alimenter(Foyer f, double heures, int humainId = 0, bool degage = false, double charbon = 0) =>
         Foyers[Foyers.IndexOf(f)] = f with
         {
             // Du bois ajouté découvre le feu : il flambe de nouveau.
             Heures = Math.Min(24, f.Heures + heures), Degage = f.Degage || degage, EntretenuParId = humainId != 0 ? humainId : f.EntretenuParId,
             Couvert = false,
+            Charbon = f.Charbon <= 0 && charbon <= 0 ? 0 : (f.Charbon * f.Heures + charbon * heures) / Math.Max(1e-9, f.Heures + heures),
         };
 
     /// <summary>Couvre de cendre le feu de la case pour la nuit.</summary>

@@ -596,7 +596,7 @@ public sealed partial class Comportement
             // Sans eau à emporter, on ne part que pour une traversée qui touche terre avant la nuit.
             var heuresDeRoute = Echelle.Kilometres(h.X, h.Y, m.CibleX, m.CibleY) / Math.Max(0.01, progres * Echelle.KilometresParCase
                 * Calendrier.SecondesParHeure / MondeSimule.SecondesParPas);
-            var eau = h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau && o.Plein);
+            var eau = h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau or Matiere.Substance && o.Plein);
             tropDeVent = progres < (0.25 + 0.35 * prudence) * pagaie || force > 0.95 * pagaie
                          || (eau ? heuresDeRoute > 30 : date.Heure + heuresDeRoute > 20);
         }
@@ -790,7 +790,7 @@ public sealed partial class Comportement
         // Les roseaux se gorgent d'eau au fil des semaines.
         if (a.Corps == Matiere.Roseau) houleMax *= Math.Max(0.15, 1 - heures / 24 / (20 + 15 * bateau.Qualite));
         var houle = Houle(h.X, h.Y, _maintenant);
-        var eau = h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau && o.Plein);
+        var eau = h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau or Matiere.Substance && o.Plein);
         if (h.Soif >= 50) BoireALaCalebasse(h);
 
         // Rentrer ?

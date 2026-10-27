@@ -74,7 +74,7 @@ public sealed partial class Comportement
     /// <summary>Matières à portée de main : ce que la case offre, ce qu'on porte, le feu et l'eau s'il y en a.</summary>
     private List<Matiere> Materiaux(Humain h)
     {
-        var l = Physique.Disponibles(carte, h.X, h.Y, Sec(h) > 0.55, VolcanProche(h.X, h.Y)).ToList();
+        var l = Disponibles(h).ToList();
         foreach (var o in h.Objets) if (!l.Contains(o.Matiere)) l.Add(o.Matiere);
         if (FeuIci(h)) l.Add(Matiere.Feu);
         if (EauDouceAPortee(h.X, h.Y)) l.Add(Matiere.Eau);
@@ -86,7 +86,7 @@ public sealed partial class Comportement
         Matiere.Aucune => true,
         Matiere.Feu => FeuIci(h),
         Matiere.Eau => EauDouceAPortee(h.X, h.Y),
-        _ => h.Porte(m) || Physique.Disponibles(carte, h.X, h.Y, Sec(h) > 0.55, VolcanProche(h.X, h.Y)).Contains(m),
+        _ => h.Porte(m) || Disponibles(h).Contains(m),
     };
 
     // ------------------------------------------------------------------ Jouer, essayer
@@ -105,10 +105,12 @@ public sealed partial class Comportement
 
         var materiaux = Materiaux(h);
         // Les gestes du jeu : frapper, frotter, tordre, entasser, pousser… (assembler, percer, trancher demandent une intention).
-        var tirage = alea.Entier(13);
-        var geste = tirage == 12 ? Geste.Pousser : (Geste)tirage;
+        // Là où la matière a sa chimie, on pétrit aussi, on laisse au feu, on mêle, on souffle sur la braise.
+        var tirage = alea.Entier(AvecLaMatiere ? 13 + GestesDeLaMatiere.Length : 13);
+        var geste = tirage >= 13 ? GestesDeLaMatiere[tirage - 13] : tirage == 12 ? Geste.Pousser : (Geste)tirage;
         var a = materiaux.Count == 0 ? Matiere.Aucune : materiaux[alea.Entier(materiaux.Count)];
         var b = materiaux.Count == 0 ? Matiere.Aucune : materiaux[alea.Entier(materiaux.Count)];
+        if (tirage >= 13) return JouerAvecLaMatiere(h, geste, a, b, materiaux, tous);
         if (geste is Geste.Manger or Geste.Appliquer)
         {
             // Goûter une plante inconnue : seulement les plus audacieux, et pas les petits (l'aversion pour la nouveauté
@@ -154,6 +156,17 @@ public sealed partial class Comportement
         var connu = h.Savoirs.Find(s => s.Geste == geste && s.A == a && s.B == b && s.Espece == 0);
         var r = Physique.Tenter(geste, a, b, Contexte(h, connu), alea);
         if (geste == Geste.Nager) Baignade(h, r.Effet == Effet.Nage);
+        if (AvecLaMatiere)
+        {
+            // Là où les lois d'hier ne disent rien, celles de la matière jugent : une argile approchée du feu, un cuivre frappé.
+            if (r.Effet == Effet.Rien && geste is Geste.Approcher or Geste.Frapper) return FaireMatiere(h, geste, a, b, origine, tous, maitre);
+            // L'éclat tiré d'un silex chauffé est plus fin.
+            if (r.Effet == Effet.Eclat && a == Matiere.Silex && SilexChauffe(h) is >= 0 and var ic)
+            {
+                h.Objets.RemoveAt(ic);
+                r = r with { Qualite = Math.Min(1, r.Qualite + 0.15) };
+            }
+        }
         Constater(h, geste, a, b, r, origine, tous, maitre);
         return r.Effet;
     }
@@ -303,7 +316,8 @@ public sealed partial class Comportement
     /// <summary>Garde un objet sur soi : s'il n'y a plus de place, le moins utile est laissé.</summary>
     private static void Prendre(Humain h, Objet objet)
     {
-        var meme = h.Objets.Find(o => o.Matiere == objet.Matiere && (o.Matiere != Matiere.Assemblage || MemeUsage(o, objet)));
+        var meme = h.Objets.Find(o => o.Matiere == objet.Matiere && (o.Matiere != Matiere.Assemblage || MemeUsage(o, objet))
+            && (o.Matiere != Matiere.Substance || MemeChose(o, objet)));
         if (meme is not null)
         {
             if (meme.Qualite * meme.Usure < objet.Qualite * objet.Usure) h.Objets[h.Objets.IndexOf(meme)] = objet;
@@ -312,7 +326,7 @@ public sealed partial class Comportement
         if (h.Objets.Count >= ObjetsMax)
         {
             // On laisse ce dont on ne connaît pas d'usage, sinon le plus usé.
-            var laisse = h.Objets.OrderBy(o => o.Matiere is Matiere.Assemblage or Matiere.Carcasse || h.Savoirs.Exists(s => (s.A == o.Matiere || s.B == o.Matiere) && s.Confiance >= 0.5) ? 1 : 0)
+            var laisse = h.Objets.OrderBy(o => o.Matiere is Matiere.Assemblage or Matiere.Carcasse or Matiere.Substance || h.Savoirs.Exists(s => (s.A == o.Matiere || s.B == o.Matiere) && s.Confiance >= 0.5) ? 1 : 0)
                 .ThenBy(o => o.Qualite * o.Usure).First();
             h.Objets.Remove(laisse);
         }
@@ -505,6 +519,8 @@ public sealed partial class Comportement
         Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant => "ing.question.FoyerDegage",
         Effet.BrulisProtecteur => "ing.question.BrulisProtecteur",
         Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide => "ing.question.CacheDEau",
+        Effet.Transformation => "ing.question.Transformation",
+        Effet.Modelage => "ing.question.Modelage",
         _ => "ing.question.autre",
     });
 
@@ -613,6 +629,7 @@ public sealed partial class Comportement
         // Près d'un feu : on l'alimente s'il faiblit, puis on dort ou on se chauffe à côté.
         if (foyer is not null)
         {
+            if (NourrirDeCharbon(h)) return true;
             if (foyer.Heures < 6 && h.Sait(Effet.Foyer) && APortee(h, Matiere.BoisSec)
                 && Faire(h, Geste.Entasser, Matiere.BoisSec, Matiere.Feu, OrigineSavoir.Essai, tous) == Effet.Foyer)
             {
@@ -621,6 +638,7 @@ public sealed partial class Comportement
                 return true;
             }
             if (besoin == Activite.Dormir) return false;
+            if (AvecLaMatiere && AuCoinDuFeu(h, tous)) return true;
             if (!h.Sait(Effet.Chaleur))
             {
                 Constater(h, Geste.Approcher, Matiere.Aucune, Matiere.Feu, new Resultat(Effet.Chaleur, Matiere.Aucune, 1), OrigineSavoir.Essai, tous);
@@ -885,7 +903,7 @@ public sealed partial class Comportement
     /// <summary>Boire à sa calebasse (ou à son outre) quand l'eau est loin.</summary>
     private bool BoireALaCalebasse(Humain h)
     {
-        var c = h.Objets.Find(o => o.Matiere is Matiere.Calebasse or Matiere.Peau && o.Plein);
+        var c = h.Objets.Find(o => o.Matiere is Matiere.Calebasse or Matiere.Peau or Matiere.Substance && o.Plein);
         if (c is null) return false;
         h.Objets[h.Objets.IndexOf(c)] = c with { Plein = false, Usure = c.Usure - 0.01 };
         h.Soif = Math.Max(0, h.Soif - 45);
@@ -900,7 +918,9 @@ public sealed partial class Comportement
     /// </summary>
     private void Remplir(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau && o.Plein)) return;
+        if (h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau or Matiere.Substance && o.Plein)) return;
+        // Un pot de terre cuite se remplit comme une calebasse.
+        if (RemplirLePot(h)) return;
         var c = h.Objets.Find(o => o.Matiere == Matiere.Calebasse);
         if (c is null && h.Porte(Matiere.Peau) && h.Savoirs.Exists(s => s.Effet == Effet.EauPortee && s.A == Matiere.Peau && s.Confiance >= 0.4)
             && !APortee(h, Matiere.Calebasse))

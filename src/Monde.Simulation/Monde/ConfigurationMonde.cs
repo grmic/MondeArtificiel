@@ -17,15 +17,17 @@ namespace Monde.Simulation.Monde;
 /// (<see cref="PlacementTous"/>).
 /// </param>
 /// <param name="Generation">
-/// Version de la génération de la carte : 0 pour les mondes créés avant la 0.31.3 (douze terrains), qui gardent ainsi
-/// leur carte ; <see cref="GenerationActuelle"/> pour les mondes neufs (forêt de feuillus, mangrove, lande sèche).
+/// Version de la génération du monde : 0 pour les mondes créés avant la 0.31.3 (douze terrains), qui gardent ainsi
+/// leur carte ; 1 pour ceux de la 0.31.3 à la 0.31.6 (forêt de feuillus, mangrove, lande sèche) ; <see cref="GenerationActuelle"/>
+/// pour les mondes neufs, dont la matière a sa chimie et le feu sa température (0.32.0). Un monde garde sa génération : ce qui
+/// vient avec une génération nouvelle ne change rien aux mondes plus anciens.
 /// </param>
 /// <param name="Ecart">Mer entre les continents (s'il y en a plusieurs).</param>
 public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement = 1,
     int Generation = 0, EcartContinents Ecart = EcartContinents.Proches)
 {
-    /// <summary>Génération des mondes neufs : 1 depuis la 0.31.3.</summary>
-    public const int GenerationActuelle = 1;
+    /// <summary>Génération des mondes neufs : 1 depuis la 0.31.3, 2 depuis la 0.32.0.</summary>
+    public const int GenerationActuelle = 2;
 
     /// <summary>Couples répartis sur tous les continents, en proportion de leurs terres habitables.</summary>
     public const int PlacementTous = 0;
@@ -47,7 +49,7 @@ public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, 
     public static ConfigurationMonde Nouvelle(ulong graine) => ParDefaut(graine) with { Generation = GenerationActuelle };
 
     /// <summary>Les réglages d'origine, quelle que soit la génération de la carte.</summary>
-    public bool EstOrigine => this == ParDefaut(Graine) || this == Nouvelle(Graine);
+    public bool EstOrigine => this with { Generation = 0 } == ParDefaut(Graine);
 
     /// <summary>Premier défaut des réglages (la place pour les couples est vérifiée à la génération).</summary>
     public ProblemeConfiguration Probleme() =>

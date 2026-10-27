@@ -194,7 +194,7 @@ public sealed class MondeSimule
         _social.Installations = _installations;
         _comportement = new Comportement(carte, _ecosysteme, _alea)
         {
-            Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations,
+            Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations, Generation = configuration.Generation,
         };
         _catastrophes = new Catastrophes(carte, _ecosysteme, _alea, etat.Catastrophes, etat.Pathogenes)
         {

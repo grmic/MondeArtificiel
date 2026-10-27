@@ -58,13 +58,13 @@ public sealed partial class Comportement
     {
         if (m == Matiere.Aucune) return 99;
         if (_autour is { } autour && autour.Contains(m)) return 99;
-        if (Physique.Disponibles(carte, h.X, h.Y, Sec(h) > 0.55, VolcanProche(h.X, h.Y)).Contains(m)) return 99;
+        if (Disponibles(h).Contains(m)) return 99;
         return h.Objets.Count(o => o.Matiere == m);
     }
 
     private bool APiecesPour(Humain h, Assemblage a) =>
         Combien(h, a.Corps) >= a.NCorps && (a.NTete == 0 || Combien(h, a.Tete) >= a.NTete) && Combien(h, a.Lien) >= 1
-        && (a.Lien != Matiere.Resine || FeuIci(h))
+        && (a.Lien is not (Matiere.Resine or Matiere.Substance) || FeuIci(h)) && (a.Lien != Matiere.Substance || PorteUnePoix(h))
         // Évider un tronc : le feu pour ronger le bois, ou du moins un outil qui tranche bien.
         && (a.Montage != Montage.Creuse || (FeuIci(h) || h.Sait(Effet.Foyer)) && h.Objets.Exists(o => Lois.Coupe(o) > 0.05)
             || h.Objets.Exists(o => Lois.Coupe(o) >= 0.3));
@@ -76,6 +76,8 @@ public sealed partial class Comportement
     private Matiere ChoisirLien(Humain h)
     {
         if (h.Porte(Matiere.Corde)) return Matiere.Corde;
+        // La poix chauffée qu'il porte (brai d'écorce, bitume) : elle tient mieux que tout.
+        if (PorteUnePoix(h) && FeuIci(h) && alea.Reel() < 0.6) return Matiere.Substance;
         var fibres = Combien(h, Matiere.Fibres) > 0;
         if (fibres && (h.Sait(Effet.Corde) || alea.Reel() < 0.3 * Inventivite(h))) return Matiere.Fibres;
         if (Combien(h, Matiere.Resine) > 0 && FeuIci(h) && alea.Reel() < 0.4 * Inventivite(h)) return Matiere.Resine;
@@ -291,10 +293,12 @@ public sealed partial class Comportement
     private void Consommer(Humain h, Matiere m, int n)
     {
         if (m == Matiere.Aucune || n <= 0) return;
-        if (Physique.Disponibles(carte, h.X, h.Y, Sec(h) > 0.55, VolcanProche(h.X, h.Y)).Contains(m)) return;
+        if (Disponibles(h).Contains(m)) return;
         for (var k = 0; k < n; k++)
         {
-            var o = h.Objets.Find(x => x.Matiere == m);
+            // Une poix : la chose qui colle, pas le pot ou le charbon qu'on porte aussi.
+            var o = m == Matiere.Substance ? h.Objets.Find(x => x.Matiere == m && Chimie.Substance.Lire(x.Pieces) is { Collante: true })
+                : h.Objets.Find(x => x.Matiere == m);
             if (o is null) return;
             h.Objets.Remove(o);
         }

@@ -7,6 +7,13 @@ namespace Monde.Stockage;
 /// <summary>Braises qui couvent, réserves d'eau et de nourriture, et ce que les humains et les communautés savent du feu.</summary>
 public sealed partial class DepotMonde
 {
+    /// <summary>Migration vers la version 41 : part du charbon de bois dans ce que brûle un foyer (0 pour les feux d'avant).</summary>
+    private static void MigrerVersion41(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        if (!Colonnes(connexion, transaction, "foyers").Contains("charbon"))
+            Executer(connexion, transaction, "ALTER TABLE foyers ADD COLUMN charbon REAL NOT NULL DEFAULT 0;");
+    }
+
     /// <summary>
     /// Migration vers la version 32 : feux couverts et dégagés, braises, réserves, porteurs du feu, idées des réserves, incendies
     /// dont on se souvient et responsables des feux de camp échappés. Les mondes existants n'en ont pas encore : tout part de zéro.

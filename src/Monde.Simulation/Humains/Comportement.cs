@@ -700,6 +700,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (Assembler(h, tous)) return;
         if (AvoirUneIdee(h, tous)) return;
         if (Enseigner(h, tous)) return;
+        if (PratiquerLaMatiere(h, tous)) return;
         if (Experimenter(h, tous)) return;
         if (!ailleurs && !abattu && PrendreLaMer(h, tous)) return;
         if (!ailleurs && alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))

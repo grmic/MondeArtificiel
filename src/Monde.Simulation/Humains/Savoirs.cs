@@ -62,6 +62,19 @@ public enum Matiere : byte
     PorteFeu = 29,
     /// <summary>Botte de roseaux (ou de joncs, de papyrus) serrés : légère, elle flotte longtemps avant de s'imbiber.</summary>
     Roseau = 30,
+
+    // Mondes neufs depuis la 0.32.0 (voir Chimie).
+    /// <summary>Un bloc de calcaire ou de craie.</summary>
+    Calcaire = 31,
+    Sable = 32,
+    /// <summary>Coquilles de moules, d'huîtres, d'escargots.</summary>
+    Coquillage = 33,
+    /// <summary>Écorce arrachée à un arbre (bouleau, pin) : riche en bétuline ou en résine.</summary>
+    Ecorce = 34,
+    /// <summary>Un morceau détaché d'un gisement (sa composition est gardée avec l'objet).</summary>
+    Minerai = 35,
+    /// <summary>Une chose faite de main d'homme dont la matière a changé (pâte modelée, terre cuite, charbon, poix…) : sa composition est gardée avec l'objet.</summary>
+    Substance = 36,
 }
 
 /// <summary>Gestes à la portée de tout humain. Ce qu'ils produisent dépend de la matière, pas d'une découverte programmée.</summary>
@@ -129,6 +142,20 @@ public enum Geste : byte
     Secher = 31,
     /// <summary>Amasser plus qu'on ne mange, pour plus tard.</summary>
     Amasser = 32,
+
+    // Mondes neufs depuis la 0.32.0.
+    /// <summary>Pétrir une pâte et lui donner une forme.</summary>
+    Modeler = 33,
+    /// <summary>Laisser longtemps une chose dans le feu, au bord, sous la braise ou dans une fosse sous le bois.</summary>
+    Cuire = 34,
+    /// <summary>Couvrir de terre un feu bien nourri : il couve sans air.</summary>
+    Etouffer = 35,
+    /// <summary>Souffler sur le feu, à la bouche ou par un roseau creux.</summary>
+    Souffler = 36,
+    /// <summary>Mêler deux matières (de la terre et de l'eau, du sable…).</summary>
+    Melanger = 37,
+    /// <summary>Jeter une pierre chauffée dans l'eau.</summary>
+    Plonger = 38,
 }
 
 /// <summary>Ce que l'humain constate après un geste.</summary>
@@ -244,6 +271,10 @@ public enum Effet : byte
     Navigation = 55,
     /// <summary>Une branche plate poussée contre l'eau fait avancer plus vite que les mains.</summary>
     Pagaie = 56,
+    /// <summary>La matière a changé (au feu, sous les coups, dans l'eau) : ce qu'elle est devenue est dit par ses pièces.</summary>
+    Transformation = 57,
+    /// <summary>Une pâte prend la forme qu'on lui donne.</summary>
+    Modelage = 58,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -375,7 +406,7 @@ public static class Physique
 
     /// <summary>Peut-on porter cette matière sur soi ?</summary>
     public static bool Portable(Matiere m) => m is not (Matiere.Aucune or Matiere.Eau or Matiere.Feu or Matiere.Carcasse or Matiere.Plante or Matiere.Argile
-        or Matiere.Tronc);
+        or Matiere.Tronc or Matiere.Sable);
 
     public static Resultat Tenter(Geste g, Matiere a, Matiere b, ContexteGeste c, Alea alea)
     {
@@ -560,6 +591,8 @@ public static class Physique
     /// <summary>Nom d'une découverte dans la chronologie : une seule roue et plusieurs roues sont deux trouvailles.</summary>
     public static Recit NomDecouverte(Effet e, string? pieces) => e == Effet.RouleSurAxe && Lois.Structure(pieces) == "axe:1"
         ? Seul("decouverte.brouette")
+        : e == Effet.Transformation && Comportement.LireRecette(pieces) is { } r
+            ? new Recit("decouverte.Transformation", ("a", MatiereDeRecette(r.A, r.Famille)), ("chg", Chimie.Perception.Dire(r.Changements)))
         : NomEffet(e);
 
     /// <summary>Le geste et ses matières, en mots (« pousser un tronc sur l'eau »).</summary>
@@ -580,7 +613,9 @@ public static class Physique
     public static Recit Nom(Matiere m) => NomsMatieres[(int)m];
 
     /// <summary>Nom d'un objet porté : un objet assemblé est décrit par ses pièces.</summary>
-    public static Recit Nom(Objet o) => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { } a ? Lois.Decrire(a) : Nom(o.Matiere);
+    public static Recit Nom(Objet o) => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { } a ? Lois.Decrire(a)
+        : o.Matiere is Matiere.Substance or Matiere.Minerai && Chimie.Substance.Lire(o.Pieces) is { } s ? Chimie.Perception.Nom(s)
+        : Nom(o.Matiere);
 
     /// <summary>Le savoir en quelques mots, tel que l'humain se le dit.</summary>
     public static Recit Decrire(Savoir s, object? plante = null) => s.Effet switch
@@ -601,9 +636,20 @@ public static class Physique
             or Effet.Peinture or Effet.MainsPropres or Effet.EauVive or Effet.Latrines or Effet.ViandeSaine or Effet.Fumage or Effet.Fumee
             or Effet.Brulis or Effet.Braises or Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant or Effet.BrulisProtecteur
             or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide or Effet.Pagaie => Seul($"savoir.{s.Effet}"),
+        Effet.Transformation when Comportement.LireRecette(s.Pieces) is { } r => DecrireRecette(r.Geste, r.A, r.B, r.Mode, r.Changements, r.Famille),
+        Effet.Modelage => Seul(s.Pieces == "M|1" ? "savoir.Modelage.creux" : "savoir.Modelage"),
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => Seul("savoir.Rien"),
     };
+
+    /// <summary>La matière d'une recette : son nom, ou pour une chose façonnée ce qu'elle était (« un objet de terre mouillée »).</summary>
+    private static Recit MatiereDeRecette(Matiere a, string famille) =>
+        a == Matiere.Substance && famille.Length > 0 ? new Recit("chim.objet", ("fam", Seul($"chim.fam.{famille}"))) : Nom(a);
+
+    /// <summary>Une recette de la matière, telle qu'on se la dit (« l'argile laissée longtemps dans les flammes durcit et ne se défait plus dans l'eau »).</summary>
+    public static Recit DecrireRecette(Geste g, Matiere a, Matiere b, int mode, IReadOnlyList<string> changements, string famille) =>
+        new($"savoir.Transformation.{g}{(g == Geste.Cuire ? "." + mode.ToString(System.Globalization.CultureInfo.InvariantCulture) : "")}",
+            ("a", MatiereDeRecette(a, famille)), ("b", Nom(b)), ("chg", Chimie.Perception.Dire(changements)));
 
     /// <summary>Le mal que soulage un remède (« les maux de ventre »).</summary>
     public static Recit Mal(Symptome s) => Seul($"mal.{s}");
@@ -622,7 +668,9 @@ public static class Physique
     /// Matières brutes qu'on trouve sur une case : les roches dépendent de la région (tirées une fois pour toutes de la graine),
     /// le reste du terrain et de la saison.
     /// </summary>
-    public static IEnumerable<Matiere> Disponibles(Carte carte, int x, int y, bool saisonSeche, bool volcanProche)
+    /// <param name="generation">Génération du monde : à partir de 2, on trouve aussi du calcaire, du sable, des coquillages, de l'écorce
+    /// et des morceaux des gisements qui affleurent.</param>
+    public static IEnumerable<Matiere> Disponibles(Carte carte, int x, int y, bool saisonSeche, bool volcanProche, int generation = 0)
     {
         var b = carte.BiomeEn(x, y);
         var roches = Roches(carte, x, y);
@@ -651,6 +699,14 @@ public static class Physique
         // Terre rouge (oxydes de fer) : dans les roches des montagnes et des déserts, les grès rouges et les latérites des
         // forêts chaudes, et par endroits dans les plaines et sur les berges.
         if (b is Biome.Montagne or Biome.Desert || Ocreuse(carte, x, y)) yield return Matiere.Ocre;
+        if (generation < 2) yield break;
+        var roche = carte.Terrain.Roches[carte.Indice(x, y)];
+        if (roche is Nature.Roche.Calcaire or Nature.Roche.Craie && Climat.EstPraticable(b)) yield return Matiere.Calcaire;
+        if (b is Biome.Plage or Biome.Desert or Biome.Riviere || roche == Nature.Roche.Gres) yield return Matiere.Sable;
+        // Coquilles des plages et des vasières ; moules d'eau douce dans les rivières.
+        if (b is Biome.Plage or Biome.Mangrove or Biome.Riviere) yield return Matiere.Coquillage;
+        if (b is Biome.ForetDeFeuillus or Biome.ForetDeConiferes) yield return Matiere.Ecorce;
+        if (carte.Terrain.GisementA(x, y) is { Profondeur: Nature.Enfouissement.Affleurant }) yield return Matiere.Minerai;
     }
 
     /// <summary>

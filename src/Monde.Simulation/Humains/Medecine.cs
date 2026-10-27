@@ -148,7 +148,7 @@ public sealed partial class Comportement
         h.SoigneurId = 0;
     }
 
-    private bool EauPourPanser(Humain h) => APortee(h, Matiere.Eau) || h.Objets.Exists(o => o.Matiere == Matiere.Calebasse && o.Plein);
+    private bool EauPourPanser(Humain h) => APortee(h, Matiere.Eau) || h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Substance && o.Plein);
 
     private bool FeuillesPourPanser(Humain h) =>
         APortee(h, Matiere.GrandesFeuilles) || APortee(h, Matiere.Branche) || APortee(h, Matiere.Fibres);

@@ -150,6 +150,11 @@ public static class Lois
         // Une botte de roseaux serrés, de la taille d'un bras : tiges creuses, densité apparente vers 0,3 tant qu'elles ne
         // sont pas gorgées d'eau (Heyerdahl, Tigris, 1979 : les bottes de papyrus ou de berdi tiennent des semaines).
         Matiere.Roseau => new(Forme.Long, 0.02, 6, 0.3, Resistance: 15),
+        Matiere.Calcaire => new(Forme.Aucune, 0.3, 1.5, 2.5),
+        Matiere.Sable => new(Forme.Aucune, 0.05, 2, 1.6),
+        Matiere.Coquillage => new(Forme.Creux, 0.35, 0.05, 2.7),
+        Matiere.Ecorce => new(Forme.Plat, 0.1, 0.3, 0.6, Lien: 0.15),
+        Matiere.Minerai => new(Forme.Aucune, 0.4, 0.5, 4),
         _ => new(Forme.Aucune, 0, 0, 1),
     };
 
@@ -176,8 +181,12 @@ public static class Lois
         _ => 0.1,
     };
 
-    /// <summary>Force d'un lien entre les pièces (0 sans lien) ; la résine ne colle que chauffée.</summary>
-    public static double ForceDuLien(Matiere lien, bool feu) => lien == Matiere.Resine && !feu ? 0 : De(lien).Lien;
+    /// <summary>
+    /// Force d'un lien entre les pièces (0 sans lien) ; la résine ne colle que chauffée. Une poix de brai ou de bitume (portée comme
+    /// <see cref="Matiere.Substance"/>) colle bien mieux que la résine crue (Kozowyk et al., 2017), mais elle aussi doit être chauffée.
+    /// </summary>
+    public static double ForceDuLien(Matiere lien, bool feu) => lien is Matiere.Resine or Matiere.Substance && !feu ? 0
+        : lien == Matiere.Substance ? 0.8 : De(lien).Lien;
 
     // ------------------------------------------------------------------ Juger un objet assemblé
 
@@ -416,7 +425,11 @@ public static class Lois
     };
 
     /// <summary>Famille d'un objet assemblé pour la chronologie : une roue seule et plusieurs roues sont deux trouvailles.</summary>
-    public static string Structure(string? pieces) => Assemblage.Lire(pieces) is { Montage: Montage.Axe } a ? (a.NTete == 1 ? "axe:1" : "axe:2") : "";
+    public static string Structure(string? pieces) =>
+        pieces is not null && pieces.StartsWith("T|", StringComparison.Ordinal) && Comportement.LireRecette(pieces) is { } r
+            ? string.Create(CultureInfo.InvariantCulture, $"T|{(int)r.A}|{string.Join('+', r.Changements)}|{r.Famille}")
+        : pieces is not null && pieces.StartsWith("M|", StringComparison.Ordinal) ? pieces
+        : Assemblage.Lire(pieces) is { Montage: Montage.Axe } a ? (a.NTete == 1 ? "axe:1" : "axe:2") : "";
 
     /// <summary>« un galet », « deux galets », « trois bouts de bois sec ».</summary>
     private static Recit Nombre(Matiere m, int n) => n <= 1 ? Physique.Nom(m)
