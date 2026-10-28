@@ -128,6 +128,8 @@ public sealed partial class DepotMonde
         var conditions = new List<string> { "id >= $de", "id < $a", "id < (SELECT max(id) FROM journal)" };
         if (quotidienSeul) conditions.Add($"type IN ({string.Join(", ", ReglesPurge.Quotidien.Select(t => (int)t))})");
         if (!regles.Marquants) conditions.Add("significatif = 0");
+        // Les premières fois ne s'effacent jamais.
+        conditions.Add($"NOT {PremiereSql}");
         if (!regles.Suivis)
         {
             conditions.Add("humain NOT IN (SELECT humain FROM journal_suivis)");

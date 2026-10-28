@@ -10,7 +10,7 @@ namespace Monde.Serveur;
 /// <param name="Karma">Karma gagné ou perdu par l'humain par cet acte (regard de l'Entité) ; <paramref name="KarmaAutre"/> : par l'autre.</param>
 public sealed record EvenementDto(long Id, long Secondes, string Date, string Type, int Humain, int Autre, string Texte, string Origine,
     long Cause, int Communaute, int AutreCommunaute, bool Significatif, double Karma = 0, double KarmaAutre = 0,
-    bool Ancien = false)
+    bool Ancien = false, bool Premiere = false)
 {
     /// <summary>Clés des types, dans l'ordre de l'énumération (le navigateur filtre avec ces clés).</summary>
     public static readonly IReadOnlyDictionary<TypeEvenement, string> Cles = new Dictionary<TypeEvenement, string>
@@ -55,7 +55,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
     public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, L.Date(e.Secondes),
         Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, L.Ecrire(e),
         e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId, e.Significatif,
-        e.Karma, e.KarmaAutre, L.Ancien(e.Recit));
+        e.Karma, e.KarmaAutre, L.Ancien(e.Recit), PremieresFois.Est(e));
 
     /// <summary>Traduit les clés reçues ; une clé inconnue rend la demande invalide (null).</summary>
     public static List<TypeEvenement>? TypesDepuis(IEnumerable<string>? cles)
@@ -74,8 +74,9 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 /// <summary>Filtre du journal demandé par le navigateur.</summary>
 /// <param name="Communaute">Chronologie d'une communauté : les événements qui la concernent.</param>
 /// <param name="Significatifs">Seulement les événements significatifs.</param>
+/// <param name="Premieres">Seulement les premières fois (au monde, ou pour une communauté).</param>
 public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, long? AvantId = null, int Limite = 100, int? Communaute = null,
-    bool Significatifs = false)
+    bool Significatifs = false, bool Premieres = false)
 {
     /// <summary>Au plus un exemplaire de chaque type connu, et une limite entre 1 et la limite du dépôt.</summary>
     public bool EstValide => (Types is not { } t || t.Length <= EvenementDto.Cles.Count)
@@ -464,9 +465,11 @@ public sealed record FicheDto(
             && (filtre.Humain is not { } h || e.HumainId == h || e.AutreId == h)
             && (filtre.AvantId is not { } a || e.Id < a)
             && (filtre.Communaute is not { } c || e.CommunauteId == c || e.AutreCommunauteId == c)
-            && (!filtre.Significatifs || e.Significatif);
+            && (!filtre.Significatifs || e.Significatif)
+            && (!filtre.Premieres || PremieresFois.Est(e));
         var recents = service.Monde.JournalRecent().Where(Convient);
-        var enregistres = service.Depot.LireJournal(types, filtre.Humain, filtre.AvantId, limite, filtre.Communaute, filtre.Significatifs);
+        var enregistres = service.Depot.LireJournal(types, filtre.Humain, filtre.AvantId, limite, filtre.Communaute, filtre.Significatifs,
+            filtre.Premieres);
         return recents.Concat(enregistres).DistinctBy(e => e.Id).OrderByDescending(e => e.Id).Take(limite).ToList();
     }
 }

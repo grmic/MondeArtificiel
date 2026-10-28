@@ -460,6 +460,8 @@
   "journal.toutSelectionner": "Select all",
   "journal.rienSelectionner": "Select none",
   "journal.significatifs": "★ Key events only",
+  "journal.premieres": "First times",
+  "journal.premieresAide": "First times in the world and for each community: first discoveries, first words, first gathering, first rite, first land sighted, first landing and first contact overseas. They are never deleted.",
   "journal.recherche": "A human's name (empty: everyone)",
   "journal.plusAnciens": "Older…",
   "journal.fige": {"one": "Journal frozen (the simulation goes on): {n} new event waiting. Click to resume.", "other": "Journal frozen (the simulation goes on): {n} new events waiting. Click to resume."},

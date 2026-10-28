@@ -52,6 +52,8 @@ export class PanneauJournal {
   private plusAncien = true;
   /** Seulement les événements significatifs. */
   private significatifs = false;
+  /** Seulement les premières fois. */
+  private premieres = false;
   /** Journal figé : la simulation continue, les nouveaux événements attendent la reprise. */
   private enPause = false;
   private enAttente: Evenement[] = [];
@@ -101,7 +103,7 @@ export class PanneauJournal {
   }
 
   private filtre(avantId?: number) {
-    return { types: [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100, communaute: this.communaute?.id ?? null, significatifs: this.significatifs };
+    return { types: [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100, communaute: this.communaute?.id ?? null, significatifs: this.significatifs, premieres: this.premieres };
   }
 
   private async lire(avantId?: number): Promise<Evenement[]> {
@@ -113,7 +115,7 @@ export class PanneauJournal {
     if (this.racine.hidden) return;
     const c = this.communaute?.id;
     const gardes = nouveaux.filter((e) => this.types.has(e.type) && (this.humain === null || e.humain === this.humain || e.autre === this.humain)
-      && (c === undefined || e.communaute === c || e.autreCommunaute === c) && (!this.significatifs || e.significatif));
+      && (c === undefined || e.communaute === c || e.autreCommunaute === c) && (!this.significatifs || e.significatif) && (!this.premieres || e.premiere));
     if (gardes.length === 0) return;
     if (this.enPause) {
       this.enAttente.push(...gardes);
@@ -194,6 +196,17 @@ export class PanneauJournal {
     etiquette.title = t("journal.significatifsAide");
     etiquette.append(seulement, " " + t("journal.significatifs"));
     filtres.append(etiquette);
+
+    const etiquettePremieres = el("label", "puce significatifs");
+    const premieres = el("input");
+    premieres.type = "checkbox";
+    premieres.addEventListener("change", () => {
+      this.premieres = premieres.checked;
+      void this.recharger();
+    });
+    etiquettePremieres.title = t("journal.premieresAide");
+    etiquettePremieres.append(premieres, " " + t("journal.premieres"));
+    filtres.append(etiquettePremieres);
 
     const recherche = el("div", "ligne");
     const champ = el("input");

@@ -460,6 +460,8 @@
   "journal.toutSelectionner": "Tout sélectionner",
   "journal.rienSelectionner": "Ne rien sélectionner",
   "journal.significatifs": "★ Significatifs seulement",
+  "journal.premieres": "Premières fois",
+  "journal.premieresAide": "Les premières fois au monde et de chaque communauté : premières découvertes, premiers mots, premier rassemblement, premier rite, première terre vue, premier pied posé et premier contact outre-mer. Elles ne sont jamais effacées.",
   "journal.recherche": "Nom d'un humain (vide : tous)",
   "journal.plusAnciens": "Plus anciens…",
   "journal.fige": {"one": "Journal figé (la simulation continue) : {n} nouvel événement en attente. Cliquer pour reprendre.", "other": "Journal figé (la simulation continue) : {n} nouveaux événements en attente. Cliquer pour reprendre."},

@@ -149,7 +149,7 @@ public sealed class JournalBaseTests(MondeAvecJournal monde) : IClassFixture<Mon
         }
         var anciens = tout.Where(e => e.Secondes < date - Calendrier.SecondesParJour).ToList();
         Assert.NotEmpty(anciens);
-        Assert.All(anciens, e => Assert.True(e.Significatif || e.HumainId == suivi || e.AutreId == suivi));
+        Assert.All(anciens, e => Assert.True(e.Significatif || PremieresFois.Est(e) || e.HumainId == suivi || e.AutreId == suivi));
         Assert.Contains(anciens, e => e.Significatif);
         Assert.Contains(anciens, e => !e.Significatif && (e.HumainId == suivi || e.AutreId == suivi));
         // Rien de récent n'est touché.
@@ -160,7 +160,20 @@ public sealed class JournalBaseTests(MondeAvecJournal monde) : IClassFixture<Mon
 
         // Cases cochées : le suivi et les faits marquants partent aussi (cases changées : tout est reparcouru).
         Purger(clair, regles with { Marquants = true, Suivis = true });
-        Assert.DoesNotContain(clair.LireJournal(limite: 500, avantId: clair.LireJournal(limite: 1)[0].Id), e => e.Secondes < date - Calendrier.SecondesParJour);
+        Assert.DoesNotContain(clair.LireJournal(limite: 500, avantId: clair.LireJournal(limite: 1)[0].Id),
+            e => e.Secondes < date - Calendrier.SecondesParJour && !PremieresFois.Est(e));
+    }
+
+    [Fact]
+    public void PremieresFois_JamaisEffacees_NiRangees()
+    {
+        var depot = monde.Copie("premieres");
+        var avant = depot.LireJournal(limite: 500, premieres: true);
+        Assert.NotEmpty(avant);
+        Assert.All(avant, e => Assert.True(PremieresFois.Est(e)));
+        Archiver(depot, monde.Secondes);
+        Purger(depot, new ReglesPurge(monde.Secondes, null, Marquants: true, Suivis: true));
+        Assert.Equal(avant.Select(Ligne), depot.LireJournal(limite: 500, premieres: true).Select(Ligne));
     }
 
     [Fact]

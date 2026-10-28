@@ -53,6 +53,16 @@ public sealed partial class DepotMonde
     private readonly record struct LigneJournal(long Id, long Secondes, byte Type, int Humain, int Autre, string Texte, byte Origine,
         long Cause, int Communaute, int AutreCommunaute, bool Significatif, double Karma, double KarmaAutre, int? Forme, string? Valeurs);
 
+    /// <summary>
+    /// Condition SQL d'une première fois (voir <see cref="PremieresFois"/>) : une ligne qui la remplit n'est jamais effacée ni rangée.
+    /// Les clés sont des constantes du code, jamais une saisie.
+    /// </summary>
+    internal static readonly string PremiereSql =
+        $"(coalesce(forme, 0) IN (SELECT id FROM recits_formes WHERE cle IN ({Liste(PremieresFois.Toujours)})) " +
+        $"OR significatif = 1 AND coalesce(forme, 0) IN (SELECT id FROM recits_formes WHERE cle IN ({Liste(PremieresFois.SiMarquants)})))";
+
+    private static string Liste(IEnumerable<string> cles) => string.Join(", ", cles.Select(c => $"'{c}'"));
+
     private const string ColonnesJournal =
         "id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs";
 
@@ -158,7 +168,7 @@ public sealed partial class DepotMonde
         commande.CommandText = "SELECT coalesce(max(dernier), 0) FROM journal_blocs;";
         var dejaRanges = Convert.ToInt64(commande.ExecuteScalar());
         // Toujours dans l'ordre des numéros, à la suite du dernier paquet : deux paquets ne se chevauchent jamais.
-        commande.CommandText = $"SELECT {ColonnesJournal} FROM journal WHERE id > $d AND significatif = 0 ORDER BY id LIMIT $n;";
+        commande.CommandText = $"SELECT {ColonnesJournal} FROM journal WHERE id > $d AND significatif = 0 AND NOT {PremiereSql} ORDER BY id LIMIT $n;";
         commande.Parameters.AddWithValue("$d", dejaRanges);
         commande.Parameters.AddWithValue("$n", LignesParBloc);
         var lignes = new List<LigneJournal>(LignesParBloc);
@@ -177,7 +187,7 @@ public sealed partial class DepotMonde
         }
         IndexerBloc(connexion, transaction, premier, lignes);
         using (var effacer = Preparer(connexion, transaction,
-                   "DELETE FROM journal WHERE id >= $p AND id <= $d AND significatif = 0;", "$p", "$d"))
+                   $"DELETE FROM journal WHERE id >= $p AND id <= $d AND significatif = 0 AND NOT {PremiereSql};", "$p", "$d"))
         {
             Lancer(effacer, premier, dernier);
         }

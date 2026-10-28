@@ -22,6 +22,8 @@ interface Evenement {
   autreCommunaute: number;
   /** Un tournant (projet de guerre, renoncement, raid, paix, catastrophe…). */
   significatif: boolean;
+  /** Une première fois, au monde ou pour une communauté (jamais effacée). */
+  premiere?: boolean;
   /** Karma gagné ou perdu par cet acte (regard de l'Entité), par l'humain et par l'autre. */
   karma?: number;
   karmaAutre?: number;

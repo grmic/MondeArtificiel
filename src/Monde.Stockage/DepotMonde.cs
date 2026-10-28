@@ -1436,10 +1436,10 @@ public sealed partial class DepotMonde
     /// <summary>
     /// Lit le journal enregistré, du plus récent au plus ancien. Filtres facultatifs : types, humain concerné
     /// (acteur ou autre), communauté, événements significatifs seulement, et pagination par numéro (événements de numéro
-    /// inférieur à <paramref name="avantId"/>).
+    /// inférieur à <paramref name="avantId"/>). <paramref name="premieres"/> : seulement les premières fois, qui ne sont jamais rangées.
     /// </summary>
     public List<EvenementJournal> LireJournal(IReadOnlyCollection<TypeEvenement>? types = null, int? humain = null,
-        long? avantId = null, int limite = 100, int? communaute = null, bool significatifs = false)
+        long? avantId = null, int limite = 100, int? communaute = null, bool significatifs = false, bool premieres = false)
     {
         limite = Math.Clamp(limite, 1, LimiteJournal);
         using var connexion = Ouvrir();
@@ -1466,6 +1466,7 @@ public sealed partial class DepotMonde
             commande.Parameters.AddWithValue("$c", c);
         }
         if (significatifs) conditions.Add("significatif = 1");
+        if (premieres) conditions.Add(PremiereSql);
         if (avantId is { } a)
         {
             conditions.Add("id < $a");
@@ -1484,7 +1485,7 @@ public sealed partial class DepotMonde
         }
         // Les faits marquants ne sont jamais rangés : pour eux, la table suffit. Sinon, les paquets ne sont ouverts que si
         // la table n'a pas déjà de quoi remplir la page avec des lignes plus récentes que tout ce qui est rangé.
-        if (!significatifs)
+        if (!significatifs && !premieres)
         {
             using var rangees = connexion.CreateCommand();
             rangees.Transaction = transaction;
