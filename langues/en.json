@@ -461,6 +461,8 @@
   "journal.rienSelectionner": "Select none",
   "journal.significatifs": "★ Key events only",
   "journal.premieres": "First times",
+  "journal.rechercheTexte": "Search the journal",
+  "journal.rechercheTexteAide": "Searches this text in the loaded lines; \"Older\" loads more.",
   "journal.premieresAide": "First times in the world and for each community: first discoveries, first words, first gathering, first rite, first land sighted, first landing and first contact overseas. They are never deleted.",
   "journal.recherche": "A human's name (empty: everyone)",
   "journal.plusAnciens": "Older…",

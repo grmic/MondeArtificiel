@@ -461,6 +461,8 @@
   "journal.rienSelectionner": "Ne rien sélectionner",
   "journal.significatifs": "★ Significatifs seulement",
   "journal.premieres": "Premières fois",
+  "journal.rechercheTexte": "Rechercher dans le journal",
+  "journal.rechercheTexteAide": "Cherche ce texte dans les lignes chargées ; « Plus anciens » en charge d'autres.",
   "journal.premieresAide": "Les premières fois au monde et de chaque communauté : premières découvertes, premiers mots, premier rassemblement, premier rite, première terre vue, premier pied posé et premier contact outre-mer. Elles ne sont jamais effacées.",
   "journal.recherche": "Nom d'un humain (vide : tous)",
   "journal.plusAnciens": "Plus anciens…",

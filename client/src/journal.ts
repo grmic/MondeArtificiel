@@ -54,6 +54,8 @@ export class PanneauJournal {
   private significatifs = false;
   /** Seulement les premières fois. */
   private premieres = false;
+  /** Texte cherché dans les lignes affichées (minuscules, sans accents). */
+  private texte = "";
   /** Journal figé : la simulation continue, les nouveaux événements attendent la reprise. */
   private enPause = false;
   private enAttente: Evenement[] = [];
@@ -103,18 +105,18 @@ export class PanneauJournal {
   }
 
   private filtre(avantId?: number) {
-    return { types: [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100, communaute: this.communaute?.id ?? null, significatifs: this.significatifs, premieres: this.premieres };
+    return { types: this.premieres ? TYPES.map(([cle]) => cle) : [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100, communaute: this.communaute?.id ?? null, significatifs: this.significatifs, premieres: this.premieres };
   }
 
   private async lire(avantId?: number): Promise<Evenement[]> {
-    if (this.types.size === 0) return [];
+    if (this.types.size === 0 && !this.premieres) return [];
     return connexion.invoke<Evenement[]>("Journal", this.filtre(avantId)).catch(() => []);
   }
 
   private recevoir(nouveaux: Evenement[]): void {
     if (this.racine.hidden) return;
     const c = this.communaute?.id;
-    const gardes = nouveaux.filter((e) => this.types.has(e.type) && (this.humain === null || e.humain === this.humain || e.autre === this.humain)
+    const gardes = nouveaux.filter((e) => (this.premieres || this.types.has(e.type)) && (this.humain === null || e.humain === this.humain || e.autre === this.humain)
       && (c === undefined || e.communaute === c || e.autreCommunaute === c) && (!this.significatifs || e.significatif) && (!this.premieres || e.premiere));
     if (gardes.length === 0) return;
     if (this.enPause) {
@@ -208,6 +210,19 @@ export class PanneauJournal {
     etiquettePremieres.append(premieres, " " + t("journal.premieres"));
     filtres.append(etiquettePremieres);
 
+    // Recherche d'un texte dans les lignes chargées (« Plus anciens » en charge d'autres).
+    const rechercheTexte = el("div", "ligne");
+    const texte = el("input");
+    texte.type = "search";
+    texte.placeholder = t("journal.rechercheTexte");
+    texte.title = t("journal.rechercheTexteAide");
+    texte.maxLength = 60;
+    texte.addEventListener("input", () => {
+      this.texte = sansAccents(texte.value.trim());
+      this.dessinerListe();
+    });
+    rechercheTexte.append(texte);
+
     const recherche = el("div", "ligne");
     const champ = el("input");
     champ.type = "search";
@@ -239,7 +254,7 @@ export class PanneauJournal {
       this.evenements.push(...anciens);
       this.dessinerListe();
     });
-    r.append(tete, filtres, recherche, suivi, zone, plus);
+    r.append(tete, filtres, rechercheTexte, recherche, suivi, zone, plus);
   }
 
   /** Bouton de pause : ⏸ en direct ; en pause, ▶ et le nombre d'événements arrivés depuis. */
@@ -265,13 +280,19 @@ export class PanneauJournal {
       suivi.replaceChildren(t("journal.chronologie", { nom: this.communaute.nom, nomMin: `${this.communaute.nom.charAt(0).toLowerCase()}${this.communaute.nom.slice(1)}` }), arreter);
     }
     const zone = this.racine.querySelector(".evenements")!;
-    zone.replaceChildren(...this.evenements.map((e) => {
+    const visibles = this.texte === "" ? this.evenements : this.evenements.filter((e) => sansAccents(e.texte).includes(this.texte));
+    zone.replaceChildren(...visibles.map((e) => {
       const li = ligneEvenement(e);
       li.title = t("journal.ouvrirFiche");
       li.addEventListener("click", () => this.ouvrirFiche(e.humain));
       return li;
     }));
-    if (this.evenements.length === 0) zone.append(el("li", "discret", this.humain === -1 ? t("journal.aucunHumain") : t("journal.aucun")));
+    if (visibles.length === 0) zone.append(el("li", "discret", this.humain === -1 ? t("journal.aucunHumain") : t("journal.aucun")));
     this.racine.querySelector<HTMLButtonElement>(".plus")!.hidden = !this.plusAncien || this.evenements.length < 100;
   }
+}
+
+/** Minuscules sans accents, pour chercher « premiere » comme « Première ». */
+function sansAccents(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
