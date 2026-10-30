@@ -178,4 +178,27 @@ public sealed class CuivreTests(ITestOutputHelper sortie)
         Assert.True(t.Fondue);
         Assert.Equal(Structure.Metal, t.Produit.Structure);
     }
+
+    /// <summary>
+    /// Sur un gisement de pierre verte qui affleure et qu'elle connaît, une curieuse finit par en ramasser un morceau, une seule
+    /// fois ; celle qui ne le connaît pas n'y touche pas.
+    /// </summary>
+    [Fact]
+    public void PierreVerte_Ramassee_SurUnGisementConnu()
+    {
+        var (carte, g) = Enumerable.Range(1, 20).Select(graine => GenerateurContinent.Generer((ulong)graine))
+            .SelectMany(m => m.Terrain.Gisements.Where(x => x.Profondeur == Enfouissement.Affleurant && x.Type == Gite.Malachite).Select(x => (m, x)))
+            .First();
+        var c = new Comportement(carte, new Ecosysteme(carte), new Alea(3)) { Social = new VieSociale(new Alea(1)), Generation = 2 };
+        var inconnue = Fondeur(g.X, g.Y);
+        var h = Fondeur(g.X, g.Y);
+        h.Memoire.Retenir(TypeLieu.Gisement, g.X, g.Y, 0);
+        var pas = 0;
+        while (h.Objets.Count == 0 && pas++ < 2000) c.RamasserUnePierre(h);
+        for (var i = 0; i < 2000; i++) { c.RamasserUnePierre(h); c.RamasserUnePierre(inconnue); }
+        sortie.WriteLine($"ramassée après {pas} pas");
+        var morceau = Assert.Single(h.Objets);
+        Assert.True(Substance.Lire(morceau.Pieces)!.Part(Phase.Malachite) > 0.1);
+        Assert.Empty(inconnue.Objets);
+    }
 }

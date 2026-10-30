@@ -1,3 +1,4 @@
+using Monde.Simulation.Chimie;
 using Monde.Simulation.Nature;
 using Monde.Simulation.Temps;
 
@@ -72,5 +73,56 @@ public sealed partial class Comportement
         var cle = g.Profondeur == Enfouissement.Affleurant ? $"gis.vu.{quoi}" : $"gis.indice.{quoi}";
         Noter(_maintenant, TypeEvenement.Decouverte, h, null, new Recit(cle, ("h", h), ("x", g.X), ("y", g.Y)), significatif: !connu);
         h.Memoire.Penser(_maintenant, new Recit($"gis.pense.{quoi}"));
+        // Une pierre qui attire l'œil, on la ramasse souvent sur-le-champ.
+        if (AvecLaMatiere && g.Profondeur == Enfouissement.Affleurant && Attrait(g.Type) is var attrait && attrait > 0 && PeutEmporter(h, g)
+            && alea.Reel() < attrait * (0.2 + h.Personnalite.Ouverture) * 0.6)
+            Emporter(h, g);
+    }
+
+    /// <summary>
+    /// Ce qui attire la main dans un gisement qui affleure : la pierre verte et le cuivre qui luit, l'or, plus que les graviers
+    /// noirs de l'étain. On ramassait les pierres colorées pour le pigment et la parure bien avant d'en tirer le métal : perles
+    /// de malachite de Shanidar, vers 10 000 ans (Solecki, 1969), pigments verts du Néolithique.
+    /// </summary>
+    private static double Attrait(Gite type) => type switch
+    {
+        Gite.Malachite => 0.8,
+        Gite.CuivreNatif => 0.9,
+        Gite.Or => 0.9,
+        Gite.Cassiterite => 0.3,
+        _ => 0,
+    };
+
+    /// <summary>
+    /// Sur un gisement qu'il connaît et qui affleure, un curieux ramasse parfois un morceau de la pierre et l'emporte (mondes où
+    /// la matière a sa chimie). C'est elle qu'il frappera, mêlera, mettra au feu, loin du gisement.
+    /// </summary>
+    internal void RamasserUnePierre(Humain h)
+    {
+        if (!AvecLaMatiere || h.Activite == Activite.Dormir || h.CaptifDe != 0) return;
+        if (carte.Terrain.GisementA(h.X, h.Y) is not { Profondeur: Enfouissement.Affleurant } g || Attrait(g.Type) is var attrait && attrait <= 0) return;
+        if (h.AgeEnAnnees(_maintenant) < h.AgeAutonomie || !h.Memoire.Lieux.Exists(l => l.Type == TypeLieu.Gisement && Math.Max(Math.Abs(l.X - g.X), Math.Abs(l.Y - g.Y)) < 3)) return;
+        if (!PeutEmporter(h, g)) return;
+        // Une chance sur vingt environ par heure passée là, pour un esprit ouvert.
+        var heure = 0.05 * attrait * (0.2 + h.Personnalite.Ouverture);
+        var pas = MondeSimule.SecondesParPas / (double)Calendrier.SecondesParHeure;
+        if (alea.Reel() >= 1 - Math.Pow(1 - heure, pas)) return;
+        Emporter(h, g);
+    }
+
+    /// <summary>A-t-il la place, et pas déjà un morceau de cette pierre ?</summary>
+    private static bool PeutEmporter(Humain h, Gisement g)
+    {
+        if (h.Objets.Count >= ObjetsMax) return false;
+        var phase = g.Type is Gite.CuivreNatif ? Phase.Cuivre : g.Type is Gite.Malachite ? Phase.Malachite : (Phase?)null;
+        return !h.Objets.Exists(o => o.Matiere == Matiere.Substance && Substance.Lire(o.Pieces) is { } x
+                                     && (phase is { } p ? x.Part(p) > 0.1 : x.Structure == Structure.Roche));
+    }
+
+    private void Emporter(Humain h, Gisement g)
+    {
+        var morceau = Matieres.Minerai(g.Type) with { Masse = 0.1 + 0.3 * alea.Reel() };
+        Prendre(h, new Objet(Matiere.Substance, 0.5, 1, Pieces: morceau.Arrondie.Signature));
+        if (JournalQuotidien) Noter(_maintenant, TypeEvenement.Pensee, h, null, new Recit("gis.ramasse", ("h", h), ("a", Perception.Nom(morceau))));
     }
 }

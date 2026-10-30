@@ -121,6 +121,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         _gueMax = GueMax(h);
         Ramasser(h);
         Remarquer(h);
+        RamasserUnePierre(h);
         RegarderLeLarge(h, tous);
         RencontrerOutremer(h, tous);
         ObserverLeFeu(h, tous);

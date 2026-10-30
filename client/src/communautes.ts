@@ -128,6 +128,20 @@ export function courbe(tailles: Taille[]): SVGSVGElement {
   return svg;
 }
 
+/** Listes déroulantes de la section Langue restées ouvertes : la fiche se redessine à chaque nouvelle, elles ne doivent pas se refermer. */
+const languesOuvertes = new Set<string>();
+
+function deroulante(cle: string, titre: string): HTMLDetailsElement {
+  const d = el("details");
+  d.open = languesOuvertes.has(cle);
+  d.append(el("summary", undefined, titre));
+  d.addEventListener("toggle", () => {
+    if (d.open) languesOuvertes.add(cle);
+    else languesOuvertes.delete(cle);
+  });
+  return d;
+}
+
 /** Section « Langue » : comment on y parle, ses étapes, ses mots traduits, son histoire, les langues voisines et ses interprètes. */
 export function blocLangue(bloc: HTMLElement, l: Langue, ouvrirFiche: (id: number) => void): void {
   bloc.append(el("h3", undefined, t("langage.titre")));
@@ -153,8 +167,7 @@ export function blocLangue(bloc: HTMLElement, l: Langue, ouvrirFiche: (id: numbe
   }
   bloc.append(p);
   if (l.lexique.length > 0) {
-    const mots = el("details");
-    mots.append(el("summary", undefined, t("langage.mots", { n: l.nombreDeMots })));
+    const mots = deroulante("mots", t("langage.mots", { n: l.nombreDeMots }));
     const ul = el("ul", "liste mots");
     for (const m of l.lexique) {
       const li = el("li");
@@ -166,8 +179,7 @@ export function blocLangue(bloc: HTMLElement, l: Langue, ouvrirFiche: (id: numbe
     bloc.append(mots);
   }
   if (l.histoire.length > 0) {
-    const histoire = el("details");
-    histoire.append(el("summary", undefined, t("langage.histoire")));
+    const histoire = deroulante("histoire", t("langage.histoire"));
     const ul = el("ul", "liste");
     for (const x of l.histoire) {
       const li = el("li");
