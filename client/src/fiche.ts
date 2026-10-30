@@ -24,6 +24,8 @@ interface Evenement {
   significatif: boolean;
   /** Une première fois, au monde ou pour une communauté (jamais effacée). */
   premiere?: boolean;
+  /** Première fois tenue par le monde : 1 au monde, 2 pour la communauté, 3 les deux (0 : aucune). */
+  premiereDe?: number;
   /** Karma gagné ou perdu par cet acte (regard de l'Entité), par l'humain et par l'autre. */
   karma?: number;
   karmaAutre?: number;
@@ -942,6 +944,12 @@ export function ligneEvenement(e: Evenement): HTMLElement {
   if (e.ancien) li.title = t("evenement.ancien");
   li.append(el("span", "date", e.date));
   if (e.significatif) li.append(el("span", "etoile", " ★"));
+  if (e.premiereDe) {
+    const cle = e.premiereDe === 3 ? "evenement.premiere.deux" : e.premiereDe === 1 ? "evenement.premiere.monde" : "evenement.premiere.communaute";
+    const p = el("span", "premiere", " " + t(cle));
+    p.title = t("evenement.premiereAide");
+    li.append(p);
+  }
   li.append(" ", ...texteAvecLiens(e));
   if (e.origine === "entite") li.append(el("span", "entite", " " + t("evenement.entite")));
   const karmas: string[] = [];

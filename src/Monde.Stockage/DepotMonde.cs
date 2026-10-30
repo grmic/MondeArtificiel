@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 41;
+    public const int VersionSchema = 42;
 
     private readonly string _connexion;
 
@@ -598,6 +598,8 @@ public sealed partial class DepotMonde
         if (actuelle < 40) MigrerVersion40(connexion, transaction);
         // Version 41 : part du charbon de bois dans ce que brûle un foyer.
         if (actuelle < 41) MigrerVersion41(connexion, transaction);
+        // Version 42 : premières fois du monde et des communautés (marque sur la ligne du journal, ce qui est déjà arrivé).
+        if (actuelle < 42) MigrerVersion42(connexion, transaction);
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """
@@ -936,6 +938,7 @@ public sealed partial class DepotMonde
 
         commande.CommandText = "SELECT max(coalesce((SELECT max(id) FROM journal), 0), coalesce((SELECT max(dernier) FROM journal_blocs), 0)) + 1;";
         etat = etat with { ProchainIdJournal = Convert.ToInt64(commande.ExecuteScalar()) };
+        etat = etat with { Premieres = LirePremieres(connexion) };
         return humains.Count > 0 ? etat with { Humains = humains } : etat;
     }
 
@@ -1048,7 +1051,7 @@ public sealed partial class DepotMonde
         if (remplacer)
         {
             Executer(connexion, transaction,
-                "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; DELETE FROM journal_blocs; DELETE FROM journal_blocs_cles; DELETE FROM journal_suivis; DELETE FROM journal_purge; " +
+                "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; DELETE FROM journal_blocs; DELETE FROM journal_blocs_cles; DELETE FROM journal_suivis; DELETE FROM journal_purge; DELETE FROM premieres; " +
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
@@ -1247,6 +1250,8 @@ public sealed partial class DepotMonde
         if (etat.Offenses is { } offensesAEnregistrer) EnregistrerOffenses(connexion, transaction, offensesAEnregistrer);
         if (etat.JournalNonEnregistre is { Count: > 0 } journal) EnregistrerJournal(connexion, transaction, journal, formes);
         if (etat.ArchivesNonEnregistrees is { Count: > 0 } archives) EnregistrerArchives(connexion, transaction, archives);
+        // Un monde remplacé enregistre tout ce qu'il sait déjà ; sinon, ce qui est arrivé depuis la dernière sauvegarde.
+        if ((remplacer ? etat.Premieres : etat.PremieresNonEnregistrees) is { Count: > 0 } premieres) EnregistrerPremieres(connexion, transaction, premieres);
         formes.Enregistrer(connexion, transaction);
 
         transaction.Commit();
@@ -1389,15 +1394,15 @@ public sealed partial class DepotMonde
         // INSERT OR IGNORE : un événement déjà enregistré (même numéro) n'est pas dupliqué.
         using var commande = Preparer(connexion, transaction,
             """
-            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs)
-            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac, $si, $k, $ka, $cl, $pa);
+            INSERT OR IGNORE INTO journal (id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs, premiere)
+            VALUES ($i, $s, $t, $h, $a, $x, $o, $c, $co, $ac, $si, $k, $ka, $cl, $pa, $pr);
             """,
-            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac", "$si", "$k", "$ka", "$cl", "$pa");
+            "$i", "$s", "$t", "$h", "$a", "$x", "$o", "$c", "$co", "$ac", "$si", "$k", "$ka", "$cl", "$pa", "$pr");
         foreach (var e in journal)
         {
             var (texte, forme, valeurs) = formes.Colonnes(e.Recit, e.Brut);
             Lancer(commande, e.Id, e.Secondes, (int)e.Type, e.HumainId, e.AutreId, texte, (int)e.Origine, e.CauseId,
-                e.CommunauteId, e.AutreCommunauteId, e.Significatif, e.Karma, e.KarmaAutre, forme, valeurs);
+                e.CommunauteId, e.AutreCommunauteId, e.Significatif, e.Karma, e.KarmaAutre, forme, valeurs, (int)e.Premiere);
         }
     }
 

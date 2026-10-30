@@ -222,7 +222,8 @@ public sealed class ServiceMonde
             Depot.Enregistrer(etat);
             // Les catastrophes terminées et enregistrées quittent la mémoire du monde (elles restent dans la base).
             var terminees = (etat.Catastrophes ?? []).Where(c => !c.Active).Select(c => c.Id).ToHashSet();
-            monde.MarquerJournalEnregistre(etat.JournalNonEnregistre?.Count ?? 0, etat.ArchivesNonEnregistrees?.Count ?? 0, terminees);
+            monde.MarquerJournalEnregistre(etat.JournalNonEnregistre?.Count ?? 0, etat.ArchivesNonEnregistrees?.Count ?? 0, terminees,
+                etat.PremieresNonEnregistrees?.Count ?? 0);
         }
     }
 

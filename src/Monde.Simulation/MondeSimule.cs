@@ -25,6 +25,12 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Numéro que portera le prochain événement du journal.</summary>
     public long ProchainIdJournal { get; init; } = 1;
 
+    /// <summary>Premières fois déjà arrivées, au monde et à chaque communauté (voir <see cref="RegistrePremieres"/>).</summary>
+    public IReadOnlyList<string>? Premieres { get; init; }
+
+    /// <summary>Premières fois arrivées depuis la dernière sauvegarde (elles s'ajoutent à celles enregistrées).</summary>
+    public IReadOnlyList<string>? PremieresNonEnregistrees { get; init; }
+
     /// <summary>Communautés, actives ou dispersées (numérotées de 1 à N).</summary>
     public IReadOnlyList<Communaute>? Communautes { get; init; }
 
@@ -149,6 +155,7 @@ public sealed class MondeSimule
     private readonly List<ArchiveCommunaute> _archivesNonEnregistrees = [];
     private readonly Queue<EvenementJournal> _journalRecent = new();
     private readonly Numeroteur _numeros = new();
+    private readonly RegistrePremieres _premieres;
 
     /// <summary>Nombre d'événements récents gardés en mémoire pour les navigateurs (hors événements fréquents).</summary>
     public const int TailleJournalRecent = 500;
@@ -182,6 +189,7 @@ public sealed class MondeSimule
         _alea = etat.Alea is { } a ? Alea.Depuis(a, commun: true) : new Alea(etat.Graine ^ 0x534D554C4154UL) { Commun = true };
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
         _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
+        _premieres = new RegistrePremieres(etat.Premieres);
         _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros, Carte = carte };
         _social.ChargerGuerres(etat.Guerres ?? []);
         _social.ChargerMandats(etat.Mandats ?? []);
@@ -268,6 +276,8 @@ public sealed class MondeSimule
                     Alea = _alea.Etat,
                     JournalNonEnregistre = _journalNonEnregistre.ToList(),
                     ProchainIdJournal = _numeros.Prochain,
+                    Premieres = [.. _premieres.Passees],
+                    PremieresNonEnregistrees = [.. _premieres.NonEnregistrees],
                     Communautes = _communautes.Select(c => c.Copier()).ToList(),
                     Pluies = _ecosysteme.Pluies.ToArray(),
                     Relations = _social.Relations,
@@ -304,10 +314,11 @@ public sealed class MondeSimule
     /// Après une sauvegarde : les <paramref name="nombre"/> premiers événements et les <paramref name="archives"/>
     /// premiers instantanés en attente sont enregistrés, ainsi que les catastrophes terminées <paramref name="terminees"/>.
     /// </summary>
-    public void MarquerJournalEnregistre(int nombre, int archives = 0, IReadOnlySet<long>? terminees = null)
+    public void MarquerJournalEnregistre(int nombre, int archives = 0, IReadOnlySet<long>? terminees = null, int premieres = 0)
     {
         lock (_verrou)
         {
+            _premieres.Enregistrees(premieres);
             _journalNonEnregistre.RemoveRange(0, Math.Min(nombre, _journalNonEnregistre.Count));
             _archivesNonEnregistrees.RemoveRange(0, Math.Min(archives, _archivesNonEnregistrees.Count));
             if (terminees is { Count: > 0 }) _catastrophes.Oublier(terminees, _secondes);
@@ -438,11 +449,22 @@ public sealed class MondeSimule
             }
             if (communaute != 0) numerote = numerote with { CommunauteId = communaute };
         }
+        numerote = _premieres.Marquer(numerote, TypeDeCatastrophe);
         _numeros.Prochain = Math.Max(_numeros.Prochain, numerote.Id + 1);
         _journalNonEnregistre.Add(numerote);
         if (TypesEvenement.EstFrequent(numerote.Type)) return;
         _journalRecent.Enqueue(numerote);
         if (_journalRecent.Count > TailleJournalRecent) _journalRecent.Dequeue();
+    }
+
+    /// <summary>Types des catastrophes déjà vues, par numéro (une catastrophe finie et enregistrée quitte la mémoire du monde).</summary>
+    private readonly Dictionary<long, TypeCatastrophe> _typesCatastrophes = [];
+
+    /// <summary>Le type de la catastrophe annoncée par cet événement (null : ce n'en est pas une).</summary>
+    private TypeCatastrophe? TypeDeCatastrophe(long id)
+    {
+        if (_catastrophes.Trouver(id) is { } c) return _typesCatastrophes[id] = c.Type;
+        return _typesCatastrophes.TryGetValue(id, out var t) ? t : null;
     }
 
     /// <summary>Copie des communautés (actives et dispersées).</summary>

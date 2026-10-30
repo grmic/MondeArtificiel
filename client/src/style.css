@@ -228,6 +228,7 @@ button.cause { background: none; border: none; color: #7fb3ff; cursor: pointer; 
 /* Événements significatifs et jardin secret */
 .evenement.significatif { font-weight: 600; }
 .evenement .etoile { color: #e0a020; }
+.evenement .premiere { color: #2f8a76; font-size: 0.85em; font-weight: 600; }
 .puce.significatifs { font-weight: 600; }
 .liste.jardin li { margin-bottom: 2px; }
 h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }

@@ -119,6 +119,12 @@ public sealed record EvenementJournal(long Secondes, TypeEvenement Type, int Hum
     /// </summary>
     public double Karma { get; init; }
     public double KarmaAutre { get; init; }
+
+    /// <summary>
+    /// Première fois que cela arrive (voir <see cref="PremieresFois"/>) : <see cref="PremieresFois.AuMonde"/> au monde,
+    /// <see cref="PremieresFois.PourLaCommunaute"/> pour la communauté, ou les deux (0 : rien de nouveau).
+    /// </summary>
+    public byte Premiere { get; init; }
 }
 
 /// <summary>

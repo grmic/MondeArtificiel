@@ -51,24 +51,24 @@ public sealed partial class DepotMonde
 
     /// <summary>Une ligne du journal telle qu'elle est rangée dans un paquet (le récit se reconstitue à la lecture).</summary>
     private readonly record struct LigneJournal(long Id, long Secondes, byte Type, int Humain, int Autre, string Texte, byte Origine,
-        long Cause, int Communaute, int AutreCommunaute, bool Significatif, double Karma, double KarmaAutre, int? Forme, string? Valeurs);
+        long Cause, int Communaute, int AutreCommunaute, bool Significatif, double Karma, double KarmaAutre, int? Forme, string? Valeurs, byte Premiere = 0);
 
     /// <summary>
     /// Condition SQL d'une première fois (voir <see cref="PremieresFois"/>) : une ligne qui la remplit n'est jamais effacée ni rangée.
     /// Les clés sont des constantes du code, jamais une saisie.
     /// </summary>
     internal static readonly string PremiereSql =
-        $"(coalesce(forme, 0) IN (SELECT id FROM recits_formes WHERE cle IN ({Liste(PremieresFois.Toujours)})) " +
+        $"(premiere > 0 OR coalesce(forme, 0) IN (SELECT id FROM recits_formes WHERE cle IN ({Liste(PremieresFois.Toujours)})) " +
         $"OR significatif = 1 AND coalesce(forme, 0) IN (SELECT id FROM recits_formes WHERE cle IN ({Liste(PremieresFois.SiMarquants)})))";
 
     private static string Liste(IEnumerable<string> cles) => string.Join(", ", cles.Select(c => $"'{c}'"));
 
     private const string ColonnesJournal =
-        "id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs";
+        "id, secondes, type, humain, autre, texte, origine, cause, communaute, autre_communaute, significatif, karma, karma_autre, forme, valeurs, premiere";
 
     private static LigneJournal LireLigne(SqliteDataReader l) => new(l.GetInt64(0), l.GetInt64(1), l.GetByte(2), l.GetInt32(3), l.GetInt32(4),
         l.GetString(5), l.GetByte(6), l.GetInt64(7), l.GetInt32(8), l.GetInt32(9), l.GetBoolean(10), l.GetDouble(11), l.GetDouble(12),
-        l.IsDBNull(13) ? null : l.GetInt32(13), l.IsDBNull(14) ? null : l.GetString(14));
+        l.IsDBNull(13) ? null : l.GetInt32(13), l.IsDBNull(14) ? null : l.GetString(14), l.GetByte(15));
 
     private static EvenementJournal VersEvenement(LigneJournal x, FormesRecits formes)
     {
@@ -76,7 +76,7 @@ public sealed partial class DepotMonde
         return new EvenementJournal(x.Secondes, (TypeEvenement)x.Type, x.Humain, x.Autre, recit is null ? x.Texte : null, (Origine)x.Origine)
         {
             Recit = recit, Id = x.Id, CauseId = x.Cause, CommunauteId = x.Communaute, AutreCommunauteId = x.AutreCommunaute,
-            Significatif = x.Significatif, Karma = x.Karma, KarmaAutre = x.KarmaAutre,
+            Significatif = x.Significatif, Karma = x.Karma, KarmaAutre = x.KarmaAutre, Premiere = x.Premiere,
         };
     }
 
@@ -337,8 +337,8 @@ public sealed partial class DepotMonde
             var formes = FormesRecits.Lire(connexion, transaction);
             if (debut is { } d) Executer(connexion, transaction, $"DELETE FROM journal WHERE secondes < {d};");
             if (fin is { } f) Executer(connexion, transaction, $"DELETE FROM journal WHERE secondes > {f};");
-            using (var ajout = Preparer(connexion, transaction, $"INSERT INTO journal ({ColonnesJournal}) VALUES ($0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);",
-                       [.. Enumerable.Range(0, 15).Select(i => $"${i}")]))
+            using (var ajout = Preparer(connexion, transaction, $"INSERT INTO journal ({ColonnesJournal}) VALUES ($0, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);",
+                       [.. Enumerable.Range(0, 16).Select(i => $"${i}")]))
             using (var blocs = connexion.CreateCommand())
             {
                 blocs.Transaction = transaction;
@@ -352,7 +352,7 @@ public sealed partial class DepotMonde
                     {
                         if (x.Secondes < (debut ?? long.MinValue) || x.Secondes > (fin ?? long.MaxValue)) continue;
                         Lancer(ajout, x.Id, x.Secondes, (int)x.Type, x.Humain, x.Autre, x.Texte, (int)x.Origine, x.Cause, x.Communaute, x.AutreCommunaute,
-                            x.Significatif, x.Karma, x.KarmaAutre, (object?)x.Forme ?? DBNull.Value, (object?)x.Valeurs ?? DBNull.Value);
+                            x.Significatif, x.Karma, x.KarmaAutre, (object?)x.Forme ?? DBNull.Value, (object?)x.Valeurs ?? DBNull.Value, (int)x.Premiere);
                     }
                 }
             }
