@@ -487,6 +487,8 @@ public sealed partial class Comportement
         VoirLEnduit(h, tous);
         if (h.Savoirs.Count == 0 || alea.Reel() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
         if (Chauler(h, tous)) return true;
+        // Un peu faim, au feu, et l'on sait cuire dans l'eau : on met des racines à bouillir sans attendre d'être affamé.
+        if (h.Faim > 30 && SavoirDeLaCuisine(h) is not null && Cuisiner(h, tous)) return true;
         var feu = Installations.FoyerEn(h.X, h.Y) is not null || Installations.BraiseEn(h.X, h.Y) is not null;
         // Le pot modelé attend d'être sec : le patient attend qu'il le soit tout à fait, l'impatient le met au feu plus tôt.
         if (feu)

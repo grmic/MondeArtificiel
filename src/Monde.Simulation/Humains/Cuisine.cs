@@ -148,6 +148,21 @@ public sealed partial class Comportement
         return Effet.Transformation;
     }
 
+    /// <summary>
+    /// Il a faim, il est au feu, et il sait déjà la moitié de la chose : que son pot garde l'eau, ou que des pierres chaudes font
+    /// bouillir l'eau. Un esprit ingénieux et ouvert rapproche parfois les deux et y met les racines qu'il a sous la main. Vrai
+    /// s'il a essayé.
+    /// </summary>
+    private bool Essayer(Humain h, IReadOnlyList<Humain> tous)
+    {
+        var pot = h.Objets.Exists(o => o.Plein && PotEtanche(o)) && PeutBouillir(h, false);
+        var pierres = !pot && h.Savoirs.Exists(s => s.Geste == Geste.Plonger && s.Effet == Effet.Transformation && LireRecette(s.Pieces) is { } r
+            && r.Changements.Contains("bout")) && PeutBouillir(h, true);
+        if (!pot && !pierres || alea.Reel() >= 0.05 * (0.3 + Ingeniosite(h)) * (0.5 + h.Personnalite.Ouverture)) return false;
+        Bouillir(h, pierres, OrigineSavoir.Essai, tous);
+        return true;
+    }
+
     /// <summary>Ses petits enfants (sevrés, pas encore autonomes) qui ont faim, près du feu.</summary>
     private List<Humain> PetitsAuFeu(Humain h, IReadOnlyList<Humain> tous)
     {
@@ -169,7 +184,8 @@ public sealed partial class Comportement
     /// </summary>
     internal bool Cuisiner(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (!AvecLaMatiere || SavoirDeLaCuisine(h) is null) return false;
+        if (!AvecLaMatiere) return false;
+        if (SavoirDeLaCuisine(h) is null) return Essayer(h, tous);
         var pot = SavoirDeLaCuisine(h, false) is not null && PeutBouillir(h, false);
         if (!pot && (SavoirDeLaCuisine(h, true) is null || !PeutBouillir(h, true))) return false;
         Bouillir(h, !pot, OrigineSavoir.Essai, tous);
