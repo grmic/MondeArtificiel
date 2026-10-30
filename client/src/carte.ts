@@ -114,27 +114,115 @@ export async function chargerCarte(reglages?: Record<string, number | null>): Pr
   };
 }
 
-/** Dessine la carte dans un canvas, un pixel par tuile, avec un léger ombrage du relief. */
-function dessinerImage(carte: Carte): HTMLCanvasElement {
+/** Biomes d'eau (océan, eau peu profonde, lac, rivière) : le rivage passe entre eux et les terres. */
+const EAU = [true, true, true, true];
+
+/**
+ * Pixels de l'image par case : assez pour des rivages courbes, sans dépasser 4 096 pixels de côté (limite sûre des cartes
+ * graphiques) ni environ 6 millions de pixels (une seconde de dessin au plus sur un ordinateur courant). Un aperçu, redessiné
+ * à chaque réglage, se contente de 4.
+ */
+export function facteurImage(carte: Carte, apercu = false): number {
+  const cote = Math.floor(4096 / Math.max(carte.largeur, carte.hauteur));
+  const budget = Math.floor(Math.sqrt(6_000_000 / (carte.largeur * carte.hauteur)));
+  return Math.max(1, Math.min(apercu ? 4 : 8, cote, budget));
+}
+
+/** Bruit fixe entre 0 et 1 pour un point entier (même dessin à chaque affichage). */
+function hachage(x: number, y: number): number {
+  let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Bruit de valeur lissé, de période « pas » en pixels. */
+function bruitLisse(x: number, y: number, pas: number): number {
+  const fx = x / pas, fy = y / pas;
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const u = fx - x0, v = fy - y0;
+  const su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
+  const a = hachage(x0, y0), b = hachage(x0 + 1, y0), c = hachage(x0, y0 + 1), d = hachage(x0 + 1, y0 + 1);
+  return a + (b - a) * su + (c - a) * sv + (a - b - c + d) * su * sv;
+}
+
+/**
+ * Dessine la carte dans un canvas, « facteur » pixels par case. Entre les centres des cases, l'altitude, la part d'eau
+ * et les couleurs sont interpolées : les rivages deviennent des courbes, les biomes voisins se fondent, et l'ombrage du
+ * relief (lumière du nord-ouest) suit la pente interpolée. Un léger grain évite les aplats. Facteur 1 : une case, un pixel.
+ */
+function dessinerImage(carte: Carte, facteur = facteurImage(carte)): HTMLCanvasElement {
+  const { largeur: l, hauteur: h } = carte;
   const canvas = document.createElement("canvas");
-  canvas.width = carte.largeur;
-  canvas.height = carte.hauteur;
+  canvas.width = l * facteur;
+  canvas.height = h * facteur;
   const ctx = canvas.getContext("2d")!;
-  const image = ctx.createImageData(carte.largeur, carte.hauteur);
-  for (let y = 0; y < carte.hauteur; y++) {
-    for (let x = 0; x < carte.largeur; x++) {
-      const i = y * carte.largeur + x;
-      const [r, g, b] = COULEURS[carte.biomes[i]] ?? [255, 0, 255];
-      let lumiere = 1;
-      if (carte.altitudes[i] >= carte.niveauMer && x > 0 && y > 0) {
-        // Lumière venant du nord-ouest : une pente qui lui fait face est plus claire.
-        const pente = carte.altitudes[i] - carte.altitudes[i - carte.largeur - 1];
-        lumiere = Math.min(1.25, Math.max(0.75, 1 + pente * 0.04));
+  const image = ctx.createImageData(canvas.width, canvas.height);
+  const eau = new Float32Array(l * h);
+  for (let i = 0; i < l * h; i++) eau[i] = EAU[carte.biomes[i]] ? 1 : 0;
+  const alt = carte.altitudes;
+  const case_ = (x: number, y: number) => Math.min(h - 1, Math.max(0, y)) * l + Math.min(l - 1, Math.max(0, x));
+  /** Altitude interpolée au point (cx, cy) en cases, centres des cases aux demi-entiers. */
+  const altitude = (cx: number, cy: number) => {
+    const fx = cx - 0.5, fy = cy - 0.5;
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), u = fx - x0, v = fy - y0;
+    const a = alt[case_(x0, y0)], b = alt[case_(x0 + 1, y0)], c = alt[case_(x0, y0 + 1)], d = alt[case_(x0 + 1, y0 + 1)];
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+  };
+  const voisines = [0, 0, 0, 0];
+  const poids = [0, 0, 0, 0];
+  const RIVIERE = 3;
+  const biomes = carte.biomes;
+  for (let py = 0; py < canvas.height; py++) {
+    const cy = (py + 0.5) / facteur;
+    for (let px = 0; px < canvas.width; px++) {
+      const cx = (px + 0.5) / facteur;
+      // Point d'échantillonnage déplacé par deux bruits lisses (périodes de 4 et 1,5 cases, jusqu'à 0,7 case en tout) :
+      // les limites entre biomes ondulent au lieu de suivre les marches de la grille. L'ombrage du relief reste au point exact.
+      const sx = cx + (bruitLisse(px, py, facteur * 4) - 0.5) * 0.9 + (bruitLisse(px, py, facteur * 1.5) - 0.5) * 0.5;
+      const sy = cy + (bruitLisse(px + 7919, py + 104729, facteur * 4) - 0.5) * 0.9 + (bruitLisse(px + 7919, py + 104729, facteur * 1.5) - 0.5) * 0.5;
+      const fx = sx - 0.5, x0 = Math.floor(fx), u = fx - x0;
+      const fy = sy - 0.5, y0 = Math.floor(fy), v = fy - y0;
+      voisines[0] = case_(x0, y0); voisines[1] = case_(x0 + 1, y0);
+      voisines[2] = case_(x0, y0 + 1); voisines[3] = case_(x0 + 1, y0 + 1);
+      poids[0] = (1 - u) * (1 - v); poids[1] = u * (1 - v); poids[2] = (1 - u) * v; poids[3] = u * v;
+      let partEau = 0;
+      for (let k = 0; k < 4; k++) partEau += poids[k] * eau[voisines[k]];
+      // Rivière qui passe en diagonale (deux cases de rivière en coin, deux terres) : on relie les deux centres d'un trait
+      // continu, sinon elle se dessinerait en chapelet de perles.
+      if (biomes[voisines[0]] === RIVIERE && biomes[voisines[3]] === RIVIERE && !eau[voisines[1]] && !eau[voisines[2]]) {
+        partEau = Math.max(partEau, 1 - Math.abs(u - v));
+      } else if (biomes[voisines[1]] === RIVIERE && biomes[voisines[2]] === RIVIERE && !eau[voisines[0]] && !eau[voisines[3]]) {
+        partEau = Math.max(partEau, 1 - Math.abs(u + v - 1));
       }
-      const p = i * 4;
-      image.data[p] = Math.min(255, r * lumiere);
-      image.data[p + 1] = Math.min(255, g * lumiere);
-      image.data[p + 2] = Math.min(255, b * lumiere);
+      // Un peu de bruit sur le seuil : le rivage ondule au lieu de suivre la grille.
+      const seuil = 0.5 + (bruitLisse(px, py, facteur * 1.5) - 0.5) * 0.3;
+      // Part d'eau du pixel : 0 en terre, 1 en eau, fondu sur environ un pixel au rivage (bord sans marches au zoom).
+      const t = Math.min(1, Math.max(0, (partEau - seuil) * facteur * 1.5 + 0.5));
+      let tr = 0, tg = 0, tb = 0, tt = 0, er = 0, eg = 0, eb = 0, et = 0;
+      for (let k = 0; k < 4; k++) {
+        if (poids[k] === 0) continue;
+        const [cr, cg, cb] = COULEURS[carte.biomes[voisines[k]]] ?? [255, 0, 255];
+        if (eau[voisines[k]] === 1) { er += cr * poids[k]; eg += cg * poids[k]; eb += cb * poids[k]; et += poids[k]; }
+        else { tr += cr * poids[k]; tg += cg * poids[k]; tb += cb * poids[k]; tt += poids[k]; }
+      }
+      // Une seule sorte de case autour : l'autre couleur reprend la même (rien à fondre).
+      if (tt === 0) { tr = er; tg = eg; tb = eb; tt = et; }
+      if (et === 0) { er = tr; eg = tg; eb = tb; et = tt; }
+      let lumiere = 1;
+      if (t < 1) {
+        const pente = altitude(cx, cy) - altitude(cx - 1, cy - 1);
+        lumiere = Math.min(1.25, Math.max(0.75, 1 + pente * 0.04));
+        lumiere *= 0.95 + bruitLisse(px, py, Math.max(2, facteur * 0.6)) * 0.1;
+      }
+      const lumiereEau = 0.97 + bruitLisse(px, py, facteur * 3) * 0.06;
+      const terre = (1 - t) * lumiere, mer = t * lumiereEau;
+      const r = (tr / tt) * terre + (er / et) * mer;
+      const g = (tg / tt) * terre + (eg / et) * mer;
+      const b = (tb / tt) * terre + (eb / et) * mer;
+      const p = (py * canvas.width + px) * 4;
+      image.data[p] = Math.min(255, r);
+      image.data[p + 1] = Math.min(255, g);
+      image.data[p + 2] = Math.min(255, b);
       image.data[p + 3] = 255;
     }
   }
@@ -366,7 +454,8 @@ export class VueCarte {
 
   static async creer(hote: HTMLElement, surSurvol: (info: InfoTuile) => void): Promise<VueCarte> {
     const app = new Application();
-    await app.init({ resizeTo: window, background: "#0f1a2b", antialias: true });
+    // Résolution de l'écran (Retina, écrans 4K) : traits, cercles et carte nets ; autoDensity garde les mesures en pixels CSS.
+    await app.init({ resizeTo: window, background: "#0f1a2b", antialias: true, resolution: window.devicePixelRatio || 1, autoDensity: true });
     hote.appendChild(app.canvas);
     const vue = new VueCarte(app, surSurvol);
     // Barre d'échelle en bas à gauche : sa longueur suit le zoom.
@@ -431,9 +520,15 @@ export class VueCarte {
     this.monde.removeChildren();
     this.sprite?.texture.destroy(true);
 
-    const texture = Texture.from(dessinerImage(carte));
-    texture.source.scaleMode = "nearest"; // tuiles nettes au zoom
+    // Image lissée, plusieurs pixels par case, ramenée à l'échelle d'une case ; filtrage linéaire et mipmaps pour un
+    // rendu doux de près comme de loin.
+    const facteur = facteurImage(carte, apercu);
+    const texture = Texture.from(dessinerImage(carte, facteur));
+    texture.source.scaleMode = "linear";
+    texture.source.autoGenerateMipmaps = true;
+    texture.source.updateMipmaps();
     this.sprite = new Sprite(texture);
+    this.sprite.scale.set(1 / facteur);
     this.monde.addChild(this.sprite);
 
     this.marqueurs.removeChildren();
