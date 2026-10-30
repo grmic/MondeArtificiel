@@ -285,7 +285,7 @@ public sealed class ServiceMonde
         for (var k = 2; File.Exists(chemin); k++) chemin = Path.Combine(DossierAnalyses, $"{nom}-{k}.db");
         long? debut = anDebut is { } a ? (a - 1) * Calendrier.SecondesParAn : null;
         long? fin = anFin is { } b ? b * Calendrier.SecondesParAn - 1 : null;
-        var lignes = Depot.CopierPourAnalyse(chemin, rediger, debut, fin);
+        var lignes = Depot.CopierPourAnalyse(chemin, rediger, debut, fin, idee => Lib.Idee(idee, _monde.Flore));
         _journal.LogInformation("Copie pour analyse ({Lignes} lignes du journal) dans {Fichier}", lignes, chemin);
         return (chemin, lignes);
     }

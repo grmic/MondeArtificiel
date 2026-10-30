@@ -194,10 +194,22 @@ public sealed class JournalBaseTests(MondeAvecJournal monde) : IClassFixture<Mon
     {
         var archive = monde.Copie("archive-analyse");
         Archiver(archive, monde.Secondes - Calendrier.SecondesParAn / 2);
+        // L'histoire d'une langue : « eau » adopté puis déformé, « feu » oublié.
+        using (var x = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = archive.CheminFichier, Pooling = false }.ToString()))
+        {
+            x.Open();
+            using var c0 = x.CreateCommand();
+            c0.CommandText = """
+                INSERT INTO langue_histoire (communaute, rang, idee, forme, ancienne, signe, le, auteur, type, source, evenement) VALUES
+                (999, 0, 'eau', 'bado', NULL, 0, 0, 0, 0, 0, 0), (999, 1, 'eau', 'bada', 'bado', 0, 31104000, 0, 1, 0, 0),
+                (999, 2, 'feu', 'ki', NULL, 0, 0, 0, 0, 0, 0), (999, 3, 'feu', 'ki', NULL, 0, 0, 0, 4, 0, 0);
+                """;
+            c0.ExecuteNonQuery();
+        }
         var (table, archivees) = archive.CompterJournal();
         Assert.True(archivees > 0);
         var chemin = Path.Combine(monde.Dossier, "analyse.db");
-        var lignes = archive.CopierPourAnalyse(chemin, e => e.Recit?.Texte ?? e.Brut ?? "");
+        var lignes = archive.CopierPourAnalyse(chemin, e => e.Recit?.Texte ?? e.Brut ?? "", sens: i => i.ToUpperInvariant());
         Assert.Equal(table + archivees, lignes);
 
         using var connexion = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = chemin, Pooling = false }.ToString());
@@ -210,6 +222,14 @@ public sealed class JournalBaseTests(MondeAvecJournal monde) : IClassFixture<Mon
             Assert.Equal(lignes, l.GetInt64(0));
             Assert.Equal(lignes, l.GetInt64(1));
             Assert.Equal(0, l.GetInt64(2));
+        }
+        // Le lexique : les mots en usage, avec leur sens en clair.
+        c.CommandText = "SELECT sens, mot, depuis_an FROM lexique WHERE communaute = 999;";
+        using (var l = c.ExecuteReader())
+        {
+            Assert.True(l.Read());
+            Assert.Equal(("EAU", "bada", 2L), (l.GetString(0), l.GetString(1), l.GetInt64(2)));
+            Assert.False(l.Read());
         }
 
         // Une période : seulement ses lignes.

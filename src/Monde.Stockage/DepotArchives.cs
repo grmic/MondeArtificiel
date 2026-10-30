@@ -322,9 +322,12 @@ public sealed partial class DepotMonde
     /// Copie lisible par n'importe quel client SQL, pour analyser le monde : une copie du fichier où tout le journal (table
     /// et paquets) est remis en clair dans la table <c>journal</c>, avec la phrase rédigée par <paramref name="rediger"/>
     /// dans la colonne <c>texte_redige</c>. Avec <paramref name="debut"/> et <paramref name="fin"/> (secondes du monde),
-    /// seul le journal de cette période est gardé. Rend le nombre de lignes du journal copié.
+    /// seul le journal de cette période est gardé. Avec <paramref name="sens"/>, chaque mot (tables <c>mots</c> et
+    /// <c>langue_histoire</c>) reçoit son sens en clair (colonne <c>sens</c>), et la vue <c>lexique</c> donne les mots en usage
+    /// dans chaque communauté. Rend le nombre de lignes du journal copié.
     /// </summary>
-    public long CopierPourAnalyse(string chemin, Func<EvenementJournal, string> rediger, long? debut = null, long? fin = null)
+    public long CopierPourAnalyse(string chemin, Func<EvenementJournal, string> rediger, long? debut = null, long? fin = null,
+        Func<string, string>? sens = null)
     {
         CopierVers(chemin);
         var copie = new SqliteConnectionStringBuilder { DataSource = Path.GetFullPath(chemin), Mode = SqliteOpenMode.ReadWrite, Pooling = false }.ToString();
@@ -378,6 +381,7 @@ public sealed partial class DepotMonde
                     apres.Value = lus[^1].Id;
                 }
             }
+            if (sens is not null) Lexique(connexion, transaction, sens);
             transaction.Commit();
         }
         using (var connexion = new SqliteConnection(copie))
@@ -386,5 +390,39 @@ public sealed partial class DepotMonde
             Executer(connexion, null, "VACUUM;");
         }
         return lignes;
+    }
+
+    /// <summary>
+    /// Copie pour analyse : le sens en clair de chaque mot, et la vue <c>lexique</c> (le dernier état de chaque mot de chaque
+    /// communauté, les mots oubliés exceptés, avec le nom de la communauté et de l'auteur).
+    /// </summary>
+    private static void Lexique(SqliteConnection connexion, SqliteTransaction transaction, Func<string, string> sens)
+    {
+        Executer(connexion, transaction, "ALTER TABLE mots ADD COLUMN sens TEXT; ALTER TABLE langue_histoire ADD COLUMN sens TEXT;");
+        var idees = new List<string>();
+        using (var lire = connexion.CreateCommand())
+        {
+            lire.Transaction = transaction;
+            lire.CommandText = "SELECT idee FROM mots UNION SELECT idee FROM langue_histoire;";
+            using var l = lire.ExecuteReader();
+            while (l.Read()) idees.Add(l.GetString(0));
+        }
+        using (var ecrire = Preparer(connexion, transaction,
+                   "UPDATE mots SET sens = $s WHERE idee = $i; UPDATE langue_histoire SET sens = $s WHERE idee = $i;", "$s", "$i"))
+        {
+            foreach (var i in idees) Lancer(ecrire, sens(i), i);
+        }
+        Executer(connexion, transaction, $"""
+            CREATE VIEW lexique AS
+            SELECT h.communaute, c.nom AS nom_communaute, h.sens, h.forme AS mot,
+                   CASE h.signe WHEN 1 THEN 'signe' ELSE 'mot' END AS sorte,
+                   h.le / {Simulation.Temps.Calendrier.SecondesParAn} + 1 AS depuis_an, h.auteur, a.nom AS nom_auteur, h.idee
+            FROM langue_histoire h
+            JOIN (SELECT communaute, idee, signe, max(rang) AS rang FROM langue_histoire GROUP BY communaute, idee, signe) d
+                 ON d.communaute = h.communaute AND d.idee = h.idee AND d.signe = h.signe AND d.rang = h.rang
+            LEFT JOIN communautes c ON c.id = h.communaute
+            LEFT JOIN humains a ON a.id = h.auteur
+            WHERE h.type <> {(int)Simulation.Humains.ChangementMot.Oublie};
+            """);
     }
 }

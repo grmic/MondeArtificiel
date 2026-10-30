@@ -288,7 +288,7 @@
   "journalBase.confirmerPlus": "This change erases more of the journal, with no way back. Continue?",
   "journalBase.enregistre": "Setting saved; the journal is maintained in the background.",
   "journalBase.analyse": "Copy for analysis",
-  "journalBase.analyseAide": "A copy of the world readable by any SQL client: the whole journal is in plain form, archives included, with the written sentence in the texte_redige column. The world keeps running during the copy. Files go to the \"analyses\" folder, next to the backups.",
+  "journalBase.analyseAide": "A copy of the world readable by any SQL client: the whole journal is in plain form, archives included, with the written sentence in the texte_redige column; the lexique view gives the words in use in each community, with their meaning. The world keeps running during the copy. Files go to the \"analyses\" folder, next to the backups.",
   "journalBase.periode": "Years (optional)",
   "journalBase.debut": "from year",
   "journalBase.fin": "to year",

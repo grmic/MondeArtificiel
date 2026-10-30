@@ -76,7 +76,7 @@ Pour étudier le monde avec un client SQL externe (DB Browser for SQLite, DBeave
 2. Cliquez **Créer une copie pour analyse** : quelques minutes pour un gros monde, pendant lesquelles le monde continue de tourner.
 3. Le fichier arrive dans `mondes/analyses/`, nommé d'après l'année du monde et l'heure (`analyse-an893-20261025-174500.db`).
 
-Dans la copie, tout le journal est en clair, archives comprises, et la table `journal` a une colonne `texte_redige` qui contient la phrase telle que le jeu l'affiche. Ces copies ne servent qu'à lire : le jeu ne les restaure pas, et vous pouvez les effacer quand vous voulez.
+Dans la copie, tout le journal est en clair, archives comprises, et la table `journal` a une colonne `texte_redige` qui contient la phrase telle que le jeu l'affiche. Depuis la 0.32.5, les tables `mots` (les mots de chaque humain) et `langue_histoire` (l'histoire des mots de chaque communauté) y ont une colonne `sens`, le sens du mot en clair, dans la langue du jeu. La vue `lexique` donne les mots en usage dans chaque communauté, sans les mots oubliés : `SELECT nom_communaute, sens, mot, sorte, depuis_an, nom_auteur FROM lexique WHERE communaute = 12 ORDER BY sens;`. Les phrases que disent les humains ne sont pas enregistrées : seuls les mots le sont. Ces copies ne servent qu'à lire : le jeu ne les restaure pas, et vous pouvez les effacer quand vous voulez.
 
 ## Mises à jour et problèmes
 

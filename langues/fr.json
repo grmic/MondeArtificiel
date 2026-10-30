@@ -288,7 +288,7 @@
   "journalBase.confirmerPlus": "Ce changement efface davantage de journal, sans retour possible. Continuer ?",
   "journalBase.enregistre": "Réglage enregistré ; l'entretien du journal se fait en arrière-plan.",
   "journalBase.analyse": "Copie pour analyse",
-  "journalBase.analyseAide": "Copie du monde lisible par n'importe quel client SQL : tout le journal y est en clair, archives comprises, avec la phrase rédigée dans la colonne texte_redige. Le monde continue de tourner pendant la copie. Les fichiers vont dans le dossier « analyses », à côté des sauvegardes.",
+  "journalBase.analyseAide": "Copie du monde lisible par n'importe quel client SQL : tout le journal y est en clair, archives comprises, avec la phrase rédigée dans la colonne texte_redige ; la vue lexique donne les mots en usage dans chaque communauté, avec leur sens. Le monde continue de tourner pendant la copie. Les fichiers vont dans le dossier « analyses », à côté des sauvegardes.",
   "journalBase.periode": "Années (facultatif)",
   "journalBase.debut": "de l'an",
   "journalBase.fin": "à l'an",
