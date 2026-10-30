@@ -350,8 +350,44 @@ public static class Reactions
         {
             Forme = s.Forme, Frittage = s.Frittage, Fissures = s.Fissures, Ecrouissage = s.Ecrouissage, FaconneLe = s.FaconneLe,
         };
-        if (sechee.Structure == Structure.Pate && reste < 0.05) sechee = sechee with { Structure = sechee.Argile >= 0.2 ? Structure.Crue : Structure.Grains };
+        if (sechee.Structure == Structure.Pate && reste < 0.05)
+            sechee = sechee with
+            {
+                // Une pâte de chaux qui sèche ne tombe pas en poudre : elle prend en masse, et durcit en reprenant l'air.
+                Structure = sechee.Argile >= 0.2 ? Structure.Crue : sechee.Part(Phase.Portlandite) + sechee.Part(Phase.Calcite) >= 0.3 ? Structure.Roche : Structure.Grains,
+            };
         return sechee;
+    }
+
+    /// <summary>
+    /// La chaux éteinte reprend à l'air son gaz carbonique et redevient du calcaire : Ca(OH)2 + CO2 → CaCO3 + H2O. Une couche
+    /// mince d'enduit prend en quelques jours à quelques semaines, une masse bien plus lentement (la carbonatation avance comme
+    /// la racine carrée du temps : Lawrence et al., 2006). <paramref name="jours"/> : temps depuis qu'on l'a gâchée ;
+    /// <paramref name="epaisseur"/> : en centimètres.
+    /// </summary>
+    public static Substance Carbonater(Substance s, double jours, double epaisseur)
+    {
+        var chaux = s.Part(Phase.Portlandite);
+        if (chaux <= 0 || jours <= 0) return s;
+        // Environ 2 mm la première semaine dans une pâte à l'air libre, puis comme √t (k ≈ 0,8 mm par √jour).
+        var profondeur = 0.08 * Math.Sqrt(jours);
+        var prise = Math.Min(1, profondeur / Math.Max(0.1, epaisseur / 2));
+        var reste = chaux * (1 - prise);
+        var convertie = chaux - reste;
+        if (convertie <= 1e-6) return s;
+        var calcite = convertie * Stoechio(Phase.Portlandite, 1, Phase.Calcite, 1);
+        var parts = new Dictionary<Phase, double>();
+        foreach (var (p, v) in s.Composants) parts[p] = v;
+        parts[Phase.Portlandite] = reste;
+        parts[Phase.Calcite] = parts.GetValueOrDefault(Phase.Calcite) + calcite;
+        // L'eau rendue s'évapore aussitôt.
+        var total = parts.Values.Sum();
+        var masse = s.Masse * total;
+        var composants = parts.Where(kv => kv.Value > 0).Select(kv => (kv.Key, kv.Value / total)).ToArray();
+        return Substance.De(s.Structure, s.Porosite, masse, composants) with
+        {
+            Forme = s.Forme, Frittage = s.Frittage, Fissures = s.Fissures, Ecrouissage = s.Ecrouissage, FaconneLe = s.FaconneLe,
+        };
     }
 
     /// <summary>

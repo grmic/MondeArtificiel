@@ -55,13 +55,15 @@ public sealed partial class Comportement
     /// L'humain en cours, éveillé, remarque peut-être le gisement de sa case. Un esprit curieux et vif le voit plus souvent ;
     /// un enfant aussi le voit, mais seulement passé l'âge de courir seul.
     /// </summary>
+    internal void RemarquerLeGisement(Humain h) => Remarquer(h);
+
     private void Remarquer(Humain h)
     {
         if (h.Activite == Activite.Dormir || h.CaptifDe != 0) return;
         if (carte.Terrain.GisementA(h.X, h.Y) is not { } g || g.Profondeur == Enfouissement.Profond) return;
         if (h.AgeEnAnnees(_maintenant) < h.AgeAutonomie) return;
         if (h.Memoire.Lieux.Exists(l => l.Type == TypeLieu.Gisement && Math.Max(Math.Abs(l.X - g.X), Math.Abs(l.Y - g.Y)) < 3)) return;
-        var heure = VisibiliteParHeure(g.Type) * (g.Profondeur == Enfouissement.Affleurant ? 1 : 0.1)
+        var heure = (TachesVertes(g) ? 0.5 * VisibiliteParHeure(Gite.Malachite) : VisibiliteParHeure(g.Type) * (g.Profondeur == Enfouissement.Affleurant ? 1 : 0.1))
                     * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h));
         var pas = MondeSimule.SecondesParPas / (double)Calendrier.SecondesParHeure;
         if (alea.Reel() >= 1 - Math.Pow(1 - Math.Min(0.95, heure), pas)) return;
@@ -74,7 +76,7 @@ public sealed partial class Comportement
         Noter(_maintenant, TypeEvenement.Decouverte, h, null, new Recit(cle, ("h", h), ("x", g.X), ("y", g.Y)), significatif: !connu);
         h.Memoire.Penser(_maintenant, new Recit($"gis.pense.{quoi}"));
         // Une pierre qui attire l'œil, on la ramasse souvent sur-le-champ.
-        if (AvecLaMatiere && g.Profondeur == Enfouissement.Affleurant && Attrait(g.Type) is var attrait && attrait > 0 && PeutEmporter(h, g)
+        if (AvecLaMatiere && APorteeDeMain(h, g) && Attrait(g.Type) is var attrait && attrait > 0 && PeutEmporter(h, g)
             && alea.Reel() < attrait * (0.2 + h.Personnalite.Ouverture) * 0.6)
             Emporter(h, g);
     }
@@ -100,15 +102,30 @@ public sealed partial class Comportement
     internal void RamasserUnePierre(Humain h)
     {
         if (!AvecLaMatiere || h.Activite == Activite.Dormir || h.CaptifDe != 0) return;
-        if (carte.Terrain.GisementA(h.X, h.Y) is not { Profondeur: Enfouissement.Affleurant } g || Attrait(g.Type) is var attrait && attrait <= 0) return;
+        if (carte.Terrain.GisementA(h.X, h.Y) is not { } g || !APorteeDeMain(h, g) || Attrait(g.Type) is var attrait && attrait <= 0) return;
         if (h.AgeEnAnnees(_maintenant) < h.AgeAutonomie || !h.Memoire.Lieux.Exists(l => l.Type == TypeLieu.Gisement && Math.Max(Math.Abs(l.X - g.X), Math.Abs(l.Y - g.Y)) < 3)) return;
         if (!PeutEmporter(h, g)) return;
-        // Une chance sur vingt environ par heure passée là, pour un esprit ouvert.
-        var heure = 0.05 * attrait * (0.2 + h.Personnalite.Ouverture);
+        // Une chance sur vingt environ par heure passée là, pour un esprit ouvert ; plus pour qui peint et cherche des couleurs.
+        var heure = 0.05 * attrait * (0.2 + h.Personnalite.Ouverture) * (g.Type == Gite.Malachite && Humains.Arts.Connait(h, Effet.Ocre) ? 1.5 : 1);
         var pas = MondeSimule.SecondesParPas / (double)Calendrier.SecondesParHeure;
         if (alea.Reel() >= 1 - Math.Pow(1 - heure, pas)) return;
         Emporter(h, g);
     }
+
+    /// <summary>
+    /// Un gisement de cuivre sous la surface se trahit par des taches vertes sur la roche : la malachite et l'azurite du
+    /// « chapeau » oxydé, que les prospecteurs suivent depuis toujours (Guilbert et Park, 1986). On les voit bien plus souvent
+    /// que le gisement lui-même (mondes où la matière a sa chimie).
+    /// </summary>
+    private bool TachesVertes(Gisement g) =>
+        AvecLaMatiere && g.Profondeur == Enfouissement.SousLaSurface && g.Type is Gite.Malachite or Gite.CuivreNatif;
+
+    /// <summary>
+    /// La pierre est-elle à portée de main : elle affleure, ou ce sont des taches vertes et l'humain sait creuser le sol (bâton à
+    /// fouir) — sous les taches, à quelques pieds, la pierre verte.
+    /// </summary>
+    internal bool APorteeDeMain(Humain h, Gisement g) =>
+        g.Profondeur == Enfouissement.Affleurant || TachesVertes(g) && h.Sait(Effet.Tubercules);
 
     /// <summary>A-t-il la place, et pas déjà un morceau de cette pierre ?</summary>
     private static bool PeutEmporter(Humain h, Gisement g)

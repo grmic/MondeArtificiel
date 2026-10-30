@@ -7,6 +7,13 @@ namespace Monde.Stockage;
 /// <summary>Braises qui couvent, réserves d'eau et de nourriture, et ce que les humains et les communautés savent du feu.</summary>
 public sealed partial class DepotMonde
 {
+    /// <summary>Migration vers la version 43 : quand une hutte a été enduite de chaux (0 pour les huttes d'avant).</summary>
+    private static void MigrerVersion43(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        if (!Colonnes(connexion, transaction, "huttes").Contains("enduite"))
+            Executer(connexion, transaction, "ALTER TABLE huttes ADD COLUMN enduite INTEGER NOT NULL DEFAULT 0;");
+    }
+
     /// <summary>Migration vers la version 41 : part du charbon de bois dans ce que brûle un foyer (0 pour les feux d'avant).</summary>
     private static void MigrerVersion41(SqliteConnection connexion, SqliteTransaction transaction)
     {

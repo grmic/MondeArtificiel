@@ -354,7 +354,8 @@ public sealed partial class Comportement
         var deuil = h.DeuilDeId > 0 && h.Chagrin > 20;
         var envie = 1 + (deuil ? 1 : 0) + h.Croyance / 100 + (h.Savoirs.Exists(s => s.Effet == Effet.Peinture) ? 1 : 0);
         if (alea.Reel() >= 0.002 * (0.2 + art) * (0.2 + art) * envie * (0.5 + h.Personnalite.Ouverture)) return;
-        if (Installations.Oeuvres.Count(o => o.X == h.X && o.Y == h.Y) >= Humains.Arts.OeuvresParCase || !APortee(h, Matiere.Ocre)) return;
+        var couleur = Couleur(h);
+        if (Installations.Oeuvres.Count(o => o.X == h.X && o.Y == h.Y) >= Humains.Arts.OeuvresParCase || !APortee(h, Matiere.Ocre) && couleur == Chimie.Teinte.Aucune) return;
 
         var poids = new List<(MotifPeint Motif, double Poids)>
         {
@@ -379,6 +380,8 @@ public sealed partial class Comportement
             MotifPeint.Morts => mort is null ? Recits.Recit.Seul("art.motif.unMort") : new Recit("art.motif.Morts", ("m", mort)),
             _ => Recits.Recit.Seul("art.motif.Signes"),
         };
+        // Le blanc de la pierre brûlée, le vert de la pierre verte écrasée, à côté de l'ocre.
+        if (couleur != Chimie.Teinte.Aucune) description = new Recit($"art.motif.{couleur}", ("d", description));
         h.Activite = Activite.Fabriquer;
         var savait = h.Savoirs.Exists(s => s.Effet == Effet.Peinture);
         var id = Retenir(h, Geste.Peindre, Matiere.Ocre, Matiere.Aucune, Effet.Peinture, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous,

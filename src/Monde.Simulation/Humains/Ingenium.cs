@@ -264,7 +264,13 @@ public sealed partial class Comportement
                 // Une hache taille des perches droites et solides : la hutte tient mieux.
                 var coupe = h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe);
                 var (bx, by, bid, ble, solidite) = (h.X, h.Y, h.Id, _maintenant, Math.Clamp(r.Qualite * (1 + 0.4 * coupe), 0, 1));
-                Tour.Differer(() => Installations.Batir(bx, by, solidite, ble, bid, evenement));
+                // Des pierres liées de pâte blanche à la base, les parois enduites : elle tient bien mieux.
+                var lie = Lier(h);
+                Tour.Differer(() =>
+                {
+                    Installations.Batir(bx, by, solidite, ble, bid, evenement);
+                    if (lie > 0) Installations.Enduire(bx, by, ble, lie);
+                });
                 h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));
                 break;
             case Effet.EauPortee:
@@ -621,6 +627,7 @@ public sealed partial class Comportement
         var pressant = besoin is Activite.Boire or Activite.Cueillir && valeur >= seuil;
         var froid = besoin == Activite.SAbriter && valeur >= seuil || (besoin == Activite.Dormir || nuit && !pressant) && _temperature < 14;
         if (froid && Rechauffer(h, besoin, tous)) return true;
+        if (besoin == Activite.Cueillir && valeur >= seuil && Cuisiner(h, tous)) return true;
         if (besoin == Activite.Cueillir && valeur >= seuil && Fouir(h, tous)) return true;
         return false;
     }
@@ -1053,6 +1060,8 @@ public sealed partial class Comportement
             // Les enfants sentent l'amer plus fort que les adultes et le rejettent davantage (Mennella et al., 2005).
             var recrachee = alea.Reel() < 0.4 + 0.4 * espece.Toxicite + (h.EstEnfant(_maintenant) ? 0.15 : 0);
             var degats = 45 * espece.Toxicite * (0.4 + alea.Reel()) * (h.EstEnfant(_maintenant) ? 1.6 : 1) * (recrachee ? 0.1 : 1);
+            // Bouillie au feu, l'eau jetée, une plante perd une part de ses poisons solubles (Johns et Kubo, 1988).
+            if (AvecLaMatiere && geste == Geste.Manger && SavoirDeLaCuisine(h) is not null && FeuIci(h)) degats *= 0.3 + 0.4 * alea.Reel();
             h.Sante -= degats;
             h.Soif = Math.Min(100, h.Soif + (recrachee ? 2 : 15));
             h.Humeur = Math.Max(0, h.Humeur - (recrachee ? 2 : 10));

@@ -1327,7 +1327,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     // Les biomes ne changent pas : l'eau douce à portée de chaque case est calculée une fois.
     private bool[]? _eauAPortee;
 
-    private bool EauDouceAPortee(int x, int y)
+    internal bool EauDouceAPortee(int x, int y)
     {
         if (_eauAPortee is null)
         {

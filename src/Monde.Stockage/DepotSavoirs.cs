@@ -63,7 +63,8 @@ public sealed partial class DepotMonde
                 solidite  REAL    NOT NULL,
                 batie_le  INTEGER NOT NULL,
                 batisseur INTEGER NOT NULL,
-                evenement INTEGER NOT NULL
+                evenement INTEGER NOT NULL,
+                enduite   INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE IF NOT EXISTS decouvertes (
                 rang      INTEGER PRIMARY KEY,
@@ -272,10 +273,10 @@ public sealed partial class DepotMonde
             }
         }
         var huttes = new List<Hutte>();
-        commande.CommandText = "SELECT id, x, y, solidite, batie_le, batisseur, evenement FROM huttes ORDER BY id;";
+        commande.CommandText = "SELECT id, x, y, solidite, batie_le, batisseur, evenement, enduite FROM huttes ORDER BY id;";
         using (var l = commande.ExecuteReader())
         {
-            while (l.Read()) huttes.Add(new Hutte(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetDouble(3), l.GetInt64(4), l.GetInt32(5), l.GetInt64(6)));
+            while (l.Read()) huttes.Add(new Hutte(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetDouble(3), l.GetInt64(4), l.GetInt32(5), l.GetInt64(6), l.GetInt64(7)));
         }
         var decouvertes = new List<Decouverte>();
         commande.CommandText = "SELECT effet, humain, le, evenement, origine, pieces, communaute FROM decouvertes ORDER BY rang;";
@@ -308,9 +309,9 @@ public sealed partial class DepotMonde
         foreach (var f in etat.Foyers ?? [])
             Lancer(foyers, f.Id, f.X, f.Y, f.Heures, f.AllumeLe, f.AllumeurId, f.EvenementId, f.Couvert ? 1 : 0, f.Degage ? 1 : 0, f.EntretenuParId, f.Charbon);
         using var huttes = Preparer(connexion, transaction,
-            "INSERT INTO huttes (id, x, y, solidite, batie_le, batisseur, evenement) VALUES ($i, $x, $y, $s, $b, $p, $e);",
-            "$i", "$x", "$y", "$s", "$b", "$p", "$e");
-        foreach (var h in etat.Huttes ?? []) Lancer(huttes, h.Id, h.X, h.Y, h.Solidite, h.BatieLe, h.BatisseurId, h.EvenementId);
+            "INSERT INTO huttes (id, x, y, solidite, batie_le, batisseur, evenement, enduite) VALUES ($i, $x, $y, $s, $b, $p, $e, $n);",
+            "$i", "$x", "$y", "$s", "$b", "$p", "$e", "$n");
+        foreach (var h in etat.Huttes ?? []) Lancer(huttes, h.Id, h.X, h.Y, h.Solidite, h.BatieLe, h.BatisseurId, h.EvenementId, h.EnduiteLe);
         using var decouvertes = Preparer(connexion, transaction,
             "INSERT INTO decouvertes (rang, effet, humain, le, evenement, origine, pieces, communaute) VALUES ($r, $e, $h, $l, $ev, $o, $p, $c);",
             "$r", "$e", "$h", "$l", "$ev", "$o", "$p", "$c");

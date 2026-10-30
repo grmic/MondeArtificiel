@@ -42,6 +42,9 @@ public sealed partial class Comportement
         if (Substance.Lire(o.Pieces) is not { } s) return null;
         if (s.Structure == Structure.Pate && s.FaconneLe > 0)
             s = Reactions.Secher(s, (_maintenant - s.FaconneLe) / (double)Calendrier.SecondesParJour, Sec(h));
+        // Une pâte de chaux qu'on garde en boule durcit lentement à l'air.
+        if (s.FaconneLe > 0 && s.Part(Phase.Portlandite) > 0 && s.Structure is Structure.Roche)
+            s = Reactions.Carbonater(s, (_maintenant - s.FaconneLe) / (double)Calendrier.SecondesParJour, 3);
         return s;
     }
 
@@ -61,7 +64,7 @@ public sealed partial class Comportement
         }
         if (m == Matiere.Eau) return EauDouceAPortee(h.X, h.Y) ? EauPuisee : null;
         if (m == Matiere.Minerai)
-            return carte.Terrain.GisementA(h.X, h.Y) is { Profondeur: Nature.Enfouissement.Affleurant } g ? Matieres.Minerai(g.Type) : null;
+            return carte.Terrain.GisementA(h.X, h.Y) is { } g && APorteeDeMain(h, g) ? Matieres.Minerai(g.Type) : null;
         if (m == Matiere.Substance) return null;
         if (!h.Porte(m) && !Disponibles(h).Contains(m)) return null;
         return Matieres.De(m, carte, h.X, h.Y);
@@ -204,7 +207,10 @@ public sealed partial class Comportement
                 // L'objet porté qu'on a mêlé n'est plus.
                 if (ib >= 0 && ib != ia) h.Objets.RemoveAt(ib);
                 if (ia > ib && ib >= 0) ia--;
-                return Constater(h, g, a, b, 0, pa, ia, t, origine, tous, maitre);
+                var effet = Constater(h, g, a, b, 0, pa, ia, t, origine, tous, maitre);
+                // La pierre blanche qui chauffe dans l'eau ronge les mains de qui la remue sans s'en garder.
+                if (t.Exotherme) BrulerALaChaux(h, SavoirDe(h, Geste.Melanger, "chauffe") is not null ? 0.03 : 0.12);
+                return effet;
             }
             case Geste.Frapper:
             {
@@ -238,6 +244,9 @@ public sealed partial class Comportement
                 if (sa is null || sa.Structure != Structure.Roche || ChauffeIci(h, 1, false) is not { } c || !EauDouceAPortee(h.X, h.Y)) return Rien(h, g, a, b);
                 var pierres = 1 + alea.Entier(6);
                 var eau = Reactions.Plonger(sa with { Masse = sa.Masse * pierres }, Math.Min(c.Temperature, 700), 3, _temperature);
+                // Qui a faim y met les racines qu'il vient d'arracher, dans une outre, une calebasse ou un creux garni de peau.
+                if (eau >= 99.9 && h.Faim > 20 && origine == OrigineSavoir.Essai && PeutBouillir(h, true) && alea.Reel() < 0.3 + 0.4 * h.Personnalite.Ouverture)
+                    return Bouillir(h, true, origine, tous, maitre);
                 var l = new List<string> { eau >= 99.9 ? "bout" : "tiede" };
                 if (sa.Part(Phase.Quartz) + sa.Part(Phase.Calcedoine) >= 0.5 && alea.Reel() < 0.5) l.Add("fend");
                 return Comprendre(h, g, a, Matiere.Eau, 0, l, null, origine, tous, maitre, new Recit("chim.essai.Plonger", ("h", h), ("a", NomDe(a, sa))));
@@ -257,6 +266,9 @@ public sealed partial class Comportement
         switch (geste)
         {
             case Geste.Modeler:
+                // Une pâte blanche à la main, devant la hutte : on l'étale sur les parois, pour voir.
+                if (Installations.HutteEn(h.X, h.Y) is not null && Porte(h, PateDeChaux) is >= 0 and var blanche && alea.Reel() < 0.5)
+                    return Enduire(h, blanche);
                 // On pétrit ce qu'on a de mou sous la main : une pâte qu'on porte, ou la terre de la berge.
                 var pate = h.Objets.FindIndex(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { Plastique: true });
                 if (pate < 0 && !materiaux.Contains(Matiere.Argile)) return false;
@@ -266,12 +278,21 @@ public sealed partial class Comportement
                 return true;
             case Geste.Cuire or Geste.Souffler or Geste.Etouffer:
                 if (!feu) return false;
+                // Des racines dans le pot plein qu'on porte, posé sur le feu.
+                if (geste == Geste.Cuire && a == Matiere.Plante)
+                {
+                    if (!PeutBouillir(h, false)) return false;
+                    Bouillir(h, false, OrigineSavoir.Essai, tous);
+                    return true;
+                }
                 if (geste == Geste.Etouffer && !Physique.EstBois(a)) a = materiaux.Contains(Matiere.BoisSec) ? Matiere.BoisSec : Matiere.Aucune;
                 if (a is Matiere.Aucune or Matiere.Feu or Matiere.Eau or Matiere.Plante or Matiere.Carcasse && geste != Geste.Souffler) return false;
                 b = Matiere.Feu;
                 break;
             case Geste.Melanger:
                 if (a is Matiere.Aucune or Matiere.Feu || b is Matiere.Aucune or Matiere.Feu || a == b) return false;
+                // Une peau qu'on porte, trempée dans l'eau où l'on a mis de la pierre blanche.
+                if ((a == Matiere.Peau || b == Matiere.Peau) && Porte(h, DeLaChaux) >= 0) return Epiler(h, OrigineSavoir.Essai, tous);
                 break;
             case Geste.Plonger:
                 if (!feu || !materiaux.Contains(Matiere.Eau) || a is not (Matiere.Galet or Matiere.Silex or Matiere.Calcaire)) return false;
@@ -292,6 +313,13 @@ public sealed partial class Comportement
     private bool AuCoinDuFeu(Humain h, IReadOnlyList<Humain> tous)
     {
         if (alea.Reel() >= 0.003 * (0.3 + h.Personnalite.Ouverture)) return false;
+        // Un pot plein posé sur les braises, avec les racines qu'on a sous la main : l'eau bout, les racines s'attendrissent.
+        if (h.Faim > 20 && h.Objets.Exists(o => o.Plein && PotEtanche(o)) && PeutBouillir(h, false) && alea.Reel() < 0.5)
+        {
+            h.Activite = Activite.Veiller;
+            Bouillir(h, false, OrigineSavoir.Essai, tous);
+            return true;
+        }
         var i = h.Objets.FindIndex(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { Structure: Structure.Crue or Structure.Pate });
         if (i < 0) return false;
         h.Activite = Activite.Veiller;
@@ -455,7 +483,10 @@ public sealed partial class Comportement
     /// </summary>
     private bool PratiquerLaMatiere(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (!AvecLaMatiere || h.Savoirs.Count == 0 || alea.Reel() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
+        if (!AvecLaMatiere) return false;
+        VoirLEnduit(h, tous);
+        if (h.Savoirs.Count == 0 || alea.Reel() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
+        if (Chauler(h, tous)) return true;
         var feu = Installations.FoyerEn(h.X, h.Y) is not null || Installations.BraiseEn(h.X, h.Y) is not null;
         // Le pot modelé attend d'être sec : le patient attend qu'il le soit tout à fait, l'impatient le met au feu plus tôt.
         if (feu)
@@ -476,7 +507,7 @@ public sealed partial class Comportement
             return Pratiquer(h, Geste.Modeler, Matiere.Argile, Matiere.Aucune, tous, 1);
         // Qui a vu le métal sortir de la pierre verte va en écraser là où elle affleure, s'il sait qu'elle tombe en poudre.
         if (SavoirDuCuivre(h) is not null && !h.Objets.Exists(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { } m && MineraiDeCuivre(m))
-            && carte.Terrain.GisementA(h.X, h.Y) is { Profondeur: Nature.Enfouissement.Affleurant, Type: Nature.Gite.Malachite or Nature.Gite.CuivreNatif }
+            && carte.Terrain.GisementA(h.X, h.Y) is { Type: Nature.Gite.Malachite or Nature.Gite.CuivreNatif } gc && APorteeDeMain(h, gc)
             && h.Objets.Count < ObjetsMax && Recette(h, Matiere.Minerai, "poudre") is { } broyer && APortee(h, broyer.B))
             return Pratiquer(h, Geste.Frapper, Matiere.Minerai, broyer.B, tous, 0);
         // Une goutte de cuivre se bat en plaque, qu'on porte en parure ; de deux plaques, on étire l'une en pointe pour percer les peaux.

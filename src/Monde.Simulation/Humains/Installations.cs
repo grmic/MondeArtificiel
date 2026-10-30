@@ -65,7 +65,9 @@ public sealed record Reserve(int Id, int X, int Y, SorteReserve Sorte, double Kg
 
 /// <summary>Un abri de branches et de feuilles : il protège de la pluie et du froid, puis s'affaisse en quelques mois.</summary>
 /// <param name="Solidite">De 1 (neuf, bien fait) à 0 (effondré).</param>
-public sealed record Hutte(int Id, int X, int Y, double Solidite, long BatieLe, int BatisseurId, long EvenementId);
+/// <param name="EnduiteLe">Quand on l'a enduite de pâte blanche (chaux) pour la dernière fois (0 : jamais) : elle garde le sec et
+/// s'affaisse bien moins vite.</param>
+public sealed record Hutte(int Id, int X, int Y, double Solidite, long BatieLe, int BatisseurId, long EvenementId, long EnduiteLe = 0);
 
 /// <summary>Savoirs vivants au début d'une année : effets distincts que savent obtenir les vivants du monde (communauté 0) ou d'une communauté.</summary>
 public sealed record MesureSavoirs(int Annee, int CommunauteId, int Savoirs);
@@ -218,7 +220,7 @@ public sealed class Installations
     }
 
     /// <summary>Protection qu'offre une hutte sur cette case (0 sans hutte).</summary>
-    public double AbriEn(int x, int y) => HutteEn(x, y) is { } h ? 0.3 + 0.4 * h.Solidite : 0;
+    public double AbriEn(int x, int y) => HutteEn(x, y) is { } h ? 0.3 + 0.4 * h.Solidite + (h.EnduiteLe > 0 ? 0.08 : 0) : 0;
 
     /// <summary>
     /// Allume (ou ranime) un feu sur une case. Une braise qui couvait sur la case reprend flamme : le foyer garde son histoire.
@@ -283,6 +285,16 @@ public sealed class Installations
     }
 
     /// <summary>
+    /// Enduit la hutte de la case de pâte blanche (chaux) : elle se raffermit de <paramref name="gain"/>. La chaux durcit à
+    /// l'air en quelques jours ou semaines et rejette l'eau de pluie ; un enduit de chaux tient des années (sols et murs enduits
+    /// du Levant, vers 14 000 ans : Kingery et al., 1988).
+    /// </summary>
+    public void Enduire(int x, int y, long maintenant, double gain)
+    {
+        if (HutteEn(x, y) is { } h) Huttes[Huttes.IndexOf(h)] = h with { Solidite = Math.Min(1, h.Solidite + gain), EnduiteLe = maintenant };
+    }
+
+    /// <summary>
     /// Les feux brûlent leur bois ; ceux qui n'en ont plus laissent une braise, qui couve à son tour puis s'éteint. Une braise
     /// à l'air libre se couvre vite de cendre et tient une heure ou deux ; enfouie sous la cendre exprès, elle passe la nuit
     /// (de six à seize heures ici, selon le bois et le feu : une estimation, faute de mesures sur les foyers de campement).
@@ -319,13 +331,13 @@ public sealed class Installations
         }
     }
 
-    /// <summary>Une hutte non entretenue s'affaisse en trois à six mois.</summary>
+    /// <summary>Une hutte non entretenue s'affaisse en trois à six mois ; enduite de chaux, en un an et demi environ.</summary>
     public void Affaisser(double jours, Func<int, double> usure)
     {
         for (var i = Huttes.Count - 1; i >= 0; i--)
         {
             var h = Huttes[i];
-            var reste = h.Solidite - jours * usure(h.Id);
+            var reste = h.Solidite - jours * usure(h.Id) * (h.EnduiteLe > 0 ? 0.3 : 1);
             if (reste <= 0)
             {
                 Huttes.RemoveAt(i);

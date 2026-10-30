@@ -290,7 +290,10 @@ public sealed partial class Comportement
                 ? e.Activite is Activite.PorteParSaMere or Activite.Dormir
                 : Distance(e.X, e.Y, mere.X, mere.Y) <= 1;
             if (!allaite) continue;
-            return age < 1.5 ? 0.02 : 0.02 + 0.4 * (age - 1.5) / 1.5;
+            // Une mère qui fait des bouillies sèvre plus tôt : chez les premiers agriculteurs, les naissances se rapprochent
+            // (Bocquet-Appel, 2011). L'écart varie d'une mère à l'autre (tiré de son numéro, sans hasard partagé).
+            var k = FaitDesBouillies(mere, maintenant) ? 0.7 + 0.15 * ((uint)(mere.Id * 2654435761u) / (double)uint.MaxValue) : 1;
+            return age < 1.5 * k ? 0.02 : Math.Min(1, 0.02 + 0.4 * (age - 1.5 * k) / (1.5 * k));
         }
         return 1;
     }
