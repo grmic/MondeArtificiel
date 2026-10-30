@@ -938,7 +938,7 @@ public sealed partial class DepotMonde
 
         commande.CommandText = "SELECT max(coalesce((SELECT max(id) FROM journal), 0), coalesce((SELECT max(dernier) FROM journal_blocs), 0)) + 1;";
         etat = etat with { ProchainIdJournal = Convert.ToInt64(commande.ExecuteScalar()) };
-        etat = etat with { Premieres = LirePremieres(connexion) };
+        if (LirePremieres(connexion) is { Count: > 0 } premieres) etat = etat with { Premieres = premieres };
         return humains.Count > 0 ? etat with { Humains = humains } : etat;
     }
 
