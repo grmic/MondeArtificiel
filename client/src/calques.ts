@@ -1,7 +1,7 @@
-import { Container, Graphics, Sprite, Texture } from "pixi.js";
+import { Container, Graphics, type Sprite } from "pixi.js";
 import { connexion } from "./connexion";
 import { nombre, t } from "./langue";
-import type { VueCarte } from "./carte";
+import { calqueLisse, type VueCarte } from "./carte";
 
 /** Terrain et mer, tels que renvoyés par le hub (méthode « Terrain », voir TerrainDto côté serveur). */
 interface TerrainJson {
@@ -51,7 +51,7 @@ function decoder(texte: string): Uint8Array {
   return Uint8Array.from(atob(texte), (c) => c.charCodeAt(0));
 }
 
-/** Une image d'un pixel par case, peinte par une fonction qui rend [r, g, b, a] ou rien. */
+/** Une image lissée (voir calqueLisse), peinte case par case par une fonction qui rend [r, g, b, a] ou rien. */
 function image(largeur: number, hauteur: number, peindre: (i: number) => [number, number, number, number] | null): Sprite {
   const canvas = document.createElement("canvas");
   canvas.width = largeur;
@@ -64,9 +64,7 @@ function image(largeur: number, hauteur: number, peindre: (i: number) => [number
     donnees.data.set(c, i * 4);
   }
   ctx.putImageData(donnees, 0, 0);
-  const texture = Texture.from(canvas);
-  texture.source.scaleMode = "nearest";
-  return new Sprite(texture);
+  return calqueLisse(canvas);
 }
 
 /**

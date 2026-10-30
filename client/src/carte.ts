@@ -123,9 +123,13 @@ const EAU = [true, true, true, true];
  * à chaque réglage, se contente de 4.
  */
 export function facteurImage(carte: Carte, apercu = false): number {
-  const cote = Math.floor(4096 / Math.max(carte.largeur, carte.hauteur));
-  const budget = Math.floor(Math.sqrt(6_000_000 / (carte.largeur * carte.hauteur)));
-  return Math.max(1, Math.min(apercu ? 4 : 8, cote, budget));
+  return facteurPour(carte.largeur, carte.hauteur, apercu ? 4 : 8);
+}
+
+function facteurPour(largeur: number, hauteur: number, plafond: number): number {
+  const cote = Math.floor(4096 / Math.max(largeur, hauteur));
+  const budget = Math.floor(Math.sqrt(6_000_000 / (largeur * hauteur)));
+  return Math.max(1, Math.min(plafond, cote, budget));
 }
 
 /** Bruit fixe entre 0 et 1 pour un point entier (même dessin à chaque affichage). */
@@ -135,7 +139,7 @@ function hachage(x: number, y: number): number {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-/** Bruit de valeur lissé, de période « pas » en pixels. */
+/** Bruit de valeur lissé, de période « pas » (dans l'unité de x et y). */
 function bruitLisse(x: number, y: number, pas: number): number {
   const fx = x / pas, fy = y / pas;
   const x0 = Math.floor(fx), y0 = Math.floor(fy);
@@ -143,6 +147,106 @@ function bruitLisse(x: number, y: number, pas: number): number {
   const su = u * u * (3 - 2 * u), sv = v * v * (3 - 2 * v);
   const a = hachage(x0, y0), b = hachage(x0 + 1, y0), c = hachage(x0, y0 + 1), d = hachage(x0 + 1, y0 + 1);
   return a + (b - a) * su + (c - a) * sv + (a - b - c + d) * su * sv;
+}
+
+/**
+ * Point d'échantillonnage déplacé par deux bruits lisses (périodes de 4 et 1,5 cases, jusqu'à 0,7 case en tout), en cases :
+ * les limites entre biomes ondulent au lieu de suivre les marches de la grille. Ne dépend pas du facteur de l'image, si bien
+ * que la carte et ses calques ondulent ensemble.
+ */
+function deformer(cx: number, cy: number, sortie: number[]): void {
+  sortie[0] = cx + (bruitLisse(cx, cy, 4) - 0.5) * 0.9 + (bruitLisse(cx, cy, 1.5) - 0.5) * 0.5;
+  sortie[1] = cy + (bruitLisse(cx + 131.7, cy + 57.1, 4) - 0.5) * 0.9 + (bruitLisse(cx + 131.7, cy + 57.1, 1.5) - 0.5) * 0.5;
+}
+
+/**
+ * Limite nette et courbe entre valeurs voisines : les poids des quatre cases sont cumulés par valeur (clé), la valeur la plus
+ * lourde l'emporte, et le fondu avec la suivante ne dure qu'environ un pixel. La limite suit ainsi une courbe (où deux
+ * valeurs pèsent autant) au lieu des marches de la grille, sans le flou d'un dégradé sur toute une case.
+ * Rend dans « choix » : [voisine de la première valeur, voisine de la deuxième (ou la même), part de la première].
+ */
+function departager(cles: number[], poids: number[], facteur: number, choix: number[]): void {
+  let k1 = -1, w1 = -1, k2 = -1, w2 = -1;
+  for (let k = 0; k < 4; k++) {
+    let deja = false;
+    for (let j = 0; j < k; j++) if (cles[j] === cles[k]) { deja = true; break; }
+    if (deja) continue;
+    let w = poids[k];
+    for (let j = k + 1; j < 4; j++) if (cles[j] === cles[k]) w += poids[j];
+    if (w > w1) { k2 = k1; w2 = w1; k1 = k; w1 = w; }
+    else if (w > w2) { k2 = k; w2 = w; }
+  }
+  if (k2 < 0) { choix[0] = k1; choix[1] = k1; choix[2] = 1; return; }
+  choix[0] = k1; choix[1] = k2;
+  choix[2] = Math.min(1, 0.5 + (w1 - w2) * facteur * 0.6);
+}
+
+/** Déplacements des pixels d'un calque, gardés par taille (les calques sont redessinés souvent). */
+const deformations = new Map<string, Float32Array>();
+
+function tableDeformation(largeur: number, hauteur: number, facteur: number): Float32Array {
+  const cle = `${largeur}x${hauteur}x${facteur}`;
+  let table = deformations.get(cle);
+  if (table) return table;
+  const w = largeur * facteur, hh = hauteur * facteur;
+  table = new Float32Array(w * hh * 2);
+  const d = [0, 0];
+  for (let py = 0; py < hh; py++) {
+    for (let px = 0; px < w; px++) {
+      deformer((px + 0.5) / facteur, (py + 0.5) / facteur, d);
+      table[(py * w + px) * 2] = d[0];
+      table[(py * w + px) * 2 + 1] = d[1];
+    }
+  }
+  deformations.clear();
+  deformations.set(cle, table);
+  return table;
+}
+
+/**
+ * Agrandit un calque d'un pixel par case (couleurs avec transparence) en image lissée : mêmes limites ondulées que la carte,
+ * limites nettes et courbes (voir departager). Rend un sprite ramené à l'échelle d'une case.
+ */
+export function calqueLisse(source: HTMLCanvasElement): Sprite {
+  const l = source.width, h = source.height;
+  const facteur = facteurPour(l, h, 4);
+  const src = source.getContext("2d")!.getImageData(0, 0, l, h).data;
+  const canvas = document.createElement("canvas");
+  canvas.width = l * facteur;
+  canvas.height = h * facteur;
+  const ctx = canvas.getContext("2d")!;
+  const image = ctx.createImageData(canvas.width, canvas.height);
+  const table = tableDeformation(l, h, facteur);
+  const poids = [0, 0, 0, 0];
+  const voisines = [0, 0, 0, 0];
+  const cles = [0, 0, 0, 0];
+  const choix = [0, 0, 1];
+  const case_ = (x: number, y: number) => Math.min(h - 1, Math.max(0, y)) * l + Math.min(l - 1, Math.max(0, x));
+  for (let q = 0; q < canvas.width * canvas.height; q++) {
+    const fx = table[q * 2] - 0.5, fy = table[q * 2 + 1] - 0.5;
+    const x0 = Math.floor(fx), y0 = Math.floor(fy), u = fx - x0, v = fy - y0;
+    voisines[0] = case_(x0, y0); voisines[1] = case_(x0 + 1, y0); voisines[2] = case_(x0, y0 + 1); voisines[3] = case_(x0 + 1, y0 + 1);
+    if (src[voisines[0] * 4 + 3] + src[voisines[1] * 4 + 3] + src[voisines[2] * 4 + 3] + src[voisines[3] * 4 + 3] === 0) continue;
+    poids[0] = (1 - u) * (1 - v); poids[1] = u * (1 - v); poids[2] = (1 - u) * v; poids[3] = u * v;
+    for (let k = 0; k < 4; k++) {
+      const o = voisines[k] * 4;
+      cles[k] = src[o + 3] === 0 ? -1 : ((src[o] << 24) | (src[o + 1] << 16) | (src[o + 2] << 8) | src[o + 3]);
+    }
+    departager(cles, poids, facteur, choix);
+    const o1 = voisines[choix[0]] * 4, o2 = voisines[choix[1]] * 4;
+    const w1 = choix[2] * src[o1 + 3], w2 = (1 - choix[2]) * src[o2 + 3];
+    const a = w1 + w2;
+    const r = src[o1] * w1 + src[o2] * w2, g = src[o1 + 1] * w1 + src[o2 + 1] * w2, b = src[o1 + 2] * w1 + src[o2 + 2] * w2;
+    if (a < 1) continue;
+    const p = q * 4;
+    image.data[p] = r / a; image.data[p + 1] = g / a; image.data[p + 2] = b / a; image.data[p + 3] = a;
+  }
+  ctx.putImageData(image, 0, 0);
+  const texture = Texture.from(canvas);
+  texture.source.scaleMode = "linear";
+  const sprite = new Sprite(texture);
+  sprite.scale.set(1 / facteur);
+  return sprite;
 }
 
 /**
@@ -171,15 +275,27 @@ function dessinerImage(carte: Carte, facteur = facteurImage(carte)): HTMLCanvasE
   const voisines = [0, 0, 0, 0];
   const poids = [0, 0, 0, 0];
   const RIVIERE = 3;
+  const d = [0, 0];
+  const clesTerre = [0, 0, 0, 0], clesEau = [0, 0, 0, 0], poidsCote = [0, 0, 0, 0], choix = [0, 0, 1];
+  const terreRgb = [0, 0, 0], eauRgb = [0, 0, 0];
+  /** Couleur d'un côté du rivage (clé -1 : case de l'autre côté) dans « rgb » ; 0 si aucune case de ce côté. */
+  const couleurCote = (cles: number[], rgb: number[]): number => {
+    for (let k = 0; k < 4; k++) poidsCote[k] = cles[k] === -1 ? 0 : poids[k];
+    if (poidsCote[0] + poidsCote[1] + poidsCote[2] + poidsCote[3] === 0) return 0;
+    departager(cles, poidsCote, facteur, choix);
+    const c1 = COULEURS[biomes[voisines[choix[0]]]] ?? [255, 0, 255], c2 = COULEURS[biomes[voisines[choix[1]]]] ?? [255, 0, 255];
+    const m = choix[2];
+    for (let j = 0; j < 3; j++) rgb[j] = c1[j] * m + c2[j] * (1 - m);
+    return 1;
+  };
   const biomes = carte.biomes;
   for (let py = 0; py < canvas.height; py++) {
     const cy = (py + 0.5) / facteur;
     for (let px = 0; px < canvas.width; px++) {
       const cx = (px + 0.5) / facteur;
-      // Point d'échantillonnage déplacé par deux bruits lisses (périodes de 4 et 1,5 cases, jusqu'à 0,7 case en tout) :
-      // les limites entre biomes ondulent au lieu de suivre les marches de la grille. L'ombrage du relief reste au point exact.
-      const sx = cx + (bruitLisse(px, py, facteur * 4) - 0.5) * 0.9 + (bruitLisse(px, py, facteur * 1.5) - 0.5) * 0.5;
-      const sy = cy + (bruitLisse(px + 7919, py + 104729, facteur * 4) - 0.5) * 0.9 + (bruitLisse(px + 7919, py + 104729, facteur * 1.5) - 0.5) * 0.5;
+      // Limites ondulées (voir deformer) ; l'ombrage du relief reste au point exact.
+      deformer(cx, cy, d);
+      const sx = d[0], sy = d[1];
       const fx = sx - 0.5, x0 = Math.floor(fx), u = fx - x0;
       const fy = sy - 0.5, y0 = Math.floor(fy), v = fy - y0;
       voisines[0] = case_(x0, y0); voisines[1] = case_(x0 + 1, y0);
@@ -195,30 +311,32 @@ function dessinerImage(carte: Carte, facteur = facteurImage(carte)): HTMLCanvasE
         partEau = Math.max(partEau, 1 - Math.abs(u + v - 1));
       }
       // Un peu de bruit sur le seuil : le rivage ondule au lieu de suivre la grille.
-      const seuil = 0.5 + (bruitLisse(px, py, facteur * 1.5) - 0.5) * 0.3;
+      const seuil = 0.5 + (bruitLisse(cx + 17.3, cy + 9.1, 1.5) - 0.5) * 0.3;
       // Part d'eau du pixel : 0 en terre, 1 en eau, fondu sur environ un pixel au rivage (bord sans marches au zoom).
       const t = Math.min(1, Math.max(0, (partEau - seuil) * facteur * 1.5 + 0.5));
-      let tr = 0, tg = 0, tb = 0, tt = 0, er = 0, eg = 0, eb = 0, et = 0;
+      // Couleurs : de chaque côté du rivage, le biome qui pèse le plus l'emporte, limite nette et courbe (voir departager).
       for (let k = 0; k < 4; k++) {
-        if (poids[k] === 0) continue;
-        const [cr, cg, cb] = COULEURS[carte.biomes[voisines[k]]] ?? [255, 0, 255];
-        if (eau[voisines[k]] === 1) { er += cr * poids[k]; eg += cg * poids[k]; eb += cb * poids[k]; et += poids[k]; }
-        else { tr += cr * poids[k]; tg += cg * poids[k]; tb += cb * poids[k]; tt += poids[k]; }
+        const bio = biomes[voisines[k]];
+        clesTerre[k] = eau[voisines[k]] === 1 ? -1 : bio;
+        clesEau[k] = eau[voisines[k]] === 1 ? bio : -1;
       }
+      const tt = couleurCote(clesTerre, terreRgb), et = couleurCote(clesEau, eauRgb);
+      let [tr, tg, tb] = terreRgb, [er, eg, eb] = eauRgb;
       // Une seule sorte de case autour : l'autre couleur reprend la même (rien à fondre).
-      if (tt === 0) { tr = er; tg = eg; tb = eb; tt = et; }
-      if (et === 0) { er = tr; eg = tg; eb = tb; et = tt; }
+      if (tt === 0) { tr = er; tg = eg; tb = eb; }
+      if (et === 0) { er = tr; eg = tg; eb = tb; }
       let lumiere = 1;
       if (t < 1) {
         const pente = altitude(cx, cy) - altitude(cx - 1, cy - 1);
         lumiere = Math.min(1.25, Math.max(0.75, 1 + pente * 0.04));
-        lumiere *= 0.95 + bruitLisse(px, py, Math.max(2, facteur * 0.6)) * 0.1;
+        // Grain : un bruit doux d'une demi-case et un fin, pixel par pixel, pour une texture nette.
+        lumiere *= 0.94 + bruitLisse(cx, cy, 0.5) * 0.08 + hachage(px, py) * 0.04;
       }
-      const lumiereEau = 0.97 + bruitLisse(px, py, facteur * 3) * 0.06;
+      const lumiereEau = 0.97 + bruitLisse(cx, cy, 3) * 0.04 + hachage(px, py) * 0.02;
       const terre = (1 - t) * lumiere, mer = t * lumiereEau;
-      const r = (tr / tt) * terre + (er / et) * mer;
-      const g = (tg / tt) * terre + (eg / et) * mer;
-      const b = (tb / tt) * terre + (eb / et) * mer;
+      const r = tr * terre + er * mer;
+      const g = tg * terre + eg * mer;
+      const b = tb * terre + eb * mer;
       const p = (py * canvas.width + px) * 4;
       image.data[p] = Math.min(255, r);
       image.data[p + 1] = Math.min(255, g);
@@ -581,9 +699,7 @@ export class VueCarte {
     this.nature = nature ?? undefined;
     for (const c of this.calqueNature.removeChildren()) c.destroy({ children: true, texture: true });
     if (!nature || !this.carte || nature.largeur !== this.carte.largeur || nature.hauteur !== this.carte.hauteur) return;
-    const texture = Texture.from(dessinerAbondance(nature, this.carte));
-    texture.source.scaleMode = "nearest";
-    this.calqueNature.addChild(new Sprite(texture));
+    this.calqueNature.addChild(calqueLisse(dessinerAbondance(nature, this.carte)));
     const regions = new Graphics();
     const valeurs = decoderBase64(nature.abondance);
     nature.pluies.forEach((pluie, r) => {
@@ -612,9 +728,7 @@ export class VueCarte {
     this.territoires = undefined;
     if (!t || !this.carte) return;
     const { canvas, proprietaires } = dessinerTerritoires(t, this.carte.largeur, this.carte.hauteur, choisie);
-    const texture = Texture.from(canvas);
-    texture.source.scaleMode = "nearest";
-    this.calqueTerritoires.addChild(new Sprite(texture));
+    this.calqueTerritoires.addChild(calqueLisse(canvas));
     this.territoires = { donnees: t, proprietaires };
   }
 
@@ -627,9 +741,7 @@ export class VueCarte {
     this.catastrophes = { actives, detail, cases: new Set([...(detail?.cases ?? []), ...(detail?.front ?? [])]) };
     if (!this.carte) return;
     if (detail) {
-      const texture = Texture.from(dessinerCases(detail, this.carte.largeur, this.carte.hauteur));
-      texture.source.scaleMode = "nearest";
-      this.calqueCatastrophes.addChild(new Sprite(texture));
+      this.calqueCatastrophes.addChild(calqueLisse(dessinerCases(detail, this.carte.largeur, this.carte.hauteur)));
     }
     const g = new Graphics();
     for (const f of geologie?.failles ?? []) {
