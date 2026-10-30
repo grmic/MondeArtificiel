@@ -19,11 +19,14 @@ public sealed record GisementVueDto(int X, int Y, string Type, string Profondeur
 /// la langue de l'observateur. <paramref name="Debit"/> : 0 hors des rivières, sinon 1 + 40 × log₁₀(1 + m³/s).
 /// <paramref name="Profondeur"/> : fond de la mer en dizaines de mètres (255 au-delà). <paramref name="Pente"/> : en unités
 /// d'altitude (40 m). <paramref name="Lits"/> : les rivières, par paires (case, case en aval). L'Entité voit tout : les
-/// gisements que nul ne connaît sont montrés aussi.
+/// gisements que nul ne connaît sont montrés aussi. Depuis la 0.32.7 (mondes de la génération 2) : <paramref name="Parois"/> et
+/// <paramref name="Passages"/>, par paires de cases voisines (une fois chacune) ; <paramref name="Cols"/>, des cases ;
+/// <paramref name="Limon"/>, une valeur par case (0 à 250 : ce que le limon des crues ajoute à la pousse, de 0 à +100 %).
 /// </summary>
 public sealed record TerrainDto(int Largeur, int Hauteur, byte[] Roches, byte[] Sols, byte[] Pente, byte[] Debit, byte[] Profondeur,
     byte[] Rivages, byte[] Recifs, IReadOnlyList<int> Lits, IReadOnlyList<string> NomsRoches, IReadOnlyList<string> NomsSols, IReadOnlyList<string> NomsRivages,
-    IReadOnlyList<GrotteVueDto> Grottes, IReadOnlyList<SourceVueDto> Sources, IReadOnlyList<GisementVueDto> Gisements)
+    IReadOnlyList<GrotteVueDto> Grottes, IReadOnlyList<SourceVueDto> Sources, IReadOnlyList<GisementVueDto> Gisements,
+    IReadOnlyList<int> Parois, IReadOnlyList<int> Passages, IReadOnlyList<int> Cols, byte[] Limon)
 {
     public static TerrainDto Depuis(MondeSimule monde)
     {
@@ -56,6 +59,35 @@ public sealed record TerrainDto(int Largeur, int Hauteur, byte[] Roches, byte[] 
             }
         }
 
+        // Le relief et le limon ne comptent que dans les mondes de la génération 2.
+        var parois = new List<int>();
+        var passages = new List<int>();
+        var cols = new List<int>();
+        var limon = new byte[n];
+        if (monde.Configuration.Generation >= 2)
+        {
+            var r = carte.Relief;
+            var l = carte.Largeur;
+            for (var i = 0; i < n; i++)
+            {
+                if (r.Cols[i]) cols.Add(i);
+                int x = i % l, y = i / l;
+                foreach (var (dx, dy) in (ReadOnlySpan<(int, int)>)[(1, 0), (0, 1), (1, 1), (-1, 1)])
+                {
+                    int nx = x + dx, ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= l || ny >= carte.Hauteur) continue;
+                    var j = ny * l + nx;
+                    switch (r.Entre(i, j))
+                    {
+                        case Franchissement.Paroi: parois.AddRange([i, j]); break;
+                        case Franchissement.Passage: passages.AddRange([i, j]); break;
+                    }
+                }
+            }
+            var e = monde.CarteLimon();
+            for (var i = 0; i < n; i++) limon[i] = (byte)Math.Min(250, e[i] / 40);
+        }
+
         return new TerrainDto(carte.Largeur, carte.Hauteur,
             [.. t.Roches.Select(r => (byte)r)], [.. t.Sols.Select(s => (byte)s)], t.Pente, debit, profondeur,
             [.. m.Rivages.Select(r => (byte)r)], [.. m.Recif.Select(r => r ? (byte)1 : (byte)0)], lits,
@@ -65,6 +97,7 @@ public sealed record TerrainDto(int Largeur, int Hauteur, byte[] Roches, byte[] 
             [.. t.Grottes.Select(g => new GrotteVueDto(g.X, g.Y, g.SousRoche, g.Metres, g.Source))],
             [.. t.Sources.Select(s => new SourceVueDto(s.X, s.Y, s.Type.ToString(), L.T($"carac.sources.{s.Type}")))],
             [.. t.Gisements.Select(g => new GisementVueDto(g.X, g.Y, L.T($"gite.{g.Type}"), L.T($"enfouissement.{g.Profondeur}"),
-                connus.GetValueOrDefault(g.Numero)))]);
+                connus.GetValueOrDefault(g.Numero)))],
+            parois, passages, cols, limon);
     }
 }

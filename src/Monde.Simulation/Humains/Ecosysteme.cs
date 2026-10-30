@@ -47,7 +47,8 @@ public sealed class Ecosysteme
     private readonly int _regionsX;
     private readonly int _regionsY;
 
-    public Ecosysteme(Carte carte, ushort[]? gibier = null, ushort[]? plantes = null, double[]? pluies = null, ushort[]? degats = null)
+    public Ecosysteme(Carte carte, ushort[]? gibier = null, ushort[]? plantes = null, double[]? pluies = null, ushort[]? degats = null,
+        ushort[]? limon = null)
     {
         _carte = carte;
         _regionsX = (carte.Largeur + TailleRegion - 1) / TailleRegion;
@@ -57,6 +58,14 @@ public sealed class Ecosysteme
         Plantes = plantes ?? carte.Plantes.Select((v, i) => Arrondir(v * 100 * Sol(i))).ToArray();
         Pluies = pluies ?? Enumerable.Repeat(1.0, _regionsX * _regionsY).ToArray();
         Degats = degats ?? new ushort[carte.Plantes.Length];
+        Limon = new ushort[carte.Plantes.Length];
+        LimonPerte = new ushort[carte.Plantes.Length];
+        if (limon is not null)
+        {
+            if (limon.Length != 2 * Limon.Length) throw new ArgumentException("Le limon sauvegardé ne correspond pas à la taille de la carte.");
+            Array.Copy(limon, Limon, Limon.Length);
+            Array.Copy(limon, Limon.Length, LimonPerte, 0, Limon.Length);
+        }
         if (Gibier.Length != carte.Gibier.Length || Plantes.Length != carte.Plantes.Length || Pluies.Length != _regionsX * _regionsY
             || Degats.Length != carte.Plantes.Length)
         {
@@ -76,6 +85,52 @@ public sealed class Ecosysteme
     /// cendres, terre brûlée, sol arraché. La végétation et le gibier n'y reviennent qu'à mesure que la terre guérit.
     /// </summary>
     public ushort[] Degats { get; }
+
+    /// <summary>
+    /// Limon laissé par les crues (génération 2, depuis la 0.32.7) : ce qu'il ajoute à la pousse des plantes, en dix-millièmes
+    /// (6 000 : +60 %). Il s'épuise chaque jour de <see cref="LimonPerte"/>, en une à trois saisons.
+    /// </summary>
+    public ushort[] Limon { get; }
+
+    /// <summary>Ce que le limon de chaque case perd par jour (dix-millièmes).</summary>
+    public ushort[] LimonPerte { get; }
+
+    /// <summary>Le limon et sa perte, à la suite, pour l'enregistrer (null : aucun limon nulle part).</summary>
+    public ushort[]? LimonAEnregistrer() => Array.TrueForAll(Limon, v => v == 0) ? null : [.. Limon, .. LimonPerte];
+
+    /// <summary>
+    /// Dépose du limon : <paramref name="gain"/> (0 à 1) de pousse en plus, qui s'éteint en <paramref name="jours"/>. Un nouveau dépôt
+    /// s'ajoute à ce qui reste, sans dépasser le double de la pousse.
+    /// </summary>
+    public void Deposer(int i, double gain, double jours)
+    {
+        var total = Math.Clamp(Limon[i] + gain * 10_000, 0, 10_000);
+        Limon[i] = (ushort)Math.Round(total);
+        LimonPerte[i] = (ushort)Math.Max(1, Math.Round(total / Math.Max(1, jours)));
+    }
+
+    /// <summary>Ce que le limon ajoute à la pousse : davantage sur un sol pauvre que sur un sol déjà riche.</summary>
+    private double EffetLimon(int i) => 1 + Limon[i] / 10_000.0 * Math.Clamp(1.6 - 0.5 * Sol(i), 0.7, 1.4);
+
+    /// <summary>
+    /// Pleut-il aujourd'hui sur la case ? Le temps de chaque région, tiré de la graine et du jour (sans toucher au hasard de la
+    /// simulation) : plus de jours de pluie au printemps et les années arrosées ; les jours de pluie vont souvent par deux ou trois.
+    /// </summary>
+    public bool Pleut(int i, long maintenant)
+    {
+        var region = Region(i % _carte.Largeur, i / _carte.Largeur);
+        var jour = maintenant / Calendrier.SecondesParJour;
+        var saison = (int)(jour % Calendrier.JoursParAn / Calendrier.JoursParSaison);
+        var part = Math.Clamp((saison switch { 0 => 0.35, 1 => 0.2, 2 => 0.3, _ => 0.25 }) * Pluies[region], 0.03, 0.8);
+        // Un tirage par épisode de deux à trois jours, et un sur cinq des jours qui en décide seul.
+        double Tirage(long n, ulong sel)
+        {
+            var etat = _carte.Graine ^ sel ^ ((ulong)region * 0x9E3779B97F4A7C15UL) ^ ((ulong)n * 0xC2B2AE3D27D4EB4FUL);
+            return (Alea.SplitMix64(ref etat) >> 11) * (1.0 / (1UL << 53));
+        }
+        var seul = Tirage(jour, 0x4A4F5552UL) < 0.2;
+        return (seul ? Tirage(jour, 0x504C5549UL) : Tirage((jour + region) / 3 + region * 7919, 0x45504953UL)) < part;
+    }
 
     /// <summary>
     /// Effet du climat du moment sur la végétation de tout le continent (1 : normal ; moins après une grande éruption,
@@ -128,10 +183,12 @@ public sealed class Ecosysteme
 
     /// <summary>Niveau des plantes vers lequel la tuile repousse aujourd'hui (centièmes).</summary>
     public double NiveauPlantes(int i, double saison) =>
-        _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i)) * (1 - Degats[i] / 10_000.0) * FacteurClimat * Epargne(i) * Sol(i);
+        _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i)) * (1 - Degats[i] / 10_000.0) * FacteurClimat * Epargne(i) * Sol(i)
+        * (Limon[i] == 0 ? 1 : EffetLimon(i));
 
     /// <summary>Capacité d'accueil du gibier sur la tuile cette année (centièmes) : il dépend moins des pluies que les plantes.</summary>
-    public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i))) * (1 - Degats[i] / 20_000.0) * Epargne(i) * (0.6 + 0.4 * Sol(i));
+    public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i))) * (1 - Degats[i] / 20_000.0) * Epargne(i) * (0.6 + 0.4 * Sol(i))
+        * (Limon[i] == 0 ? 1 : 1 + 0.3 * Limon[i] / 10_000.0);
 
     // Ce que le sol change aux plantes de la case (voir Terrain.FacteurSol) ; le gibier, qui broute, en dépend moins.
     private float[]? _sol;
@@ -165,6 +222,7 @@ public sealed class Ecosysteme
         for (var i = 0; i < Plantes.Length; i++)
         {
             if (Degats[i] > 0) Degats[i] = (ushort)Math.Max(0, Degats[i] - Math.Max(1, (int)Math.Round(GuerisonParJour(i))));
+            if (Limon[i] > 0) Limon[i] = (ushort)Math.Max(0, Limon[i] - LimonPerte[i]);
             if (_carte.Plantes[i] == 0 && _carte.Gibier[i] == 0) continue;
 
             // Plantes : la repousse suit la saison ; une tuile dépouillée (moins de 20 % de son niveau) repart plus lentement.

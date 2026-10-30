@@ -75,9 +75,78 @@ public sealed partial class Catastrophes
         c.Cases = cases;
         // Le flot d'une crue subite passe en une à trois heures ; une crue lente monte pendant six à dix-huit heures.
         c.Prochaine = maintenant + (subite ? 1 + _alea.Entier(3) : 6 + _alea.Entier(13)) * Calendrier.SecondesParHeure;
-        foreach (var i in cases) Ravager(c, i, 0.5, 0.7, 0.4);
+        if (Generation >= 2) Limoner(c, cases, ampleur, jours, subite, humains, maintenant);
+        else foreach (var i in cases) Ravager(c, i, 0.5, 0.7, 0.4);
         if (humains.Vivants().Any(h => h.EstVivant && cases.Contains(_carte.Indice(h.X, h.Y)))) Signaler(c, texte);
         return c;
+    }
+
+    /// <summary>
+    /// Ce que laisse la crue (génération 2, depuis la 0.32.7). L'eau couche et pourrit les plantes en place, mais la terre n'est
+    /// pas blessée pour des années : elle guérit en quelques semaines après le retrait. Elle dépose du limon, d'autant plus que
+    /// l'eau est restée longtemps, qu'elle était profonde et calme, et que la case est une plaine alluviale ; pendant une à trois
+    /// saisons, les plantes y poussent plus fort (crue annuelle du Nil, environ 1 mm de limon par an ; « pulse » des crues dans
+    /// les plaines alluviales, Junk et al., 1989). Une crue subite racle le lit et ses berges et n'y laisse que sable et galets.
+    /// Ceux qui voient la plaine sous l'eau s'en souviennent.
+    /// </summary>
+    private void Limoner(Catastrophe c, HashSet<int> cases, int ampleur, double jours, bool subite, List<Humain> humains, long maintenant)
+    {
+        var terrain = _carte.Terrain;
+        foreach (var i in cases.Order())
+        {
+            int x = i % _carte.Largeur, y = i / _carte.Largeur;
+            var lit = Biomes.EstEauDouce((Biome)_carte.Biomes[i]) || BordDeRiviere(x, y);
+            if (subite && lit)
+            {
+                Ravager(c, i, 0.5, 0.7, 0.4);
+                _ecosysteme.Deposer(i, 0.2 * (0.1 + 0.2 * _alea.Reel()), 90 * (1 + 2 * _alea.Reel()));
+                continue;
+            }
+            Ravager(c, i, 0.5, 0.7, 0.03);
+            // Profondeur de l'eau sur la case, de 0 (au bord de la crue) à 1 (une case aussi basse que la rivière).
+            var profondeur = Math.Clamp((PlusBasseRiviere(x, y, ampleur) + ampleur - _carte.Altitudes[i]) / (double)Math.Max(1, ampleur), 0, 1);
+            var gain = (0.2 + 0.4 * _alea.Reel()) * (0.4 + 0.6 * profondeur) * Math.Clamp(jours / 10, 0.5, 1.2)
+                       * (terrain.Roches[i] == Roche.Alluvions ? 1 : 0.6);
+            _ecosysteme.Deposer(i, Math.Min(0.6, gain), 90 * (1 + 2 * _alea.Reel()));
+        }
+        // Les témoins : ceux qui voient la plaine noyée, tout près.
+        foreach (var h in humains.Vivants())
+        {
+            if (!h.EstVivant || h.EstBebe(maintenant)) continue;
+            var (meilleure, distance) = (-1, 6.5);
+            foreach (var i in cases)
+            {
+                var d = Distance(h.X, h.Y, i % _carte.Largeur, i / _carte.Largeur);
+                if (d < distance || d == distance && i < meilleure) (meilleure, distance) = (i, d);
+            }
+            if (meilleure >= 0)
+                h.Memoire.Retenir(TypeLieu.Crue, meilleure % _carte.Largeur, meilleure / _carte.Largeur, maintenant, h.Personnalite.Intelligence.Memoire);
+        }
+    }
+
+    private bool BordDeRiviere(int x, int y)
+    {
+        for (var dy = -1; dy <= 1; dy++)
+        for (var dx = -1; dx <= 1; dx++)
+        {
+            int nx = x + dx, ny = y + dy;
+            if (nx >= 0 && ny >= 0 && nx < _carte.Largeur && ny < _carte.Hauteur && _carte.BiomeEn(nx, ny) == Biome.Riviere) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Altitude de l'eau douce la plus basse à portée de la crue (la case elle-même si on n'en trouve pas).</summary>
+    private int PlusBasseRiviere(int x, int y, int ampleur)
+    {
+        var bas = (int)_carte.Altitudes[_carte.Indice(x, y)];
+        for (var dy = -ampleur; dy <= ampleur; dy++)
+        for (var dx = -ampleur; dx <= ampleur; dx++)
+        {
+            int nx = x + dx, ny = y + dy;
+            if (nx < 0 || ny < 0 || nx >= _carte.Largeur || ny >= _carte.Hauteur || !Biomes.EstEauDouce(_carte.BiomeEn(nx, ny))) continue;
+            bas = Math.Min(bas, _carte.Altitudes[_carte.Indice(nx, ny)]);
+        }
+        return bas;
     }
 
     // ───────────── Cyclones ─────────────

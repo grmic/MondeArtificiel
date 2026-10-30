@@ -1,7 +1,7 @@
 <Project>
   <!-- Version de l'application (affichée dans « Configuration ») et auteur. -->
   <PropertyGroup>
-    <Version>0.32.6</Version>
+    <Version>0.32.7</Version>
     <Authors>MicG</Authors>
     <Company>MicG</Company>
     <Product>Monde artificiel</Product>

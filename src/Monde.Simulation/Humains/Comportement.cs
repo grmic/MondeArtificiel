@@ -448,7 +448,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// Mort d'un humain. Le suicide a pour cause la dépression ; un meurtre, les coups qui l'ont précédé
     /// (<paramref name="causeId"/>) et son auteur (<paramref name="meurtrier"/>).
     /// </summary>
-    private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null, double karmaMeurtrier = Regard.Meurtre)
+    private void Mourir(Humain h, long maintenant, CauseDeMort cause, long causeId = 0, Humain? meurtrier = null, double karmaMeurtrier = Regard.Meurtre,
+        Recit? recit = null)
     {
         RemedeEchoue(h);
         PerduPourSonSoignant(h, maintenant);
@@ -474,6 +475,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 new Recit("j.mort.envoutement", ("h", h), ("m", maudisseur), ("age", age)), h.MauditEvenementId, karmaAutre: Regard.MortMaudit),
             CauseDeMort.Empoisonnement => Noter(maintenant, TypeEvenement.Mort, h, null,
                 new Recit("j.mort.empoisonnement", ("h", h), ("age", age)), causeId),
+            CauseDeMort.Chute when recit is not null => Noter(maintenant, TypeEvenement.Mort, h, null,
+                new Recit("j.mort.chute", ("h", h), ("chute", recit), ("age", age)), causeId),
             CauseDeMort.Noyade when causeId == 0 => Noter(maintenant, TypeEvenement.Mort, h, null,
                 new Recit("j.mort.noyade", ("h", h), ("age", age)), causeId),
             CauseDeMort.Maladie when h.Maladie != Maladie.Aucune && h.EstMalade(maintenant) => Noter(maintenant, TypeEvenement.Mort, h, null,
@@ -882,8 +885,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             h.Activite = Activite.Cueillir;
             h.CibleX = h.CibleY = -1;
             h.Memoire.Retenir(TypeLieu.Nourriture, h.X, h.Y, _maintenant, Aptitude(h));
+            if (AvecLeRelief)
+            {
+                ConstaterLeLimon(h, i, true);
+                GrimperAUnArbre(h);
+            }
             return;
         }
+        if (AvecLeRelief) ConstaterLeLimon(h, i, false);
         if (ecosysteme.Gibier[i] >= 2000 && !h.EstEnfant(_maintenant))
         {
             // Chasse à mains nues : réussite rare, meilleure pour les adroits et là où le gibier abonde.
@@ -926,7 +935,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             _motif = Motif.Vu;
             Avancer(h, c.X, c.Y, Activite.ChercherNourriture);
         }
-        else if (!AllerALaReserve(h, false, _tous) && !AllerAuSouvenir(h, TypeLieu.Nourriture, Activite.ChercherNourriture) && !Retourner(h, recours))
+        else if (!AllerALaReserve(h, false, _tous) && !(AvecLeRelief && AllerAuLimon(h)) && !AllerAuSouvenir(h, TypeLieu.Nourriture, Activite.ChercherNourriture)
+                 && !Retourner(h, recours))
         {
             _motif = Motif.Inconnu;
             Explorer(h, Activite.ChercherNourriture);
@@ -1063,6 +1073,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             var rayon = RayonPerception(h);
             h.CibleX = Math.Clamp(h.X + alea.Entier(2 * rayon + 1) - rayon, 0, carte.Largeur - 1);
             h.CibleY = Math.Clamp(h.Y + alea.Entier(2 * rayon + 1) - rayon, 0, carte.Hauteur - 1);
+            // Nouvelle direction : on y va droit tant que rien ne barre la route (les anciens mondes gardent leur détour).
+            if (AvecLeRelief) (h.Detour, h.Chemin) = (false, null);
         }
         Avancer(h, h.CibleX, h.CibleY, activite);
     }
@@ -1117,9 +1129,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         return false;
     }
 
-    private void Avancer(Humain h, int cibleX, int cibleY, Activite activite)
+    internal void Avancer(Humain h, int cibleX, int cibleY, Activite activite)
     {
-        if (h.CibleX != cibleX || h.CibleY != cibleY) h.Detour = false;
+        if (h.CibleX != cibleX || h.CibleY != cibleY) (h.Detour, h.Chemin) = (false, null);
         h.Activite = activite;
         h.CibleX = cibleX;
         h.CibleY = cibleY;
@@ -1136,7 +1148,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             var (bx, by) = h.Detour ? (-1, -1) : PasDirect(h.X, h.Y, cibleX, cibleY);
             if (bx < 0)
             {
-                var pas = PremierPasDuChemin(carte.Indice(h.X, h.Y), carte.Indice(cibleX, cibleY));
+                var pas = AvecLeRelief ? CheminDansLeRelief(h, carte.Indice(h.X, h.Y), carte.Indice(cibleX, cibleY))
+                    : PremierPasDuChemin(carte.Indice(h.X, h.Y), carte.Indice(cibleX, cibleY));
                 if (pas < 0)
                 {
                     // La mer sépare de la terre où le groupe veut aller : chacun prépare la traversée.
@@ -1164,8 +1177,14 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 return;
             }
             budget -= effort;
+            var depuis = carte.Indice(h.X, h.Y);
             h.X = bx;
             h.Y = by;
+            if (AvecLeRelief)
+            {
+                Franchir(h, depuis, carte.Indice(bx, by));
+                if (!h.EstVivant) return;
+            }
             if (!Climat.EstPraticable(carte.BiomeEn(bx, by)) && Radeau(h) is { } radeau)
             {
                 // Il traverse sur son radeau.
@@ -1193,15 +1212,25 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var meilleure = Distance2(x, y, cibleX, cibleY);
         var (bx, by) = (-1, -1);
         var egalites = 0;
+        var barre = int.MaxValue;
         foreach (var (dx, dy) in Voisins8)
         {
             int nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
             if (!Praticable(carte.Indice(nx, ny))) continue;
+            if (!Franchissable(carte.Indice(x, y), carte.Indice(nx, ny)))
+            {
+                barre = Math.Min(barre, Distance2(nx, ny, cibleX, cibleY));
+                continue;
+            }
             var d = Distance2(nx, ny, cibleX, cibleY);
             if (d < meilleure) (meilleure, bx, by, egalites) = (d, nx, ny, 1);
             else if (d == meilleure && bx >= 0 && alea.Entier(++egalites) == 0) (bx, by) = (nx, ny);
         }
+        // Dans le relief, un pas raide ou exposé se réfléchit, comme une paroi qui barre la ligne droite : le chemin de moindre
+        // effort passe peut-être ailleurs (par un col), ou par la paroi pour qui ose.
+        if (bx >= 0 && AvecLeRelief && (barre < meilleure || carte.Relief.Entre(carte.Indice(x, y), carte.Indice(bx, by)) is Franchissement.Passage or Franchissement.Paroi))
+            return (-1, -1);
         return (bx, by);
     }
 
@@ -1223,9 +1252,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         return _generation;
     }
 
-    private int PremierPasDuChemin(int depart, int cible)
+    private int PremierPasDuChemin(int depart, int cible, List<int>? chemin = null, int rayonMax = 40)
     {
-        const int RayonMax = 40;
         int cx = cible % carte.Largeur, cy = cible / carte.Largeur;
         var generation = NouveauParcours();
         var (vus, parent, file) = (_vus!, _parents!, _file!);
@@ -1239,16 +1267,17 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             int x = i % carte.Largeur, y = i / carte.Largeur;
             if (i != depart && Distance(x, y, cx, cy) <= (Praticable(cible) ? 0 : 1))
             {
+                if (chemin is not null) return Remonter(i, depart, parent, chemin);
                 while (parent[i] != depart) i = parent[i];
                 return i;
             }
-            if (d >= RayonMax) continue;
+            if (d >= rayonMax) continue;
             foreach (var (dx, dy) in Voisins8)
             {
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
-                if (vus[j] == generation || !Praticable(j)) continue;
+                if (vus[j] == generation || !Praticable(j) || !Franchissable(i, j)) continue;
                 vus[j] = generation;
                 parent[j] = i;
                 file.Enqueue((j, d + 1));
@@ -1301,8 +1330,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 var j = carte.Indice(nx, ny);
                 if (vus[j] == generation) continue;
                 vus[j] = generation;
-                // L'eau non praticable peut être une cible (on boit depuis la rive) mais on ne la traverse pas.
-                if (Praticable(j)) file.Enqueue((j, d + 1));
+                // L'eau non praticable peut être une cible (on boit depuis la rive) mais on ne la traverse pas ; une paroi non plus.
+                if (Praticable(j) && Franchissable(i, j)) file.Enqueue((j, d + 1));
             }
         }
         return meilleur;

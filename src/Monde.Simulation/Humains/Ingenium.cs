@@ -529,6 +529,7 @@ public sealed partial class Comportement
         Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide => "ing.question.CacheDEau",
         Effet.Transformation => "ing.question.Transformation",
         Effet.Modelage => "ing.question.Modelage",
+        Effet.Limon => "ing.question.Limon",
         _ => "ing.question.autre",
     });
 

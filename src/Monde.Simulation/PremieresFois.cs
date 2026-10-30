@@ -90,6 +90,9 @@ public static class PremieresFois
             case TypeEvenement.Geste:
                 yield return ("entite.geste", true, false, false);
                 break;
+            case TypeEvenement.Nature when cle is "relief.grimpe" or "relief.desescalade":
+                yield return ("paroi", true, true, false);
+                break;
             case TypeEvenement.Catastrophe:
                 // L'annonce d'une catastrophe porte son numéro ; ce qui en découle (morts, blessés, frayeur) la cite comme cause.
                 if (catastrophe(e.Id) is { } annonce) yield return ($"cat.{annonce}", true, false, false);

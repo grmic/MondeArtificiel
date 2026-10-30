@@ -16,6 +16,12 @@ public enum TypeLieu : byte
 
     /// <summary>Une terre de l'autre côté de la mer : vue de ses yeux, devinée à des signes, ou racontée.</summary>
     TerreAuLoin = 4,
+
+    /// <summary>Un passage dans une falaise, une paroi franchie ou un col (depuis la 0.32.7) ; <see cref="LieuConnu.DecuLe"/> : on y a vu tomber.</summary>
+    Passage = 5,
+
+    /// <summary>Un lieu vu sous les eaux d'une crue (depuis la 0.32.7).</summary>
+    Crue = 6,
 }
 
 /// <summary>Un lieu dont l'humain se souvient.</summary>
@@ -105,6 +111,14 @@ public sealed class Memoire
         var memeType = Lieux.Where(l => l.Type == type).ToList();
         if (memeType.Count >= Capacite(aptitude)) Lieux.Remove(memeType.MinBy(l => (l.Rappels, l.VuLe))!);
         Lieux.Add(new LieuConnu(type, x, y, maintenant, rappels));
+    }
+
+    /// <summary>On a vu tomber quelqu'un à ce passage (ou l'on y est tombé) : on s'en souvient, et on le craint.</summary>
+    public void Craindre(int x, int y, long maintenant)
+    {
+        var i = Lieux.FindIndex(l => l.Type == TypeLieu.Passage && Math.Max(Math.Abs(l.X - x), Math.Abs(l.Y - y)) < 2);
+        if (i >= 0) Lieux[i] = Lieux[i] with { DecuLe = maintenant, VuLe = maintenant };
+        else Lieux.Add(new LieuConnu(TypeLieu.Passage, x, y, maintenant, 1, maintenant));
     }
 
     /// <summary>Arrivé sur un lieu connu sans rien y trouver : un souvenir faible s'efface, un souvenir solide s'affaiblit.</summary>

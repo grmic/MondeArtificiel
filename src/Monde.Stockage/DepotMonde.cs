@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 43;
+    public const int VersionSchema = 44;
 
     private readonly string _connexion;
 
@@ -602,6 +602,9 @@ public sealed partial class DepotMonde
         if (actuelle < 42) MigrerVersion42(connexion, transaction);
         // Version 43 : huttes enduites de chaux.
         if (actuelle < 43) MigrerVersion43(connexion, transaction);
+        // Version 44 : limon des crues.
+        if (actuelle < 44 && !Colonnes(connexion, transaction, "ressources").Contains("limon"))
+            Executer(connexion, transaction, "ALTER TABLE ressources ADD COLUMN limon BLOB;");
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """
@@ -640,7 +643,7 @@ public sealed partial class DepotMonde
             }
         }
 
-        commande.CommandText = "SELECT gibier, plantes, degats FROM ressources WHERE id = 1;";
+        commande.CommandText = "SELECT gibier, plantes, degats, limon FROM ressources WHERE id = 1;";
         using (var lecteur = commande.ExecuteReader())
         {
             if (lecteur.Read())
@@ -649,6 +652,7 @@ public sealed partial class DepotMonde
                 {
                     Gibier = VersUShort((byte[])lecteur[0]), Plantes = VersUShort((byte[])lecteur[1]),
                     DegatsNature = lecteur.IsDBNull(2) ? null : VersUShort((byte[])lecteur[2]),
+                    Limon = lecteur.IsDBNull(3) ? null : VersUShort((byte[])lecteur[3]),
                 };
             }
         }
@@ -1101,12 +1105,13 @@ public sealed partial class DepotMonde
             using var commande = connexion.CreateCommand();
             commande.Transaction = transaction;
             commande.CommandText = """
-                INSERT INTO ressources (id, gibier, plantes, degats) VALUES (1, $gibier, $plantes, $degats)
-                ON CONFLICT (id) DO UPDATE SET gibier = excluded.gibier, plantes = excluded.plantes, degats = excluded.degats;
+                INSERT INTO ressources (id, gibier, plantes, degats, limon) VALUES (1, $gibier, $plantes, $degats, $limon)
+                ON CONFLICT (id) DO UPDATE SET gibier = excluded.gibier, plantes = excluded.plantes, degats = excluded.degats, limon = excluded.limon;
                 """;
             commande.Parameters.AddWithValue("$gibier", VersOctets(gibier));
             commande.Parameters.AddWithValue("$plantes", VersOctets(plantes));
             commande.Parameters.AddWithValue("$degats", etat.DegatsNature is { } degats ? VersOctets(degats) : DBNull.Value);
+            commande.Parameters.AddWithValue("$limon", etat.Limon is { } limon ? VersOctets(limon) : DBNull.Value);
             commande.ExecuteNonQuery();
         }
 

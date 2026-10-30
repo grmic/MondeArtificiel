@@ -21,9 +21,14 @@ interface TerrainJson {
   grottes: { x: number; y: number; sousRoche: boolean; metres: number; source: boolean }[];
   sources: { x: number; y: number; type: "Douce" | "Chaude" | "Salee"; nom: string }[];
   gisements: { x: number; y: number; type: string; profondeur: string; connu: number }[];
+  /** Depuis la 0.32.7 (mondes de la génération 2) : parois et passages par paires de cases voisines, cols, limon des crues. */
+  parois: number[];
+  passages: number[];
+  cols: number[];
+  limon: string;
 }
 
-interface Terrain extends Omit<TerrainJson, "roches" | "sols" | "pente" | "debit" | "profondeur" | "rivages" | "recifs"> {
+interface Terrain extends Omit<TerrainJson, "roches" | "sols" | "pente" | "debit" | "profondeur" | "rivages" | "recifs" | "limon"> {
   roches: Uint8Array;
   sols: Uint8Array;
   pente: Uint8Array;
@@ -31,9 +36,13 @@ interface Terrain extends Omit<TerrainJson, "roches" | "sols" | "pente" | "debit
   profondeur: Uint8Array;
   rivages: Uint8Array;
   recifs: Uint8Array;
+  limon: Uint8Array;
+  /** Cases touchées par une paroi ou un passage (1 : paroi, 2 : passage, 3 : les deux), et cols, pour le survol. */
+  bords: Uint8Array;
+  estCol: Set<number>;
 }
 
-const CALQUES = ["roches", "sols", "eau", "fonds", "grottes", "gisements"] as const;
+const CALQUES = ["roches", "sols", "eau", "fonds", "grottes", "gisements", "falaises", "limon"] as const;
 type Calque = (typeof CALQUES)[number];
 
 /** Couleurs des roches, dans l'ordre de l'énumération Roche : granite, basalte, volcanique, calcaire, craie, grès, schiste, alluvions, évaporites. */
@@ -124,7 +133,12 @@ export class Calques {
       ...json,
       roches: decoder(json.roches), sols: decoder(json.sols), pente: decoder(json.pente), debit: decoder(json.debit),
       profondeur: decoder(json.profondeur), rivages: decoder(json.rivages), recifs: decoder(json.recifs),
+      limon: decoder(json.limon ?? ""), bords: new Uint8Array(json.largeur * json.hauteur), estCol: new Set(json.cols ?? []),
     };
+    const bords = this.terrain.bords;
+    for (const [liste, marque] of [[json.parois ?? [], 1], [json.passages ?? [], 2]] as const) {
+      for (const i of liste) bords[i] |= marque;
+    }
     this.dessiner();
   }
 
@@ -198,6 +212,29 @@ export class Calques {
       }
       dessin.addChild(g);
     }
+    if (this.choix.has("limon")) {
+      // Limon des crues : vert-brun, d'autant plus opaque que la pousse y est forte.
+      dessin.addChild(image(l, h, (i) => {
+        const v = tr.limon[i] ?? 0;
+        return v > 0 ? [150, 170, 60, Math.round(60 + 180 * Math.min(1, v / 150))] : null;
+      }));
+    }
+    if (this.choix.has("falaises")) {
+      // Une paroi : un trait sombre sur la limite entre les deux cases ; un passage : un trait orange ; un col : un rond blanc.
+      const g = new Graphics();
+      for (const [liste, couleur, largeur] of [[tr.parois, 0x2a1d14, 0.32], [tr.passages, 0xffa040, 0.28]] as const) {
+        for (let k = 0; k + 1 < liste.length; k += 2) {
+          const a = liste[k], b = liste[k + 1];
+          const ax = a % l, ay = Math.floor(a / l), dx = (b % l) - ax, dy = Math.floor(b / l) - ay;
+          const mx = ax + 0.5 + dx / 2, my = ay + 0.5 + dy / 2, n = Math.hypot(dx, dy), px = (-dy / n) * 0.5, py = (dx / n) * 0.5;
+          g.moveTo(mx - px, my - py).lineTo(mx + px, my + py).stroke({ width: largeur, color: couleur, alpha: 0.95, cap: "round" });
+        }
+      }
+      for (const c of tr.cols) {
+        g.circle((c % l) + 0.5, Math.floor(c / l) + 0.5, 0.55).fill({ color: 0xffffff }).stroke({ width: 0.15, color: 0x2a1d14 });
+      }
+      dessin.addChild(g);
+    }
     this.vue.afficherCalques(dessin);
   }
 
@@ -213,6 +250,10 @@ export class Calques {
       lignes.push(t("calques.sol", { roche: tr.nomsRoches[tr.roches[i]] ?? "?", sol: tr.nomsSols[tr.sols[i]] ?? "?", pente: nombre(tr.pente[i] * 40) }));
       if (tr.rivages[i]) lignes.push(t("calques.rivage", { rivage: tr.nomsRivages[tr.rivages[i]] ?? "" }));
     }
+    if (tr.bords[i] & 1) lignes.push(t("calques.paroi"));
+    if (tr.bords[i] & 2) lignes.push(t("calques.passage"));
+    if (tr.estCol.has(i)) lignes.push(t("calques.col"));
+    if (tr.limon[i] > 0) lignes.push(t("calques.limonIci", { p: nombre(Math.round(tr.limon[i] * 0.4)) }));
     if (tr.debit[i] > 0) lignes.push(t("calques.riviere", { q: nombre(Math.pow(10, (tr.debit[i] - 1) / 40) - 1, 1) }));
     for (const c of tr.grottes) if (c.x === x && c.y === y) lignes.push(t(c.sousRoche ? "calques.abri" : c.source ? "calques.grotteSource" : "calques.grotte", { m: c.metres }));
     for (const s of tr.sources) if (s.x === x && s.y === y) lignes.push(t("calques.source", { type: s.nom }));

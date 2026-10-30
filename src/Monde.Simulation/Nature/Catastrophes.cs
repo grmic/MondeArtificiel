@@ -58,6 +58,9 @@ public sealed partial class Catastrophes
     /// <summary>Numéros des événements (partagés avec tout le monde simulé).</summary>
     public Numeroteur Numeros { get; set; } = new();
 
+    /// <summary>Génération du monde (voir <see cref="ConfigurationMonde.Generation"/>) : depuis la 2, les crues laissent du limon.</summary>
+    public int Generation { get; init; }
+
     /// <summary>Pour noter les morts comme les autres (deuil, journal) ; fourni par le monde.</summary>
     public Comportement? Comportement { get; set; }
 

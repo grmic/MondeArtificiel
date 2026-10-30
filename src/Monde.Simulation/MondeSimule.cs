@@ -55,6 +55,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Dégâts des catastrophes sur la nature, par tuile (voir <see cref="Ecosysteme.Degats"/>).</summary>
     public ushort[]? DegatsNature { get; init; }
 
+    /// <summary>Limon des crues et sa perte par jour, à la suite (voir <see cref="Ecosysteme.Limon"/>) ; null : aucun.</summary>
+    public ushort[]? Limon { get; init; }
+
     /// <summary>Réglages choisis à la création du monde (absents : réglages d'origine, voir <see cref="ConfigurationMonde.ParDefaut"/>).</summary>
     public ConfigurationMonde? Configuration { get; init; }
 
@@ -185,7 +188,8 @@ public sealed class MondeSimule
         _humains = new Population(etat.Humains is { Count: > 0 } h
             ? h.Select(x => x.Copier()).OrderBy(x => x.Id)
             : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes));
-        _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray(), etat.DegatsNature?.ToArray());
+        _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray(), etat.DegatsNature?.ToArray(),
+            etat.Limon?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a, commun: true) : new Alea(etat.Graine ^ 0x534D554C4154UL) { Commun = true };
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
         _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
@@ -206,7 +210,7 @@ public sealed class MondeSimule
         };
         _catastrophes = new Catastrophes(carte, _ecosysteme, _alea, etat.Catastrophes, etat.Pathogenes)
         {
-            Numeros = _numeros, Comportement = _comportement, Communautes = _communautes,
+            Numeros = _numeros, Generation = configuration.Generation, Comportement = _comportement, Communautes = _communautes,
         };
         _comportement.Catastrophes = _catastrophes;
         _comportement.Outremer = _social.Outremer = new Outremer(etat.Outremer);
@@ -287,6 +291,7 @@ public sealed class MondeSimule
                     Catastrophes = _catastrophes.EnMemoire,
                     Pathogenes = _catastrophes.Pathogenes.ToList(),
                     DegatsNature = _ecosysteme.Degats.ToArray(),
+                    Limon = _ecosysteme.LimonAEnregistrer(),
                     Configuration = Configuration,
                     Guerres = _social.Guerres.Select(g => g.Copier()).ToList(),
                     Foyers = _installations.Foyers.ToList(),
@@ -501,6 +506,12 @@ public sealed class MondeSimule
     public byte[] CarteAbondance()
     {
         lock (_verrou) return _ecosysteme.CarteAbondance(_secondes);
+    }
+
+    /// <summary>Limon des crues sur chaque tuile (copie, dix-millièmes de pousse en plus ; voir <see cref="Ecosysteme.Limon"/>).</summary>
+    public ushort[] CarteLimon()
+    {
+        lock (_verrou) return _ecosysteme.Limon.ToArray();
     }
 
     /// <summary>Pluies de l'année par région climatique (copie), et nombre de régions en largeur et en hauteur.</summary>

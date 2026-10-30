@@ -80,7 +80,7 @@ Dans la copie, tout le journal est en clair, archives comprises, et la table `jo
 
 ## Mises à jour et problèmes
 
-Une nouvelle version met la base à jour toute seule au démarrage, sans perte : la 0.31.5 passe du schéma 38 au 39 (le peuple de chaque humain, son voyage en mer, les premières avec les terres d'outre-mer). Une base d'une version plus récente que le jeu est refusée plutôt qu'abîmée. La 0.32.6 passe au schéma 43 : la table `huttes` gagne la colonne `enduite` (quand la hutte a été enduite de chaux, 0 si jamais).
+Une nouvelle version met la base à jour toute seule au démarrage, sans perte : la 0.31.5 passe du schéma 38 au 39 (le peuple de chaque humain, son voyage en mer, les premières avec les terres d'outre-mer). Une base d'une version plus récente que le jeu est refusée plutôt qu'abîmée. La 0.32.6 passe au schéma 43 : la table `huttes` gagne la colonne `enduite` (quand la hutte a été enduite de chaux, 0 si jamais). La 0.32.7 passe au schéma 44 : la table `ressources` gagne la colonne `limon` (le limon laissé par les crues sur chaque case et ce qu'il perd par jour, vide s'il n'y en a nulle part), et la table `memoire_lieux` connaît deux types de lieux de plus (5 : passage dans une falaise ou col, avec `decu_le` quand on y a vu tomber quelqu'un ; 6 : terre vue sous l'eau d'une crue).
 
 | Symptôme | Que faire |
 | --- | --- |

@@ -160,6 +160,8 @@ public enum CauseDeMort : byte
     MortSubite = 21,
     /// <summary>Mort dans son sommeil (l'Entité ; les humains n'y voient qu'une mort paisible).</summary>
     Sommeil = 22,
+    /// <summary>Tombé d'une falaise, d'un passage, d'une pente raide ou d'un arbre.</summary>
+    Chute = 23,
 }
 
 /// <summary>
@@ -279,6 +281,14 @@ public sealed class Humain
 
     /// <summary>Vrai quand l'humain contourne un obstacle pour atteindre sa cible.</summary>
     public bool Detour { get; set; }
+
+    /// <summary>
+    /// Dans le relief (génération 2) : le chemin qu'il suit, la case suivante en fin de liste, et la case visée (−1 : aucun). Il ne
+    /// s'enregistre pas : après un rechargement, le chemin est cherché de nouveau.
+    /// </summary>
+    public List<int>? Chemin { get; set; }
+
+    public int CheminCible { get; set; } = -1;
 
     /// <summary>
     /// Chemin déjà fait vers la case suivante, en mètres « de terrain plat » : à pas lents (enfant, âgé, terrain

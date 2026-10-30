@@ -40,6 +40,11 @@ public sealed class Carte
     /// <summary>Fonds, rivages, îles, passages, vents et courants : tirés de la graine et de la carte au premier besoin.</summary>
     public Nature.Mer Mer => LazyInitializer.EnsureInitialized(ref _mer, () => Nature.Mer.Calculer(this));
 
+    private Nature.Relief? _relief;
+
+    /// <summary>Parois, passages et cols, tels que les vit un marcheur : tirés de la graine et de la carte au premier besoin.</summary>
+    public Nature.Relief Relief => LazyInitializer.EnsureInitialized(ref _relief, () => Nature.Relief.Calculer(this));
+
     public int Indice(int x, int y) => y * Largeur + x;
 
     public Biome BiomeEn(int x, int y) => (Biome)Biomes[Indice(x, y)];
