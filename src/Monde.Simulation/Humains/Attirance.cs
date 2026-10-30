@@ -153,8 +153,28 @@ public static class Attirance
         var vigueur = femme
             ? Math.Clamp(h.Sante / 100, 0, 1)
             : Math.Clamp(0.4 * (0.5 + h.Apparence.Taille / 4) + 0.3 * h.Personnalite.Endurance + 0.3 * h.Sante / 100, 0, 1);
-        return Math.Clamp(0.55 * Beaute(h, ideal, maintenant) + 100 * (0.2 * jeunesse + 0.15 * h.Apparence.Allure + 0.1 * vigueur), 0, 100);
+        return Math.Clamp(0.55 * Beaute(h, ideal, maintenant) + 100 * (0.2 * jeunesse + 0.15 * h.Apparence.Allure + 0.1 * vigueur)
+            + (Pare(h) ? 5 : 0), 0, 100);
     }
+
+    /// <summary>
+    /// Il porte une parure de métal (une perle, une plaque de cuivre battu) : elle attire l'œil. Les premiers objets de cuivre
+    /// sont surtout des perles et des ornements, signes de rang (Çayönü, Shanidar : Roberts et al., 2009 ; Kuhn et Stiner, 2007).
+    /// </summary>
+    public static bool Pare(Humain h)
+    {
+        foreach (var o in h.Objets) if (Parure(o)) return true;
+        return false;
+    }
+
+    /// <summary>Un objet de métal battu qui n'est pas une pointe : une parure.</summary>
+    public static bool Parure(Objet o) =>
+        o.Matiere == Matiere.Substance && o.Pieces is { } p && Chimie.Substance.LireEnCache(p) is { Malleable: true } s && (s.Forme & Forme.Pointu) == 0
+        && (s.Forme & Forme.Plat) != 0;
+
+    /// <summary>Une pointe de métal battu : une alêne, qui perce la peau pour la coudre.</summary>
+    public static bool Alene(Objet o) =>
+        o.Matiere == Matiere.Substance && o.Pieces is { } p && Chimie.Substance.LireEnCache(p) is { Malleable: true } s && (s.Forme & Forme.Pointu) != 0;
 
     /// <summary>
     /// Désir de <paramref name="h"/> pour <paramref name="autre"/>, de 0 à 1 : son orientation envers le sexe de l'autre,

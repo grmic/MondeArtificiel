@@ -298,6 +298,17 @@ public sealed record Substance((Phase Phase, double Part)[] Composants, Structur
     /// <summary>La matière telle qu'elle est écrite (arrondie au dix-millième et au pour cent) : relire sa signature redonne la même.</summary>
     public Substance Arrondie => Lire(Signature)!;
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Substance?> Relues = new(StringComparer.Ordinal);
+
+    /// <summary>Relit une signature, en gardant les dernières relues (pour ce qu'on regarde souvent : la parure d'un humain).</summary>
+    public static Substance? LireEnCache(string s)
+    {
+        if (!s.StartsWith("S|", StringComparison.Ordinal)) return null;
+        if (Relues.TryGetValue(s, out var deja)) return deja;
+        if (Relues.Count > 20000) Relues.Clear();
+        return Relues[s] = Lire(s);
+    }
+
     /// <summary>Relit une signature ; null si elle n'en est pas une.</summary>
     public static Substance? Lire(string? s)
     {

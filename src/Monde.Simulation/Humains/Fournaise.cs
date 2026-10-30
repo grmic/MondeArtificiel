@@ -80,9 +80,13 @@ public sealed partial class Comportement
 
     /// <summary>
     /// Comment on met une chose au feu : 0 jetée dans les flammes, 1 approchée peu à peu puis mise dedans, 2 enfouie sous la braise,
-    /// 3 en fosse, sous un tas de bois qu'on allume (la cuisson des premiers potiers).
+    /// 3 en fosse, sous un tas de bois qu'on allume (la cuisson des premiers potiers), 4 dans un creux de terre cuite posé dans
+    /// le charbon ardent (un creuset).
     /// </summary>
-    private const int ModesDeCuisson = 4;
+    private const int ModesDeCuisson = 5;
+
+    /// <summary>Mettre au feu dans un creuset : un creux de terre cuite enfoncé dans la braise de charbon.</summary>
+    private const int Creuset = 4;
 
     /// <summary>La chauffe qu'une chose reçoit ici, de cette façon (null : pas de vrai feu sur la case).</summary>
     private Chauffe? ChauffeIci(Humain h, int mode, bool souffle)
@@ -90,11 +94,13 @@ public sealed partial class Comportement
         var foyer = Installations.FoyerEn(h.X, h.Y);
         var braise = foyer is null ? Installations.BraiseEn(h.X, h.Y) : null;
         if (foyer is null && braise is null) return null;
-        var forme = mode == 3 ? FormeFoyer.Fosse : foyer is { Degage: true } ? FormeFoyer.Pierres : FormeFoyer.Ouvert;
+        var forme = mode == 3 ? FormeFoyer.Fosse : mode == Creuset ? FormeFoyer.Enceinte : foyer is { Degage: true } ? FormeFoyer.Pierres : FormeFoyer.Ouvert;
         // Le bois mort ramassé tient 12 à 25 % d'eau selon la saison et la pluie ; une braise seule chauffe moins longtemps.
         var humidite = Math.Clamp(0.12 + 0.3 * (1 - Sec(h)), 0.1, 0.5);
         var vent = 4 * (Catastrophes?.VentEn(h.X, h.Y, _maintenant) ?? 1);
-        var t = Thermique.Temperature(forme, humidite, foyer?.Charbon ?? 0, vent, souffle, _temperature, foyer?.Heures ?? 0.5);
+        // Le creuset s'enfonce dans un tas de charbon de bois : celui du foyer, ou celui qu'on y verse.
+        var charbon = mode == Creuset ? 1 : foyer?.Charbon ?? 0;
+        var t = Thermique.Temperature(forme, humidite, charbon, vent, souffle, _temperature, foyer?.Heures ?? 0.5);
         if (foyer is null) t *= 0.85;
         // Une petite heure à deux heures dans les flammes ; des heures sous la braise ou dans la fosse, selon la patience.
         var patience = 0.3 + 0.7 * h.Personnalite.Conscience;
@@ -103,6 +109,8 @@ public sealed partial class Comportement
             0 => new Chauffe(t * 0.95, 0.4 + 1.6 * patience * alea.Reel(), 15, Atmosphere.Oxydante),
             1 => new Chauffe(t * 0.95, 0.5 + 1.5 * patience * alea.Reel(), 4, Atmosphere.Oxydante),
             2 => new Chauffe(t * 0.5, 1.5 + 5 * patience * alea.Reel(), 2, Atmosphere.Reductrice),
+            // Dans le creuset, sous le charbon, l'air manque : ce qu'il contient chauffe presque autant que la braise, sans air.
+            Creuset => new Chauffe(t * 0.95, 0.3 + 1.2 * patience * alea.Reel(), 10, Atmosphere.Reductrice),
             _ => new Chauffe(t * 0.92, 1.5 + 3.5 * patience * alea.Reel(), 5, Atmosphere.Reductrice),
         };
     }
@@ -115,7 +123,7 @@ public sealed partial class Comportement
     /// Un geste sur la matière, jugé par ses lois. <paramref name="mode"/> : façon de cuire (−1 : il en choisit une). Renvoie
     /// l'effet constaté (Transformation, Modelage, Eclat), ou Rien.
     /// </summary>
-    private Effet FaireMatiere(Humain h, Geste g, Matiere a, Matiere b, OrigineSavoir origine, IReadOnlyList<Humain> tous, Humain? maitre = null,
+    internal Effet FaireMatiere(Humain h, Geste g, Matiere a, Matiere b, OrigineSavoir origine, IReadOnlyList<Humain> tous, Humain? maitre = null,
         int mode = -1, int objet = -1)
     {
         var ia = objet;
@@ -144,11 +152,21 @@ public sealed partial class Comportement
             {
                 if (sa is null) return Rien(h, g, a, b);
                 if (g == Geste.Cuire && mode < 0) mode = ChoisirMode(h);
+                // Dans le creuset, on met ce qui n'est ni le creux ni le charbon.
+                if (mode == Creuset && objet < 0 && a == Matiere.Substance && (sa is { Structure: Structure.Cuite } && (sa.Forme & Forme.Creux) != 0 || sa.BrulesSansFumee))
+                {
+                    ia = h.Objets.FindIndex(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { } x
+                        && !(x.Structure == Structure.Cuite && (x.Forme & Forme.Creux) != 0) && !x.BrulesSansFumee);
+                    if (ia < 0) return Rien(h, g, a, b);
+                    sa = SubstanceDe(h, h.Objets[ia])!;
+                }
                 // Approchée du feu, une chose chauffe au bord, un moment ; mise au feu, elle y reste. Qui sait que souffler attise le
                 // feu le fait, sauf pour ce qu'on enfouit sous la braise.
                 Chauffe? c;
                 if (g == Geste.Approcher) c = ChauffeIci(h, 0, false) is { } x ? x with { Temperature = x.Temperature * 0.55, Heures = 0.3, Montee = 8 } : null;
-                else c = ChauffeIci(h, mode, mode != 2 && SaitSouffler(h) && alea.Reel() < 0.5);
+                else if (mode == Creuset && !MettreAuCreuset(h, ref ia)) c = null;
+                // Au creuset, qui sait que souffler attise le feu souffle sans relâche (à la bouche, par un roseau).
+                else c = ChauffeIci(h, mode, mode != 2 && SaitSouffler(h) && (mode == Creuset || alea.Reel() < 0.5));
                 if (c is not { } chauffe) return Rien(h, g, a, b);
                 var t = Reactions.Chauffer(sa, chauffe, alea);
                 return Constater(h, g, a, b, g == Geste.Approcher ? 0 : mode, sa, ia, t, origine, tous, maitre);
@@ -169,6 +187,12 @@ public sealed partial class Comportement
             case Geste.Melanger:
             {
                 var sb = SubstanceDe(h, b, out var ib);
+                // Deux choses portées de la même sorte (une poudre et du charbon) : la seconde est une autre que la première.
+                if (a == b && a == Matiere.Substance && ia >= 0)
+                {
+                    ib = h.Objets.FindIndex(ia + 1, o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is not null);
+                    sb = ib >= 0 ? SubstanceDe(h, h.Objets[ib]) : null;
+                }
                 if (sa is null || sb is null || a == b && ia == ib) return Rien(h, g, a, b);
                 // On ne mêle que ce qui se divise : poudre, pâte, terre, eau, et pour lier la terre de l'herbe ou des fibres
                 // (deux pierres, une branche et un galet ne se mêlent pas).
@@ -276,6 +300,36 @@ public sealed partial class Comportement
         return true;
     }
 
+    /// <summary>
+    /// Préparer le creuset : il faut un creux de terre cuite (autre que la chose qu'on y met) et du charbon de bois, celui du
+    /// foyer ou un morceau qu'on porte et qu'on y verse. Le creux peut se fendre au feu : une terre mal cuite ou déjà fêlée
+    /// supporte mal le choc d'une chaleur de plus de 1 000 °C (Martinón-Torres et Rehren, 2009). Faux s'il manque quelque chose.
+    /// </summary>
+    private bool MettreAuCreuset(Humain h, ref int contenu)
+    {
+        var creux = -1;
+        for (var i = 0; i < h.Objets.Count && creux < 0; i++)
+            if (i != contenu && SubstanceDe(h, h.Objets[i]) is { Structure: Structure.Cuite } s && (s.Forme & Forme.Creux) != 0 && s.Fissures < 1) creux = i;
+        if (creux < 0) return false;
+        if (Installations.FoyerEn(h.X, h.Y) is not { Charbon: >= 0.5 })
+        {
+            var charbon = h.Objets.FindIndex(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { BrulesSansFumee: true });
+            if (charbon < 0 || charbon == contenu) return false;
+            Oter(h, charbon, ref contenu);
+            if (creux > charbon) creux--;
+        }
+        var pot = SubstanceDe(h, h.Objets[creux])!;
+        if (alea.Reel() < 0.08 + 0.25 * (1 - pot.Frittage) + 0.5 * pot.Fissures) Oter(h, creux, ref contenu);
+        return true;
+    }
+
+    /// <summary>Ôte un objet porté, en gardant le rang d'un autre juste.</summary>
+    private static void Oter(Humain h, int i, ref int autre)
+    {
+        h.Objets.RemoveAt(i);
+        if (autre > i) autre--;
+    }
+
     /// <summary>Une matière qui se divise et se mêle à une autre : poudre, pâte, terre crue, eau.</summary>
     private static bool Divise(Substance s) => s.Structure is Structure.Grains or Structure.Pate || s.Structure == Structure.Crue && s.Forme == Forme.Aucune;
 
@@ -302,6 +356,10 @@ public sealed partial class Comportement
     private int ChoisirMode(Humain h)
     {
         var u = alea.Reel();
+        // Qui porte un creux de terre cuite et a du charbon sous la main l'y met parfois, au cœur de la braise.
+        if (u < 0.12 && h.Objets.Exists(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { Structure: Structure.Cuite } p && (p.Forme & Forme.Creux) != 0)
+            && (Installations.FoyerEn(h.X, h.Y) is { Charbon: >= 0.5 } || h.Objets.Exists(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { BrulesSansFumee: true })))
+            return Creuset;
         var prudent = 0.15 + 0.3 * h.Personnalite.Conscience;
         if (u < 0.2) return 2;
         if (u < 0.2 + prudent) return 1;
@@ -416,7 +474,20 @@ public sealed partial class Comportement
         if (!h.Objets.Exists(Recipient) && !h.Objets.Exists(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { Structure: Structure.Pate or Structure.Crue })
             && (Recette(h, Matiere.Substance, "eau") ?? Recette(h, Matiere.Argile, "eau")) is not null && APortee(h, Matiere.Argile))
             return Pratiquer(h, Geste.Modeler, Matiere.Argile, Matiere.Aucune, tous, 1);
+        // Qui a vu le métal sortir de la pierre verte va en écraser là où elle affleure, s'il sait qu'elle tombe en poudre.
+        if (SavoirDuCuivre(h) is not null && !h.Objets.Exists(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { } m && MineraiDeCuivre(m))
+            && carte.Terrain.GisementA(h.X, h.Y) is { Profondeur: Nature.Enfouissement.Affleurant, Type: Nature.Gite.Malachite or Nature.Gite.CuivreNatif }
+            && h.Objets.Count < ObjetsMax && Recette(h, Matiere.Minerai, "poudre") is { } broyer && APortee(h, broyer.B))
+            return Pratiquer(h, Geste.Frapper, Matiere.Minerai, broyer.B, tous, 0);
+        // Une goutte de cuivre se bat en plaque, qu'on porte en parure ; de deux plaques, on étire l'une en pointe pour percer les peaux.
+        if (Battre(h, tous)) return true;
         if (!feu) return false;
+        // Puis il met la poudre au feu, comme il l'a vu faire : le plus souvent au creuset, sous le charbon.
+        if (SavoirDuCuivre(h) is { } cuivre && LireRecette(cuivre.Pieces) is { } rc)
+        {
+            var i = h.Objets.FindIndex(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { } m && MineraiDeCuivre(m));
+            if (i >= 0) return Pratiquer(h, Geste.Cuire, Matiere.Substance, Matiere.Feu, tous, rc.Mode, i);
+        }
         // Un silex chauffé sous la braise se taille mieux.
         if (APortee(h, Matiere.Silex) && Recette(h, Matiere.Silex, "luit") is { } silex && LireRecette(silex.Pieces) is { } rs
             && !h.Objets.Exists(o => o.Matiere == Matiere.Substance && SubstanceDe(h, o) is { } x && x.Part(Phase.CalcedoineChauffee) > 0.5))
@@ -428,6 +499,35 @@ public sealed partial class Comportement
             return Pratiquer(h, Geste.Etouffer, Matiere.BoisSec, Matiere.Feu, tous, 0);
         return false;
     }
+
+    /// <summary>
+    /// Battre le métal qu'on porte, comme on l'a appris : la goutte devient une plaque (la parure), et quand on en a déjà une,
+    /// une autre plaque devient une pointe (l'alêne). Vrai s'il l'a fait.
+    /// </summary>
+    private bool Battre(Humain h, IReadOnlyList<Humain> tous)
+    {
+        var goutte = -1;
+        var plaques = new List<int>();
+        for (var i = 0; i < h.Objets.Count; i++)
+        {
+            if (h.Objets[i].Matiere != Matiere.Substance || SubstanceDe(h, h.Objets[i]) is not { Malleable: true } m || m.Masse < 0.005) continue;
+            if (m.Forme == Forme.Aucune && m.Porosite <= 0.03) goutte = i;
+            else if ((m.Forme & Forme.Plat) != 0) plaques.Add(i);
+        }
+        var (objet, changement) = goutte >= 0 ? (goutte, "plat") : plaques.Count >= 2 && !h.Objets.Exists(Attirance.Alene) ? (plaques[1], "pointe") : (-1, "");
+        if (objet < 0 || (Recette(h, Matiere.Substance, changement) ?? Recette(h, Matiere.Minerai, changement)) is not { Geste: Geste.Frapper } battre || !APortee(h, battre.B)) return false;
+        return Pratiquer(h, Geste.Frapper, Matiere.Substance, battre.B, tous, 0, objet);
+    }
+
+    /// <summary>Le savoir le plus sûr qui a fait sortir du métal d'une pierre au feu (null s'il n'en a pas).</summary>
+    private Savoir? SavoirDuCuivre(Humain h) =>
+        h.Savoirs.Where(s => s.Effet == Effet.Transformation && s.Geste == Geste.Cuire && s.Confiance >= 0.3 && LireRecette(s.Pieces) is { } r
+            && (r.Changements.Contains("goutte") || r.Changements.Contains("points"))).MaxBy(s => s.Confiance);
+
+    /// <summary>Ce qu'on porte et d'où le feu tire du cuivre : pierre verte ou noire broyée, ou grains de cuivre à fondre ensemble.</summary>
+    private static bool MineraiDeCuivre(Substance s) =>
+        s.Structure != Structure.Metal && s.Part(Phase.Malachite) + s.Part(Phase.Tenorite) + s.Part(Phase.Cuivre) >= 0.1
+        || s.Structure == Structure.Metal && s.Forme == Forme.Aucune && s.Masse < 0.02 && s.Porosite > 0.03;
 
     private bool Pratiquer(Humain h, Geste g, Matiere a, Matiere b, IReadOnlyList<Humain> tous, int mode, int objet = -1)
     {

@@ -141,6 +141,7 @@ public static class Reactions
             if (Pyrolyse(r.Id)) pyrolyse += converti;
             if (Combustion(r.Id)) brule += converti;
         }
+        Reduire(parts, c);
         var masseRelative = parts.Sum();
         var organiqueAvant = s.Composants.Where(x => Phases.De(x.Phase).Organique).Sum(x => x.Part);
         var composants = new List<(Phase, double)>();
@@ -184,7 +185,7 @@ public static class Reactions
         if (produit.Ecrouissage > 0 && c.Temperature > 250)
             produit = produit with { Ecrouissage = produit.Ecrouissage * (1 - Math.Clamp((c.Temperature - 250) / 200, 0, 1) * (1 - Math.Exp(-c.Heures / 0.2))) };
 
-        var fondue = Fondre(ref produit, c.Temperature);
+        var fondue = Fondre(ref produit, c.Temperature) || Rassembler(ref produit, c);
 
         // Accidents.
         var vite = c.Montee >= 10 ? 1.3 : c.Montee >= 4 ? 0.7 : 0.35;
@@ -203,6 +204,43 @@ public static class Reactions
         if (eclate) produit = produit with { Fissures = 1 };
         else if (risque > 0) produit = produit with { Fissures = Math.Min(1, produit.Fissures + 0.3 * risque) };
         return new(produit, eclate, fondue, brulee);
+    }
+
+    /// <summary>
+    /// Réduction de l'oxyde de cuivre (la malachite chauffée devient d'abord cet oxyde noir, vers 250-380 °C) : sans air, le
+    /// monoxyde de carbone que dégage le combustible lui prend son oxygène (CuO + CO → Cu + CO₂), à partir de 700 °C environ et
+    /// d'autant plus vite que c'est chaud, presque tout vers 1 100 °C (Rehder, 2000 ; Rostoker et al., 1989). Le charbon mêlé au
+    /// minerai broyé touche chaque grain et va bien plus vite que le gaz seul ; il s'use (2 CuO + C → 2 Cu + CO₂). Ainsi ont
+    /// commencé les premiers fondeurs, à Belovode vers 5000 av. J.-C. : malachite et charbon dans de petits creusets
+    /// (Radivojević et al., 2010).
+    /// </summary>
+    private static void Reduire(double[] parts, Chauffe c)
+    {
+        var oxyde = parts[(int)Phase.Tenorite];
+        if (c.Air != Atmosphere.Reductrice || oxyde <= 0) return;
+        var carbone = parts[(int)Phase.Carbone];
+        var x = Math.Clamp((c.Temperature - 700) / 400, 0, 1) * (1 - Math.Exp(-Math.Max(0, c.Heures) / 0.7));
+        var converti = oxyde * x * (carbone >= 0.02 * oxyde ? 1 : 0.3);
+        if (converti <= 0) return;
+        parts[(int)Phase.Tenorite] -= converti;
+        parts[(int)Phase.Cuivre] += converti * Stoechio(Phase.Tenorite, 1, Phase.Cuivre, 1);
+        parts[(int)Phase.Carbone] = Math.Max(0, carbone - converti * Stoechio(Phase.Tenorite, 2, Phase.Carbone, 1));
+    }
+
+    /// <summary>
+    /// Au-dessus de 1 085 °C, le cuivre fond : ses grains, épars dans la masse, coulent et se rassemblent en une goutte au fond
+    /// du creuset ; le reste devient une scorie qu'on jette. Une part du cuivre y reste prise, d'autant moins que c'est chaud et
+    /// que cela dure (les scories des premiers fondeurs sont pleines de gouttelettes de cuivre : Rehren, 2003).
+    /// </summary>
+    private static bool Rassembler(ref Substance s, Chauffe c)
+    {
+        var cuivre = s.Part(Phase.Cuivre);
+        if (s.Structure == Structure.Metal || cuivre < 0.01 || c.Temperature < Phases.De(Phase.Cuivre).Fusion) return false;
+        var recueilli = Math.Clamp(0.3 + (c.Temperature - 1085) / 300, 0.3, 0.85) * (1 - Math.Exp(-Math.Max(0, c.Heures) / 0.5));
+        var masse = s.Masse * cuivre * recueilli;
+        if (masse < 0.002) return false;
+        s = Substance.De(Structure.Metal, 0.02, masse, (Phase.Cuivre, 1)) with { Forme = Forme.Aucune, FaconneLe = s.FaconneLe };
+        return true;
     }
 
     /// <summary>
@@ -251,6 +289,10 @@ public static class Reactions
             return new(s with { Ecrouissage = ecrouissage, Fissures = fissures, Forme = forme, Porosite = Math.Max(0, s.Porosite - 0.1) });
         }
         if (s.Structure is Structure.Fibreuse && s.PartClasse(Classe.Organique) + s.Part(Phase.Eau) > 0.5) return new(s);
+        // Une masse où le cuivre est épars (minerai chauffé sans fondre) : écrasée, elle libère des grains de métal, qui ne
+        // s'écrasent pas, eux, et qu'on ramasse.
+        if (s.Part(Phase.Cuivre) is var cuivre and >= 0.01 && (s.Durete < marteau || s.Structure == Structure.Grains) && s.Masse * cuivre * 0.8 >= 0.002)
+            return new(Substance.De(Structure.Metal, 0.05, s.Masse * cuivre * 0.8, (Phase.Cuivre, 1)) with { Forme = Forme.Aucune }, Eclate: true);
         if (s.Durete < marteau && s.Structure is not Structure.Grains and not Structure.Pate)
         {
             // Une pierre dure se brise en morceaux ; une matière tendre (craie, coquille, terre séchée, ocre) s'écrase en poudre.

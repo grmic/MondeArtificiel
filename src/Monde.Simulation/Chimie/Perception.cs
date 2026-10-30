@@ -20,10 +20,13 @@ public static class Perception
         var apres = t.Produit;
         var l = new List<string>();
         if (t.Brulee) { l.Add("brule"); return l; }
-        if (t.Eclate) l.Add(apres.Structure == Structure.Grains && avant.Structure != Structure.Grains && avant.Fissures < 1 && apres.Fissures < 1 ? "poudre" : "eclate");
+        if (t.Eclate && apres.Structure != Structure.Metal) l.Add(apres.Structure == Structure.Grains && avant.Structure != Structure.Grains && avant.Fissures < 1 && apres.Fissures < 1 ? "poudre" : "eclate");
         if (t.Fondue) l.Add("fond");
+        // Du métal qui sort d'une pierre : une goutte quand il a fondu, des grains quand on écrase la masse.
+        if (apres.Structure == Structure.Metal && avant.Structure != Structure.Metal) l.Add(t.Fondue ? "goutte" : "grains");
+        else if (apres.Structure != Structure.Metal && apres.Part(Phase.Cuivre) >= avant.Part(Phase.Cuivre) + 0.01) l.Add("points");
         if (t.Exotherme) l.Add("chauffe");
-        if (!t.Eclate || l[0] == "poudre")
+        if (!t.Eclate || l.Count > 0 && l[0] == "poudre")
         {
             if (avant.Structure == Structure.Pate && apres.Structure == Structure.Crue) l.Add("seche");
             if (!avant.Plastique && apres.Plastique) l.Add("plastique");

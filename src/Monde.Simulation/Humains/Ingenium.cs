@@ -254,7 +254,9 @@ public sealed partial class Comportement
                 {
                     var peau = h.Objets.Find(o => o.Matiere == Matiere.Peau);
                     if (peau is not null) h.Objets.Remove(peau);
-                    h.Vetement = new Objet(Matiere.Peau, (peau?.Qualite ?? 0.5) * r.Qualite / 0.6, 1);
+                    // Une alêne de métal perce la peau proprement : cousue bord à bord, elle ferme mieux et garde mieux la chaleur.
+                    var alene = h.Objets.Exists(Attirance.Alene) ? 1.25 : 1;
+                    h.Vetement = new Objet(Matiere.Peau, (peau?.Qualite ?? 0.5) * r.Qualite / 0.6 * alene, 1);
                 }
                 else h.Vetement = new Objet(a, r.Qualite, 1);
                 break;
