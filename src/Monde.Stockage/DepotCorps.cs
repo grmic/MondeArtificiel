@@ -8,7 +8,8 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Ce qu'on garde du corps d'un humain, en JSON dans la colonne humains.corps (null : rien à garder).</summary>
-    private sealed record Corps(double Grave, OrigineBlessure Origine, Membre Membre, double Debut, double Fixe, long Le, OrigineBlessure Cause);
+    private sealed record Corps(double Grave, OrigineBlessure Origine, Membre Membre, double Debut, double Fixe, long Le, OrigineBlessure Cause,
+        double Champs = 0);
 
     /// <summary>Migration vers la version 45 : séquelles des blessures graves, pousses des camps. Les mondes existants n'en ont pas.</summary>
     private static void MigrerVersion45(SqliteConnection connexion, SqliteTransaction transaction)
@@ -28,6 +29,7 @@ public sealed partial class DepotMonde
             var h = humains[(int)id - 1];
             (h.BlessureGrave, h.BlessureOrigine) = (c.Grave, c.Origine);
             h.Sequelle = c.Membre == Membre.Aucun ? default : new Sequelle(c.Membre, c.Debut, c.Fixe, c.Le, c.Cause);
+            h.PartDesChamps = Math.Clamp(c.Champs, 0, 1);
         }
     }
 
@@ -38,7 +40,7 @@ public sealed partial class DepotMonde
         {
             var c = JsonSerializer.Deserialize<Corps>(json);
             return c is not null && Enum.IsDefined(c.Origine) && Enum.IsDefined(c.Membre) && Enum.IsDefined(c.Cause)
-                   && double.IsFinite(c.Grave) && double.IsFinite(c.Debut) && double.IsFinite(c.Fixe) ? c : null;
+                   && double.IsFinite(c.Grave) && double.IsFinite(c.Debut) && double.IsFinite(c.Fixe) && double.IsFinite(c.Champs) ? c : null;
         }
         catch (JsonException)
         {
@@ -51,9 +53,9 @@ public sealed partial class DepotMonde
         using var c = Preparer(connexion, transaction, "UPDATE humains SET corps = $c WHERE id = $id;", "$c", "$id");
         foreach (var h in humains)
         {
-            if (h.BlessureGrave <= 0 && h.Sequelle.Membre == Membre.Aucun) continue;
+            if (h.BlessureGrave <= 0 && h.Sequelle.Membre == Membre.Aucun && h.PartDesChamps <= 0) continue;
             var s = h.Sequelle;
-            Lancer(c, JsonSerializer.Serialize(new Corps(h.BlessureGrave, h.BlessureOrigine, s.Membre, s.Debut, s.Fixe, s.Le, s.Origine)), h.Id);
+            Lancer(c, JsonSerializer.Serialize(new Corps(h.BlessureGrave, h.BlessureOrigine, s.Membre, s.Debut, s.Fixe, s.Le, s.Origine, h.PartDesChamps)), h.Id);
         }
     }
 }

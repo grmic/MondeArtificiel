@@ -10,6 +10,12 @@
     <Content Include="..\..\langues\*.json" Link="langues\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Guide : le README en français et en anglais, avec ses images, lu par le bouton de Configuration. -->
+  <ItemGroup>
+    <Content Include="..\..\README.md;..\..\README.en.md" Link="guide\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\docs\*.png" Link="guide\docs\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>

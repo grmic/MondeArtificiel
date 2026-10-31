@@ -90,6 +90,14 @@ public static class PremieresFois
             case TypeEvenement.Geste:
                 yield return ("entite.geste", true, false, false);
                 break;
+            case TypeEvenement.Decouverte when cle.StartsWith("champ.", StringComparison.Ordinal):
+                // Les champs (0.33.0) : premier semis, première récolte, premier semis sur le limon ou la cendre, première lignée domestiquée.
+                if (cle is "champ.seme" or "champ.seme.limon" or "champ.seme.cendres") yield return ("semis", true, true, false);
+                if (cle == "champ.seme.limon") yield return ("decrue", true, true, false);
+                else if (cle == "champ.seme.cendres") yield return ("essart", true, true, false);
+                else if (cle == "champ.recolte") yield return ("recolte", true, true, false);
+                else if (cle.StartsWith("champ.lignee.", StringComparison.Ordinal)) yield return ("domestication", true, true, false);
+                break;
             case TypeEvenement.Communaute when cle == "limon.installe":
                 yield return ("campCrue", true, true, false);
                 break;

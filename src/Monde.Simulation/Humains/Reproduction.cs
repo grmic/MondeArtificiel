@@ -292,7 +292,7 @@ public sealed partial class Comportement
             if (!allaite) continue;
             // Une mère qui fait des bouillies sèvre plus tôt : chez les premiers agriculteurs, les naissances se rapprochent
             // (Bocquet-Appel, 2011). L'écart varie d'une mère à l'autre (tiré de son numéro, sans hasard partagé).
-            var k = FaitDesBouillies(mere, maintenant) ? 0.7 + 0.15 * ((uint)(mere.Id * 2654435761u) / (double)uint.MaxValue) : 1;
+            var k = FaitDesBouillies(mere, maintenant) || BouillieDeGraines(mere) ? 0.7 + 0.15 * ((uint)(mere.Id * 2654435761u) / (double)uint.MaxValue) : 1;
             return age < 1.5 * k ? 0.02 : Math.Min(1, 0.02 + 0.4 * (age - 1.5 * k) / (1.5 * k));
         }
         return 1;
@@ -633,6 +633,8 @@ public sealed partial class Comportement
     public void Vieillir(Humain h, long maintenant)
     {
         if (!h.EstVivant) return;
+        // Ce qu'on a mangé des champs s'efface en quelques mois.
+        if (h.PartDesChamps > 0) h.PartDesChamps = h.PartDesChamps < 0.001 ? 0 : h.PartDesChamps * 0.985;
         var age = h.AgeEnAnnees(maintenant);
         var taux = MortaliteParAge.First(t => age < t.AgeMax).TauxAnnuel;
         // Avant 50 ans, ces morts sont des maladies (voir plus bas) et des morts de tout-petits : la clémence du monde les écarte ;

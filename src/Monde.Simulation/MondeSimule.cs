@@ -109,6 +109,11 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Paroles de l'Entité adressées à des communautés, et ce qu'elles en ont fait (null : aucune).</summary>
     public IReadOnlyList<Mandat>? Mandats { get; init; }
+
+    /// <summary>Parcelles semées, lignées cultivées et ce que chaque communauté pense des champs (null : aucun).</summary>
+    public IReadOnlyList<Parcelle>? Parcelles { get; init; }
+    public IReadOnlyList<Lignee>? Lignees { get; init; }
+    public IReadOnlyList<(int Communaute, IdeeDesChamps Idee)>? IdeesChamps { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -143,6 +148,7 @@ public sealed class MondeSimule
     private bool _pauseExtinction;
     private readonly VieSociale _social;
     private readonly Installations _installations;
+    private readonly Champs _champs;
     private readonly Cultes _cultes;
     // Effets que des vivants savent obtenir : quand le dernier qui savait meurt ou oublie, le savoir est perdu.
     /// <summary>Effets que quelqu'un sait encore obtenir, avec un savoir qui le dit (pour le raconter s'il se perd).</summary>
@@ -207,9 +213,11 @@ public sealed class MondeSimule
         _social.Flore = Flore;
         _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes, etat.Oeuvres, etat.Braises, etat.Reserves);
         _social.Installations = _installations;
+        _champs = new Champs(etat.Parcelles, etat.Lignees, etat.IdeesChamps?.Select(x => (x.Communaute, x.Idee.Copier())));
+        _social.Champs = _champs;
         _comportement = new Comportement(carte, _ecosysteme, _alea)
         {
-            Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations, Generation = configuration.Generation,
+            Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations, Generation = configuration.Generation, Champs = _champs,
         };
         _catastrophes = new Catastrophes(carte, _ecosysteme, _alea, etat.Catastrophes, etat.Pathogenes)
         {
@@ -314,6 +322,9 @@ public sealed class MondeSimule
                     ProchainePriere = _cultes.ProchainePriere,
                     Outremer = _comportement.Outremer.Liste.ToList(),
                     Mandats = _social.Mandats.Select(m => m.Copier()).ToList(),
+                    Parcelles = _champs.Parcelles.Count == 0 ? null : _champs.Parcelles.ToList(),
+                    Lignees = _champs.Lignees.Count == 0 ? null : _champs.Lignees.ToList(),
+                    IdeesChamps = _champs.Idees.Count == 0 ? null : _champs.Idees.OrderBy(x => x.Key).Select(x => (x.Key, x.Value.Copier())).ToList(),
                 };
             }
         }
@@ -799,6 +810,8 @@ public sealed class MondeSimule
             _catastrophes.BrulisProtecteurs(_communautes, _humains, _secondes);
             _comportement.GaterLesReserves(_humains, _secondes);
             _comportement.IdeesDesReserves(_humains, _secondes);
+            _comportement.JourneeDesChamps(_humains, _secondes);
+            _comportement.IdeesDesChamps(_humains, _secondes);
             _social.Parler(_humains, _communautes, Carte, _secondes);
             _social.Visites(_humains, _secondes);
             _social.JourDeRassemblement(_humains, _secondes);
@@ -1258,6 +1271,12 @@ public sealed class MondeSimule
     public List<Mandat> Mandats()
     {
         lock (_verrou) return _social.Mandats.Select(m => m.Copier()).ToList();
+    }
+
+    /// <summary>Parcelles, lignées et idées des champs, copiées pour l'observateur.</summary>
+    public (List<Parcelle> Parcelles, List<Lignee> Lignees, Dictionary<int, IdeeReserve> Idees) Champs()
+    {
+        lock (_verrou) return ([.. _champs.Parcelles], [.. _champs.Lignees], _champs.Idees.ToDictionary(x => x.Key, x => x.Value.Idee));
     }
 
     /// <summary>

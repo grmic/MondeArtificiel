@@ -26,7 +26,7 @@ public sealed record GisementVueDto(int X, int Y, string Type, string Profondeur
 public sealed record TerrainDto(int Largeur, int Hauteur, byte[] Roches, byte[] Sols, byte[] Pente, byte[] Debit, byte[] Profondeur,
     byte[] Rivages, byte[] Recifs, IReadOnlyList<int> Lits, IReadOnlyList<string> NomsRoches, IReadOnlyList<string> NomsSols, IReadOnlyList<string> NomsRivages,
     IReadOnlyList<GrotteVueDto> Grottes, IReadOnlyList<SourceVueDto> Sources, IReadOnlyList<GisementVueDto> Gisements,
-    IReadOnlyList<int> Parois, IReadOnlyList<int> Passages, IReadOnlyList<int> Cols, byte[] Limon)
+    IReadOnlyList<int> Parois, IReadOnlyList<int> Passages, IReadOnlyList<int> Cols, byte[] Limon, IReadOnlyList<ChampVueDto>? Champs = null)
 {
     public static TerrainDto Depuis(MondeSimule monde)
     {
@@ -98,6 +98,18 @@ public sealed record TerrainDto(int Largeur, int Hauteur, byte[] Roches, byte[] 
             [.. t.Sources.Select(s => new SourceVueDto(s.X, s.Y, s.Type.ToString(), L.T($"carac.sources.{s.Type}")))],
             [.. t.Gisements.Select(g => new GisementVueDto(g.X, g.Y, L.T($"gite.{g.Type}"), L.T($"enfouissement.{g.Profondeur}"),
                 connus.GetValueOrDefault(g.Numero)))],
-            parois, passages, cols, limon);
+            parois, passages, cols, limon, ChampsDe(monde));
+    }
+
+    /// <summary>Les parcelles semées (0.33.0), case par case : plante, surface et état, et si sa lignée est domestiquée.</summary>
+    private static List<ChampVueDto> ChampsDe(MondeSimule monde)
+    {
+        var (parcelles, lignees, _) = monde.Champs();
+        var domestiquees = lignees.Where(l => l.Domestiquee).Select(l => l.Id).ToHashSet();
+        return [.. parcelles.Where(p => p.Etat != EtatParcelle.Finie).Select(p => new ChampVueDto(p.X, p.Y, (int)p.Etat, Math.Round(p.Ares, 1),
+            monde.Flore.Get(p.Espece).Dit is Monde.Simulation.Recits.Recit r ? L.Rediger(r) : monde.Flore.Get(p.Espece).Nom, domestiquees.Contains(p.LigneeId)))];
     }
 }
+
+/// <summary>Une parcelle sur la carte : état 0 semée, 1 qui pousse, 2 mûre.</summary>
+public sealed record ChampVueDto(int X, int Y, int Etat, double Ares, string Plante, bool Domestiquee);

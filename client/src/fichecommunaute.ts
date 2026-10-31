@@ -46,6 +46,8 @@ interface FicheCommunaute {
       braises: number; saventAllumer: number; adultes: number; porteur: { id: number; nom: string; valeur: number } | null; joursDeVivres: number;
       reserves: string[]; idee: string | null; incendies: CatastropheResume[];
     } | null;
+    /** Les champs (absent d'un serveur plus ancien ou sans champs). */
+    champs?: { parcelles: number; ares: number; etats: string[]; joursDeRecolte: number; lignees: string[]; idee: string | null } | null;
     /** Spécialistes, rassemblements, visites et membres venus d'ailleurs (absent d'un serveur plus ancien). */
     rencontres?: {
       specialistes: Personne[]; enVisite: Personne[]; visiteurs: Personne[]; venusDAilleurs: Personne[];
@@ -595,6 +597,21 @@ export class PanneauFicheCommunaute {
     }
   }
 
+  /** Les champs : parcelles et leur état, récolte attendue, lignées semées et ce qu'elles sont devenues, idée des champs. */
+  private champs(s: HTMLElement, x: NonNullable<FicheCommunaute["vie"]["champs"]>): void {
+    s.append(el("h4", undefined, t("fc.champs")));
+    if (x.parcelles > 0) {
+      s.append(el("p", undefined, t("fc.parcelles", { n: x.parcelles, ares: ecrireNombre(x.ares, 1) }) + " " + x.etats.join(t("commun.virgule")) + "."));
+      if (x.joursDeRecolte >= 1) s.append(el("p", undefined, t("fc.recolteAttendue", { v: ecrireNombre(x.joursDeRecolte, 0), n: Math.round(x.joursDeRecolte) })));
+    }
+    if (x.lignees.length > 0) {
+      const ul = el("ul", "liste");
+      for (const l of x.lignees) ul.append(el("li", undefined, l));
+      s.append(el("p", undefined, t("fc.lignees")), ul);
+    }
+    if (x.idee) s.append(el("p", "usage", x.idee));
+  }
+
   /** Ceux qu'on vient voir pour un ouvrage, les rassemblements avec d'autres groupes, les visites, ceux qui sont venus d'ailleurs. */
   private rencontres(s: HTMLElement, x: NonNullable<FicheCommunaute["vie"]["rencontres"]>): void {
     const personnes = (titre: string, liste: Personne[]): void => {
@@ -643,6 +660,7 @@ export class PanneauFicheCommunaute {
       }) + (v.feu && v.feu.braises > 0 ? " · " + t("fc.braises", { n: v.feu.braises }) : "") + "."));
     }
     if (v.feu) this.feu(s, v.feu);
+    if (v.champs) this.champs(s, v.champs);
     if (v.rencontres) this.rencontres(s, v.rencontres);
     if (v.malades.length > 0) {
       const p = el("p", undefined, t("fc.malades"));

@@ -105,6 +105,9 @@ public sealed partial class VieSociale
     /// <summary>Génération du monde (le camp sur la plaine de crue : génération 2, depuis la 0.32.8).</summary>
     public int Generation { get; set; }
 
+    /// <summary>Les champs du monde (depuis la 0.33.0), partagés avec les comportements.</summary>
+    public Champs Champs { get; set; } = new();
+
     /// <summary>
     /// Plusieurs des siens croient que la plaine noyée repousse plus fort, et l'un d'eux en connaît une à une ou deux journées, dont
     /// l'eau s'est retirée et qui vaut nettement mieux que leurs terres : le groupe peut décider d'aller y camper tant qu'elle est
@@ -115,10 +118,16 @@ public sealed partial class VieSociale
     {
         var adultes = groupe.Where(h => !h.EstEnfant(maintenant)).ToList();
         var croyants = adultes.Where(h => Comportement.SavoirDuLimon(h) is { Confiance: >= 0.5 }).OrderBy(h => h.Id).ToList();
-        if (croyants.Count < 2) return false;
-        var part = croyants.Count / (double)adultes.Count;
-        // Une décision qui se discute : d'autant plus vite prise que beaucoup y croient et que les terres d'ici s'appauvrissent.
-        if (alea.Reel() >= 0.4 * part * (1.5 - Math.Min(1, c.Abondance))) return false;
+        if (croyants.Count == 0 || adultes.Count == 0) return false;
+        // Seul à y croire, il faut être écouté : la figure du groupe, quelqu'un qu'on admire, ou dont la famille le suit.
+        if (croyants.Count == 1 && !Ecoute(croyants[0], c, adultes)) return false;
+        // Des semis faits sur le limon attirent aussi le groupe.
+        var semes = Champs.Parcelles.Count(p => p.CommunauteId == c.Id && p.Limon > 0 && p.Etat is EtatParcelle.Pousse or EtatParcelle.Mure);
+        var part = Math.Min(1, (croyants.Count + 0.5) / adultes.Count + 0.1 * semes);
+        // Une décision qui se discute : d'autant plus vite prise que beaucoup y croient, que le groupe a faim et que les terres
+        // d'ici s'appauvrissent.
+        var faim = adultes.Average(h => h.Faim) / 100;
+        if (alea.Reel() >= 0.4 * part * (1.5 - Math.Min(1, c.Abondance)) * (0.8 + faim)) return false;
         var meilleur = (X: -1, Y: -1, Abondance: c.Abondance + 0.15, Qui: (Humain?)null);
         foreach (var h in croyants)
         {
@@ -136,5 +145,17 @@ public sealed partial class VieSociale
             new Recit("limon.part", ("c", c), ("vers", Lieux.VersR(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)),
                 ("d", Lieux.DistanceR(c.CentreX, c.CentreY, meilleur.X, meilleur.Y)), ("g", guide)), communaute: c.Id);
         return true;
+    }
+
+    /// <summary>
+    /// Un croyant seul peut-il entraîner le groupe ? S'il en est la figure, s'il a l'art d'entraîner les autres (charisme), ou si un adulte de sa famille
+    /// (son compagnon, un parent, un enfant) le suit.
+    /// </summary>
+    private static bool Ecoute(Humain h, Communaute c, List<Humain> adultes)
+    {
+        if (h.Id == c.FigureId || h.Personnalite.Charisme >= 0.7) return true;
+        foreach (var o in adultes)
+            if (o.Id != h.Id && (o.Id == h.PartenaireId || o.MereId == h.Id || o.PereId == h.Id || h.MereId == o.Id || h.PereId == o.Id)) return true;
+        return false;
     }
 }

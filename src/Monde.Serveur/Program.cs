@@ -56,6 +56,21 @@ app.MapGet("/api/langues/{code}", (string code, HttpContext contexte) =>
     return Results.Text(langue.Json, "application/json; charset=utf-8");
 });
 
+// Guide : le README de la version installée, en français ou en anglais, et ses images (copiés à côté du serveur).
+var dossierGuide = Path.Combine(AppContext.BaseDirectory, "guide");
+app.MapGet("/api/guide", (string? langue) =>
+{
+    var chemin = Path.Combine(dossierGuide, langue == "en" ? "README.en.md" : "README.md");
+    return File.Exists(chemin) ? Results.Text(File.ReadAllText(chemin), "text/markdown; charset=utf-8") : Results.NotFound();
+});
+app.MapGet("/api/guide/docs/{nom}", (string nom) =>
+{
+    // Seulement des images du dossier docs, par leur nom simple.
+    if (!System.Text.RegularExpressions.Regex.IsMatch(nom, "^[A-Za-z0-9_-]+\\.png$")) return Results.NotFound();
+    var chemin = Path.Combine(dossierGuide, "docs", nom);
+    return File.Exists(chemin) ? Results.File(chemin, "image/png") : Results.NotFound();
+});
+
 // Client web (fichiers produits par Vite dans wwwroot).
 app.UseDefaultFiles();
 app.UseStaticFiles(new StaticFileOptions

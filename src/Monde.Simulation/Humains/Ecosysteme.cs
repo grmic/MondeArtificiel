@@ -205,7 +205,7 @@ public sealed class Ecosysteme
     public double PluieEn(int indice) => Pluies[Region(indice % _carte.Largeur, indice / _carte.Largeur)];
 
     /// <summary>Effet des pluies sur la végétation : proportionnel, borné (un sol garde de quoi survivre, un excès d'eau ne sert plus).</summary>
-    private static double EffetPluie(double pluie) => Math.Clamp(pluie, 0.3, 1.3);
+    internal static double EffetPluie(double pluie) => Math.Clamp(pluie, 0.3, 1.3);
 
     /// <summary>Niveau des plantes vers lequel la tuile repousse aujourd'hui (centièmes).</summary>
     public double NiveauPlantes(int i, double saison) =>
@@ -219,7 +219,7 @@ public sealed class Ecosysteme
     // Ce que le sol change aux plantes de la case (voir Terrain.FacteurSol) ; le gibier, qui broute, en dépend moins.
     private float[]? _sol;
 
-    private double Sol(int i) => (_sol ??= _carte.Terrain.FacteurSol)[i];
+    internal double Sol(int i) => (_sol ??= _carte.Terrain.FacteurSol)[i];
 
     /// <summary>
     /// Famine envoyée par l'Entité : part des plantes et du gibier perdue sur chaque tuile (null : aucune). Fixé chaque jour

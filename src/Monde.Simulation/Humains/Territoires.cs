@@ -166,6 +166,15 @@ public sealed partial class VieSociale
         if (Generation >= 2 && !c.Disette && c.DestinationX < 0 && SuivreLaCrue(c, groupe, nature, carte, maintenant)) return;
         if (!c.Disette || c.DestinationX >= 0 || c.Abondance >= AbondanceFinDisette) return;
 
+        // Une récolte attendue près du camp retient le groupe : on ne quitte pas des champs qui vont donner, sauf si la terre ne
+        // nourrit plus rien.
+        if (Generation >= 2 && Flore is { } flore && c.Abondance > 0.1 && Comportement.JoursDeRecolte(Champs, flore, c, groupe.Count) >= 20)
+        {
+            if (c.DisetteEvenementId != 0 && c.ResteEvenementId < c.DisetteEvenementId)
+                c.ResteEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null, new Recit("champ.reste", ("c", c)), c.DisetteEvenementId, communaute: c.Id);
+            return;
+        }
+
         // Les membres mettent en commun ce dont ils se souviennent : le groupe part vers les terres connues
         // les plus riches, si elles valent nettement mieux que celles où il vit.
         var meilleur = (X: -1, Y: -1, Abondance: c.Abondance + 0.15, Qui: (Humain?)null);

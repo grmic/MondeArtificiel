@@ -279,6 +279,16 @@ public enum Effet : byte
     Limon = 59,
     /// <summary>Ce qu'on jette ou qu'on enfouit (graines, noyaux, bouts de racine) repousse près du camp (depuis la 0.32.8).</summary>
     Repousse = 60,
+    /// <summary>Des graines ou des racines de cette espèce, mises en terre, lèvent et donnent la plante (depuis la 0.33.0).</summary>
+    Semis = 61,
+    /// <summary>Arracher les herbes autour des semis les fait mieux pousser.</summary>
+    Sarclage = 62,
+    /// <summary>Une façon de récolter les graines : secouer les épis, les arracher, couper les tiges.</summary>
+    Moisson = 63,
+    /// <summary>Garder une part de la récolte pour la semer l'an prochain.</summary>
+    Semence = 64,
+    /// <summary>Ce qu'on sème sur une terre brûlée pousse plus fort, quelques saisons.</summary>
+    Essart = 65,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -639,7 +649,9 @@ public static class Physique
             or Effet.Nage or Effet.Brandon or Effet.Percage or Effet.Rondelle or Effet.Pansement or Effet.Chant or Effet.Danse or Effet.Ocre
             or Effet.Peinture or Effet.MainsPropres or Effet.EauVive or Effet.Latrines or Effet.ViandeSaine or Effet.Fumage or Effet.Fumee
             or Effet.Brulis or Effet.Braises or Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant or Effet.BrulisProtecteur
-            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide or Effet.Pagaie or Effet.Limon or Effet.Repousse => Seul($"savoir.{s.Effet}"),
+            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide or Effet.Pagaie or Effet.Limon or Effet.Repousse or Effet.Sarclage or Effet.Semence or Effet.Essart => Seul($"savoir.{s.Effet}"),
+        Effet.Semis => new Recit("savoir.Semis", ("plante", plante ?? Seul("savoir.cettePlante"))),
+        Effet.Moisson => Seul($"savoir.Moisson.{s.Geste}"),
         Effet.Transformation when Comportement.LireRecette(s.Pieces) is { } r => DecrireRecette(r.Geste, r.A, r.B, r.Mode, r.Changements, r.Famille),
         Effet.Modelage => Seul(s.Pieces == "M|1" ? "savoir.Modelage.creux" : "savoir.Modelage"),
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),

@@ -53,7 +53,14 @@ public sealed record PersonneDto(int Id, string Nom, string Detail);
 
 /// <summary>Territoire, nourriture et santé.</summary>
 public sealed record VieCommunauteDto(int Huttes, int Foyers, IReadOnlyList<PersonneDto> Malades, int MortsDeMaladie, IReadOnlyList<CatastropheDto> Catastrophes,
-    IReadOnlyList<PersonneDto> Captifs, FeuReservesDto? Feu = null, RencontresCommunauteDto? Rencontres = null);
+    IReadOnlyList<PersonneDto> Captifs, FeuReservesDto? Feu = null, RencontresCommunauteDto? Rencontres = null, ChampsCommunauteDto? Champs = null);
+
+/// <summary>
+/// Les champs d'une communauté (0.33.0) : ses parcelles (surface et état), les récoltes qu'elles promettent en jours de vivres, les
+/// lignées qu'elle sème et ce qu'elles sont devenues, l'idée qu'elle se fait des champs.
+/// </summary>
+public sealed record ChampsCommunauteDto(int Parcelles, double Ares, IReadOnlyList<string> Etats, double JoursDeRecolte, IReadOnlyList<string> Lignees,
+    string? Idee);
 
 /// <summary>
 /// Les rencontres et les métiers d'une communauté : ceux que les siens disent spécialistes (et combien d'ouvrages ils ont faits pour
@@ -379,7 +386,36 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var captifs = membres.Where(h => h.CaptifDe != 0)
             .Select(h => new PersonneDto(h.Id, h.Nom, h.CaptifDe <= humains.Count ? L.T("captif.par", ("enleve", Enleve(h)), ("nom", humains[h.CaptifDe - 1].Nom)) : Enleve(h))).ToList();
         return new VieCommunauteDto(huttes.Count(h => Proche(h.X, h.Y)), foyers.Count(f => Proche(f.X, f.Y)), malades, mortsMaladie, catastrophes, captifs,
-            CalculerFeu(service, c, membres, maintenant, Proche), CalculerRencontres(service, c, humains, membres, maintenant));
+            CalculerFeu(service, c, membres, maintenant, Proche), CalculerRencontres(service, c, humains, membres, maintenant), CalculerChamps(service, c, membres));
+    }
+
+    private static ChampsCommunauteDto? CalculerChamps(ServiceMonde service, Communaute c, List<Humain> membres)
+    {
+        var (parcelles, lignees, idees) = service.Monde.Champs();
+        var siennes = parcelles.Where(p => p.CommunauteId == c.Id && p.Etat != EtatParcelle.Finie).ToList();
+        var leurs = lignees.Where(l => l.CommunauteId == c.Id).OrderByDescending(l => l.Generations).ThenBy(l => l.Id).ToList();
+        if (siennes.Count == 0 && leurs.Count == 0) return null;
+        var flore = service.Monde.Flore;
+        var etats = siennes.GroupBy(p => p.Etat).OrderBy(g => g.Key)
+            .Select(g => L.T($"champs.etat.{g.Key}", ("n", g.Count()), ("ares", Math.Round(g.Sum(p => p.Ares), 1)))).ToList();
+        var lignesLignees = leurs.Select(l =>
+        {
+            var e = flore.Get(l.Espece);
+            var a = e.Aliment;
+            var traits = a is { SeDisperse: true }
+                ? L.T("champs.lignee.graines", ("tenaces", Math.Round(100 * l.Tenaces, l.Tenaces < 0.1 ? 1 : 0)), ("grosseur", Math.Round(l.Grosseur, 2)))
+                : L.T("champs.lignee.plants", ("vigueur", Math.Round(l.Vigueur, 2)), ("douceur", Math.Round(100 * l.Douceur)));
+            return L.T(l.Domestiquee ? "champs.lignee.domestiquee" : "champs.lignee", ("plante", e.Dit is Monde.Simulation.Recits.Recit r ? L.Rediger(r) : e.Nom), ("sorte", L.T($"aliment.{a?.Sorte ?? SorteAliment.Aucune}")),
+                ("g", l.Generations), ("traits", traits), ("semence", Math.Round(l.Semence, 1)));
+        }).ToList();
+        var idee = idees.GetValueOrDefault(c.Id) switch
+        {
+            IdeeReserve.Commune => L.T("champs.commune"),
+            IdeeReserve.ASoi => L.T("champs.aSoi"),
+            _ => null,
+        };
+        return new ChampsCommunauteDto(siennes.Count, Math.Round(siennes.Sum(p => p.Ares), 1), etats,
+            Math.Round(Comportement.JoursDeRecolte(new Champs(parcelles, lignees), flore, c, membres.Count), 1), lignesLignees, idee);
     }
 
     private static RencontresCommunauteDto CalculerRencontres(ServiceMonde service, Communaute c, List<Humain> humains, List<Humain> membres, long maintenant)

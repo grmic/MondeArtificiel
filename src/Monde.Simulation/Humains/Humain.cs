@@ -65,6 +65,8 @@ public enum Activite : byte
     Naviguer = 35,
     /// <summary>Pêcher en mer, depuis son bateau.</summary>
     Pecher = 36,
+    /// <summary>Semer, soigner une parcelle ou récolter (depuis la 0.33.0).</summary>
+    Cultiver = 37,
 }
 
 /// <summary>Pourquoi un humain prend la mer.</summary>
@@ -269,6 +271,13 @@ public sealed class Humain
     /// la faim se fait sentir plus vite, les maladies frappent plus, et une femme conçoit moins.
     /// </summary>
     public double Reserves { get; set; } = 50;
+
+    /// <summary>
+    /// Part de ce qu'il mange qui vient des champs (graines, racines cultivées), de 0 à 1, sur les derniers mois. Une alimentation
+    /// tirée de peu de plantes manque de ce que la cueillette variée apportait : les premiers agriculteurs étaient plus souvent
+    /// malades et carencés que les chasseurs-cueilleurs (Larsen, 1995) ; mais la bouillie de graines permet de sevrer plus tôt.
+    /// </summary>
+    public double PartDesChamps { get; set; }
     public double Soif { get; set; }
     public double Fatigue { get; set; }
     public double Froid { get; set; }

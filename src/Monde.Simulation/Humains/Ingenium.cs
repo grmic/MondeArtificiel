@@ -531,6 +531,7 @@ public sealed partial class Comportement
         Effet.Modelage => "ing.question.Modelage",
         Effet.Limon => "ing.question.Limon",
         Effet.Repousse => "ing.question.Repousse",
+        Effet.Semis or Effet.Sarclage or Effet.Moisson or Effet.Semence or Effet.Essart => $"ing.question.{s.Effet}",
         _ => "ing.question.autre",
     });
 

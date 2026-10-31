@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 45;
+    public const int VersionSchema = 46;
 
     private readonly string _connexion;
 
@@ -607,6 +607,8 @@ public sealed partial class DepotMonde
             Executer(connexion, transaction, "ALTER TABLE ressources ADD COLUMN limon BLOB;");
         // Version 45 : séquelles des blessures graves, pousses des camps.
         if (actuelle < 45) MigrerVersion45(connexion, transaction);
+        // Version 46 : champs (parcelles, lignées cultivées, idée des champs).
+        if (actuelle < 46) MigrerVersion46(connexion, transaction);
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """
@@ -844,6 +846,9 @@ public sealed partial class DepotMonde
         if (outremer.Count > 0) etat = etat with { Outremer = outremer };
         var mandats = LireMandats(commande);
         if (mandats.Count > 0) etat = etat with { Mandats = mandats };
+        var (parcelles, lignees, idees) = LireChamps(commande);
+        if (lignees.Count > 0) etat = etat with { Parcelles = parcelles, Lignees = lignees };
+        if (idees.Count > 0) etat = etat with { IdeesChamps = idees };
         if (oeuvres.Count > 0) etat = etat with { Oeuvres = oeuvres };
         if (foyers.Count > 0) etat = etat with { Foyers = foyers };
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };
@@ -1249,6 +1254,7 @@ public sealed partial class DepotMonde
         if (etat.Rassemblements is not null) EnregistrerRassemblements(connexion, transaction, etat.Rassemblements);
         if (etat.Outremer is not null) EnregistrerOutremer(connexion, transaction, etat.Outremer);
         if (etat.Mandats is not null) EnregistrerMandats(connexion, transaction, etat.Mandats);
+        if (etat.Humains is not null) EnregistrerChamps(connexion, transaction, etat);
         if (etat.Religions is not null || etat.Prieres is not null || etat.LieuxSacres is not null || etat.Propheties is not null)
             EnregistrerCultes(connexion, transaction, etat);
         if (etat.EffetsEntite is not null || etat.SouvenirsEntite is not null) EnregistrerGestes(connexion, transaction, etat);

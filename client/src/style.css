@@ -335,3 +335,21 @@ p.bilan-prieres { font-size: 0.9em; }
 .config-panneau .journal-base .reglage .aide { flex: 1 1 100%; }
 .config-panneau .journal-base .avertissement { font-size: 0.85rem; border-left: 3px solid #d9822b; padding-left: 8px; }
 .config-panneau .journal-base h4 { margin: 0.8rem 0 0.2rem; }
+
+/* Guide : le README dans une fenêtre (0.33.0). */
+.dialogue.guide { max-width: min(860px, calc(100vw - 32px)); width: 100%; max-height: calc(100vh - 48px); padding: 0; display: flex; flex-direction: column; }
+.dialogue.guide:not([open]) { display: none; }
+.dialogue.guide .tete { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid #3a4658; }
+.dialogue.guide .tete h2 { margin: 0; }
+.dialogue.guide .fermer { background: none; border: none; color: var(--texte); font-size: 1.4rem; cursor: pointer; }
+.guide-corps { overflow-y: auto; padding: 4px 20px 20px; font-size: 0.92rem; line-height: 1.5; }
+.guide-corps h1 { font-size: 1.3rem; }
+.guide-corps h2 { font-size: 1.1rem; margin-top: 1.4em; }
+.guide-corps h3 { font-size: 1rem; }
+.guide-corps img { max-width: 100%; height: auto; border-radius: 6px; }
+.guide-corps code { background: #0e1724; padding: 1px 4px; border-radius: 4px; }
+.guide-corps pre { background: #0e1724; padding: 8px 10px; border-radius: 6px; overflow-x: auto; }
+.guide-corps pre code { padding: 0; }
+.guide-corps table { border-collapse: collapse; }
+.guide-corps th, .guide-corps td { border: 1px solid #3a4658; padding: 3px 8px; }
+.guide-corps a { color: #8fc1ff; }

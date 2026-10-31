@@ -53,6 +53,13 @@ public sealed partial class Comportement
     /// Une femme qui fait bouillir (elle le sait, et l'a fait ces deux derniers mois) a de quoi nourrir son petit d'une bouillie :
     /// elle le sèvre plus tôt (voir <see cref="Allaitement"/>).
     /// </summary>
+    /// <summary>
+    /// Elle mange les graines des champs et sait les faire cuire : grillées et broyées, trempées et cuites, elles font une bouillie
+    /// que le petit avale (Bocquet-Appel, 2011 : la bouillie de céréales raccourcit l'allaitement au Néolithique).
+    /// </summary>
+    internal static bool BouillieDeGraines(Humain h) =>
+        h.PartDesChamps >= 0.15 && h.Savoirs.Exists(s => s.Effet is Effet.Cuisson or Effet.Transformation && s.Confiance >= 0.3);
+
     internal static bool FaitDesBouillies(Humain h, long maintenant) =>
         h.Savoirs.Exists(s => s.Effet == Effet.Transformation && s.Confiance >= 0.3 && s.UtiliseLe >= maintenant - 60 * Calendrier.SecondesParJour
             && LireRecette(s.Pieces) is { } r && r.Changements.Contains("tendre"));

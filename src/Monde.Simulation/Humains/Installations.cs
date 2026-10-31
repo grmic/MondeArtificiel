@@ -35,6 +35,10 @@ public enum SorteReserve : byte
     NoixGraines = 3,
     /// <summary>Viande cachée dans le froid, sous des pierres ou dans une fosse.</summary>
     ViandeCachee = 4,
+    /// <summary>Graines et gousses récoltées dans les parcelles, sèches (depuis la 0.33.0).</summary>
+    Grains = 5,
+    /// <summary>Racines et tubercules récoltés : ils se gardent quelques mois.</summary>
+    Tubercules = 6,
 }
 
 /// <summary>
@@ -56,6 +60,8 @@ public sealed record Reserve(int Id, int X, int Y, SorteReserve Sorte, double Kg
         SorteReserve.FruitsSeches => 25,
         SorteReserve.NoixGraines => 50,
         SorteReserve.ViandeCachee => 10,
+        SorteReserve.Grains => 27,
+        SorteReserve.Tubercules => 8,
         _ => 0,
     };
 

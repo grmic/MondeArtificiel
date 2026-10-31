@@ -2,6 +2,7 @@ import { afficherAlertes, alertesAffichees } from "./catastrophes";
 import { connexion } from "./connexion";
 import { RubriqueJournalBase } from "./journalbase";
 import { el } from "./fiche";
+import { Guide } from "./guide";
 import { choisirLangue, langue, languesDisponibles, t } from "./langue";
 
 /** Réglages du monde courant et limites, renvoyés par le serveur. Largeur et hauteur en cases. */
@@ -106,6 +107,7 @@ export class PanneauConfiguration {
   })();
   private readonly actuel = el("p");
   private readonly apropos = el("p", "discret apropos");
+  private guide: Guide | null = null;
   private readonly message = el("p", "message-config");
   private readonly hasard = el("button", undefined, "🎲");
   private apercuAffiche = false;
@@ -195,8 +197,16 @@ export class PanneauConfiguration {
     this.clemence.curseur.addEventListener("input", () => (this.clemence.valeur.textContent = t("commun.pourcent", { v: Number(this.clemence.curseur.value) })));
     this.clemence.curseur.addEventListener("change", () => void this.choisirClemence(Number(this.clemence.curseur.value)));
 
+    const lireGuide = el("button", undefined, t("guide.bouton"));
+    lireGuide.type = "button";
+    lireGuide.title = t("guide.aide");
+    lireGuide.addEventListener("click", () => void (this.guide ??= new Guide()).ouvrir());
+    const boutonsGuide = el("div", "boutons");
+    boutonsGuide.append(lireGuide);
+
     this.corps.append(
       this.apropos,
+      boutonsGuide,
       el("h3", undefined, t("config.langue")),
       this.choixLangue(),
       el("p", "discret", t("config.langueAide")),

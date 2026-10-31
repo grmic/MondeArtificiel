@@ -136,7 +136,8 @@ public sealed partial class Comportement
 
     /// <summary>« 12 kg de viande séchée », « 4 litres d'eau ».</summary>
     public static Recit DecrireReserve(SorteReserve sorte, double kg) =>
-        new(sorte is SorteReserve.Eau or SorteReserve.ViandeSechee or SorteReserve.FruitsSeches or SorteReserve.NoixGraines ? $"res.sorte.{sorte}" : "res.sorte.ViandeCachee",
+        new(sorte is SorteReserve.Eau or SorteReserve.ViandeSechee or SorteReserve.FruitsSeches or SorteReserve.NoixGraines or SorteReserve.Grains
+                or SorteReserve.Tubercules ? $"res.sorte.{sorte}" : "res.sorte.ViandeCachee",
             ("n", (long)Math.Max(1, Math.Round(kg))));
 
     /// <summary>
@@ -265,12 +266,12 @@ public sealed partial class Comportement
         {
             var (geste, effet) = choisie.Sorte switch
             {
-                SorteReserve.NoixGraines => (Geste.Amasser, Effet.Provisions),
+                SorteReserve.NoixGraines or SorteReserve.Grains or SorteReserve.Tubercules => (Geste.Amasser, Effet.Provisions),
                 SorteReserve.ViandeCachee => (Geste.Cacher, Effet.CacheFroide),
                 _ => (Geste.Secher, Effet.Sechage),
             };
             // Manger en hiver ce qu'on a gardé : le savoir se confirme.
-            Retenir(h, geste, choisie.Sorte is SorteReserve.NoixGraines or SorteReserve.FruitsSeches ? Matiere.Plante : Matiere.Carcasse, Matiere.Aucune, effet,
+            Retenir(h, geste, choisie.Sorte is SorteReserve.NoixGraines or SorteReserve.FruitsSeches or SorteReserve.Grains or SorteReserve.Tubercules ? Matiere.Plante : Matiere.Carcasse, Matiere.Aucune, effet,
                 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous);
         }
         DiffererPuiser(h.Id, choisie.Id, h.Faim / Reserve.FaimParKg(choisie.Sorte), false, vol, tous, _maintenant);
@@ -336,6 +337,9 @@ public sealed partial class Comportement
         // Une réserve un peu gâtée nourrit moins (ce qui a moisi se jette).
         if (eau) h.Soif = Math.Max(0, h.Soif - pris * SoifParLitre);
         else h.Faim = Math.Max(0, h.Faim - pris * Reserve.FaimParKg(r.Sorte) * (0.5 + 0.5 * r.Etat));
+        // Ce qui vient des champs prend une part de plus en plus grande dans ce qu'il mange.
+        if (r.Sorte is SorteReserve.Grains or SorteReserve.Tubercules)
+            h.PartDesChamps = Math.Min(1, h.PartDesChamps + 0.2 * pris * Reserve.FaimParKg(r.Sorte) / FaimParJour);
         if (r.AuteurId == h.Id || r.AuteurId <= 0 || r.AuteurId > tous.Count) return;
         var auteur = tous[r.AuteurId - 1];
         var communaute = r.CommunauteId > 0 && Social is { } s && r.CommunauteId <= s.Communautes.Count ? s.Communautes[r.CommunauteId - 1] : null;
@@ -355,28 +359,33 @@ public sealed partial class Comportement
     private void VolerDansLaReserve(Humain h, Humain auteur, Reserve r, Communaute? communaute, IReadOnlyList<Humain> tous, long maintenant)
     {
         if (communaute is not null) communaute.VolsReserve++;
+        var quoi = Recits.Recit.Seul(r.Sorte == SorteReserve.Eau ? "res.quoi.eau" : "res.quoi.reserve");
+        var id = Surprendre(h, auteur, r.CommunauteId, quoi, r.EvenementId, tous, maintenant);
+        if (communaute is not null) communaute.VolReserveEvenementId = id;
+    }
+
+    /// <summary>
+    /// Ce qu'il a pris en cachette (<paramref name="quoi"/>) appartenait à <paramref name="auteur"/> : l'auteur, s'il est là, ou un
+    /// membre de son groupe peut le voir ; sinon, le vol passe inaperçu. Les suites sont celles des autres vols : rancune, estime
+    /// perdue, offense entre groupes. Renvoie la ligne du journal.
+    /// </summary>
+    private long Surprendre(Humain h, Humain auteur, int communauteId, Recit quoi, long cause, IReadOnlyList<Humain> tous, long maintenant)
+    {
         var cache = Dissimulation(h);
         Humain? temoin = null;
         foreach (var t in tous.Vivants())
         {
             if (!t.EstVivant || t.Id == h.Id || t.EstEnfant(maintenant) || t.Activite == Activite.Dormir || Distance(t.X, t.Y, h.X, h.Y) > 1) continue;
-            if (t.Id != auteur.Id && (t.CommunauteId == 0 || t.CommunauteId != r.CommunauteId)) continue;
+            if (t.Id != auteur.Id && (t.CommunauteId == 0 || t.CommunauteId != communauteId)) continue;
             if (alea.Reel() < 0.35 * Perspicacite(t) * cache) { temoin = t; break; }
         }
-        var quoi = Recits.Recit.Seul(r.Sorte == SorteReserve.Eau ? "res.quoi.eau" : "res.quoi.reserve");
         if (temoin is null)
-        {
-            var id = Noter(maintenant, TypeEvenement.Vol, h, auteur, new Recit("res.vol.cache", ("h", h), ("quoi", quoi), ("a", auteur)), r.EvenementId,
-                karma: Regard.Vol);
-            if (communaute is not null) communaute.VolReserveEvenementId = id;
-            return;
-        }
+            return Noter(maintenant, TypeEvenement.Vol, h, auteur, new Recit("res.vol.cache", ("h", h), ("quoi", quoi), ("a", auteur)), cause, karma: Regard.Vol);
         var texte = temoin.Id == auteur.Id
             ? new Recit("res.vol.surpris", ("a", auteur), ("h", h), ("quoi", quoi))
             : new Recit("res.vol.temoin", ("t", temoin), ("h", h), ("quoi", quoi), ("a", auteur));
-        var vol = Noter(maintenant, TypeEvenement.Vol, h, auteur, texte, r.EvenementId, karma: Regard.Vol);
-        if (communaute is not null) communaute.VolReserveEvenementId = vol;
-        if (Social is not { } social) return;
+        var vol = Noter(maintenant, TypeEvenement.Vol, h, auteur, texte, cause, karma: Regard.Vol);
+        if (Social is not { } social) return vol;
         var am = auteur.Personnalite;
         var colere = Math.Min(100, 30 + 40 * (1 - am.Agreabilite) + 30 * (am.Moral.Fondements.Equite - 0.5));
         if (auteur.EstVivant)
@@ -390,6 +399,7 @@ public sealed partial class Comportement
             VieSociale.AjouterGrief(temoin, new Grief(h.Id, MotifGrief.Vol, colere / 2, colere / 2, vol));
             social.ChangerAffection(temoin, h, -colere / 8, maintenant);
         }
+        return vol;
     }
 
     /// <summary>
@@ -423,6 +433,16 @@ public sealed partial class Comportement
                 case SorteReserve.NoixGraines:
                     etat -= 1 / (200 + 100 * r.Qualite);
                     kg *= 1 - (0.002 + 0.004 * (1 - r.Qualite));
+                    break;
+                case SorteReserve.Grains:
+                    // Des graines bien sèches se gardent une année et plus ; les rongeurs et l'humidité en prennent leur part.
+                    etat -= (Humide(biome) ? 2 : 1) / (300 + 300 * r.Qualite);
+                    kg *= 1 - (0.001 + 0.004 * (1 - r.Qualite));
+                    break;
+                case SorteReserve.Tubercules:
+                    // Racines et tubercules tiennent deux à quatre mois au frais, moins par la chaleur.
+                    etat -= (temperature > 20 ? 1.5 : 1) / (60 + 60 * r.Qualite);
+                    pillee = alea.Reel() < 0.003 * (1.2 - r.Qualite);
                     break;
                 case SorteReserve.ViandeCachee:
                     // Gelée, elle ne se gâte presque pas ; au-dessus de zéro, elle pourrit d'autant plus vite qu'il fait doux.

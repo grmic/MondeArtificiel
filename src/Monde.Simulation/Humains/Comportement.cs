@@ -422,7 +422,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // La détresse affaiblit les défenses du corps.
             // La dénutrition (réserves épuisées) affaiblit l'immunité (Schaible et Kaufmann, 2007).
             var risque = ProbabiliteMaladieDeBase * (1 + (100 - h.Sante) / 25 + h.Faim / 50 + h.Froid / 50) * (1.3 - 0.6 * p.Endurance)
-                         * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25);
+                         * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25)
+                         // Peu de plantes au menu, un camp qui ne bouge plus et ses ordures : les premiers agriculteurs tombaient plus
+                         // souvent malades (Larsen, 1995 ; Cohen et Armelagos, 1984).
+                         * (h.PartDesChamps > 0.4 ? 1 + 0.6 * (h.PartDesChamps - 0.4) / 0.6 : 1) * (Sedentaire(h) ? 1.15 : 1);
             var surcroit = sevre ? Sevre.Risque(h.AgeEnAnnees(maintenant)) : 1;
             if (alea.Reel() < risque * fragilite * AdouciPour(h, maintenant) * surcroit)
             {
@@ -598,7 +601,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (!h.EstPetitEnfant(maintenant) && UtiliserSavoirs(h, besoin, valeur, seuil, tous)) return;
 
         // Au calme, le soir : fumer la viande qu'on porte, allumer le feu du camp.
-        if (valeur < seuil && (FumerLaViande(h, tous) || GarderLeFeu(h, tous) || FeuDuSoir(h, tous) || FaireDesReserves(h, tous))) return;
+        if (valeur < seuil && (FumerLaViande(h, tous) || GarderLeFeu(h, tous) || FeuDuSoir(h, tous) || FaireDesReserves(h, tous) || Cultiver(h, tous))) return;
 
         if (valeur >= seuil)
         {

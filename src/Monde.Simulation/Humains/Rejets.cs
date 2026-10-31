@@ -63,6 +63,8 @@ public sealed partial class Comportement
         var gain = 0.02 + 0.04 * alea.Reel();
         var nature = ecosysteme;
         Tour.Differer(() => nature.Germer(i, gain));
+        // Ce qu'il enfouit est une plante précise : elle fera une toute petite parcelle, qu'il retrouvera peut-être levée.
+        EnfouirUneEspece(h, i);
         // Les premières fois se racontent ; ensuite c'est un geste de tous les jours.
         if (s.Essais < 3)
             Noter(_maintenant, TypeEvenement.Decouverte, h, null, new Recit(limon ? "rejets.enfouit.limon" : "rejets.enfouit", ("h", h)), s.EvenementId);

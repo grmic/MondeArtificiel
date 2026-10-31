@@ -26,6 +26,8 @@ interface TerrainJson {
   passages: number[];
   cols: number[];
   limon: string;
+  /** Depuis la 0.33.0 : parcelles semées (état 0 semée, 1 qui pousse, 2 mûre). */
+  champs?: { x: number; y: number; etat: number; ares: number; plante: string; domestiquee: boolean }[];
 }
 
 interface Terrain extends Omit<TerrainJson, "roches" | "sols" | "pente" | "debit" | "profondeur" | "rivages" | "recifs" | "limon"> {
@@ -42,7 +44,7 @@ interface Terrain extends Omit<TerrainJson, "roches" | "sols" | "pente" | "debit
   estCol: Set<number>;
 }
 
-const CALQUES = ["roches", "sols", "eau", "fonds", "grottes", "gisements", "falaises", "limon"] as const;
+const CALQUES = ["roches", "sols", "eau", "fonds", "grottes", "gisements", "falaises", "limon", "champs"] as const;
 type Calque = (typeof CALQUES)[number];
 
 /** Couleurs des roches, dans l'ordre de l'énumération Roche : granite, basalte, volcanique, calcaire, craie, grès, schiste, alluvions, évaporites. */
@@ -219,6 +221,17 @@ export class Calques {
         return v > 0 ? [150, 170, 60, Math.round(60 + 180 * Math.min(1, v / 150))] : null;
       }));
     }
+    if (this.choix.has("champs")) {
+      // Parcelles : un carré d'autant plus grand que la surface semée ; brun semé, vert qui pousse, or mûr ; bord blanc si la lignée est domestiquée.
+      const g = new Graphics();
+      const couleurs = [0x8a5a2b, 0x5fbf3a, 0xf0c030];
+      for (const c of tr.champs ?? []) {
+        const r = Math.min(0.5, 0.18 + 0.08 * Math.sqrt(c.ares));
+        g.rect(c.x + 0.5 - r, c.y + 0.5 - r, 2 * r, 2 * r).fill({ color: couleurs[c.etat] ?? 0x8a5a2b, alpha: 0.95 });
+        if (c.domestiquee) g.stroke({ width: 0.12, color: 0xffffff });
+      }
+      dessin.addChild(g);
+    }
     if (this.choix.has("falaises")) {
       // Une paroi : un trait sombre sur la limite entre les deux cases ; un passage : un trait orange ; un col : un rond blanc.
       const g = new Graphics();
@@ -255,6 +268,9 @@ export class Calques {
     if (tr.estCol.has(i)) lignes.push(t("calques.col"));
     if (tr.limon[i] > 0) lignes.push(t("calques.limonIci", { p: nombre(Math.round(tr.limon[i] * 0.4)) }));
     if (tr.debit[i] > 0) lignes.push(t("calques.riviere", { q: nombre(Math.pow(10, (tr.debit[i] - 1) / 40) - 1, 1) }));
+    for (const c of tr.champs ?? []) {
+      if (c.x === x && c.y === y) lignes.push(t("calques.champIci", { plante: c.plante, ares: nombre(c.ares, 1), etat: t(`calques.champEtat${c.etat}`) }));
+    }
     for (const c of tr.grottes) if (c.x === x && c.y === y) lignes.push(t(c.sousRoche ? "calques.abri" : c.source ? "calques.grotteSource" : "calques.grotte", { m: c.metres }));
     for (const s of tr.sources) if (s.x === x && s.y === y) lignes.push(t("calques.source", { type: s.nom }));
     for (const g of tr.gisements) {

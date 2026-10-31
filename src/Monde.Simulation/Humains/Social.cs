@@ -213,6 +213,9 @@ public sealed class Communaute
     public double PartagesReserve { get; set; }
     public double VolsReserve { get; set; }
 
+    /// <summary>Dernière fois que le groupe est resté pour ses champs malgré la disette (événement du journal, non enregistré).</summary>
+    public long ResteEvenementId { get; set; }
+
     /// <summary>Dernier vol dans une réserve (événement du journal), cause possible de l'idée de la réserve à soi.</summary>
     public long VolReserveEvenementId { get; set; }
 
