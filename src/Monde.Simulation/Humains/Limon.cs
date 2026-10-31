@@ -111,7 +111,7 @@ public sealed partial class VieSociale
     /// riche, sans attendre la disette. Il y reste ou en repart ensuite comme de toute terre (voir <see cref="Disette"/>). Sans
     /// calendrier imposé : c'est le savoir des siens, leur nombre et leur faim qui décident. Vrai si le groupe se met en route.
     /// </summary>
-    internal bool SuivreLaCrue(Communaute c, List<Humain> groupe, Ecosysteme nature, long maintenant)
+    internal bool SuivreLaCrue(Communaute c, List<Humain> groupe, Ecosysteme nature, Monde.Carte carte, long maintenant)
     {
         var adultes = groupe.Where(h => !h.EstEnfant(maintenant)).ToList();
         var croyants = adultes.Where(h => Comportement.SavoirDuLimon(h) is { Confiance: >= 0.5 }).OrderBy(h => h.Id).ToList();
@@ -125,7 +125,7 @@ public sealed partial class VieSociale
             var lieu = Comportement.CrueVue(h, c.CentreX, c.CentreY, DistanceMigrationMax, 20, 240, maintenant);
             if (lieu is null) continue;
             var d = Math.Max(Math.Abs(lieu.X - c.CentreX), Math.Abs(lieu.Y - c.CentreY));
-            var i = Carte.Indice(lieu.X, lieu.Y);
+            var i = carte.Indice(lieu.X, lieu.Y);
             if (d <= 4 || nature.Limon[i] < Comportement.LimonVisible) continue;
             var abondance = nature.Abondance(lieu.X, lieu.Y, 3);
             if (abondance > meilleur.Abondance) meilleur = (lieu.X, lieu.Y, abondance, h);

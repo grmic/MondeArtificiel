@@ -163,7 +163,7 @@ public sealed partial class VieSociale
             c.Migrations++;
             c.DestinationX = c.DestinationY = -1;
         }
-        if (Generation >= 2 && !c.Disette && c.DestinationX < 0 && SuivreLaCrue(c, groupe, nature, maintenant)) return;
+        if (Generation >= 2 && !c.Disette && c.DestinationX < 0 && SuivreLaCrue(c, groupe, nature, carte, maintenant)) return;
         if (!c.Disette || c.DestinationX >= 0 || c.Abondance >= AbondanceFinDisette) return;
 
         // Les membres mettent en commun ce dont ils se souviennent : le groupe part vers les terres connues

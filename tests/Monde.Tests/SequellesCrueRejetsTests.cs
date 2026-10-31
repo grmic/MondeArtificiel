@@ -156,7 +156,7 @@ public sealed class SequellesCrueRejetsTests(ITestOutputHelper sortie)
                     h.Savoirs.Add(Croit(Effet.Limon));
                     h.Memoire.Retenir(TypeLieu.Crue, lx, ly, Midi - 60 * Jour);
                 }
-                if (social.SuivreLaCrue(c, groupe, e, Midi))
+                if (social.SuivreLaCrue(c, groupe, e, Carte, Midi))
                 {
                     n++;
                     Assert.Equal((lx, ly), (c.DestinationX, c.DestinationY));

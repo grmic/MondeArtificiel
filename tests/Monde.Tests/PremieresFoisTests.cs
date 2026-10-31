@@ -128,7 +128,7 @@ public sealed class PremieresFoisTests(MondeAvecJournal monde) : IClassFixture<M
         Assert.DoesNotContain(depot.LireJournal(limite: 500), e => e.Premiere != 0);
         var relues = depot.Charger()!.Premieres!.ToHashSet();
         // Les sortes tirées de lignes enregistrées se retrouvent toutes (les suites d'une catastrophe oubliée exceptées).
-        Assert.Empty(attendues.Except(relues).Where(k => !k.Contains(":cat.")));
+        Assert.DoesNotContain(attendues.Except(relues), k => !k.Contains(":cat."));
         Assert.Contains("m:naissance", relues);
     }
 }
