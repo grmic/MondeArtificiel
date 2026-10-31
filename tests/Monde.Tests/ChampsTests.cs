@@ -180,6 +180,7 @@ public sealed class ChampsTests(ITestOutputHelper sortie)
         Assert.Empty(lignees);
         Assert.Empty(idees);
         Assert.Null(monde.Etat.Parcelles);
+        Assert.Empty(monde.Troupeaux());
         var (_, humains) = monde.InstantaneHumains();
         Assert.All(humains, h => Assert.Equal(0, h.PartDesChamps));
     }

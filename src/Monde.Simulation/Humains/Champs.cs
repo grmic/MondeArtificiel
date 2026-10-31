@@ -87,8 +87,28 @@ public sealed class IdeeDesChamps
     public double Partages { get; set; }
     public double Vols { get; set; }
     public long VolEvenementId { get; set; }
+    /// <summary>Restes jetés aux rôdeurs qui tournent autour du camp (depuis la 0.33.1) : quelques semaines de restes, et ils s'enhardissent.</summary>
+    public double Rodeurs { get; set; }
+    public long RodeursEvenementId { get; set; }
 
     public IdeeDesChamps Copier() => (IdeeDesChamps)MemberwiseClone();
+}
+
+/// <summary>
+/// Des bêtes gardées (génération 2, depuis la 0.33.1) : un petit pris à la chasse, des chiots de rôdeurs, puis, si l'espèce se
+/// reproduit captive, un troupeau. Ses traits changent sous la main de l'homme : à chaque mise bas, on garde les plus calmes et
+/// l'on mange les plus farouches (Belyaev : renards apprivoisés en quelques dizaines de générations ; Zeder, 2012).
+/// </summary>
+/// <param name="GardienId">Celui qui s'en occupe (0 : la communauté).</param>
+/// <param name="Docilite">0 : sauvage ; 1 : ne fuit ni ne charge plus. Domestiquée au-delà de 0,6.</param>
+/// <param name="Taille">Taille par rapport à la bête sauvage (1) : les bêtes gardées rapetissent d'abord.</param>
+/// <param name="Etat">Embonpoint, de 0 (affamées) à 1.</param>
+/// <param name="MiseBasLe">Dernière mise bas.</param>
+/// <param name="Abattue">On en a déjà abattu une (noté une fois au journal).</param>
+public sealed record Troupeau(int Id, int Espece, int CommunauteId, int GardienId, double Adultes, double Petits, double Docilite, double Taille,
+    int Generations, long NeLe, long MiseBasLe, long EvenementId, double Etat = 1, bool Domestique = false, long NaissanceEvenementId = 0, bool Abattue = false)
+{
+    public double Nombre => Adultes + Petits;
 }
 
 /// <summary>Les champs du monde : parcelles, lignées, et ce que chaque communauté en pense.</summary>
@@ -97,12 +117,18 @@ public sealed class Champs
     public List<Parcelle> Parcelles { get; } = [];
     public List<Lignee> Lignees { get; } = [];
     public Dictionary<int, IdeeDesChamps> Idees { get; } = [];
+    /// <summary>Bêtes gardées (depuis la 0.33.1).</summary>
+    public List<Troupeau> Troupeaux { get; } = [];
     private int _prochaineParcelle = 1;
     private int _prochaineLignee = 1;
+    private int _prochainTroupeau = 1;
 
-    public Champs(IEnumerable<Parcelle>? parcelles = null, IEnumerable<Lignee>? lignees = null, IEnumerable<(int Communaute, IdeeDesChamps Idee)>? idees = null)
+    public Champs(IEnumerable<Parcelle>? parcelles = null, IEnumerable<Lignee>? lignees = null, IEnumerable<(int Communaute, IdeeDesChamps Idee)>? idees = null,
+        IEnumerable<Troupeau>? troupeaux = null)
     {
         Parcelles.AddRange(parcelles ?? []);
+        Troupeaux.AddRange(troupeaux ?? []);
+        _prochainTroupeau = 1 + Troupeaux.Select(t => t.Id).DefaultIfEmpty(0).Max();
         Lignees.AddRange(lignees ?? []);
         foreach (var (c, i) in idees ?? []) Idees[c] = i;
         _prochaineParcelle = 1 + Parcelles.Select(p => p.Id).DefaultIfEmpty(0).Max();
@@ -110,6 +136,13 @@ public sealed class Champs
     }
 
     public bool Vide => Parcelles.Count == 0 && Lignees.Count == 0;
+
+    public Troupeau NouveauTroupeau(Bete b, int communaute, int gardien, double adultes, double petits, double docilite, long maintenant, long evenement)
+    {
+        var t = new Troupeau(_prochainTroupeau++, b.Numero, communaute, gardien, adultes, petits, docilite, 1, 0, maintenant, 0, evenement);
+        Troupeaux.Add(t);
+        return t;
+    }
 
     public IdeeDesChamps IdeeDe(int communaute)
     {

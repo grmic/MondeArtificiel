@@ -122,7 +122,7 @@ public sealed class ProgresTests
         var vivants = monde.Etat.Humains!.Where(x => x.EstVivant).SelectMany(x => x.Savoirs).Where(s => s.Espece == 0 && s.Effet != Effet.Rien)
             .Select(s => s.Effet).Distinct().Count();
         Assert.InRange(mesure.Savoirs, 1, vivants);
-        Assert.Equal(vivants, monde.SavoirsVivantsMaintenant(0));
+        Assert.Equal(vivants, monde.SavoirsVivantsMaintenant(0).Savoirs);
     }
 
     [Fact]

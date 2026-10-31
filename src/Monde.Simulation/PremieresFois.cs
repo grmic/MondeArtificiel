@@ -98,6 +98,14 @@ public static class PremieresFois
                 else if (cle == "champ.recolte") yield return ("recolte", true, true, false);
                 else if (cle.StartsWith("champ.lignee.", StringComparison.Ordinal)) yield return ("domestication", true, true, false);
                 break;
+            case TypeEvenement.Decouverte when cle.StartsWith("bete.", StringComparison.Ordinal):
+                // Les bêtes (0.33.1) : premier petit élevé, premiers chiots de rôdeurs, première naissance au camp, première traite,
+                // première bête domestiquée.
+                if (cle is "bete.petit" or "bete.chiots") yield return ("apprivoise", true, true, false);
+                else if (cle == "bete.naissance") yield return ("naissanceCaptive", true, true, false);
+                else if (cle == "bete.traite") yield return ("traite", true, true, false);
+                else if (cle == "bete.domestique") yield return ("domestiqueBete", true, true, false);
+                break;
             case TypeEvenement.Communaute when cle == "limon.installe":
                 yield return ("campCrue", true, true, false);
                 break;

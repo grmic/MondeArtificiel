@@ -251,6 +251,9 @@ h4 { margin: 8px 0 2px; font-size: 0.9em; opacity: 0.85; }
 .demographie-panneau .repere-tete { cursor: pointer; stroke-width: 0; }
 .demographie-panneau .progres { fill: none; stroke: #8fd3a0; stroke-width: 1.6; }
 .demographie-panneau .progres.reconstitue { stroke-dasharray: 3 3; stroke-opacity: 0.7; }
+.demographie-panneau .diffusion { fill: none; stroke: #f0b84a; stroke-width: 1.4; }
+.demographie-panneau text.diffusion { fill: #f0b84a; stroke: none; }
+.demographie-panneau span.diffusion { color: #f0b84a; }
 .demographie-panneau .marque { cursor: pointer; stroke: #0e1520; stroke-width: 1; }
 .demographie-panneau .marque.perdu { fill: #ef6f6c; }
 .demographie-panneau .marque.retrouve { fill: #74c26a; }

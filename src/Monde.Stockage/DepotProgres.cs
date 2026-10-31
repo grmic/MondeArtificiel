@@ -25,17 +25,17 @@ public sealed partial class DepotMonde
     private static List<MesureSavoirs> LireProgres(SqliteCommand commande)
     {
         var liste = new List<MesureSavoirs>();
-        commande.CommandText = "SELECT annee, communaute, savoirs FROM progres ORDER BY annee, communaute;";
+        commande.CommandText = "SELECT annee, communaute, savoirs, par_humain FROM progres ORDER BY annee, communaute;";
         using var l = commande.ExecuteReader();
-        while (l.Read()) liste.Add(new MesureSavoirs(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2)));
+        while (l.Read()) liste.Add(new MesureSavoirs(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetDouble(3)));
         return liste;
     }
 
     private static void EnregistrerProgres(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<MesureSavoirs> progres)
     {
         Executer(connexion, transaction, "DELETE FROM progres;");
-        using var c = Preparer(connexion, transaction, "INSERT INTO progres (annee, communaute, savoirs) VALUES ($a, $c, $s);", "$a", "$c", "$s");
-        foreach (var m in progres) Lancer(c, m.Annee, m.CommunauteId, m.Savoirs);
+        using var c = Preparer(connexion, transaction, "INSERT INTO progres (annee, communaute, savoirs, par_humain) VALUES ($a, $c, $s, $p);", "$a", "$c", "$s", "$p");
+        foreach (var m in progres) Lancer(c, m.Annee, m.CommunauteId, m.Savoirs, m.ParHumain);
     }
 
     /// <summary>Pertes et retrouvailles de savoirs notées au journal, dans l'ordre.</summary>

@@ -47,7 +47,7 @@ interface FicheCommunaute {
       reserves: string[]; idee: string | null; incendies: CatastropheResume[];
     } | null;
     /** Les champs (absent d'un serveur plus ancien ou sans champs). */
-    champs?: { parcelles: number; ares: number; etats: string[]; joursDeRecolte: number; lignees: string[]; idee: string | null } | null;
+    champs?: { parcelles: number; ares: number; etats: string[]; joursDeRecolte: number; lignees: string[]; idee: string | null; betes?: string[] | null } | null;
     /** Spécialistes, rassemblements, visites et membres venus d'ailleurs (absent d'un serveur plus ancien). */
     rencontres?: {
       specialistes: Personne[]; enVisite: Personne[]; visiteurs: Personne[]; venusDAilleurs: Personne[];
@@ -610,6 +610,11 @@ export class PanneauFicheCommunaute {
       s.append(el("p", undefined, t("fc.lignees")), ul);
     }
     if (x.idee) s.append(el("p", "usage", x.idee));
+    if (x.betes && x.betes.length > 0) {
+      const ul = el("ul", "liste");
+      for (const b of x.betes) ul.append(el("li", undefined, b));
+      s.append(el("h4", undefined, t("fc.betes")), ul);
+    }
   }
 
   /** Ceux qu'on vient voir pour un ouvrage, les rassemblements avec d'autres groupes, les visites, ceux qui sont venus d'ailleurs. */

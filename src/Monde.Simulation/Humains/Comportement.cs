@@ -425,7 +425,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                          * (h.EstDeprime ? 1.3 : 1) * (1 + Math.Max(0, 25 - h.Reserves) / 25)
                          // Peu de plantes au menu, un camp qui ne bouge plus et ses ordures : les premiers agriculteurs tombaient plus
                          // souvent malades (Larsen, 1995 ; Cohen et Armelagos, 1984).
-                         * (h.PartDesChamps > 0.4 ? 1 + 0.6 * (h.PartDesChamps - 0.4) / 0.6 : 1) * (Sedentaire(h) ? 1.15 : 1);
+                         * (h.PartDesChamps > 0.4 ? 1 + 0.6 * (h.PartDesChamps - 0.4) / 0.6 : 1) * (Sedentaire(h) ? 1.15 : 1) * AuMilieuDesBetes(h);
             var surcroit = sevre ? Sevre.Risque(h.AgeEnAnnees(maintenant)) : 1;
             if (alea.Reel() < risque * fragilite * AdouciPour(h, maintenant) * surcroit)
             {
@@ -909,7 +909,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // Sur une terre qui brûle, les bêtes débusquées fuient à découvert (Bird et al., 2005).
             var auFeu = TerreEnFeu(h);
             var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * (1 + gain) * ecosysteme.Gibier[i] / 10_000.0 * (1 + 0.05 * h.CompagnonsDeLangue)
-                         * (auFeu ? 2 : 1);
+                         * (auFeu ? 2 : 1) * AvecSesChiens(h);
             // Le boiteux ne rattrape plus la bête blessée ; le bras abîmé lance mal.
             if (h.Sequelle.Membre != Membre.Aucun)
                 chance *= (1 - 0.6 * Sequelles.Gene(h, Membre.Jambe, _maintenant)) * (1 - 0.5 * Sequelles.Gene(h, Membre.Bras, _maintenant));
@@ -927,6 +927,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 if (pris > 0) Rapporter(h, pris * KgParPart * facteur, _tous);
                 if (pris > 0) GarderDeLaViande(h, pris * KgParPart * facteur);
                 if (pris > 0 && auFeu) ChasseAuFeu(h, _tous);
+                if (pris > 0) PrendreUnPetit(h, i, _tous);
             }
             else
             {

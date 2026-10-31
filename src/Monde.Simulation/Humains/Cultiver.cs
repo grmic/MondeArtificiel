@@ -590,7 +590,7 @@ public sealed partial class Comportement
                     }
                     // Mûre : la récolte qu'elle porte.
                     var kg = p.Ares / 100 * a.Rendement * l.Vigueur * (a.SeDisperse ? Math.Pow(l.Grosseur, 0.7) : 1) * sante * (1 - 0.7 * herbes)
-                             * ecosysteme.Sol(i) * (1 + p.Limon) * (1 + p.Cendres) * Math.Clamp(pluie, 0.5, 1.2);
+                             * ecosysteme.Sol(i) * (1 + p.Limon) * (1 + p.Cendres) * Math.Clamp(pluie, 0.5, 1.2) * Fumier(i);
                     var tenaces = a.SeDisperse ? kg * p.Part : kg;
                     Champs.Parcelles[k] = p with
                     {

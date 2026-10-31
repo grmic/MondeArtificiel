@@ -289,6 +289,10 @@ public enum Effet : byte
     Semence = 64,
     /// <summary>Ce qu'on sème sur une terre brûlée pousse plus fort, quelques saisons.</summary>
     Essart = 65,
+    /// <summary>Le petit d'une bête, nourri au camp, grandit sans fuir l'homme (depuis la 0.33.1).</summary>
+    Apprivoiser = 66,
+    /// <summary>Les femelles qui allaitent se laissent prendre leur lait.</summary>
+    Traite = 67,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -649,7 +653,7 @@ public static class Physique
             or Effet.Nage or Effet.Brandon or Effet.Percage or Effet.Rondelle or Effet.Pansement or Effet.Chant or Effet.Danse or Effet.Ocre
             or Effet.Peinture or Effet.MainsPropres or Effet.EauVive or Effet.Latrines or Effet.ViandeSaine or Effet.Fumage or Effet.Fumee
             or Effet.Brulis or Effet.Braises or Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant or Effet.BrulisProtecteur
-            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide or Effet.Pagaie or Effet.Limon or Effet.Repousse or Effet.Sarclage or Effet.Semence or Effet.Essart => Seul($"savoir.{s.Effet}"),
+            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide or Effet.Pagaie or Effet.Limon or Effet.Repousse or Effet.Sarclage or Effet.Semence or Effet.Essart or Effet.Apprivoiser or Effet.Traite => Seul($"savoir.{s.Effet}"),
         Effet.Semis => new Recit("savoir.Semis", ("plante", plante ?? Seul("savoir.cettePlante"))),
         Effet.Moisson => Seul($"savoir.Moisson.{s.Geste}"),
         Effet.Transformation when Comportement.LireRecette(s.Pieces) is { } r => DecrireRecette(r.Geste, r.A, r.B, r.Mode, r.Changements, r.Famille),

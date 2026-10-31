@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 46;
+    public const int VersionSchema = 47;
 
     private readonly string _connexion;
 
@@ -609,6 +609,8 @@ public sealed partial class DepotMonde
         if (actuelle < 45) MigrerVersion45(connexion, transaction);
         // Version 46 : champs (parcelles, lignées cultivées, idée des champs).
         if (actuelle < 46) MigrerVersion46(connexion, transaction);
+        // Version 47 : bêtes gardées.
+        if (actuelle < 47) MigrerVersion47(connexion, transaction);
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """
@@ -849,6 +851,8 @@ public sealed partial class DepotMonde
         var (parcelles, lignees, idees) = LireChamps(commande);
         if (lignees.Count > 0) etat = etat with { Parcelles = parcelles, Lignees = lignees };
         if (idees.Count > 0) etat = etat with { IdeesChamps = idees };
+        var troupeaux = LireTroupeaux(commande);
+        if (troupeaux.Count > 0) etat = etat with { Troupeaux = troupeaux };
         if (oeuvres.Count > 0) etat = etat with { Oeuvres = oeuvres };
         if (foyers.Count > 0) etat = etat with { Foyers = foyers };
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };

@@ -76,7 +76,8 @@ public sealed record Reserve(int Id, int X, int Y, SorteReserve Sorte, double Kg
 public sealed record Hutte(int Id, int X, int Y, double Solidite, long BatieLe, int BatisseurId, long EvenementId, long EnduiteLe = 0);
 
 /// <summary>Savoirs vivants au début d'une année : effets distincts que savent obtenir les vivants du monde (communauté 0) ou d'une communauté.</summary>
-public sealed record MesureSavoirs(int Annee, int CommunauteId, int Savoirs);
+/// <param name="ParHumain">Savoirs que sait en moyenne chaque vivant (−1 : pas mesuré, avant la 0.33.1).</param>
+public sealed record MesureSavoirs(int Annee, int CommunauteId, int Savoirs, double ParHumain = -1);
 
 /// <summary>Première fois qu'un effet a été obtenu dans le monde : par qui, quand, comment.</summary>
 /// <param name="Pieces">Pour un objet assemblé : ses pièces (voir <see cref="Assemblage"/>).</param>

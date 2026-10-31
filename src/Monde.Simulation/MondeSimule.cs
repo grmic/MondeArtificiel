@@ -114,6 +114,8 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     public IReadOnlyList<Parcelle>? Parcelles { get; init; }
     public IReadOnlyList<Lignee>? Lignees { get; init; }
     public IReadOnlyList<(int Communaute, IdeeDesChamps Idee)>? IdeesChamps { get; init; }
+    /// <summary>Bêtes gardées (null : aucune ; depuis la 0.33.1).</summary>
+    public IReadOnlyList<Troupeau>? Troupeaux { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -213,11 +215,12 @@ public sealed class MondeSimule
         _social.Flore = Flore;
         _installations = new Installations(etat.Foyers, etat.Huttes, etat.Decouvertes, etat.Oeuvres, etat.Braises, etat.Reserves);
         _social.Installations = _installations;
-        _champs = new Champs(etat.Parcelles, etat.Lignees, etat.IdeesChamps?.Select(x => (x.Communaute, x.Idee.Copier())));
+        _champs = new Champs(etat.Parcelles, etat.Lignees, etat.IdeesChamps?.Select(x => (x.Communaute, x.Idee.Copier())), etat.Troupeaux);
+        Faune = new Faune(etat.Graine, carte.Biomes.Any(b => b >= (byte)Biome.ForetDeFeuillus));
         _social.Champs = _champs;
         _comportement = new Comportement(carte, _ecosysteme, _alea)
         {
-            Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations, Generation = configuration.Generation, Champs = _champs,
+            Social = _social, Numeros = _numeros, Flore = Flore, Installations = _installations, Generation = configuration.Generation, Champs = _champs, Faune = Faune,
         };
         _catastrophes = new Catastrophes(carte, _ecosysteme, _alea, etat.Catastrophes, etat.Pathogenes)
         {
@@ -254,6 +257,9 @@ public sealed class MondeSimule
 
     /// <summary>Les plantes du monde, leurs vertus et leurs dangers (tirées de la graine).</summary>
     public Flore Flore { get; }
+
+    /// <summary>Les bêtes du monde (depuis la 0.33.1 ; seules celles des mondes de la génération 2 se laissent apprivoiser).</summary>
+    public Faune Faune { get; }
 
     /// <summary>Réglages choisis à la création du monde.</summary>
     public ConfigurationMonde Configuration { get; }
@@ -325,6 +331,7 @@ public sealed class MondeSimule
                     Parcelles = _champs.Parcelles.Count == 0 ? null : _champs.Parcelles.ToList(),
                     Lignees = _champs.Lignees.Count == 0 ? null : _champs.Lignees.ToList(),
                     IdeesChamps = _champs.Idees.Count == 0 ? null : _champs.Idees.OrderBy(x => x.Key).Select(x => (x.Key, x.Value.Copier())).ToList(),
+                    Troupeaux = _champs.Troupeaux.Count == 0 ? null : _champs.Troupeaux.ToList(),
                 };
             }
         }
@@ -812,6 +819,7 @@ public sealed class MondeSimule
             _comportement.IdeesDesReserves(_humains, _secondes);
             _comportement.JourneeDesChamps(_humains, _secondes);
             _comportement.IdeesDesChamps(_humains, _secondes);
+            _comportement.JourneeDesBetes(_humains, _secondes);
             _social.Parler(_humains, _communautes, Carte, _secondes);
             _social.Visites(_humains, _secondes);
             _social.JourDeRassemblement(_humains, _secondes);
@@ -1082,35 +1090,49 @@ public sealed class MondeSimule
     {
         var annee = (int)(_secondes / Calendrier.SecondesParAn + 1);
         if (_progres.Count > 0 && _progres[^1].Annee >= annee) return;
-        foreach (var (communaute, n) in SavoirsVivants(connus)) _progres.Add(new MesureSavoirs(annee, communaute, n));
+        foreach (var (communaute, n, parHumain) in SavoirsVivants(connus)) _progres.Add(new MesureSavoirs(annee, communaute, n, parHumain));
     }
 
-    /// <summary>Savoirs vivants (effets distincts) du monde (communauté 0) puis de chaque communauté qui a des membres.</summary>
-    private List<(int Communaute, int Savoirs)> SavoirsVivants(Dictionary<Effet, (Savoir Savoir, List<int> Detenteurs)> connus)
+    /// <summary>
+    /// Savoirs vivants (effets distincts) du monde (communauté 0) puis de chaque communauté qui a des membres, et combien chaque
+    /// vivant en sait en moyenne : la diffusion, qui peut monter quand le nombre de savoirs ne bouge plus.
+    /// </summary>
+    private List<(int Communaute, int Savoirs, double ParHumain)> SavoirsVivants(Dictionary<Effet, (Savoir Savoir, List<int> Detenteurs)> connus)
     {
-        var resultat = new List<(int, int)> { (0, connus.Count) };
+        var vivants = new Dictionary<int, int> { [0] = 0 };
+        foreach (var h in _humains.Vivants())
+        {
+            if (!h.EstVivant) continue;
+            vivants[0]++;
+            if (h.CommunauteId > 0) vivants[h.CommunauteId] = vivants.GetValueOrDefault(h.CommunauteId) + 1;
+        }
+        var tenus = new Dictionary<int, int>();
         var parCommunaute = new SortedDictionary<int, HashSet<Effet>>();
         foreach (var (effet, (_, detenteurs)) in connus)
         {
+            tenus[0] = tenus.GetValueOrDefault(0) + detenteurs.Count;
             foreach (var id in detenteurs)
             {
                 var c = _humains[id - 1].CommunauteId;
                 if (c <= 0) continue;
                 if (!parCommunaute.TryGetValue(c, out var effets)) parCommunaute[c] = effets = [];
                 effets.Add(effet);
+                tenus[c] = tenus.GetValueOrDefault(c) + 1;
             }
         }
-        foreach (var (c, effets) in parCommunaute) resultat.Add((c, effets.Count));
+        double Moyenne(int c) => vivants.GetValueOrDefault(c) is > 0 and var n ? Math.Round(tenus.GetValueOrDefault(c) / (double)n, 2) : 0;
+        var resultat = new List<(int, int, double)> { (0, connus.Count, Moyenne(0)) };
+        foreach (var (c, effets) in parCommunaute) resultat.Add((c, effets.Count, Moyenne(c)));
         return resultat;
     }
 
     /// <summary>Savoirs vivants en ce moment, pour le dernier point de la courbe (communauté 0 : le monde entier).</summary>
-    public int SavoirsVivantsMaintenant(int communaute)
+    public (int Savoirs, double ParHumain) SavoirsVivantsMaintenant(int communaute)
     {
         lock (_verrou)
         {
-            foreach (var (c, n) in SavoirsVivants(EffetsConnus())) if (c == communaute) return n;
-            return 0;
+            foreach (var (c, n, parHumain) in SavoirsVivants(EffetsConnus())) if (c == communaute) return (n, parHumain);
+            return (0, 0);
         }
     }
 
@@ -1274,6 +1296,12 @@ public sealed class MondeSimule
     }
 
     /// <summary>Parcelles, lignées et idées des champs, copiées pour l'observateur.</summary>
+    /// <summary>Bêtes gardées, copiées pour l'observateur.</summary>
+    public List<Troupeau> Troupeaux()
+    {
+        lock (_verrou) return [.. _champs.Troupeaux];
+    }
+
     public (List<Parcelle> Parcelles, List<Lignee> Lignees, Dictionary<int, IdeeReserve> Idees) Champs()
     {
         lock (_verrou) return ([.. _champs.Parcelles], [.. _champs.Lignees], _champs.Idees.ToDictionary(x => x.Key, x => x.Value.Idee));

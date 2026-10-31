@@ -60,7 +60,7 @@ public sealed record VieCommunauteDto(int Huttes, int Foyers, IReadOnlyList<Pers
 /// lignées qu'elle sème et ce qu'elles sont devenues, l'idée qu'elle se fait des champs.
 /// </summary>
 public sealed record ChampsCommunauteDto(int Parcelles, double Ares, IReadOnlyList<string> Etats, double JoursDeRecolte, IReadOnlyList<string> Lignees,
-    string? Idee);
+    string? Idee, IReadOnlyList<string>? Betes = null);
 
 /// <summary>
 /// Les rencontres et les métiers d'une communauté : ceux que les siens disent spécialistes (et combien d'ouvrages ils ont faits pour
@@ -394,7 +394,12 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
         var (parcelles, lignees, idees) = service.Monde.Champs();
         var siennes = parcelles.Where(p => p.CommunauteId == c.Id && p.Etat != EtatParcelle.Finie).ToList();
         var leurs = lignees.Where(l => l.CommunauteId == c.Id).OrderByDescending(l => l.Generations).ThenBy(l => l.Id).ToList();
-        if (siennes.Count == 0 && leurs.Count == 0) return null;
+        var faune = service.Monde.Faune;
+        var betes = service.Monde.Troupeaux().Where(t => t.CommunauteId == c.Id || t.CommunauteId == 0 && membres.Any(h => h.Id == t.GardienId))
+            .OrderByDescending(t => t.Nombre).Select(t => L.T(t.Domestique ? "betes.troupeau.domestique" : "betes.troupeau",
+                ("bete", L.Rediger((Monde.Simulation.Recits.Recit)faune.Get(t.Espece).Dit)), ("n", (int)Math.Round(t.Adultes)), ("p", (int)Math.Round(t.Petits)),
+                ("d", Math.Round(100 * t.Docilite)), ("g", t.Generations))).ToList();
+        if (siennes.Count == 0 && leurs.Count == 0 && betes.Count == 0) return null;
         var flore = service.Monde.Flore;
         var etats = siennes.GroupBy(p => p.Etat).OrderBy(g => g.Key)
             .Select(g => L.T($"champs.etat.{g.Key}", ("n", g.Count()), ("ares", Math.Round(g.Sum(p => p.Ares), 1)))).ToList();
@@ -415,7 +420,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             _ => null,
         };
         return new ChampsCommunauteDto(siennes.Count, Math.Round(siennes.Sum(p => p.Ares), 1), etats,
-            Math.Round(Comportement.JoursDeRecolte(new Champs(parcelles, lignees), flore, c, membres.Count), 1), lignesLignees, idee);
+            Math.Round(Comportement.JoursDeRecolte(new Champs(parcelles, lignees), flore, c, membres.Count), 1), lignesLignees, idee, betes.Count == 0 ? null : betes);
     }
 
     private static RencontresCommunauteDto CalculerRencontres(ServiceMonde service, Communaute c, List<Humain> humains, List<Humain> membres, long maintenant)

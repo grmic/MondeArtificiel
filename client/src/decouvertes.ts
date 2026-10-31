@@ -1,6 +1,6 @@
 import { connexion } from "./connexion";
 import { boutonCause, el } from "./fiche";
-import { t } from "./langue";
+import { nombre, t } from "./langue";
 
 /** Première fois qu'un savoir est apparu dans le monde. */
 interface Decouverte {
@@ -17,7 +17,8 @@ interface Decouverte {
 
 /** Courbe du progrès : savoirs vivants au début de chaque année, pertes et retrouvailles, communautés qu'on peut choisir. */
 interface Progres {
-  points: { annee: number; savoirs: number; reconstitue: boolean }[];
+  /** parHumain : savoirs que sait en moyenne chaque vivant (−1 ou absent : pas mesuré, avant la 0.33.1). */
+  points: { annee: number; savoirs: number; reconstitue: boolean; parHumain?: number }[];
   marques: { annee: number; date: string; evenement: number; perdu: boolean; texte: string; cause: number }[];
   communautes: { id: number; nom: string; active: boolean }[];
 }
@@ -26,7 +27,7 @@ const ACTUALISATION_MS = 5000;
 const SVG = "http://www.w3.org/2000/svg";
 const LARGEUR = 560;
 const HAUTEUR = 150;
-const MARGE = { g: 34, d: 8, h: 8, b: 20 };
+const MARGE = { g: 34, d: 34, h: 8, b: 20 };
 
 function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
   const e = document.createElementNS(SVG, tag);
@@ -78,6 +79,18 @@ function dessinerProgres(p: Progres, detail: HTMLElement): SVGSVGElement {
   // Le pointillé rejoint le premier point mesuré, pour que la courbe ne se coupe pas.
   trace(mesures.length > 0 ? [...reconstitues, mesures[0]] : reconstitues, "progres reconstitue");
   trace(mesures, "progres");
+  // Diffusion : combien de savoirs chaque vivant sait en moyenne, sur l'échelle de droite.
+  const diffusion = pts.filter((q) => (q.parHumain ?? -1) >= 0);
+  if (diffusion.length > 0) {
+    const maxD = Math.max(1, ...diffusion.map((q) => q.parHumain ?? 0));
+    const yD = (v: number) => HAUTEUR - MARGE.b - (v / maxD) * (HAUTEUR - MARGE.b - MARGE.h);
+    for (const v of graduations(0, maxD, 4)) {
+      const etiquette = svg("text", { x: LARGEUR - MARGE.d + 4, y: yD(v) + 3, "text-anchor": "start", class: "axe diffusion" });
+      etiquette.textContent = String(v);
+      graphe.append(etiquette);
+    }
+    graphe.append(svg("polyline", { points: diffusion.map((q) => `${x(q.annee)},${yD(q.parHumain ?? 0)}`).join(" "), class: "diffusion" }));
+  }
   // Hauteur de la courbe à une date : entre deux mesures, sur le segment qui les relie.
   const valeurA = (a: number) => {
     if (pts.length === 0) return 0;
@@ -193,11 +206,13 @@ export class PanneauDecouvertes {
     outils.append(t("decouvertes.vivants"), this.choix);
     const dernier = p.points[p.points.length - 1];
     if (dernier) outils.append(el("span", "discret", " " + t("decouvertes.aujourdhui", { n: dernier.savoirs })));
+    if (dernier && (dernier.parHumain ?? -1) >= 0) outils.append(el("span", "discret diffusion", " · " + t("decouvertes.parHumain", { n: nombre(dernier.parHumain ?? 0, 1) })));
     this.progres.replaceChildren(dessinerProgres(p, this.detail));
     const legende = el("p", "discret",
       communaute === 0
         ? t("decouvertes.legendeMonde")
         : t("decouvertes.legendeCommunaute"));
+    legende.append(" " + t("decouvertes.legendeDiffusion"));
     this.corps.append(outils, this.progres, legende, this.detail);
   }
 }

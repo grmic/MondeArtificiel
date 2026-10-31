@@ -49,7 +49,8 @@ public sealed record DecouverteDto(string Date, long Secondes, string Savoir, in
 
 /// <summary>Un point de la courbe du progrès : savoirs vivants au début d'une année (ou maintenant, pour le dernier).</summary>
 /// <param name="Reconstitue">Vrai pour une année d'avant la 0.29.1, reconstituée depuis le journal (monde entier seulement).</param>
-public sealed record PointProgresDto(double Annee, int Savoirs, bool Reconstitue);
+/// <param name="ParHumain">Savoirs que sait en moyenne chaque vivant (−1 : pas mesuré).</param>
+public sealed record PointProgresDto(double Annee, int Savoirs, bool Reconstitue, double ParHumain = -1);
 
 /// <summary>Un savoir perdu (ou retrouvé) sur la courbe : l'événement du journal qui le rapporte.</summary>
 public sealed record MarqueProgresDto(double Annee, string Date, long Evenement, bool Perdu, string Texte, long Cause);
@@ -99,7 +100,7 @@ public static class Decouvertes
     {
         var monde = service.Monde;
         var mesures = monde.Progres();
-        var points = mesures.Where(m => m.CommunauteId == communaute).Select(m => new PointProgresDto(m.Annee, m.Savoirs, false)).ToList();
+        var points = mesures.Where(m => m.CommunauteId == communaute).Select(m => new PointProgresDto(m.Annee, m.Savoirs, false, m.ParHumain)).ToList();
         var marques = new List<MarqueProgresDto>();
         if (communaute == 0)
         {
@@ -111,7 +112,8 @@ public static class Decouvertes
                 m.Evenement, m.Perdu, m.Recit is { } r ? L.Rediger(r) : m.Texte, m.Cause)).ToList();
         }
         var maintenant = monde.Secondes;
-        points.Add(new PointProgresDto(1 + maintenant / (double)Calendrier.SecondesParAn, monde.SavoirsVivantsMaintenant(communaute), false));
+        var (vivants, parHumain) = monde.SavoirsVivantsMaintenant(communaute);
+        points.Add(new PointProgresDto(1 + maintenant / (double)Calendrier.SecondesParAn, vivants, false, parHumain));
         var mesurees = mesures.Select(m => m.CommunauteId).ToHashSet();
         var communautes = monde.Communautes().Where(c => c.Active || mesurees.Contains(c.Id))
             .OrderByDescending(c => c.Active).ThenBy(c => c.Nom).Select(c => new CommunauteProgresDto(c.Id, L.Communaute(c.Nom), c.Active)).ToList();
