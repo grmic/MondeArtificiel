@@ -661,7 +661,7 @@ public sealed class MondeSimule
     /// </summary>
     public int Avancer(TimeSpan dureeReelle, TimeSpan? budget = null)
     {
-        if (dureeReelle <= TimeSpan.Zero) return 0;
+        if (dureeReelle <= TimeSpan.Zero || _retenu) return 0;
         lock (_verrou)
         {
             var facteur = _objectif is null ? _facteur : Vitesse.FacteurMax;
@@ -675,6 +675,27 @@ public sealed class MondeSimule
             var (pas, complet) = AvancerInterne(secondes, budget);
             if (!complet) _reliquat = 0;
             return pas;
+        }
+    }
+
+    /// <summary>
+    /// Vrai pendant que l'Entité jouée par un LLM réfléchit et que le joueur a demandé de l'attendre : le temps réel écoulé est
+    /// perdu pour le monde, qui ne bouge pas (l'état et le hasard du monde n'en sont pas touchés).
+    /// </summary>
+    public bool Retenu { get => _retenu; set => _retenu = value; }
+    private volatile bool _retenu;
+
+    /// <summary>
+    /// Fait <paramref name="acte"/> sous le verrou du monde (personne ne le fait avancer pendant ce temps) ; rend aussi les numéros
+    /// du journal écrits par l'acte : le premier et le dernier (dernier &lt; premier s'il n'en a écrit aucun).
+    /// </summary>
+    public (T Resultat, long Premier, long Dernier) Executer<T>(Func<MondeSimule, T> acte)
+    {
+        lock (_verrou)
+        {
+            var premier = _numeros.Prochain;
+            var resultat = acte(this);
+            return (resultat, premier, _numeros.Prochain - 1);
         }
     }
 

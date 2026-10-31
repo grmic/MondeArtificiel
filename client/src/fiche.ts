@@ -1,3 +1,4 @@
+import { blocQueFerait } from "./entitellm";
 import { boutonSuivre } from "./suivis";
 import { ligneBilan, lignePriere, type BilanPrieres, type Priere } from "./cultes";
 import { connexion } from "./connexion";
@@ -31,6 +32,8 @@ interface Evenement {
   karmaAutre?: number;
   /** Écrit avant la traduction du journal : la phrase reste en français dans une autre langue. */
   ancien?: boolean;
+  /** Écrit par un acte de l'Entité jouée par le LLM. */
+  llm?: boolean;
 }
 
 /** Une chose du jardin secret. */
@@ -480,7 +483,7 @@ export class PanneauFiche {
     this.rencontres(corps, f.rencontres ?? null);
     this.foi(corps, f.foi);
     this.langage(corps, f.langage);
-    if (h.vivant) corps.append(this.formulaireSouffle(), this.formulaireCombinaison());
+    if (h.vivant) corps.append(this.formulaireSouffle(), this.formulaireCombinaison(), blocQueFerait(() => this.id, () => 0));
     this.communaute = f.communaute?.id ?? 0;
     this.nomCourant = h.nom;
     if (f.paroles.length > 0) {
@@ -1042,6 +1045,7 @@ export function ligneEvenement(e: Evenement): HTMLElement {
   }
   li.append(" ", ...texteAvecLiens(e));
   if (e.origine === "entite") li.append(el("span", "entite", " " + t("evenement.entite")));
+  if (e.llm) li.append(Object.assign(el("span", "entite llm", " " + t("evenement.llm")), { title: t("evenement.llmAide") }));
   const karmas: string[] = [];
   if (e.karma) karmas.push(`${nomDeId(e.humain)} ${signe(e.karma)}`);
   if (e.karmaAutre) karmas.push(`${nomDeId(e.autre)} ${signe(e.karmaAutre)}`);

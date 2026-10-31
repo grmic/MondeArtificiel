@@ -372,3 +372,21 @@ p.bilan-prieres { font-size: 0.9em; }
 .guide-corps table { border-collapse: collapse; }
 .guide-corps th, .guide-corps td { border: 1px solid #3a4658; padding: 3px 8px; }
 .guide-corps a { color: #8fc1ff; }
+
+/* Entité jouée par un LLM (0.35) */
+.bloc-llm { border-top: 1px solid rgba(127, 127, 127, 0.3); margin-top: 0.6em; padding-top: 0.2em; }
+.bloc-llm h4 { margin: 0.6em 0 0.2em; font-size: 0.95em; }
+.bloc-llm .ligne { display: flex; gap: 0.4em; align-items: center; margin: 0.25em 0; }
+.bloc-llm .ligne > span:first-child { min-width: 7em; }
+.nombre-court { width: 5em; }
+.etat-llm { font-size: 0.92em; }
+.etat-llm .erreur, .echange .erreur { color: #d9534f; }
+.liste.echanges > li { margin-bottom: 0.7em; }
+.echange.propose { border-left: 3px solid #d9a35c; padding-left: 0.4em; }
+.echange.erreur, .echange.tropTard, .echange.rejete { opacity: 0.75; }
+.mots-entite { font-style: italic; }
+.actes-llm { margin: 0.2em 0 0.2em 1em; padding: 0; font-size: 0.9em; }
+.actes-llm code { font-size: 0.9em; }
+.lu-llm { white-space: pre-wrap; max-height: 24em; overflow: auto; font-size: 0.8em; background: rgba(127, 127, 127, 0.12); padding: 0.4em; }
+.que-ferait { margin: 0.5em 0; }
+.entite.llm { font-weight: 600; }

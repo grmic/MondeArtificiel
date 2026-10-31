@@ -382,6 +382,7 @@ public sealed partial class DepotMonde
                 }
             }
             if (sens is not null) Lexique(connexion, transaction, sens);
+            EchangesEnClair(connexion, transaction);
             transaction.Commit();
         }
         using (var connexion = new SqliteConnection(copie))

@@ -9,7 +9,7 @@ namespace Monde.Serveur.Hubs;
 /// Canal temps réel entre le serveur et les navigateurs.
 /// Le serveur diffuse le message « Horloge » plusieurs fois par seconde.
 /// </summary>
-public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
+public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.EntiteLlm entite) : Hub
 {
     public const string Route = "/hub/monde";
 
@@ -309,17 +309,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
 
     /// <summary>L'Entité provoque une catastrophe. Renvoie le numéro de l'événement qui l'annonce (0 si elle n'a pas pu avoir lieu).</summary>
     public async Task<long> Declencher(DemandeCatastrophe demande)
-    {
-        var monde = service.Monde;
-        if (CatastropheDto.TypeDepuis(demande.Type) is not { } type || type is Simulation.Nature.TypeCatastrophe.HiverVolcanique or Simulation.Nature.TypeCatastrophe.HiverDImpact)
-        {
-            throw new HubException(L.T("erreur.typeCatastrophe"));
-        }
-        if (demande.X < 0 || demande.Y < 0 || demande.X >= monde.Carte.Largeur || demande.Y >= monde.Carte.Hauteur || !double.IsFinite(demande.Intensite))
-        {
-            throw new HubException(L.T("erreur.lieuIntensite"));
-        }
-        var id = monde.Declencher(type, demande.X, demande.Y, demande.Intensite);
+    {        var monde = service.Monde;
+        var id = Appeler(() => Entite.Pouvoirs.Declencher(monde, demande));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return id;
@@ -345,24 +336,10 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// décident du résultat. Renvoie ce qu'il a obtenu, en mots.
     /// </summary>
     public async Task<string> Souffler(DemandeIntuition demande)
-    {
-        if (!Enum.TryParse<Simulation.Humains.Geste>(demande.Geste, out var geste) || !Enum.IsDefined(geste)
-            || !Enum.TryParse<Simulation.Humains.Matiere>(demande.A, out var a) || !Enum.IsDefined(a)
-            || !Enum.TryParse<Simulation.Humains.Matiere>(demande.B ?? nameof(Simulation.Humains.Matiere.Aucune), out var b) || !Enum.IsDefined(b))
-        {
-            throw new HubException(L.T("erreur.geste"));
-        }
-        // Liste blanche : seules les matières qui ont un sens pour ce geste ; une plante doit être désignée par son espèce.
-        var plante = geste is Simulation.Humains.Geste.Manger or Simulation.Humains.Geste.Appliquer;
-        if (!Simulation.Humains.Physique.Convient(geste, a, b) || plante && (demande.Espece < 1 || demande.Espece > service.Monde.Flore.Especes.Count))
-        {
-            throw new HubException(L.T("erreur.gesteMatieres"));
-        }
-        var effet = service.Monde.Souffler(demande.Humain, geste, a, b, plante ? demande.Espece : 0);
+    {        var texte = Appeler(() => Entite.Pouvoirs.Souffler(service.Monde, demande));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
-        if (plante && effet == Simulation.Humains.Effet.Rien) return L.T("geste.planteEssayee");
-        return effet == Simulation.Humains.Effet.Rien ? L.T("geste.rien") : L.T("geste.obtenu", ("effet", L.T($"effet.{effet}")));
+        return texte;
     }
 
     /// <summary>L'arbre des savoirs du monde (0) ou d'une communauté, et le possible adjacent.</summary>
@@ -376,12 +353,10 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// ce qui est arrivé, en mots (la ligne du journal).
     /// </summary>
     public async Task<string> SoufflerCombinaison(DemandeCombinaison demande)
-    {
-        if (Serveur.Arbre.Recette(demande) is not { } recette) throw new HubException(L.T("erreur.combinaison"));
-        var (effet, recit) = service.Monde.SoufflerFacture(demande.Humain, recette);
+    {        var texte = Appeler(() => Entite.Pouvoirs.SoufflerCombinaison(service.Monde, demande));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
-        return recit is not null ? L.Rediger(recit) : effet == Simulation.Humains.Effet.Rien ? L.T("fac.souffle.rien") : L.T("geste.obtenu", ("effet", L.T("effet.Facture")));
+        return texte;
     }
 
     /// <summary>Prières en mémoire (en attente seulement, ou aussi celles de l'année écoulée).</summary>
@@ -395,22 +370,18 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
 
     /// <summary>L'Entité exauce une prière en attente. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Exaucer(int priere)
-    {
-        if (priere < 1) throw new HubException(L.T("erreur.priere"));
-        var texte = service.Monde.Exaucer(priere);
+    {        var texte = Appeler(() => Entite.Pouvoirs.Exaucer(service.Monde, priere));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
-        return L.Rediger(texte);
+        return texte;
     }
 
     /// <summary>L'Entité refuse une prière en attente, en secret (par défaut) ou par un signe. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Refuser(int priere, bool signe = false)
-    {
-        if (priere < 1) throw new HubException(L.T("erreur.priere"));
-        var texte = service.Monde.Refuser(priere, signe);
+    {        var texte = Appeler(() => Entite.Pouvoirs.Refuser(service.Monde, priere, signe));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
-        return L.Rediger(texte);
+        return texte;
     }
 
     /// <summary>L'Entité exauce toutes les prières en attente. Renvoie le bilan en mots.</summary>
@@ -436,22 +407,11 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
 
     /// <summary>L'Entité fait un geste sur un humain ou une communauté. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Agir(DemandeGeste demande)
-    {
-        if (demande is null) throw new HubException(L.T("erreur.demandeVide"));
-        var monde = service.Monde;
-        (Simulation.Humains.GesteEntite geste, Simulation.Humains.ManiereGeste maniere, int param) lu;
-        try
-        {
-            lu = GestesEntite.Lire(demande, monde.Pathogenes().Select(p => p.Id).ToHashSet());
-        }
-        catch (ArgumentException e)
-        {
-            throw new HubException(e.Message);
-        }
-        var texte = monde.Agir(lu.geste, demande.Cible, lu.maniere, lu.param, demande.Force, demande.Jours);
+    {        var monde = service.Monde;
+        var texte = Appeler(() => Entite.Pouvoirs.Agir(monde, demande));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
-        return L.Rediger(texte);
+        return texte;
     }
 
     /// <summary>Paroles, manières de se manifester, directions, plantes et communautés que l'Entité peut choisir.</summary>
@@ -465,30 +425,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// selon ce qu'il est. Renvoie ce que chacun en a fait.
     /// </summary>
     public async Task<List<ResultatParoleDto>> Parler(DemandeParole demande)
-    {
-        var monde = service.Monde;
-        if (!Enum.TryParse<Simulation.Humains.Parole>(demande.Parole, out var parole) || !Enum.IsDefined(parole) || parole == Simulation.Humains.Parole.Penchant
-            || !Enum.TryParse<Simulation.Humains.ModeParole>(demande.Mode, out var mode) || !Enum.IsDefined(mode) || mode == Simulation.Humains.ModeParole.Penchant)
-        {
-            throw new HubException(L.T("erreur.parole"));
-        }
-        var (humainsIds, communautes) = Destinataires(demande.Humains, demande.Communautes);
-        var (maintenant, humains) = monde.InstantaneHumains();
-        var veutCible = Simulation.Humains.Paroles.VeutCible(parole);
-        if (veutCible && (demande.Cible < 1 || demande.Cible > humains.Count || !humains[demande.Cible - 1].EstVivant))
-            throw new HubException(L.T("erreur.humainVivant"));
-        if (parole == Simulation.Humains.Parole.UnisToi && humains[demande.Cible - 1].EstEnfant(maintenant))
-            throw new HubException(L.T("erreur.adulte"));
-        var param = parole switch
-        {
-            Simulation.Humains.Parole.PartsVers when demande.Param is >= 0 and <= 7 => demande.Param,
-            Simulation.Humains.Parole.PlanteDangereuse when demande.Param >= 1 && demande.Param <= monde.Flore.Especes.Count => demande.Param,
-            Simulation.Humains.Parole.NeVaPasALaGuerre when demande.Param >= 0 && demande.Param <= monde.Communautes().Count => demande.Param,
-            Simulation.Humains.Parole.PartsVers or Simulation.Humains.Parole.PlanteDangereuse or Simulation.Humains.Parole.NeVaPasALaGuerre
-                => throw new HubException(L.T("erreur.precision")),
-            _ => 0,
-        };
-        var resultats = monde.Parler(humainsIds, communautes, parole, mode, veutCible ? demande.Cible : 0, param);
+    {        var monde = service.Monde;
+        var resultats = Appeler(() => Entite.Pouvoirs.Parler(monde, demande));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return Resultats(resultats);
@@ -502,52 +440,95 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
     /// en pense ; le groupe en débattra le jour venu. Renvoie ce que chacun en a fait et quand le groupe en débattra.
     /// </summary>
     public async Task<ResultatParoleCommunauteDto> ParlerACommunaute(DemandeParoleCommunaute demande)
-    {
-        var monde = service.Monde;
-        if (!Enum.TryParse<Simulation.Humains.Parole>(demande.Parole, out var parole) || !Enum.IsDefined(parole) || !Simulation.Humains.Paroles.Collective(parole)
-            || !Enum.TryParse<Simulation.Humains.ModeParole>(demande.Mode, out var mode) || !Enum.IsDefined(mode) || mode == Simulation.Humains.ModeParole.Penchant)
-        {
-            throw new HubException(L.T("erreur.parole"));
-        }
-        var communautes = monde.Communautes();
-        if (demande.Communaute < 1 || demande.Communaute > communautes.Count || !communautes[demande.Communaute - 1].Active)
-            throw new HubException(L.T("erreur.communaute"));
-        var cibles = (demande.Cibles ?? []).Distinct().Take(20).ToList();
-        if (Simulation.Humains.Paroles.VeutCommunaute(parole)
-            && (cibles.Count == 0 || cibles.Any(c => c < 1 || c > communautes.Count || c == demande.Communaute || !communautes[c - 1].Active)))
-            throw new HubException(L.T("erreur.cibles"));
-        if (parole == Simulation.Humains.Parole.PartezVers && demande.Direction is < 0 or > 7) throw new HubException(L.T("erreur.precision"));
-        var (resultats, mandats) = monde.ParlerACommunaute(demande.Communaute, parole, mode, cibles, demande.Direction);
+    {        var monde = service.Monde;
+        var (resultats, groupe) = Appeler(() => Entite.Pouvoirs.ParlerACommunaute(monde, demande));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
-        var groupe = mandats.Select(m => L.T("mandat.resultat", ("c", m.CibleId > 0 ? L.CommunautePhrase(communautes[m.CibleId - 1].Nom) : L.T($"direction.{m.Direction}")),
-            ("v", m.Veulent), ("hes", m.Hesitent), ("r", m.Refusent), ("i", m.Incredules + m.Incompris), ("date", L.Date(m.DebatLe))))
-            .ToList();
         return new ResultatParoleCommunauteDto(Resultats(resultats), groupe);
     }
 
     /// <summary>L'Entité inspire un penchant amoureux (ou une passion) à des humains, pour quelqu'un ou pour qui le monde choisit.</summary>
     public async Task<List<ResultatParoleDto>> Inspirer(DemandePenchant demande)
-    {
-        var monde = service.Monde;
-        var (humainsIds, communautes) = Destinataires(demande.Humains, demande.Communautes);
-        var (_, humains) = monde.InstantaneHumains();
-        if (demande.Cible != 0 && (demande.Cible < 1 || demande.Cible > humains.Count || !humains[demande.Cible - 1].EstVivant))
-            throw new HubException(L.T("erreur.humainVivant"));
-        var resultats = monde.Inspirer(humainsIds, communautes, demande.Cible, demande.Mutuel, demande.Passion, demande.Orientation);
+    {        var monde = service.Monde;
+        var resultats = Appeler(() => Entite.Pouvoirs.Inspirer(monde, demande));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return Resultats(resultats);
     }
 
-    /// <summary>Destinataires validés : au moins un, 500 humains et 50 communautés au plus.</summary>
-    private static (int[] Humains, int[] Communautes) Destinataires(int[]? humains, int[]? communautes)
+    /// <summary>L'Entité-LLM : connexion, réglages du monde, file d'attente, dernière erreur, propositions en attente.</summary>
+    public Entite.EtatEntiteLlmDto EtatEntiteLlm() => entite.Etat();
+
+    /// <summary>Change la connexion au LLM (gardée pour l'installation).</summary>
+    public Entite.EtatEntiteLlmDto ReglerConnexionLlm(Entite.ConnexionLlm connexion)
     {
-        humains ??= [];
-        communautes ??= [];
-        if (humains.Length + communautes.Length == 0 || humains.Length > 500 || communautes.Length > 50)
-            throw new HubException(L.T("erreur.destinataires"));
-        return (humains.Distinct().ToArray(), communautes.Distinct().ToArray());
+        Appeler(() => entite.Connexion = connexion ?? throw new ArgumentException(L.T("erreur.demandeVide")));
+        return entite.Etat();
+    }
+
+    /// <summary>Teste une connexion : rend les modèles installés (erreur lisible si le LLM ne répond pas).</summary>
+    public async Task<List<string>> ModelesLlm(Entite.ConnexionLlm connexion)
+    {
+        if (connexion?.Erreur() is { } erreur) throw new HubException(erreur);
+        try
+        {
+            using var delai = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            return await entite.Modeles(connexion!, delai.Token);
+        }
+        catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            throw new HubException(L.T("llm.erreur.connexion", ("detail", e is TaskCanceledException ? L.T("llm.erreur.delai") : e.Message)));
+        }
+    }
+
+    /// <summary>Change les réglages de l'Entité-LLM pour ce monde ; elle parlera la langue de ce navigateur.</summary>
+    public Entite.EtatEntiteLlmDto ReglerEntiteLlm(Entite.ReglagesEntiteLlm reglages)
+    {
+        Appeler(() => { entite.Regler(reglages ?? throw new ArgumentException(L.T("erreur.demandeVide")), L.Courante.Code); return 0; });
+        return entite.Etat();
+    }
+
+    /// <summary>« Que ferait l'Entité ? » pour un humain (ou une communauté si humain = 0) ; rend la place dans la file.</summary>
+    public int QueFeraitLEntite(int humain, int communaute) => Appeler(() => entite.Demander(humain, communaute));
+
+    /// <summary>Échanges avec le LLM, du plus récent au plus ancien (100 au plus), filtrés par humain, communauté ou statut.</summary>
+    public List<Entite.EchangeDto> EchangesLlm(int humain = 0, int communaute = 0, int? statut = null, long avant = 0) =>
+        service.Depot.Echanges(humain, communaute, statut, avant).Select(e => entite.Dto(e, complet: false)).ToList();
+
+    /// <summary>Un échange complet : ce qu'a lu le LLM et sa réponse brute compris.</summary>
+    public Entite.EchangeDto? EchangeLlm(long id) => service.Depot.Echange(id) is { } e ? entite.Dto(e, complet: true) : null;
+
+    /// <summary>Le joueur accepte une proposition du LLM : ses actes sont appliqués maintenant. Rend ce que les règles en ont fait.</summary>
+    public async Task<List<string>> AccepterProposition(long id)
+    {
+        try
+        {
+            return await entite.Appliquer(id);
+        }
+        catch (ArgumentException e)
+        {
+            throw new HubException(e.Message);
+        }
+    }
+
+    /// <summary>Le joueur rejette une proposition du LLM.</summary>
+    public Entite.EtatEntiteLlmDto RejeterProposition(long id)
+    {
+        Appeler(() => { entite.Rejeter(id); return 0; });
+        return entite.Etat();
+    }
+
+    /// <summary>Applique un pouvoir de l'Entité ; une demande invalide devient une erreur pour le navigateur.</summary>
+    private static T Appeler<T>(Func<T> pouvoir)
+    {
+        try
+        {
+            return pouvoir();
+        }
+        catch (ArgumentException e)
+        {
+            throw new HubException(e.Message);
+        }
     }
 
     private List<ResultatParoleDto> Resultats(List<(int Humain, Simulation.Recits.Recit Resultat)> resultats)
