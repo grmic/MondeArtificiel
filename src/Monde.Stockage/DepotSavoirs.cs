@@ -107,6 +107,13 @@ public sealed partial class DepotMonde
             Executer(connexion, transaction, "ALTER TABLE decouvertes ADD COLUMN parents TEXT NOT NULL DEFAULT '';");
     }
 
+    /// <summary>Migration vers la version 49 : celui avec qui une idée est née (le cerveau collectif, 0.34.1).</summary>
+    private static void MigrerVersion49(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        if (!Colonnes(connexion, transaction, "decouvertes").Contains("coauteur"))
+            Executer(connexion, transaction, "ALTER TABLE decouvertes ADD COLUMN coauteur INTEGER NOT NULL DEFAULT 0;");
+    }
+
     /// <summary>Migration vers la version 20 : objets faits de plusieurs pièces.</summary>
     private static void MigrerVersion20(SqliteConnection connexion, SqliteTransaction transaction)
     {
@@ -286,13 +293,13 @@ public sealed partial class DepotMonde
             while (l.Read()) huttes.Add(new Hutte(l.GetInt32(0), l.GetInt32(1), l.GetInt32(2), l.GetDouble(3), l.GetInt64(4), l.GetInt32(5), l.GetInt64(6), l.GetInt64(7)));
         }
         var decouvertes = new List<Decouverte>();
-        commande.CommandText = "SELECT effet, humain, le, evenement, origine, pieces, communaute, parents FROM decouvertes ORDER BY rang;";
+        commande.CommandText = "SELECT effet, humain, le, evenement, origine, pieces, communaute, parents, coauteur FROM decouvertes ORDER BY rang;";
         using (var l = commande.ExecuteReader())
         {
             while (l.Read())
             {
                 decouvertes.Add(new Decouverte((Effet)l.GetInt32(0), l.GetInt32(1), l.GetInt64(2), l.GetInt64(3), (OrigineSavoir)l.GetInt32(4), l.GetString(5), l.GetInt32(6),
-                    l.GetString(7)));
+                    l.GetString(7), l.GetInt32(8)));
             }
         }
         var oeuvres = new List<Oeuvre>();
@@ -321,13 +328,13 @@ public sealed partial class DepotMonde
             "$i", "$x", "$y", "$s", "$b", "$p", "$e", "$n");
         foreach (var h in etat.Huttes ?? []) Lancer(huttes, h.Id, h.X, h.Y, h.Solidite, h.BatieLe, h.BatisseurId, h.EvenementId, h.EnduiteLe);
         using var decouvertes = Preparer(connexion, transaction,
-            "INSERT INTO decouvertes (rang, effet, humain, le, evenement, origine, pieces, communaute, parents) VALUES ($r, $e, $h, $l, $ev, $o, $p, $c, $pa);",
-            "$r", "$e", "$h", "$l", "$ev", "$o", "$p", "$c", "$pa");
+            "INSERT INTO decouvertes (rang, effet, humain, le, evenement, origine, pieces, communaute, parents, coauteur) VALUES ($r, $e, $h, $l, $ev, $o, $p, $c, $pa, $co);",
+            "$r", "$e", "$h", "$l", "$ev", "$o", "$p", "$c", "$pa", "$co");
         var liste = etat.Decouvertes ?? [];
         for (var r = 0; r < liste.Count; r++)
         {
             var d = liste[r];
-            Lancer(decouvertes, r, (int)d.Effet, d.HumainId, d.Le, d.EvenementId, (int)d.Origine, d.Pieces, d.CommunauteId, d.Parents);
+            Lancer(decouvertes, r, (int)d.Effet, d.HumainId, d.Le, d.EvenementId, (int)d.Origine, d.Pieces, d.CommunauteId, d.Parents, d.CoauteurId);
         }
         using var oeuvres = Preparer(connexion, transaction,
             "INSERT INTO oeuvres (id, x, y, auteur, le, motif, description, evenement, communaute) VALUES ($i, $x, $y, $a, $l, $m, $d, $e, $c);",

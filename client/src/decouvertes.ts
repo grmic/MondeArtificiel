@@ -37,6 +37,9 @@ interface Noeud {
   evenement: number;
   parents: string[];
   profondeur: number;
+  /** Celui avec qui l'idée est née (0 : seul). */
+  coauteur: number;
+  nomCoauteur: string;
 }
 
 interface Arbre {
@@ -328,13 +331,19 @@ export class PanneauDecouvertes {
       const choisir = (n: Noeud) => {
         this.noeudChoisi = n.cle;
         this.detailArbre.replaceChildren(t("arbre.detail", {
-          nom: n.nom, date: n.date, humain: n.nomHumain, origine: n.origine,
+          nom: n.nom, date: n.date, humain: n.coauteur > 0 ? t("arbre.avec", { a: n.nomHumain, b: n.nomCoauteur }) : n.nomHumain, origine: n.origine,
           detenteurs: n.detenteurs === 0 ? t("arbre.perdu") : t("arbre.detenteurs", { n: n.detenteurs }),
         }), " ", n.parents.length === 0 ? t("arbre.racine") : t("arbre.parents", { liste: n.parents.map((p) => noms.get(p) ?? p).join(t("commun.virgule")) }), " ");
         const qui = el("button", "lien", n.nomHumain);
         qui.type = "button";
         qui.addEventListener("click", () => this.ouvrirHumain(n.humain));
         this.detailArbre.append(qui);
+        if (n.coauteur > 0) {
+          const avec = el("button", "lien", n.nomCoauteur);
+          avec.type = "button";
+          avec.addEventListener("click", () => this.ouvrirHumain(n.coauteur));
+          this.detailArbre.append(" ", avec);
+        }
         if (n.evenement > 0) this.detailArbre.append(" ", boutonCause(this.detailArbre, n.evenement, t("commun.comment")));
       };
       const dessin = dessinerArbre(a, this.noeudChoisi, choisir);

@@ -335,7 +335,8 @@ public sealed partial class Comportement
     /// Essayer la chose imaginée : la faire avec ce qu'on a, voir ce qu'elle vaut pour chaque besoin, la garder si elle fait
     /// mieux que ce qu'on avait. Le journal dit l'idée, ce qui est arrivé et pourquoi (les lois en donnent la raison).
     /// </summary>
-    private bool Essayer(Humain h, Facture f, List<string> parents, Fonction besoin, OrigineSavoir origine, IReadOnlyList<Humain> tous)
+    private bool Essayer(Humain h, Facture f, List<string> parents, Fonction besoin, OrigineSavoir origine, IReadOnlyList<Humain> tous,
+        Humain? avec = null)
     {
         // Une chose trop compliquée pour qu'on la retienne, ou illisible.
         if (Facture.Lire(f.Ecrire()) is null) return false;
@@ -345,7 +346,9 @@ public sealed partial class Comportement
         if (h.Savoirs.Exists(s => (s.Effet == Effet.Facture && Facons.LireObjet(s.Pieces) is { } x && x.Facture.Ecrire() == recette)
                                   || s.Effet == Effet.Rien && s.Pieces == rien)) return false;
         var question = new Recit("fac.idee.question", ("h", h), ("geste", Facons.DireGeste(f)));
-        var entete = origine == OrigineSavoir.Entite ? new Recit("fac.idee.souffle", ("h", h), ("question", question)) : question;
+        var entete = origine == OrigineSavoir.Entite ? new Recit("fac.idee.souffle", ("h", h), ("question", question))
+            : avec is not null ? new Recit("fac.idee.ensemble", ("h", h), ("o", avec), ("question", question))
+            : question;
         if (!APiecesPour(h, f))
         {
             if (origine == OrigineSavoir.Entite)
@@ -383,8 +386,12 @@ public sealed partial class Comportement
         var pieces = Facons.Ecrire(fonction, f);
         var recit = new Recit("fac.idee.marche", ("question", entete), ("h", h), ("objet", Facons.Decrire(f)), ("usage", Usage(fonction, c.Traits)));
         var b = f is Jointe jj ? jj.B.Principale : Matiere.Aucune;
-        var ev = Retenir(h, Geste.Faconner, f.Principale, b, Effet.Facture, 0, Symptome.Aucun, origine, 0, tous, pieces: pieces, recit: recit,
-            parents: string.Join(';', parents));
+        var ev = Retenir(h, Geste.Faconner, f.Principale, b, Effet.Facture, 0, Symptome.Aucun, origine, avec?.Id ?? 0, tous, pieces: pieces, recit: recit,
+            parents: string.Join(';', parents), coauteur: avec?.Id ?? 0);
+        // L'idée née à deux : l'autre la retient aussi, puisqu'il l'a vue naître.
+        if (avec is not null)
+            Retenir(avec, Geste.Faconner, f.Principale, b, Effet.Facture, 0, Symptome.Aucun, OrigineSavoir.Reflexion, h.Id, tous, pieces: pieces,
+                recit: new Recit("fac.idee.ensemble.aussi", ("o", avec), ("h", h), ("objet", Facons.Decrire(f))));
         Faire(h, f, fonction, pieces);
         Montrer(h, Geste.Faconner, f.Principale, b, Effet.Facture, 0, Symptome.Aucun, tous, ev, pieces);
         return true;

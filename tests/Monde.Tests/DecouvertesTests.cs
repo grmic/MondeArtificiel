@@ -215,7 +215,8 @@ public sealed class DecouvertesTests
                 Foyers = [new Foyer(1, 5, 6, 7.5, 100, 1, 11)],
                 Huttes = [new Hutte(2, 8, 9, 0.75, 200, 2, 12)],
                 Decouvertes = [new Decouverte(Effet.Eclat, 1, 50, 10, OrigineSavoir.Essai), new Decouverte(Effet.Abri, 2, 200, 12, OrigineSavoir.Entite),
-                    new Decouverte(Effet.RouleSurAxe, 1, 300, 15, OrigineSavoir.Reflexion, "6x3+27x1/23/4")],
+                    new Decouverte(Effet.RouleSurAxe, 1, 300, 15, OrigineSavoir.Reflexion, "6x3+27x1/23/4"),
+                    new Decouverte(Effet.Facture, 1, 400, 16, OrigineSavoir.Reflexion, "F|1|A(5)", 0, "7|", 2)],
             };
             var h = etat.Humains![0];
             h.Savoirs.Add(new Savoir(Geste.Frapper, Matiere.Silex, Matiere.Galet, Effet.Eclat, 0, Symptome.Aucun, 4, 3, 50, 60, OrigineSavoir.Essai, 0, 10));

@@ -173,10 +173,15 @@ public sealed partial class Comportement
     /// <summary>L'hiver affame : celui qui se souvient des noix de l'automne se promet d'en garder.</summary>
     private void PenserAuxProvisions(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (h.Faim < 45 || h.EstEnfant(_maintenant) || h.Sait(Effet.Provisions) || Calendrier.Decomposer(_maintenant).Saison != Saison.Hiver) return;
+        if (h.EstEnfant(_maintenant) || h.Sait(Effet.Provisions)) return;
+        var saison = Calendrier.Decomposer(_maintenant).Saison;
+        // Qui sait que le froid revient n'attend pas d'avoir faim pour y penser : à l'automne, il prévoit (depuis la 0.34.1).
+        var prevoit = saison == Saison.Automne && PrevoitLesSaisons(h);
+        if (!prevoit && (h.Faim < 45 || saison != Saison.Hiver)) return;
         if (alea.Reel() >= 0.00002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h)) * (0.5 + h.Personnalite.Conscience)) return;
+        var calendrier = prevoit ? Regularite(h, Serie.Saisons) : null;
         Retenir(h, Geste.Amasser, Matiere.Plante, Matiere.Aucune, Effet.Provisions, 0, Symptome.Aucun, OrigineSavoir.Reflexion, 0, tous,
-            recit: new Recit("res.provisions", ("h", h)));
+            recit: new Recit(prevoit ? "res.provisions.prevoit" : "res.provisions", ("h", h)), parents: calendrier is null ? "" : CleDeSavoir(calendrier));
     }
 
     /// <summary>
@@ -206,7 +211,9 @@ public sealed partial class Comportement
         var noix = saison == Saison.Automne && h.Savoirs.Exists(s => s.Effet == Effet.Provisions && s.Confiance >= 0.4);
         var fruits = !noix && Calendrier.Decomposer(_maintenant).EstJour && _temperature >= 15 && !Humide(carte.BiomeEn(h.X, h.Y)) && Sec(h) >= 0.5
                      && h.Savoirs.Exists(s => s.Effet == Effet.Sechage && s.Confiance >= 0.4);
-        if (!noix && !fruits || alea.Reel() >= 0.05 * (0.4 + h.Personnalite.Conscience)) return false;
+        // Qui sait quand le froid revient s'y met plus volontiers (depuis la 0.34.1).
+        var prevoit = PrevoitLesSaisons(h) ? 1 + ConfianceDans(h, Serie.Saisons) : 1;
+        if (!noix && !fruits || alea.Reel() >= 0.05 * (0.4 + h.Personnalite.Conscience) * prevoit) return false;
         var besoin = BesoinDeReserve(h, tous);
         if (alea.Reel() >= besoin) return false;
         var pris = Ecosysteme.Prelever(ecosysteme.Plantes, i, Math.Clamp(ecosysteme.Plantes[i] / 1000, 1, 8));

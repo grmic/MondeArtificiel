@@ -435,6 +435,8 @@ public static class Lois
         : pieces is not null && pieces.StartsWith("M|", StringComparison.Ordinal) ? pieces
         : pieces is not null && pieces.StartsWith("F|", StringComparison.Ordinal) ? Facons.Structure(pieces)
         : pieces is not null && pieces.StartsWith("R|", StringComparison.Ordinal) ? pieces
+        : pieces is not null && pieces.StartsWith("G|", StringComparison.Ordinal) && Comportement.LireRegularite(pieces) is { } g
+            ? string.Create(CultureInfo.InvariantCulture, $"G|{(int)g.Serie}")
         : Assemblage.Lire(pieces) is { Montage: Montage.Axe } a ? (a.NTete == 1 ? "axe:1" : "axe:2") : "";
 
     /// <summary>« un galet », « deux galets », « trois bouts de bois sec ».</summary>

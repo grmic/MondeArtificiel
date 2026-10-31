@@ -1230,6 +1230,7 @@ public sealed class MondeSimule
         }
         _comportement.BilanDesRemedes(_humains, _secondes);
         _comportement.Hygienes(_humains, _secondes);
+        _comportement.Regularites(_humains, _secondes);
         var oublis = new Dictionary<(int, Effet), long>();
         foreach (var (h, s) in _comportement.UserEtOublier(_humains, _secondes))
         {

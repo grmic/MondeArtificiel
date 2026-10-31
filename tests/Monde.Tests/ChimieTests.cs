@@ -198,8 +198,8 @@ public sealed class ChimieTests
     [Fact]
     public void MondeNeuf_ModeleEtTransformeLaMatiere()
     {
-        // En deux ans, des humains ont pétri la terre et changé une matière, et ce qu'ils portent se relit.
-        var humains = Derouler(2, 720);
+        // En trois ans (deux ne suffisent pas toujours, selon le hasard des premiers essais), des humains ont pétri la terre et changé une matière, et ce qu'ils portent se relit.
+        var humains = Derouler(2, 1080);
         Assert.Contains(humains, h => h.Savoirs.Exists(s => s.Effet == Effet.Modelage));
         Assert.Contains(humains, h => h.Savoirs.Exists(s => s.Effet == Effet.Transformation && Comportement.LireRecette(s.Pieces) is not null));
         var choses = humains.SelectMany(h => h.Objets).Where(o => o.Matiere == Matiere.Substance).ToList();

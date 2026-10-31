@@ -709,6 +709,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (OutillerParFacons(h, tous)) return;
         if (AvoirUneIdee(h, tous)) return;
         if (IdeeOuverte(h, tous)) return;
+        if (IdeeAPlusieurs(h, tous)) return;
         if (Enseigner(h, tous)) return;
         if (PratiquerLaMatiere(h, tous)) return;
         if (Experimenter(h, tous)) return;

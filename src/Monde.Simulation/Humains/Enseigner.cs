@@ -96,7 +96,7 @@ public sealed partial class Comportement
         var petit = eleve.EstPetitEnfant(_maintenant);
         foreach (var s in h.Savoirs)
         {
-            if (s.Confiance < 0.6 || s.Succes < 2 || s.Effet is Effet.Rien or Effet.Tiedeur or Effet.Visions or Effet.Chaleur) continue;
+            if (s.Confiance < 0.6 || s.Succes < 2 || s.Effet is Effet.Rien or Effet.Tiedeur or Effet.Visions or Effet.Chaleur or Effet.Regularite) continue;
             var difficile = Difficile(s.Effet, s.Pieces);
             if (petit && difficile) continue;
             var sien = eleve.Savoirs.Find(x => x.Meme(s.Geste, s.A, s.B, s.Effet, s.Espece, s.Symptome) && x.Pieces == s.Pieces);

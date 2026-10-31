@@ -731,6 +731,8 @@ public sealed partial class Comportement
         // Sans repère, on dévie : d'autant moins qu'on a le sens de l'espace (le soleil, la houle, les étoiles).
         var spatial = Math.Clamp((h.Personnalite.Intelligence.Spatiale - 55) / 90, 0, 1);
         var cap = (alea.Reel() + alea.Reel() + alea.Reel() - 1.5) * 2 * (25 - 18 * spatial);
+        // Qui sait que les étoiles tournent autour d'un point fixe tient mieux son cap, la nuit surtout (depuis la 0.34.1).
+        cap *= 1 - 0.6 * ConfianceDans(h, Serie.Etoiles);
         // Au retour d'une autre terre, il rapporte ce qu'il y a vu.
         h.Mer = m with { EnMer = true, Depuis = _maintenant, Dx = 0, Dy = 0, Cap = cap, Vu = m.Vu && m.Motif == MotifMer.Retour, Masse = MasseEn(h.X, h.Y) };
         h.Objets[h.Objets.IndexOf(bateau)] = bateau with { Plein = true };

@@ -352,13 +352,13 @@ public sealed partial class Comportement
     /// </summary>
     private long Retenir(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, OrigineSavoir origine, int maitreId,
         IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", Recit? recit = null, int heritage = 0, double karmaMaitre = 0,
-        string parents = "")
+        string parents = "", int coauteur = 0)
     {
         // Ce qu'un autre apprend en regardant celui dont c'est le tour, il le retient après le pas.
         if (Tour.Autrui(h))
         {
             var ih = h.Id;
-            Tour.Differer(tous, t => Retenir(t[ih - 1], g, a, b, e, espece, mal, origine, maitreId, t, succes, pieces, recit, heritage, karmaMaitre, parents));
+            Tour.Differer(tous, t => Retenir(t[ih - 1], g, a, b, e, espece, mal, origine, maitreId, t, succes, pieces, recit, heritage, karmaMaitre, parents, coauteur));
             return 0;
         }
         var i = h.Savoirs.FindIndex(s => s.Meme(g, a, b, e, espece, mal) && s.Pieces == pieces);
@@ -388,7 +388,7 @@ public sealed partial class Comportement
         };
         // Un savoir banal (le feu chauffe, le bois frotté tiédit) n'est pas noté chez chacun : seulement la première fois au monde.
         // Un chant, un rythme, une danse, la parure d'ocre appris des autres : cela se fait à chaque veillée.
-        var banal = e is Effet.Chaleur or Effet.Tiedeur or Effet.Remarque || origine == OrigineSavoir.Imitation && e is Effet.Etincelle or Effet.Chant or Effet.Rythme or Effet.Danse or Effet.Ocre;
+        var banal = e is Effet.Chaleur or Effet.Tiedeur or Effet.Remarque || origine == OrigineSavoir.Imitation && e is Effet.Etincelle or Effet.Chant or Effet.Rythme or Effet.Danse or Effet.Ocre or Effet.Regularite;
         // Appris d'un autre groupe, ou de quelqu'un venu d'ailleurs, alors que personne des siens ne le savait : le savoir entre
         // dans sa communauté, et le journal dit d'où il vient.
         var venu = premier || retrouve || maitre is null || e is Effet.Chaleur or Effet.Tiedeur ? null : VenuDAilleurs(h, maitre, e, structure, tous);
@@ -408,7 +408,7 @@ public sealed partial class Comportement
         if (premier)
         {
             // Deux qui trouvent la même chose dans le même pas : la première au monde est celle du premier dans l'ordre.
-            var decouverte = new Decouverte(e, h.Id, _maintenant, id, origine, pieces, h.CommunauteId, parents);
+            var decouverte = new Decouverte(e, h.Id, _maintenant, id, origine, pieces, h.CommunauteId, parents, coauteur);
             Tour.Differer(() =>
             {
                 if (!Installations.Decouvertes.Exists(d => d.Effet == decouverte.Effet && Lois.Structure(d.Pieces) == structure)) Installations.Decouvertes.Add(decouverte);

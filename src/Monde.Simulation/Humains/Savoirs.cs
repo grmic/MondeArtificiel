@@ -160,6 +160,8 @@ public enum Geste : byte
     Plonger = 38,
     /// <summary>Façonner une chose par une suite de gestes et de jointures (voir <see cref="Facture"/>).</summary>
     Faconner = 39,
+    /// <summary>Regarder revenir une chose (la lune, les saisons, les étoiles) ou faire correspondre des choses une à une (depuis la 0.34.1).</summary>
+    Observer = 40,
 }
 
 /// <summary>Ce que l'humain constate après un geste.</summary>
@@ -301,6 +303,11 @@ public enum Effet : byte
     Facture = 68,
     /// <summary>Une propriété remarquée d'une matière (« la branche verte plie et revient ») : elle donne des idées.</summary>
     Remarque = 69,
+    /// <summary>
+    /// Une régularité lue dans une série (la lune revient pleine, les saisons reviennent, les étoiles tournent, les choses se
+    /// comptent) : de quoi prévoir. Sa série et ce qu'il en estime sont dans ses pièces (voir <see cref="Comportement.LireRegularite"/>).
+    /// </summary>
+    Regularite = 70,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -621,6 +628,7 @@ public static class Physique
             ? new Recit("decouverte.Transformation", ("a", MatiereDeRecette(r.A, r.Famille)), ("chg", Chimie.Perception.Dire(r.Changements)))
         : e == Effet.Facture && Facons.LireObjet(pieces) is { } f ? Facons.Decrire(f.Facture)
         : e == Effet.Remarque && Facons.LireRemarque(pieces) is { } rq ? Seul($"decouverte.Remarque.{rq}")
+        : e == Effet.Regularite && Comportement.LireRegularite(pieces) is { } rg ? Seul($"decouverte.Regularite.{rg.Serie}")
         : NomEffet(e);
 
     /// <summary>Le geste et ses matières, en mots (« pousser un tronc sur l'eau »).</summary>
@@ -671,6 +679,7 @@ public static class Physique
         Effet.Modelage => Seul(s.Pieces == "M|1" ? "savoir.Modelage.creux" : "savoir.Modelage"),
         Effet.Facture when Facons.LireObjet(s.Pieces) is { } f => new Recit($"savoir.Facture.{f.Fonction}", ("objet", Facons.Decrire(f.Facture))),
         Effet.Remarque when Facons.LireRemarque(s.Pieces) is { } r => new Recit($"savoir.Remarque.{r}", ("a", Nom(s.A))),
+        Effet.Regularite when Comportement.LireRegularite(s.Pieces) is { } rg => Comportement.DireRegularite(rg.Serie, rg.Jours),
         Effet.Rien when Facons.LireObjet(s.Pieces) is { } fr => new Recit("savoir.Facture.Rien", ("objet", Facons.Decrire(fr.Facture))),
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => Seul("savoir.Rien"),

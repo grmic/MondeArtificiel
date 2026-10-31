@@ -9,8 +9,9 @@ namespace Monde.Serveur;
 /// <param name="Cle">Identité de la trouvaille (effet et structure).</param>
 /// <param name="Profondeur">0 pour une trouvaille sans parents connus ; sinon un de plus que le plus profond de ses parents.</param>
 /// <param name="Detenteurs">Vivants qui la savent (dans la communauté choisie) ; 0 : perdue.</param>
+/// <param name="Coauteur">Celui avec qui l'idée est née (0 : seul ; depuis la 0.34.1).</param>
 public sealed record NoeudArbreDto(string Cle, string Nom, string Date, long Secondes, int Humain, string NomHumain, string Origine, bool Entite,
-    int Detenteurs, long Evenement, IReadOnlyList<string> Parents, int Profondeur);
+    int Detenteurs, long Evenement, IReadOnlyList<string> Parents, int Profondeur, int Coauteur = 0, string NomCoauteur = "");
 
 /// <summary>L'arbre des savoirs du monde ou d'une communauté, dessiné après coup, et le possible adjacent.</summary>
 /// <param name="Adjacents">Quelques combinaisons à un pas de ce qu'ils savent, que personne n'a encore trouvées (sans dire si elles marcheraient).</param>
@@ -51,7 +52,8 @@ public static class Arbre
             profondeurs.TryAdd(cle, profondeur);
             noeuds.Add(new NoeudArbreDto(cle, L.Rediger(Physique.NomDecouverte(d.Effet, d.Pieces)), L.Date(d.Le), d.Le, d.HumainId,
                 d.HumainId >= 1 && d.HumainId <= humains.Count ? humains[d.HumainId - 1].Nom : "?", SavoirsDto.Origine(d.Origine),
-                d.Origine == OrigineSavoir.Entite, n, d.EvenementId, parents, profondeur));
+                d.Origine == OrigineSavoir.Entite, n, d.EvenementId, parents, profondeur, d.CoauteurId,
+                d.CoauteurId >= 1 && d.CoauteurId <= humains.Count ? humains[d.CoauteurId - 1].Nom : ""));
         }
         var (total, exemples) = monde.Adjacents(communaute);
         return new ArbreDto(noeuds, exemples.Select(f => L.Rediger(Facons.Decrire(f))).ToList(), total);

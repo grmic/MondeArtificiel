@@ -77,7 +77,7 @@ public static class Decouvertes
 {
     /// <summary>Nom d'une découverte dans la chronologie, comme <see cref="Physique.NomDecouverte"/> : une seule roue et plusieurs roues sont deux trouvailles.</summary>
     public static string NomDecouverte(Effet e, string? pieces) => e == Effet.RouleSurAxe && Lois.Structure(pieces) == "axe:1"
-        ? L.T("decouverte.brouette") : e is Effet.Facture or Effet.Remarque ? L.Rediger(Physique.NomDecouverte(e, pieces)) : L.T($"effet.{e}");
+        ? L.T("decouverte.brouette") : e is Effet.Facture or Effet.Remarque or Effet.Regularite ? L.Rediger(Physique.NomDecouverte(e, pieces)) : L.T($"effet.{e}");
 
     public static List<DecouverteDto> Chronologie(ServiceMonde service)
     {
