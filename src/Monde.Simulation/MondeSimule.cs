@@ -58,6 +58,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Limon des crues et sa perte par jour, à la suite (voir <see cref="Ecosysteme.Limon"/>) ; null : aucun.</summary>
     public ushort[]? Limon { get; init; }
 
+    /// <summary>Pousses des camps (voir <see cref="Ecosysteme.Rejets"/>) ; null : aucune.</summary>
+    public ushort[]? Rejets { get; init; }
+
     /// <summary>Réglages choisis à la création du monde (absents : réglages d'origine, voir <see cref="ConfigurationMonde.ParDefaut"/>).</summary>
     public ConfigurationMonde? Configuration { get; init; }
 
@@ -189,12 +192,12 @@ public sealed class MondeSimule
             ? h.Select(x => x.Copier()).OrderBy(x => x.Id)
             : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes));
         _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray(), etat.DegatsNature?.ToArray(),
-            etat.Limon?.ToArray());
+            etat.Limon?.ToArray(), etat.Rejets?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a, commun: true) : new Alea(etat.Graine ^ 0x534D554C4154UL) { Commun = true };
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
         _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
         _premieres = new RegistrePremieres(etat.Premieres);
-        _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros, Carte = carte };
+        _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros, Carte = carte, Generation = configuration.Generation };
         _social.ChargerGuerres(etat.Guerres ?? []);
         _social.ChargerMandats(etat.Mandats ?? []);
         _social.ChargerRelations(etat.Relations ?? []);
@@ -292,6 +295,7 @@ public sealed class MondeSimule
                     Pathogenes = _catastrophes.Pathogenes.ToList(),
                     DegatsNature = _ecosysteme.Degats.ToArray(),
                     Limon = _ecosysteme.LimonAEnregistrer(),
+                    Rejets = _ecosysteme.RejetsAEnregistrer(),
                     Configuration = Configuration,
                     Guerres = _social.Guerres.Select(g => g.Copier()).ToList(),
                     Foyers = _installations.Foyers.ToList(),
@@ -512,6 +516,12 @@ public sealed class MondeSimule
     public ushort[] CarteLimon()
     {
         lock (_verrou) return _ecosysteme.Limon.ToArray();
+    }
+
+    /// <summary>Pousses des camps sur chaque tuile (copie, dix-millièmes de pousse en plus ; voir <see cref="Ecosysteme.Rejets"/>).</summary>
+    public ushort[] CarteRejets()
+    {
+        lock (_verrou) return _ecosysteme.Rejets.ToArray();
     }
 
     /// <summary>Pluies de l'année par région climatique (copie), et nombre de régions en largeur et en hauteur.</summary>

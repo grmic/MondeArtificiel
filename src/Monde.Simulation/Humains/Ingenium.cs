@@ -530,6 +530,7 @@ public sealed partial class Comportement
         Effet.Transformation => "ing.question.Transformation",
         Effet.Modelage => "ing.question.Modelage",
         Effet.Limon => "ing.question.Limon",
+        Effet.Repousse => "ing.question.Repousse",
         _ => "ing.question.autre",
     });
 

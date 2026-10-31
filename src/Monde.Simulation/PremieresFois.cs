@@ -36,7 +36,7 @@ public static class PremieresFois
     [
         TypeEvenement.Naissance, TypeEvenement.Mort, TypeEvenement.Conflit, TypeEvenement.Accouplement, TypeEvenement.Attirance,
         TypeEvenement.Union, TypeEvenement.Decouverte, TypeEvenement.Guerre, TypeEvenement.Religion, TypeEvenement.Parole,
-        TypeEvenement.Geste, TypeEvenement.Catastrophe,
+        TypeEvenement.Geste, TypeEvenement.Catastrophe, TypeEvenement.Communaute, TypeEvenement.Medecine,
     ];
 
     /// <summary>
@@ -89,6 +89,12 @@ public static class PremieresFois
                 break;
             case TypeEvenement.Geste:
                 yield return ("entite.geste", true, false, false);
+                break;
+            case TypeEvenement.Communaute when cle == "limon.installe":
+                yield return ("campCrue", true, true, false);
+                break;
+            case TypeEvenement.Medecine when cle == "seq.fixe.Jambe":
+                yield return ("boiteux", true, false, false);
                 break;
             case TypeEvenement.Nature when cle is "relief.grimpe" or "relief.desescalade":
                 yield return ("paroi", true, true, false);

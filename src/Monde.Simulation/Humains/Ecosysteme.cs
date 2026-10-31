@@ -48,7 +48,7 @@ public sealed class Ecosysteme
     private readonly int _regionsY;
 
     public Ecosysteme(Carte carte, ushort[]? gibier = null, ushort[]? plantes = null, double[]? pluies = null, ushort[]? degats = null,
-        ushort[]? limon = null)
+        ushort[]? limon = null, ushort[]? rejets = null)
     {
         _carte = carte;
         _regionsX = (carte.Largeur + TailleRegion - 1) / TailleRegion;
@@ -65,6 +65,12 @@ public sealed class Ecosysteme
             if (limon.Length != 2 * Limon.Length) throw new ArgumentException("Le limon sauvegardé ne correspond pas à la taille de la carte.");
             Array.Copy(limon, Limon, Limon.Length);
             Array.Copy(limon, Limon.Length, LimonPerte, 0, Limon.Length);
+        }
+        Rejets = new ushort[carte.Plantes.Length];
+        if (rejets is not null)
+        {
+            if (rejets.Length != Rejets.Length) throw new ArgumentException("Les pousses des camps sauvegardées ne correspondent pas à la taille de la carte.");
+            Array.Copy(rejets, Rejets, Rejets.Length);
         }
         if (Gibier.Length != carte.Gibier.Length || Plantes.Length != carte.Plantes.Length || Pluies.Length != _regionsX * _regionsY
             || Degats.Length != carte.Plantes.Length)
@@ -107,6 +113,26 @@ public sealed class Ecosysteme
         var total = Math.Clamp(Limon[i] + gain * 10_000, 0, 10_000);
         Limon[i] = (ushort)Math.Round(total);
         LimonPerte[i] = (ushort)Math.Max(1, Math.Round(total / Math.Max(1, jours)));
+    }
+
+    /// <summary>
+    /// Pousses des camps (génération 2, depuis la 0.32.8), en dix-millièmes de pousse en plus : les graines, noyaux et racines jetés
+    /// autour du camp germent sur une terre remuée et enrichie de déchets (le « tas d'ordures » d'Anderson, 1952), et ce qu'on y
+    /// enfouit exprès pousse aussi. Sans soin, elles s'effacent en un an ou deux.
+    /// </summary>
+    public ushort[] Rejets { get; }
+
+    /// <summary>Les pousses des camps, pour les enregistrer (null : aucune nulle part).</summary>
+    public ushort[]? RejetsAEnregistrer() => Array.TrueForAll(Rejets, v => v == 0) ? null : [.. Rejets];
+
+    /// <summary>Plafond des pousses : la pousse d'une case peut aller jusqu'à une fois et demie la normale.</summary>
+    public const int RejetsMax = 5_000;
+
+    /// <summary>Des graines germent sur la case : <paramref name="gain"/> (0 à 1) de pousse en plus, sans dépasser le plafond.</summary>
+    public void Germer(int i, double gain)
+    {
+        if (_carte.Plantes[i] == 0) return;
+        Rejets[i] = (ushort)Math.Clamp(Math.Round(Rejets[i] + gain * 10_000), 0, RejetsMax);
     }
 
     /// <summary>Ce que le limon ajoute à la pousse : davantage sur un sol pauvre que sur un sol déjà riche.</summary>
@@ -184,7 +210,7 @@ public sealed class Ecosysteme
     /// <summary>Niveau des plantes vers lequel la tuile repousse aujourd'hui (centièmes).</summary>
     public double NiveauPlantes(int i, double saison) =>
         _carte.Plantes[i] * 100 * saison * EffetPluie(PluieEn(i)) * (1 - Degats[i] / 10_000.0) * FacteurClimat * Epargne(i) * Sol(i)
-        * (Limon[i] == 0 ? 1 : EffetLimon(i));
+        * (Limon[i] == 0 ? 1 : EffetLimon(i)) * (Rejets[i] == 0 ? 1 : 1 + Rejets[i] / 10_000.0);
 
     /// <summary>Capacité d'accueil du gibier sur la tuile cette année (centièmes) : il dépend moins des pluies que les plantes.</summary>
     public double NiveauGibier(int i) => _carte.Gibier[i] * 100 * (0.7 + 0.3 * EffetPluie(PluieEn(i))) * (1 - Degats[i] / 20_000.0) * Epargne(i) * (0.6 + 0.4 * Sol(i))
@@ -223,6 +249,8 @@ public sealed class Ecosysteme
         {
             if (Degats[i] > 0) Degats[i] = (ushort)Math.Max(0, Degats[i] - Math.Max(1, (int)Math.Round(GuerisonParJour(i))));
             if (Limon[i] > 0) Limon[i] = (ushort)Math.Max(0, Limon[i] - LimonPerte[i]);
+            // Sans personne pour jeter ni enfouir, les pousses étouffent sous les herbes : la moitié en un an environ.
+            if (Rejets[i] > 0) Rejets[i] = (ushort)Math.Max(0, Rejets[i] - Math.Max(1, (Rejets[i] + 250) / 500));
             if (_carte.Plantes[i] == 0 && _carte.Gibier[i] == 0) continue;
 
             // Plantes : la repousse suit la saison ; une tuile dépouillée (moins de 20 % de son niveau) repart plus lentement.

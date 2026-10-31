@@ -120,11 +120,11 @@ interface Fiche {
     /** Regard sur l'invisible (0 à 100) : amour, crainte, révolte, et le dernier signe vu. */
     amour: number; amourMots: string; crainte: number; crainteMots: string; revolte: number; revolteMots: string; dernierGeste: string | null;
   };
-  /** Médecine : soins donnés, rôle de soignant, plaie, malédiction. */
+  /** Médecine : soins donnés, rôle de soignant, plaie, malédiction, séquelle d'une blessure grave. */
   medecine: {
     soignes: number; gueris: number; perdus: number; accouchementsAides: number; role: string | null; renommee: number;
     guerisseurDepuis: string | null; chamanDepuis: string | null; charlatanDepuis: string | null; desavoueLe: string | null;
-    plaie: string | null; malediction: string | null;
+    plaie: string | null; malediction: string | null; sequelle: string | null;
   };
   /** Parole : stade, nom dans sa langue, mots les plus sûrs, ordre des mots, autres langues comprises. */
   langage: Langage | null;
@@ -655,9 +655,9 @@ export class PanneauFiche {
    * L'Entité souffle une idée : un geste et une ou deux matières. L'humain l'essaie aussitôt avec ce qu'il a sous la main ;
    * les lois du monde décident du résultat (rien n'est garanti).
    */
-  /** Section « Médecine » : ce qu'il a fait comme soignant, son rôle, sa plaie et la malédiction qui le ronge. */
+  /** Section « Médecine » : ce qu'il a fait comme soignant, son rôle, sa plaie, la malédiction qui le ronge et sa séquelle. */
   private medecine(corps: HTMLElement, m: Fiche["medecine"]): void {
-    const rien = m.soignes === 0 && m.accouchementsAides === 0 && !m.role && !m.desavoueLe && !m.plaie && !m.malediction;
+    const rien = m.soignes === 0 && m.accouchementsAides === 0 && !m.role && !m.desavoueLe && !m.plaie && !m.malediction && !m.sequelle;
     if (rien) return;
     corps.append(el("h3", undefined, t("fiche.medecine")));
     const p = el("p", "medecine");
@@ -670,6 +670,7 @@ export class PanneauFiche {
     if (m.charlatanDepuis) lignes.push(t("medecine.charlatan", { date: m.charlatanDepuis }));
     if (m.desavoueLe) lignes.push(t("medecine.desavoue", { date: m.desavoueLe }));
     if (m.plaie) lignes.push(t("medecine.plaie", { plaie: m.plaie }));
+    if (m.sequelle) lignes.push(t("medecine.sequelle", { s: m.sequelle }));
     if (m.malediction) lignes.push(m.malediction.charAt(0).toUpperCase() + m.malediction.slice(1));
     lignes.forEach((l, i) => {
       if (i > 0) p.append(el("br"));

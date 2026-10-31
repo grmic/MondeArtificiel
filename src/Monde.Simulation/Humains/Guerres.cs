@@ -1143,7 +1143,7 @@ public sealed partial class Comportement
                 var frappeur = blesse == d ? a : d;
                 var coup = (15 + 25 * alea.Reel()) * (0.6 + 0.4 * Puissance(armes[frappeur.Id]));
                 blesse.Sante -= coup;
-                Medecine.Blesser(blesse, coup, maintenant);
+                Medecine.Blesser(blesse, coup, maintenant, OrigineBlessure.Guerre);
                 blesses.Add(blesse);
             }
         }

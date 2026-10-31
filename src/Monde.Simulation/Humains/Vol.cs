@@ -128,7 +128,7 @@ public sealed partial class Comportement
         {
             var degats = 5 + 15 * alea.Reel();
             victime.Sante -= degats;
-            Medecine.Blesser(victime, degats, maintenant);
+            Medecine.Blesser(victime, degats, maintenant, OrigineBlessure.Coups);
             victime.Humeur = Math.Max(0, victime.Humeur - degats / 3);
             var coups = Noter(maintenant, TypeEvenement.Conflit, h, victime, new Recit("j.vol.coups", ("h", h), ("v", victime)), vol,
                 karma: Regard.Coups);

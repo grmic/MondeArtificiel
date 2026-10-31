@@ -411,7 +411,9 @@ public sealed partial class Comportement
         {
             if (l.Affection < 10) continue;
             var d = tous[l.Id - 1];
-            if (!d.EstVivant || d.Faim < 45 || d.EstBebe(_maintenant)) continue;
+            // Le compatissant n'attend pas que celui qui boite soit affamé pour lui rapporter sa part.
+            var seuil = d.Sequelle.Membre != Membre.Aucun && Sequelles.Gene(d, _maintenant) >= Sequelles.Visible && h.Personnalite.Moral.Compassion > 0.5 ? 30 : 45;
+            if (!d.EstVivant || d.Faim < seuil || d.EstBebe(_maintenant)) continue;
             var dist = Distance(h.X, h.Y, d.X, d.Y);
             if (dist <= 1 || dist > 8) continue;
             affame = d;

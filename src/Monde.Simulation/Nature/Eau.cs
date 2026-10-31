@@ -119,8 +119,14 @@ public sealed partial class Catastrophes
                 var d = Distance(h.X, h.Y, i % _carte.Largeur, i / _carte.Largeur);
                 if (d < distance || d == distance && i < meilleure) (meilleure, distance) = (i, d);
             }
-            if (meilleure >= 0)
-                h.Memoire.Retenir(TypeLieu.Crue, meilleure % _carte.Largeur, meilleure / _carte.Largeur, maintenant, h.Personnalite.Intelligence.Memoire);
+            if (meilleure < 0) continue;
+            h.Memoire.Retenir(TypeLieu.Crue, meilleure % _carte.Largeur, meilleure / _carte.Largeur, maintenant, h.Personnalite.Intelligence.Memoire);
+            // Qui sait que tout y repoussera s'en souvient en voyant l'eau monter : le savoir sert, il ne s'oublie pas.
+            var k = h.Savoirs.FindIndex(s => s.Effet == Effet.Limon);
+            if (k < 0) continue;
+            h.Savoirs[k] = h.Savoirs[k] with { UtiliseLe = maintenant };
+            if (h.Savoirs[k].Confiance >= 0.5)
+                Jardin.Confier(h, TypeIntime.Espoir, 0, new Recit("js.limon.espoir"), 25 + 30 * h.Savoirs[k].Confiance, 0, maintenant, "espoir:limon");
         }
     }
 

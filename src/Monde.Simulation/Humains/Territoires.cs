@@ -112,6 +112,7 @@ public sealed partial class VieSociale
             }
             // Les terres où le groupe cherche sa nourriture débordent un peu de l'endroit où il vit.
             c.Abondance = nature.Abondance(c.CentreX, c.CentreY, c.Rayon + 3);
+            if (Generation >= 2) Jeter(c, groupe.Count, nature, carte, maintenant);
             var reserves = adultes.Average(h => h.Reserves);
             Disette(c, groupe, reserves, nature, carte, maintenant);
         }
@@ -154,12 +155,15 @@ public sealed partial class VieSociale
 
         if (c.DestinationX >= 0 && Math.Max(Math.Abs(c.CentreX - c.DestinationX), Math.Abs(c.CentreY - c.DestinationY)) <= 4)
         {
+            // Sur la plaine que la crue a laissée riche : un camp choisi pour le limon.
+            var crue = Generation >= 2 && nature.Limon[carte.Indice(c.DestinationX, c.DestinationY)] >= Comportement.LimonVisible;
             c.InstallationEvenementId = Noter(maintenant, TypeEvenement.Communaute, figure, null,
-                new Recit("terr.installe", ("c", c), ("ou", Lieux.DirectionR(carte, c.CentreX, c.CentreY))),
+                new Recit(crue ? "limon.installe" : "terr.installe", ("c", c), ("ou", Lieux.DirectionR(carte, c.CentreX, c.CentreY))),
                 communaute: c.Id);
             c.Migrations++;
             c.DestinationX = c.DestinationY = -1;
         }
+        if (Generation >= 2 && !c.Disette && c.DestinationX < 0 && SuivreLaCrue(c, groupe, nature, maintenant)) return;
         if (!c.Disette || c.DestinationX >= 0 || c.Abondance >= AbondanceFinDisette) return;
 
         // Les membres mettent en commun ce dont ils se souviennent : le groupe part vers les terres connues

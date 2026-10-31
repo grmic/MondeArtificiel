@@ -414,6 +414,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             Mourir(h, maintenant, cause);
             return;
         }
+        if (AvecLeRelief && (h.BlessureGrave > 0 || h.Sequelle.Membre != Membre.Aucun)) Remettre(h);
 
         // Tomber malade : plus probable quand on est affaibli, affamé ou transi.
         if (!h.EstMalade(maintenant))
@@ -880,7 +881,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             // Le rendement de la cueillette suit la densité de ce qui pousse : une tuile riche nourrit vite,
             // une tuile déjà dépouillée demande bien plus de temps (théorie de l'approvisionnement optimal).
-            var pris = Ecosysteme.Prelever(ecosysteme.Plantes, i, Math.Clamp(ecosysteme.Plantes[i] / 1000, 1, 8));
+            var parts = Math.Clamp(ecosysteme.Plantes[i] / 1000, 1, 8);
+            // Un bras abîmé cueille moins, et plus lentement.
+            if (Sequelles.Gene(h, Membre.Bras, _maintenant) is > 0 and var bras) parts = Math.Max(1, (int)Math.Round(parts * (1 - 0.4 * bras)));
+            var pris = Ecosysteme.Prelever(ecosysteme.Plantes, i, parts);
             h.Faim = Math.Max(0, h.Faim - pris * 2.5);
             h.Activite = Activite.Cueillir;
             h.CibleX = h.CibleY = -1;
@@ -888,6 +892,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (AvecLeRelief)
             {
                 ConstaterLeLimon(h, i, true);
+                ConstaterLesRejets(h, i);
                 GrimperAUnArbre(h);
             }
             return;
@@ -902,6 +907,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             var auFeu = TerreEnFeu(h);
             var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * (1 + gain) * ecosysteme.Gibier[i] / 10_000.0 * (1 + 0.05 * h.CompagnonsDeLangue)
                          * (auFeu ? 2 : 1);
+            // Le boiteux ne rattrape plus la bête blessée ; le bras abîmé lance mal.
+            if (h.Sequelle.Membre != Membre.Aucun)
+                chance *= (1 - 0.6 * Sequelles.Gene(h, Membre.Jambe, _maintenant)) * (1 - 0.5 * Sequelles.Gene(h, Membre.Bras, _maintenant));
             h.Activite = Activite.Chasser;
             h.CibleX = h.CibleY = -1;
             if (alea.Reel() < chance)

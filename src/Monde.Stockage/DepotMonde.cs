@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 44;
+    public const int VersionSchema = 45;
 
     private readonly string _connexion;
 
@@ -605,6 +605,8 @@ public sealed partial class DepotMonde
         // Version 44 : limon des crues.
         if (actuelle < 44 && !Colonnes(connexion, transaction, "ressources").Contains("limon"))
             Executer(connexion, transaction, "ALTER TABLE ressources ADD COLUMN limon BLOB;");
+        // Version 45 : séquelles des blessures graves, pousses des camps.
+        if (actuelle < 45) MigrerVersion45(connexion, transaction);
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """
@@ -643,7 +645,7 @@ public sealed partial class DepotMonde
             }
         }
 
-        commande.CommandText = "SELECT gibier, plantes, degats, limon FROM ressources WHERE id = 1;";
+        commande.CommandText = "SELECT gibier, plantes, degats, limon, rejets FROM ressources WHERE id = 1;";
         using (var lecteur = commande.ExecuteReader())
         {
             if (lecteur.Read())
@@ -653,6 +655,7 @@ public sealed partial class DepotMonde
                     Gibier = VersUShort((byte[])lecteur[0]), Plantes = VersUShort((byte[])lecteur[1]),
                     DegatsNature = lecteur.IsDBNull(2) ? null : VersUShort((byte[])lecteur[2]),
                     Limon = lecteur.IsDBNull(3) ? null : VersUShort((byte[])lecteur[3]),
+                    Rejets = lecteur.IsDBNull(4) ? null : VersUShort((byte[])lecteur[4]),
                 };
             }
         }
@@ -827,6 +830,7 @@ public sealed partial class DepotMonde
             LireSavoirs(commande, humains);
             LireLangage(commande, humains);
             LireMer(commande, humains);
+            LireCorps(commande, humains);
         }
         var (foyers, huttes, decouvertes, oeuvres) = LireInstallations(commande);
         var (braises, reserves) = LireFeuxEtReserves(commande);
@@ -1105,13 +1109,15 @@ public sealed partial class DepotMonde
             using var commande = connexion.CreateCommand();
             commande.Transaction = transaction;
             commande.CommandText = """
-                INSERT INTO ressources (id, gibier, plantes, degats, limon) VALUES (1, $gibier, $plantes, $degats, $limon)
-                ON CONFLICT (id) DO UPDATE SET gibier = excluded.gibier, plantes = excluded.plantes, degats = excluded.degats, limon = excluded.limon;
+                INSERT INTO ressources (id, gibier, plantes, degats, limon, rejets) VALUES (1, $gibier, $plantes, $degats, $limon, $rejets)
+                ON CONFLICT (id) DO UPDATE SET gibier = excluded.gibier, plantes = excluded.plantes, degats = excluded.degats, limon = excluded.limon,
+                    rejets = excluded.rejets;
                 """;
             commande.Parameters.AddWithValue("$gibier", VersOctets(gibier));
             commande.Parameters.AddWithValue("$plantes", VersOctets(plantes));
             commande.Parameters.AddWithValue("$degats", etat.DegatsNature is { } degats ? VersOctets(degats) : DBNull.Value);
             commande.Parameters.AddWithValue("$limon", etat.Limon is { } limon ? VersOctets(limon) : DBNull.Value);
+            commande.Parameters.AddWithValue("$rejets", etat.Rejets is { } rejets ? VersOctets(rejets) : DBNull.Value);
             commande.ExecuteNonQuery();
         }
 
@@ -1235,6 +1241,7 @@ public sealed partial class DepotMonde
             EnregistrerSavoirs(connexion, transaction, tous);
             EnregistrerLangage(connexion, transaction, tous);
             EnregistrerMer(connexion, transaction, tous);
+            EnregistrerCorps(connexion, transaction, tous);
         }
         if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Braises is not null || etat.Reserves is not null) EnregistrerFeuxEtReserves(connexion, transaction, etat);

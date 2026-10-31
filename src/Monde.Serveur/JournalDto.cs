@@ -137,7 +137,7 @@ public sealed record RegardDto(double Karma, string KarmaMots, int Croyance, str
 /// (0 à 100), sa plaie et la malédiction qui le ronge éventuellement.
 /// </summary>
 public sealed record MedecineDto(int Soignes, int Gueris, int Perdus, int AccouchementsAides, string? Role, int Renommee,
-    string? GuerisseurDepuis, string? ChamanDepuis, string? CharlatanDepuis, string? DesavoueLe, string? Plaie, string? Malediction);
+    string? GuerisseurDepuis, string? ChamanDepuis, string? CharlatanDepuis, string? DesavoueLe, string? Plaie, string? Malediction, string? Sequelle = null);
 
 /// <summary>
 /// Le feu et les réserves d'un humain : le feu qu'il porte (null : aucun), depuis quand il est le porteur du feu de son groupe et
@@ -348,7 +348,17 @@ public sealed record FicheDto(
         return new MedecineDto(h.Soignes, h.Gueris, h.Perdus, h.AccouchementsAides, Lib.Soignant(h),
             (int)Math.Round(100 * Simulation.Humains.Medecine.Renommee(h)),
             h.GuerisseurDepuis > 0 ? Date(h.GuerisseurDepuis) : null, h.ChamanDepuis > 0 ? Date(h.ChamanDepuis) : null,
-            h.CharlatanDepuis > 0 ? Date(h.CharlatanDepuis) : null, h.DemasqueLe > 0 ? Date(h.DemasqueLe) : null, plaie, malediction);
+            h.CharlatanDepuis > 0 ? Date(h.CharlatanDepuis) : null, h.DemasqueLe > 0 ? Date(h.DemasqueLe) : null, plaie, malediction,
+            Sequelle(h, maintenant));
+    }
+
+    /// <summary>La séquelle d'une blessure grave qui le gêne encore (null : aucune qui se voie).</summary>
+    private static string? Sequelle(Humain h, long maintenant)
+    {
+        var s = h.Sequelle;
+        var gene = Simulation.Humains.Sequelles.Gene(h, maintenant);
+        if (!h.EstVivant || s.Membre == Simulation.Humains.Membre.Aucun || gene < Simulation.Humains.Sequelles.Imperceptible) return null;
+        return L.T($"seq.fiche.{s.Membre}", ("de", L.T($"seq.origine.{s.Origine}")), ("p", (int)Math.Round(100 * gene)));
     }
 
     /// <summary>Le caractère en quelques phrases : style d'attachement, psychopathie (adulte), morale dominante.</summary>

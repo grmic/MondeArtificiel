@@ -543,7 +543,7 @@ public sealed partial class Catastrophes
     private void Blesser(Humain h, Catastrophe c, double gravite, List<Humain> humains, long maintenant)
     {
         h.Sante -= gravite;
-        Medecine.Blesser(h, gravite, maintenant);
+        Medecine.Blesser(h, gravite, maintenant, OrigineBlessure.Catastrophe);
         // La clémence du monde laisse en vie, à bout de forces, une part de ceux que la blessure aurait tués.
         if (h.Sante <= 0 && Clemence > 0 && _alea.Reel() < Clemence) h.Sante = 1;
         if (h.Sante <= 0)

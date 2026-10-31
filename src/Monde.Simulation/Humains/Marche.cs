@@ -55,6 +55,8 @@ public static class Marche
         if (h.EnceinteDepuis is { } debut && maintenant - debut > 180 * Temps.Calendrier.SecondesParJour) v *= 0.9;
         if (h.BebePorteLe >= maintenant - MondeSimule.SecondesParPas) v *= 0.93;
         if (h.Activite == Activite.Fuir) v *= 1.3 + 0.4 * Math.Min(1, h.Sante / 100);
+        // Une jambe mal remise : il boite, jusqu'à marcher deux fois moins vite.
+        if (Sequelles.Gene(h, Membre.Jambe, maintenant) is > 0 and var jambe) v *= 1 - 0.5 * jambe;
         return v;
     }
 

@@ -87,7 +87,7 @@ public sealed partial class Comportement
         var urgence = Math.Max(h.Faim, h.Soif) / 100 * 0.4 + (fuite ? 0.4 : 0);
         var age = h.AgeEnAnnees(_maintenant);
         var seuil = age < 14 ? 0.95 : age >= 60 ? 0.9 : 0.75;
-        return audace * (0.5 + p.Adresse) + urgence > seuil;
+        return audace * (0.5 + p.Adresse) * (1 - 0.7 * Sequelles.Gene(h, _maintenant)) + urgence > seuil;
     }
 
     /// <summary>
@@ -264,6 +264,8 @@ public sealed partial class Comportement
         if (pluie) f *= 2.5;
         f *= 1 + h.Fatigue / 100 + (h.Faim > 70 ? 0.3 : 0) + (h.EstMalade(_maintenant) ? 0.5 : 0) + (h.Sante < 50 ? 0.5 : 0);
         f *= (1.6 - p.Adresse) * (1.3 - 0.6 * p.Prudence);
+        // Une jambe qui lâche, un bras qui ne tient plus la prise.
+        if (h.Sequelle.Membre != Membre.Aucun) f *= 1 + Sequelles.Gene(h, Membre.Jambe, _maintenant) + 0.7 * Sequelles.Gene(h, Membre.Bras, _maintenant);
         return f;
     }
 
@@ -328,7 +330,8 @@ public sealed partial class Comportement
         // On ne grimpe pas aux arbres dans le noir.
         if (foret == 0 || !Calendrier.Decomposer(_maintenant).EstJour) return;
         var age = h.AgeEnAnnees(_maintenant);
-        var envie = age switch { < 4 => 0, < 15 => 1.5, < 45 => 1, < 60 => 0.5, _ => 0.2 } * (0.6 + 0.8 * (1 - h.Personnalite.Prudence));
+        var envie = age switch { < 4 => 0, < 15 => 1.5, < 45 => 1, < 60 => 0.5, _ => 0.2 } * (0.6 + 0.8 * (1 - h.Personnalite.Prudence))
+                    * (1 - 0.8 * Sequelles.Gene(h, _maintenant));
         // Environ un pas de cueillette sur deux cents en forêt : une montée par semaine ou deux.
         if (alea.Reel() >= 0.005 * foret * envie) return;
         var hauteur = 3 + 17 * Math.Pow(alea.Reel(), 1.5);
@@ -367,7 +370,7 @@ public sealed partial class Comportement
             }
             else
             {
-                Medecine.Blesser(h, gravite, _maintenant);
+                Medecine.Blesser(h, gravite, _maintenant, OrigineBlessure.Chute);
                 Noter(_maintenant, TypeEvenement.Nature, h, null, new Recit("chute.blesse", ("chute", recit), ("h", h)));
                 if (ou != "arbre") Craindre(h, x, y);
             }

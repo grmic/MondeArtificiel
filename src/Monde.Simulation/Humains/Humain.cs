@@ -422,6 +422,16 @@ public sealed class Humain
     public long PlaieLe { get; set; }
     public double PlaieSoin { get; set; }
 
+    /// <summary>
+    /// La pire blessure grave reçue depuis que sa plaie s'est rouverte (0 : aucune) et ce qui l'a causée : quand la plaie se referme,
+    /// on voit si elle laisse une séquelle (génération 2, depuis la 0.32.8 ; voir <see cref="Sequelles"/>).
+    /// </summary>
+    public double BlessureGrave { get; set; }
+    public OrigineBlessure BlessureOrigine { get; set; }
+
+    /// <summary>Séquelle d'une blessure grave : un membre qui le gêne encore, et combien (voir <see cref="Sequelles"/>).</summary>
+    public Sequelle Sequelle { get; set; }
+
     /// <summary>Malédiction qui le ronge (0 : aucune) : quand, par qui, et sa force (0 à 1).</summary>
     public long MauditLe { get; set; }
     public int MauditParId { get; set; }

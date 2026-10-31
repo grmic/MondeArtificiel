@@ -128,7 +128,7 @@ public sealed partial class Comportement
             : new Recit("j.sePrendA", ("h", h), ("c", cible), ("motif", motif), ("blesse", blesse)), grief.EvenementId, karma: Regard.Coups);
         h.Colere *= 0.4;
         vaincu.Sante -= degats;
-        Medecine.Blesser(vaincu, degats, maintenant);
+        Medecine.Blesser(vaincu, degats, maintenant, OrigineBlessure.Coups);
         vaincu.Humeur = Math.Max(0, vaincu.Humeur - degats / 3);
         social.ChangerAffection(h, cible, -10, maintenant);
         VieSociale.AjouterGrief(vaincu, new Grief(vainqueur.Id, MotifGrief.Coups, Math.Min(100, 30 + degats), Math.Min(100, 30 + degats), id));

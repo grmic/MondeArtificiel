@@ -45,16 +45,18 @@ public static class Medecine
     public static bool PlaieOuverte(Humain h, long maintenant) => h.PlaieLe > 0 && maintenant - h.PlaieLe < DureePlaie(h);
 
     /// <summary>Une blessure (coup, combat, chute de rocher) ouvre une plaie, pas encore soignée.</summary>
-    public static void Blesser(Humain h, double degats, long maintenant)
+    /// <param name="origine">Ce qui l'a blessé : une blessure grave peut laisser une séquelle (voir <see cref="Sequelles"/>).</param>
+    public static void Blesser(Humain h, double degats, long maintenant, OrigineBlessure origine = OrigineBlessure.Aucune)
     {
         if (Tour.Autrui(h))
         {
-            Tour.Differer(h, x => Blesser(x, degats, maintenant));
+            Tour.Differer(h, x => Blesser(x, degats, maintenant, origine));
             return;
         }
         if (!h.EstVivant || degats < 5) return;
         h.PlaieLe = Math.Max(1, maintenant);
         h.PlaieSoin = 0;
+        if (origine != OrigineBlessure.Aucune && degats >= 20 && degats > h.BlessureGrave) (h.BlessureGrave, h.BlessureOrigine) = (degats, origine);
     }
 
     /// <summary>

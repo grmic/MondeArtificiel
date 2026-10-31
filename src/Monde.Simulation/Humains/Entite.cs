@@ -748,7 +748,7 @@ public sealed partial class Comportement
             ? new Recit(tuer ? "ent.attaque.tuer" : "ent.attaque.frappe", ("h", h), ("x", x))
             : new Recit("ent.attaque.defend", ("h", h), ("x", x)), i.EvenementId, significatif: true, karma: Regard.Coups);
         vaincu.Sante -= degats;
-        Medecine.Blesser(vaincu, degats, maintenant);
+        Medecine.Blesser(vaincu, degats, maintenant, OrigineBlessure.Coups);
         vaincu.Humeur = Math.Max(0, vaincu.Humeur - degats / 3);
         Social?.ChangerAffection(x, h, -25, maintenant);
         VieSociale.AjouterGrief(x, new Grief(h.Id, MotifGrief.Coups, Math.Min(100, 40 + degats), Math.Min(100, 40 + degats), id));
