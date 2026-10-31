@@ -54,6 +54,8 @@ const SVG = "http://www.w3.org/2000/svg";
 const LARGEUR = 560;
 const HAUTEUR = 150;
 const MARGE = { g: 34, d: 34, h: 8, b: 20 };
+/** Durées qu'on peut afficher, en années (0 : tout), comme pour la démographie. */
+const PERIODES: [string, number][] = [["demographie.tout", 0], ["", 50], ["", 10], ["", 2]];
 
 function svg<K extends keyof SVGElementTagNameMap>(tag: K, attributs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
   const e = document.createElementNS(SVG, tag);
@@ -76,12 +78,24 @@ function graduations(min: number, max: number, cible: number): number[] {
  * Dessine la courbe des savoirs vivants : trait plein pour les années mesurées, pointillé pour celles reconstituées
  * depuis le journal ; un point rouge par savoir perdu, vert par savoir retrouvé (un clic en montre l'événement).
  */
-function dessinerProgres(p: Progres, detail: HTMLElement): SVGSVGElement {
+function dessinerProgres(p: Progres, detail: HTMLElement, periode: number): SVGSVGElement {
   const graphe = svg("svg", { viewBox: `0 0 ${LARGEUR} ${HAUTEUR}`, width: "100%", role: "img" });
-  const pts = p.points;
-  const debut = Math.min(1, ...pts.map((x) => x.annee));
-  const fin = Math.max(debut + 1, ...pts.map((x) => x.annee));
-  const max = Math.max(4, ...pts.map((x) => x.savoirs));
+  const tous = p.points;
+  const premier = Math.min(1, ...tous.map((x) => x.annee));
+  const fin = Math.max(premier + 1, ...tous.map((x) => x.annee));
+  // La durée choisie : les dernières années seulement (avec le point qui précède, pour que la courbe entre par la gauche).
+  const debut = periode > 0 ? Math.max(premier, fin - periode) : premier;
+  const avant = tous.filter((q) => q.annee < debut).pop();
+  const pts = [...(avant ? [avant] : []), ...tous.filter((q) => q.annee >= debut)];
+  const visibles = pts.filter((q) => q.annee >= debut);
+  const max = Math.max(4, ...visibles.map((x) => x.savoirs), ...(avant ? [avant.savoirs] : []));
+  // Ce qui déborde à gauche est coupé au bord du graphique.
+  const coupe = `coupe-progres-${periode}`;
+  const defs = svg("defs");
+  const clip = svg("clipPath", { id: coupe });
+  clip.append(svg("rect", { x: MARGE.g, y: 0, width: LARGEUR - MARGE.g - MARGE.d, height: HAUTEUR }));
+  defs.append(clip);
+  graphe.append(defs);
   const x = (a: number) => MARGE.g + ((a - debut) / (fin - debut)) * (LARGEUR - MARGE.g - MARGE.d);
   const y = (v: number) => HAUTEUR - MARGE.b - (v / max) * (HAUTEUR - MARGE.b - MARGE.h);
   for (const v of graduations(0, max, 4)) {
@@ -98,7 +112,7 @@ function dessinerProgres(p: Progres, detail: HTMLElement): SVGSVGElement {
   graphe.append(svg("line", { x1: MARGE.g, x2: LARGEUR - MARGE.d, y1: y(0), y2: y(0), class: "axe-trait" }));
   const trace = (liste: typeof pts, classe: string) => {
     if (liste.length === 0) return;
-    graphe.append(svg("polyline", { points: liste.map((q) => `${x(q.annee)},${y(q.savoirs)}`).join(" "), class: classe }));
+    graphe.append(svg("polyline", { points: liste.map((q) => `${x(q.annee)},${y(q.savoirs)}`).join(" "), class: classe, "clip-path": `url(#${coupe})` }));
   };
   const reconstitues = pts.filter((q) => q.reconstitue);
   const mesures = pts.filter((q) => !q.reconstitue);
@@ -115,7 +129,7 @@ function dessinerProgres(p: Progres, detail: HTMLElement): SVGSVGElement {
       etiquette.textContent = String(v);
       graphe.append(etiquette);
     }
-    graphe.append(svg("polyline", { points: diffusion.map((q) => `${x(q.annee)},${yD(q.parHumain ?? 0)}`).join(" "), class: "diffusion" }));
+    graphe.append(svg("polyline", { points: diffusion.map((q) => `${x(q.annee)},${yD(q.parHumain ?? 0)}`).join(" "), class: "diffusion", "clip-path": `url(#${coupe})` }));
   }
   // Hauteur de la courbe à une date : entre deux mesures, sur le segment qui les relie.
   const valeurA = (a: number) => {
@@ -128,6 +142,7 @@ function dessinerProgres(p: Progres, detail: HTMLElement): SVGSVGElement {
     return pts[pts.length - 1].savoirs;
   };
   for (const m of p.marques) {
+    if (m.annee < debut) continue;
     const rond = svg("circle", { cx: x(m.annee), cy: y(valeurA(m.annee)), r: 3.5, class: `marque ${m.perdu ? "perdu" : "retrouve"}` });
     const titre = svg("title");
     titre.textContent = t("commun.dateTexte", { date: m.date, texte: m.texte });
@@ -210,6 +225,8 @@ function dessinerArbre(a: Arbre, choisi: string, surChoix: (n: Noeud) => void): 
 export class PanneauDecouvertes {
   private readonly corps = el("div", "corps");
   private readonly progres = el("div", "graphique");
+  /** Durée affichée de la courbe, en années (0 : tout). */
+  private periode = 0;
   private readonly choix = el("select");
   private readonly detail = el("p", "discret");
   /** Vue de l'arbre des savoirs plutôt que de la chronologie. */
@@ -393,7 +410,17 @@ export class PanneauDecouvertes {
     const dernier = p.points[p.points.length - 1];
     if (dernier) outils.append(el("span", "discret", " " + t("decouvertes.aujourdhui", { n: dernier.savoirs })));
     if (dernier && (dernier.parHumain ?? -1) >= 0) outils.append(el("span", "discret diffusion", " · " + t("decouvertes.parHumain", { n: nombre(dernier.parHumain ?? 0, 1) })));
-    this.progres.replaceChildren(dessinerProgres(p, this.detail));
+    for (const [libelle, ans] of PERIODES) {
+      const b = el("button", ans === this.periode ? "actif" : undefined, libelle ? t(libelle) : t("age.ans", { n: ans }));
+      b.type = "button";
+      b.addEventListener("click", () => {
+        this.periode = ans;
+        this.progres.replaceChildren(dessinerProgres(p, this.detail, this.periode));
+        for (const x of outils.querySelectorAll("button")) x.classList.toggle("actif", x === b);
+      });
+      outils.append(b);
+    }
+    this.progres.replaceChildren(dessinerProgres(p, this.detail, this.periode));
     const legende = el("p", "discret",
       communaute === 0
         ? t("decouvertes.legendeMonde")

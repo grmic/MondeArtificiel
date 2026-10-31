@@ -1,1 +1,0 @@
-export{r as WebGLRenderer}from"./main-Bxiqa5-5.js";
