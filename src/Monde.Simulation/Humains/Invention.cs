@@ -393,7 +393,10 @@ public sealed partial class Comportement
     /// <summary>Après une chasse manquée : l'idée d'une meilleure arme peut venir à qui sait déjà tailler une pointe.</summary>
     private void ApresUneChasseManquee(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (h.EstEnfant(_maintenant) || h.Objets.Exists(o => Lois.Chasse(o) > 0.8)) return;
+        if (h.EstEnfant(_maintenant)) return;
+        // Une chasse manquée pousse à chercher mieux que ce qu'on a, par combinaison (génération 2).
+        if (AvecLaMatiere && InventerParCombinaison(h, Fonction.Chasser, 3, tous)) return;
+        if (h.Objets.Exists(o => Lois.Chasse(o) > 0.8)) return;
         Repondre(h, Besoin.Chasser, 0, 0.002, tous);
     }
 

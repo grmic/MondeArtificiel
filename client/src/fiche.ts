@@ -238,6 +238,10 @@ export class PanneauFiche {
   private souffle: HTMLDetailsElement | null = null;
   private rechargerSouffle: (() => void) | null = null;
   private readonly resultatSouffle = el("p", "discret");
+  /** Souffler une combinaison (façonner une pièce, joindre deux pièces) : construit une fois, comme le formulaire du souffle. */
+  private combinaison: HTMLDetailsElement | null = null;
+  private rechargerCombinaison: (() => void) | null = null;
+  private readonly resultatCombinaison = el("p", "discret");
   /** Parler ou inspirer un amour : construit une fois, comme le formulaire du souffle. */
   private entite: FormulaireEntite | null = null;
   /** Gestes de l'Entité sur cet humain : construit une fois, comme les autres formulaires. */
@@ -262,6 +266,7 @@ export class PanneauFiche {
     if (id !== this.id) {
       replierCauses();
       this.resultatSouffle.textContent = "";
+      this.resultatCombinaison.textContent = "";
       this.entite?.oublier();
       this.geste?.oublier();
     }
@@ -270,6 +275,7 @@ export class PanneauFiche {
     this.surChoix(id);
     // Un autre humain n'est pas au même endroit : ses plantes ne sont pas les mêmes.
     if (autre && this.souffle?.open) this.rechargerSouffle?.();
+    if (autre && this.combinaison?.open) this.rechargerCombinaison?.();
     await this.rafraichir();
     window.clearInterval(this.minuteur);
     // Tant qu'elle est ouverte, la fiche suit l'humain (deux fois par seconde au plus, sans file d'attente).
@@ -474,7 +480,7 @@ export class PanneauFiche {
     this.rencontres(corps, f.rencontres ?? null);
     this.foi(corps, f.foi);
     this.langage(corps, f.langage);
-    if (h.vivant) corps.append(this.formulaireSouffle());
+    if (h.vivant) corps.append(this.formulaireSouffle(), this.formulaireCombinaison());
     this.communaute = f.communaute?.id ?? 0;
     this.nomCourant = h.nom;
     if (f.paroles.length > 0) {
@@ -860,9 +866,92 @@ export class PanneauFiche {
     return bloc;
   }
 
+  /**
+   * Souffler une combinaison : une façon (lettre majuscule) appliquée à une pièce, ou une jointure (lettre minuscule) de deux
+   * pièces, avec un lien si elle en demande un. Les lois du monde disent si cela tient ; rien n'est choisi d'avance.
+   */
+  private formulaireCombinaison(): HTMLDetailsElement {
+    if (this.combinaison) return this.combinaison;
+    const bloc = el("details", "entite-bloc");
+    bloc.append(el("summary", "entite", t("comb.titre")));
+    const operation = el("select");
+    const a = el("select");
+    const b = el("select");
+    const lien = el("select");
+    const bouton = el("button", undefined, t("comb.souffler"));
+    bouton.type = "button";
+    const ligne = (libelle: string, champ: HTMLElement) => {
+      const l = el("label", "ligne");
+      l.append(el("span", undefined, libelle), " ", champ);
+      return l;
+    };
+    const remplir = (select: HTMLSelectElement, choix: Choix[]) => {
+      const avant = select.value;
+      select.replaceChildren(...choix.map((c) => {
+        const o = el("option", undefined, c.libelle);
+        o.value = c.cle;
+        return o;
+      }));
+      if (choix.some((c) => c.cle === avant)) select.value = avant;
+    };
+    const ligneB = ligne(t("comb.seconde"), b);
+    const ligneLien = ligne(t("comb.lien"), lien);
+    const champs = el("div");
+    champs.append(ligne(t("comb.operation"), operation), ligne(t("comb.piece"), a), ligneB, ligneLien, bouton);
+    // Une jointure (lettre minuscule) prend une seconde pièce et, peut-être, un lien.
+    const accorder = () => {
+      const jointure = operation.value !== "" && operation.value === operation.value.toLowerCase();
+      ligneB.hidden = !jointure;
+      ligneLien.hidden = !jointure;
+    };
+    const charger = async () => {
+      if (!this.id) return;
+      try {
+        const c = await connexion.invoke<{ pieces: Choix[]; operations: Choix[]; liens: Choix[] }>("ChoixCombinaison", this.id);
+        remplir(operation, c.operations);
+        remplir(a, c.pieces);
+        remplir(b, c.pieces);
+        remplir(lien, [{ cle: "0", libelle: t("comb.sansLien") }, ...c.liens]);
+        champs.hidden = c.pieces.length === 0;
+        this.resultatCombinaison.textContent = c.pieces.length === 0 ? t("comb.aucune") : "";
+        accorder();
+      } catch {
+        this.resultatCombinaison.textContent = t("commun.pasDeReponse");
+      }
+    };
+    this.rechargerCombinaison = () => void charger();
+    operation.addEventListener("change", accorder);
+    bloc.addEventListener("toggle", () => {
+      if (bloc.open) void charger();
+    });
+    bouton.addEventListener("click", async () => {
+      if (!this.id || !operation.value || !a.value) return;
+      const jointure = operation.value === operation.value.toLowerCase();
+      bouton.disabled = true;
+      try {
+        this.resultatCombinaison.textContent = await connexion.invoke<string>("SoufflerCombinaison", {
+          humain: this.id,
+          operation: operation.value,
+          a: a.value,
+          b: jointure ? b.value : null,
+          lien: jointure ? Number(lien.value || "0") : 0,
+        });
+        void charger();
+      } catch {
+        this.resultatCombinaison.textContent = t("souffle.echec");
+      } finally {
+        bouton.disabled = false;
+      }
+    });
+    bloc.append(champs, this.resultatCombinaison, el("p", "discret", t("comb.aide")));
+    this.combinaison = bloc;
+    return bloc;
+  }
+
   /** Vrai si l'utilisateur est en train de remplir le formulaire de l'Entité (un menu ouvert ne doit pas être redessiné). */
   private saisieEnCours(): boolean {
-    return !!this.souffle && (this.souffle.contains(document.activeElement) || this.souffle.matches(":hover")) || !!this.entite?.enCours || !!this.geste?.enCours;
+    return !!this.souffle && (this.souffle.contains(document.activeElement) || this.souffle.matches(":hover")) ||
+      !!this.combinaison && (this.combinaison.contains(document.activeElement) || this.combinaison.matches(":hover")) || !!this.entite?.enCours || !!this.geste?.enCours;
   }
 
   private traits(titre: string, traits: Trait[], max: number): HTMLElement {

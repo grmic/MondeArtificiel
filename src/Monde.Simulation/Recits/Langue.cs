@@ -193,7 +193,10 @@ public sealed partial class Langue
             case Personne p: k = p.Femme ? 1 : 0; break;
             case Groupe g: k = g.Feminin ? 1 : 0; break;
             case bool b: k = b ? 1 : 0; break;
-            case Recit r: k = Texte(r.Cle + ".g", []) == "f" ? 1 : 0; break;
+            // Genre d'un nom : « m », « f », ou au pluriel « mp », « fp » (une 3e et une 4e forme, si le modèle les donne).
+            case Recit r:
+                k = Texte(r.Cle + ".g", []) switch { "f" => 1, "fp" => liste.Length >= 4 ? 3 : 1, "mp" => liste.Length >= 3 ? 2 : 0, _ => 0 };
+                break;
             case string s: k = s == "f" ? 1 : 0; break;
             case long or int or double:
                 {

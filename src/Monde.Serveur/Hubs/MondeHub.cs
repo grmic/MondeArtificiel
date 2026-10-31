@@ -187,6 +187,14 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         return ConfigurationDto.Depuis(service);
     }
 
+    /// <summary>« Esprits fertiles » : 1 (le monde tel quel), 3, 10 ou 30 fois plus d'idées par combinaison.</summary>
+    public ConfigurationDto ChoisirEspritsFertiles(int facteur)
+    {
+        if (Array.IndexOf(MondeSimule.EspritsFertilesPermis, facteur) < 0) throw new HubException(L.T("erreur.esprits"));
+        service.EspritsFertiles = facteur;
+        return ConfigurationDto.Depuis(service);
+    }
+
     /// <summary>Aperçu de réglages : la carte est générée (et gardée pour l'afficher), le monde courant ne change pas.</summary>
     public ApercuDto ApercuConfiguration(DemandeConfiguration demande)
     {
@@ -355,6 +363,25 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes) : Hub
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         if (plante && effet == Simulation.Humains.Effet.Rien) return L.T("geste.planteEssayee");
         return effet == Simulation.Humains.Effet.Rien ? L.T("geste.rien") : L.T("geste.obtenu", ("effet", L.T($"effet.{effet}")));
+    }
+
+    /// <summary>L'arbre des savoirs du monde (0) ou d'une communauté, et le possible adjacent.</summary>
+    public ArbreDto ArbreDesSavoirs(int communaute) => Serveur.Arbre.Construire(service, communaute);
+
+    /// <summary>Pièces, façons, jointures et liens que l'Entité peut proposer de combiner à cet humain.</summary>
+    public ChoixCombinaisonDto ChoixCombinaison(int humain) => Serveur.Arbre.Choix(service, humain);
+
+    /// <summary>
+    /// L'Entité souffle une combinaison à un humain : il l'essaie aussitôt avec ce qu'il a ; les lois du monde décident. Renvoie
+    /// ce qui est arrivé, en mots (la ligne du journal).
+    /// </summary>
+    public async Task<string> SoufflerCombinaison(DemandeCombinaison demande)
+    {
+        if (Serveur.Arbre.Recette(demande) is not { } recette) throw new HubException(L.T("erreur.combinaison"));
+        var (effet, recit) = service.Monde.SoufflerFacture(demande.Humain, recette);
+        service.Sauvegarder();
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
+        return recit is not null ? L.Rediger(recit) : effet == Simulation.Humains.Effet.Rien ? L.T("fac.souffle.rien") : L.T("geste.obtenu", ("effet", L.T("effet.Facture")));
     }
 
     /// <summary>Prières en mémoire (en attente seulement, ou aussi celles de l'année écoulée).</summary>

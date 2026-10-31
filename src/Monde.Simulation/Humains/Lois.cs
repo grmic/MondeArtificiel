@@ -17,6 +17,8 @@ public enum Forme : byte
     Tranchant = 32,
     /// <summary>Percé de part en part : on peut y passer un bâton.</summary>
     Perce = 64,
+    /// <summary>Un crochet, un ergot, une encoche qui retient.</summary>
+    Crochet = 128,
 }
 
 /// <summary>
@@ -214,6 +216,7 @@ public static class Lois
     {
         if (o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { Montage: Montage.Travers } a)
             return Math.Clamp((0.45 + 0.4 * o.Qualite) * Math.Max(0.2, o.Usure) * (De(a.Tete).Masse >= 0.4 ? 1 : 0.85), 0, 1);
+        if (o.Matiere == Matiere.Facture) return Facons.Valeur(Fonction.Couper, o);
         return (De(o.Matiere).Forme & Forme.Tranchant) != 0 ? 0.12 * (0.5 + o.Qualite) : 0;
     }
 
@@ -225,6 +228,7 @@ public static class Lois
         Matiere.Assemblage when Assemblage.Lire(o.Pieces) is { Montage: Montage.Bout } a && (De(a.Tete).Forme & Forme.Pointu) != 0
             => (0.85 + 0.6 * o.Qualite) * Math.Max(0.3, o.Usure),
         Matiere.Assemblage when Assemblage.Lire(o.Pieces) is { Montage: Montage.Travers } => 0.3 + 0.2 * o.Qualite,
+        Matiere.Facture => Facons.Valeur(Fonction.Chasser, o),
         _ => 0,
     };
 
@@ -429,6 +433,8 @@ public static class Lois
         pieces is not null && pieces.StartsWith("T|", StringComparison.Ordinal) && Comportement.LireRecette(pieces) is { } r
             ? string.Create(CultureInfo.InvariantCulture, $"T|{(int)r.A}|{string.Join('+', r.Changements)}|{r.Famille}")
         : pieces is not null && pieces.StartsWith("M|", StringComparison.Ordinal) ? pieces
+        : pieces is not null && pieces.StartsWith("F|", StringComparison.Ordinal) ? Facons.Structure(pieces)
+        : pieces is not null && pieces.StartsWith("R|", StringComparison.Ordinal) ? pieces
         : Assemblage.Lire(pieces) is { Montage: Montage.Axe } a ? (a.NTete == 1 ? "axe:1" : "axe:2") : "";
 
     /// <summary>« un galet », « deux galets », « trois bouts de bois sec ».</summary>

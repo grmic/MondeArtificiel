@@ -399,6 +399,40 @@ public sealed class MondeSimule
         }
     }
 
+    /// <summary>Valeurs permises pour « Esprits fertiles » (1 : le monde tel quel).</summary>
+    public static readonly int[] EspritsFertilesPermis = [1, 3, 10, 30];
+
+    /// <summary>
+    /// « Esprits fertiles » : l'Entité multiplie la venue des idées par combinaison (1 : le monde tel quel). Les lois qui jugent les
+    /// idées ne changent pas ; seules les idées viennent plus souvent.
+    /// </summary>
+    public int EspritsFertiles
+    {
+        get => _comportement.EspritsFertiles;
+        set
+        {
+            if (Array.IndexOf(EspritsFertilesPermis, value) < 0) throw new ArgumentOutOfRangeException(nameof(value));
+            lock (_verrou) _comportement.EspritsFertiles = value;
+        }
+    }
+
+    /// <summary>L'Entité rend les esprits plus ou moins fertiles : c'est noté au journal comme son acte.</summary>
+    public void ChoisirEspritsFertiles(int facteur)
+    {
+        lock (_verrou)
+        {
+            var avant = EspritsFertiles;
+            EspritsFertiles = facteur;
+            if (facteur == avant) return;
+            var texte = facteur == 1 ? new Recit("j.esprits.fin") : new Recit("j.esprits.choisi", ("n", facteur));
+            _comportement.Journal.Add(new EvenementJournal(_secondes, TypeEvenement.Nature, 0, 0, texte, Origine.Entite)
+            {
+                Id = _numeros.Suivant(), Significatif = true,
+            });
+            VerserJournal();
+        }
+    }
+
     /// <summary>L'Entité change la clémence du monde : c'est noté au journal comme son acte.</summary>
     public void ChoisirClemence(int clemence)
     {
@@ -1234,6 +1268,40 @@ public sealed class MondeSimule
             VerserJournal();
             return effet;
         }
+    }
+
+    /// <summary>
+    /// L'Entité souffle une combinaison à un humain (une recette écrite comme <see cref="Facture"/>) : il l'essaie aussitôt avec ce
+    /// qu'il a sous la main ; les lois du monde en décident. Renvoie l'effet obtenu et ce que le journal en dit.
+    /// </summary>
+    public (Effet Effet, Recit? Recit) SoufflerFacture(int humainId, string recette)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count || !_humains[humainId - 1].EstVivant) return (Effet.Rien, null);
+            var avant = _comportement.Journal.Count;
+            var effet = _comportement.SoufflerFacture(_humains[humainId - 1], recette, _humains, _secondes);
+            var recit = _comportement.Journal.Count > avant ? _comportement.Journal[^1].Recit : null;
+            VerserJournal();
+            return (effet, recit);
+        }
+    }
+
+    /// <summary>Pièces, gestes, jointures et liens qu'on peut proposer à cet humain (pour le formulaire de l'Entité).</summary>
+    public (List<string> Pieces, List<Facon> Facons, List<Jointure> Jointures, List<Matiere> Liens)? PossiblesPour(int humainId)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count || !_humains[humainId - 1].EstVivant) return null;
+            return _comportement.PossiblesPour(_humains[humainId - 1], _secondes);
+        }
+    }
+
+    /// <summary>Le possible adjacent du monde (communauté 0) ou d'une communauté : combien de combinaisons, et quelques-unes.</summary>
+    public (int Total, List<Facture> Exemples) Adjacents(int communaute)
+    {
+        lock (_verrou)
+            return _comportement.Adjacents(_humains.Where(h => h.EstVivant && (communaute == 0 || h.CommunauteId == communaute)));
     }
 
     /// <summary>

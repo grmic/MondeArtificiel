@@ -111,6 +111,8 @@ public sealed partial class Comportement
         var a = materiaux.Count == 0 ? Matiere.Aucune : materiaux[alea.Entier(materiaux.Count)];
         var b = materiaux.Count == 0 ? Matiere.Aucune : materiaux[alea.Entier(materiaux.Count)];
         if (tirage >= 13) return JouerAvecLaMatiere(h, geste, a, b, materiaux, tous);
+        // En manipulant, on remarque parfois ce qu'une matière a de particulier (génération 2).
+        if (AvecLaMatiere && alea.Reel() < 0.2 && Remarquer(h, materiaux, tous)) return true;
         if (geste is Geste.Manger or Geste.Appliquer)
         {
             // Goûter une plante inconnue : seulement les plus audacieux, et pas les petits (l'aversion pour la nouveauté
@@ -325,6 +327,7 @@ public sealed partial class Comportement
     private static void Prendre(Humain h, Objet objet)
     {
         var meme = h.Objets.Find(o => o.Matiere == objet.Matiere && (o.Matiere != Matiere.Assemblage || MemeUsage(o, objet))
+            && (o.Matiere != Matiere.Facture || Facons.LireObjet(o.Pieces)?.Fonction == Facons.LireObjet(objet.Pieces)?.Fonction)
             && (o.Matiere != Matiere.Substance || MemeChose(o, objet)));
         if (meme is not null)
         {
@@ -334,7 +337,7 @@ public sealed partial class Comportement
         if (h.Objets.Count >= ObjetsMax)
         {
             // On laisse ce dont on ne connaît pas d'usage, sinon le plus usé.
-            var laisse = h.Objets.OrderBy(o => o.Matiere is Matiere.Assemblage or Matiere.Carcasse or Matiere.Substance || h.Savoirs.Exists(s => (s.A == o.Matiere || s.B == o.Matiere) && s.Confiance >= 0.5) ? 1 : 0)
+            var laisse = h.Objets.OrderBy(o => o.Matiere is Matiere.Assemblage or Matiere.Carcasse or Matiere.Substance or Matiere.Facture || h.Savoirs.Exists(s => (s.A == o.Matiere || s.B == o.Matiere) && s.Confiance >= 0.5) ? 1 : 0)
                 .ThenBy(o => o.Qualite * o.Usure).First();
             h.Objets.Remove(laisse);
         }
@@ -348,13 +351,14 @@ public sealed partial class Comportement
     /// <paramref name="karmaMaitre"/> : ce que vaut, pour le maître, de l'avoir enseigné (voir <see cref="Regard.Enseigner"/>).
     /// </summary>
     private long Retenir(Humain h, Geste g, Matiere a, Matiere b, Effet e, int espece, Symptome mal, OrigineSavoir origine, int maitreId,
-        IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", Recit? recit = null, int heritage = 0, double karmaMaitre = 0)
+        IReadOnlyList<Humain> tous, bool succes = true, string pieces = "", Recit? recit = null, int heritage = 0, double karmaMaitre = 0,
+        string parents = "")
     {
         // Ce qu'un autre apprend en regardant celui dont c'est le tour, il le retient après le pas.
         if (Tour.Autrui(h))
         {
             var ih = h.Id;
-            Tour.Differer(tous, t => Retenir(t[ih - 1], g, a, b, e, espece, mal, origine, maitreId, t, succes, pieces, recit, heritage, karmaMaitre));
+            Tour.Differer(tous, t => Retenir(t[ih - 1], g, a, b, e, espece, mal, origine, maitreId, t, succes, pieces, recit, heritage, karmaMaitre, parents));
             return 0;
         }
         var i = h.Savoirs.FindIndex(s => s.Meme(g, a, b, e, espece, mal) && s.Pieces == pieces);
@@ -384,7 +388,7 @@ public sealed partial class Comportement
         };
         // Un savoir banal (le feu chauffe, le bois frotté tiédit) n'est pas noté chez chacun : seulement la première fois au monde.
         // Un chant, un rythme, une danse, la parure d'ocre appris des autres : cela se fait à chaque veillée.
-        var banal = e is Effet.Chaleur or Effet.Tiedeur || origine == OrigineSavoir.Imitation && e is Effet.Etincelle or Effet.Chant or Effet.Rythme or Effet.Danse or Effet.Ocre;
+        var banal = e is Effet.Chaleur or Effet.Tiedeur or Effet.Remarque || origine == OrigineSavoir.Imitation && e is Effet.Etincelle or Effet.Chant or Effet.Rythme or Effet.Danse or Effet.Ocre;
         // Appris d'un autre groupe, ou de quelqu'un venu d'ailleurs, alors que personne des siens ne le savait : le savoir entre
         // dans sa communauté, et le journal dit d'où il vient.
         var venu = premier || retrouve || maitre is null || e is Effet.Chaleur or Effet.Tiedeur ? null : VenuDAilleurs(h, maitre, e, structure, tous);
@@ -404,7 +408,7 @@ public sealed partial class Comportement
         if (premier)
         {
             // Deux qui trouvent la même chose dans le même pas : la première au monde est celle du premier dans l'ordre.
-            var decouverte = new Decouverte(e, h.Id, _maintenant, id, origine, pieces, h.CommunauteId);
+            var decouverte = new Decouverte(e, h.Id, _maintenant, id, origine, pieces, h.CommunauteId, parents);
             Tour.Differer(() =>
             {
                 if (!Installations.Decouvertes.Exists(d => d.Effet == decouverte.Effet && Lois.Structure(d.Pieces) == structure)) Installations.Decouvertes.Add(decouverte);
@@ -892,7 +896,8 @@ public sealed partial class Comportement
         if (arme is not null)
         {
             UserObjet(h, arme, 0.05);
-            if (arme.Matiere != Matiere.Assemblage)
+            if (arme.Matiere == Matiere.Facture) RenforcerFacture(h, arme);
+            else if (arme.Matiere != Matiere.Assemblage)
                 Constater(h, Geste.Frapper, arme.Matiere, Matiere.Carcasse, new Resultat(Effet.Chasse, Matiere.Aucune, 1), OrigineSavoir.Essai, tous);
             else RenforcerAssemblage(h, arme);
         }
@@ -915,7 +920,7 @@ public sealed partial class Comportement
     /// <summary>Boire à sa calebasse (ou à son outre) quand l'eau est loin.</summary>
     private bool BoireALaCalebasse(Humain h)
     {
-        var c = h.Objets.Find(o => o.Matiere is Matiere.Calebasse or Matiere.Peau or Matiere.Substance && o.Plein);
+        var c = h.Objets.Find(o => o.Matiere is Matiere.Calebasse or Matiere.Peau or Matiere.Substance or Matiere.Facture && o.Plein);
         if (c is null) return false;
         h.Objets[h.Objets.IndexOf(c)] = c with { Plein = false, Usure = c.Usure - 0.01 };
         h.Soif = Math.Max(0, h.Soif - 45);
@@ -930,9 +935,16 @@ public sealed partial class Comportement
     /// </summary>
     private void Remplir(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau or Matiere.Substance && o.Plein)) return;
+        if (h.Objets.Exists(o => o.Matiere is Matiere.Calebasse or Matiere.Peau or Matiere.Substance or Matiere.Facture && o.Plein)) return;
         // Un pot de terre cuite se remplit comme une calebasse.
         if (RemplirLePot(h)) return;
+        // Une chose façonnée qui garde l'eau (une outre cousue, un panier enduit) se remplit aussi.
+        if (h.Objets.FindIndex(o => o.Matiere == Matiere.Facture && Facons.Valeur(Fonction.Contenir, o) > 0) is >= 0 and var ir)
+        {
+            h.Objets[ir] = h.Objets[ir] with { Plein = true };
+            RenforcerFacture(h, h.Objets[ir]);
+            return;
+        }
         var c = h.Objets.Find(o => o.Matiere == Matiere.Calebasse);
         if (c is null && h.Porte(Matiere.Peau) && h.Savoirs.Exists(s => s.Effet == Effet.EauPortee && s.A == Matiere.Peau && s.Confiance >= 0.4)
             && !APortee(h, Matiere.Calebasse))

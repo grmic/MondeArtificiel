@@ -3,7 +3,7 @@ Attirance	20	746B98E440611472	Theizasiak repousse les avances de Razous : il tie
 Catastrophe	13	3B615D7412CE0ECA	Une tempête venue de la mer (catégorie 3) frappe les côtes du sud-est : vents furieux et pluies torrentielles.
 Communaute	1	7C38C37AC200638D	Une communauté se forme autour de Humu : 6 humains vivent désormais ensemble.
 Croyance	1	D2A6E603D1E57FBA	Vaemakaek croit davantage en l'invisible (10/100) : l'arbuste aux fleurs blanches lui a donné des visions.
-Decouverte	217	8F52ED673A8BA757	Première fois au monde : Sesuheil pousse un galet : il roule loin devant. Sesuheil comprend : « Poussé sur un sol dur, un galet roule. »
+Decouverte	217	680861E598FA97EE	Première fois au monde : Sesuheil pousse un galet : il roule loin devant. Sesuheil comprend : « Poussé sur un sol dur, un galet roule. »
 Entraide	73	E171EF1795FBB8DE	Sheisokei veille sur Sekaer, malade, et lui apporte à boire et à manger.
 FausseCouche	4	84D9A855AF77E526	Liaveku perd l'enfant qu'elle portait.
 Grossesse	30	4E27CF8998C4E51A	Puthuvus attend un enfant de Nerail. Elle ne le sait pas encore.
@@ -11,7 +11,7 @@ Humeur	6	0DA9D3AE3210DB6F	Dovovael est terrifiée par la tempête.
 Journee	15840	CEA81B862C437452	Journée de Thezabeil : a cueilli 3 fois, est allée vers l'eau 2 fois, a exploré 15 fois, a rejoint son compagnon 7 fois, s'est reposée 18 fois, a dormi 2 fois.
 Lien	47	0F813A81AEADDFE6	Thezabeil et Sesuheil se sont attachés l'un à l'autre.
 Maladie	60	BD378FD4D9729B1D	Sekaer tombe malade : une dysenterie (personne ne sait la nommer).
-Mer	18	FCA5BC1D30FC1B04	Vaemakaek aperçoit une île au loin, vers l'est, à quelque 22 km.
+Mer	18	14C834641BF07644	Vaemakaek aperçoit une île au loin, vers l'est, à quelque 22 km.
 Partage	2288	D1ED5B9E67377819	Haita partage sa nourriture avec Thaimedai.
 Pensee	2745	1F53F93E9FAA56E4	Zofaim : « Je m'unis à Fameilai. »
 Pensees	1320	15F40ABD7537C875	Tout est calme. Je me repose.

@@ -34,14 +34,14 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
                 .ToList(),
             h.Objets.Select(o => o.Matiere == Matiere.Carcasse
                 ? L.T(o.Plein ? "objet.viandeFumee" : "objet.viande", ("n", Math.Max(1, Math.Round(100 * o.Qualite)))) + (o.Usure <= 0.4 ? L.T("objet.seGate") : "")
-                : NomObjet(o) + (o.Plein ? o.Matiere switch { Matiere.Calebasse => L.T("objet.pleineDEau"), Matiere.Peau => L.T("objet.outrePleine"), _ => "" } : "")
+                : NomObjet(o) + (o.Plein ? o.Matiere switch { Matiere.Calebasse or Matiere.Facture => L.T("objet.pleineDEau"), Matiere.Peau => L.T("objet.outrePleine"), _ => "" } : "")
                   + Etat(o)).ToList(),
             h.Vetement is { } v ? (v.Matiere == Matiere.Peau ? L.T("vetement.peau") : L.T("vetement.feuilles")) + Etat(v) : null,
             (int)Math.Round(100 * h.Nage));
     }
 
     /// <summary>Nom d'un objet porté ; un objet assemblé est décrit par ses pièces.</summary>
-    public static string NomObjet(Objet o) => o.Matiere == Matiere.Assemblage ? L.Rediger(Physique.Nom(o)) : L.T($"matiere.{o.Matiere}");
+    public static string NomObjet(Objet o) => o.Matiere is Matiere.Assemblage or Matiere.Facture ? L.Rediger(Physique.Nom(o)) : L.T($"matiere.{o.Matiere}");
 }
 
 /// <summary>Une découverte dans la chronologie du monde : la première fois qu'un effet a été obtenu.</summary>
@@ -77,7 +77,7 @@ public static class Decouvertes
 {
     /// <summary>Nom d'une découverte dans la chronologie, comme <see cref="Physique.NomDecouverte"/> : une seule roue et plusieurs roues sont deux trouvailles.</summary>
     public static string NomDecouverte(Effet e, string? pieces) => e == Effet.RouleSurAxe && Lois.Structure(pieces) == "axe:1"
-        ? L.T("decouverte.brouette") : L.T($"effet.{e}");
+        ? L.T("decouverte.brouette") : e is Effet.Facture or Effet.Remarque ? L.Rediger(Physique.NomDecouverte(e, pieces)) : L.T($"effet.{e}");
 
     public static List<DecouverteDto> Chronologie(ServiceMonde service)
     {

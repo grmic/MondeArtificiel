@@ -394,7 +394,10 @@ public sealed partial class Comportement
         foreach (var e in tous.EnfantsDe(h.Id)) if (e.EstVivant && e.EstEnfant(_maintenant)) bouches += 0.6;
         var siens = 0.0;
         foreach (var p in Champs.Parcelles) if (p.SemeurId == h.Id && p.Etat is EtatParcelle.EnTerre or EtatParcelle.Pousse) siens += p.Ares;
-        if (siens >= 10 * bouches * semis.Confiance) return false;
+        // Combien semer : selon ce que rapporte une heure aux champs comparée à une heure de cueillette ou de chasse (génération 2) ;
+        // avant, environ dix ares par bouche, d'autant plus qu'il y croit.
+        var voulu = Generation >= 2 ? 50 * bouches * PartAuxChamps(h, lignee, semis) : 10 * bouches * semis.Confiance;
+        if (siens >= voulu) return false;
         if (alea.Reel() >= 0.15 * (0.5 + h.Personnalite.Conscience)) return false;
 
         var aliment = Flore.Get(semis.Espece).Aliment!;
@@ -432,6 +435,44 @@ public sealed partial class Comportement
         // Semer sur le limon fait vivre le savoir de la crue.
         if (limon && SavoirDuLimon(h) is { } sl) h.Savoirs[h.Savoirs.IndexOf(sl)] = sl with { UtiliseLe = _maintenant };
         return true;
+    }
+
+    /// <summary>
+    /// Part de sa nourriture qu'il est prêt à demander aux champs (0,03 à 1), par simple comparaison des rendements : une heure de
+    /// cueillette ou de chasse autour du camp contre une heure aux champs, récolte différée et incertaine comprise. Tant que le
+    /// sauvage abonde, le champ n'est qu'un appoint ; il grandit quand le sauvage s'épuise (population, disette), quand la lignée
+    /// a grossi à force de sélection, et chez les patients. C'est ainsi qu'on explique aujourd'hui la lenteur de l'agriculture
+    /// naissante : les premiers champs rapportaient souvent moins par heure que la cueillette (Bowles, 2011 ; Winterhalder et
+    /// Kennett, 2006, théorie de la quête optimale) et la culture d'appoint a duré des millénaires (Fuller et al., 2014).
+    /// </summary>
+    private double PartAuxChamps(Humain h, Lignee? lignee, Savoir semis)
+    {
+        // Le sauvage qu'on peut aller chercher dans la journée (une demi-douzaine de kilomètres autour du camp : Binford, 1980 ;
+        // Kelly, 2013), une case sur deux : les plantes et le gibier, rapportés à une case riche.
+        double plantes = 0, gibier = 0;
+        var n = 0;
+        var rayon = (int)Math.Round(6.4 / Nature.Echelle.KilometresParCase);
+        for (var dy = -rayon; dy <= rayon; dy += 2)
+        for (var dx = -rayon; dx <= rayon; dx += 2)
+        {
+            int x = h.X + dx, y = h.Y + dy;
+            if (x < 0 || y < 0 || x >= carte.Largeur || y >= carte.Hauteur) continue;
+            var j = carte.Indice(x, y);
+            plantes += ecosysteme.Plantes[j];
+            gibier += ecosysteme.Gibier[j];
+            n++;
+        }
+        var cueillette = n == 0 ? 0 : Math.Clamp((plantes / n) / 6000.0 + 0.5 * (gibier / n) / 6000.0, 0, 2);
+        // Une disette récente pèse sur le jugement : les réserves du corps sont basses.
+        if (h.Reserves < 30) cueillette *= 0.7;
+        // Une heure aux champs : au début, un peu plus de la moitié d'une bonne cueillette ; davantage avec une lignée sélectionnée.
+        var vigueur = lignee is null ? 1 : Math.Clamp(lignee.Vigueur, 0.5, 4);
+        var patience = 0.6 + 0.4 * h.Personnalite.Conscience;
+        // On ne récolte que ce qu'on n'a pas quitté : qui a déjà moissonné y croit davantage.
+        var recolte = h.Savoirs.Exists(s => s.Effet == Effet.Moisson && s.Confiance >= 0.5) ? 1 : 0.75;
+        var champ = 0.55 * vigueur * (0.6 + 0.4 * semis.Confiance) * patience * recolte;
+        var ratio = champ / Math.Max(0.05, cueillette);
+        return 0.03 + 0.97 / (1 + Math.Exp(-(ratio - 1) / 0.15));
     }
 
     /// <summary>Hors d'une communauté : son camp, c'est là où il dort d'ordinaire (le lieu d'abri dont il se souvient le mieux).</summary>

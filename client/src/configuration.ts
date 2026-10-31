@@ -35,6 +35,8 @@ interface Configuration {
   coeursMachine: number;
   /** Clémence du monde : part (0 à 100 %) des risques de maladie, de couches, des tout-petits et des catastrophes écartée. */
   clemence: number;
+  /** Esprits fertiles : les idées par combinaison viennent ce nombre de fois plus souvent (1 : le monde tel quel). */
+  espritsFertiles: number;
 }
 
 /** Réglages d'un nouveau monde (graine null : au hasard). */
@@ -134,6 +136,20 @@ export class PanneauConfiguration {
     return { ligne, curseur, valeur };
   })();
   private readonly messageClemence = el("p", "message-config");
+  /** Esprits fertiles : seulement pour les mondes qui ont la matière (génération 2 et suivantes). */
+  private readonly esprits = (() => {
+    const ligne = el("label", "reglage");
+    const choix = el("select");
+    for (const n of [1, 3, 10, 30]) {
+      const o = el("option", undefined, n === 1 ? t("config.esprits.1") : t("config.esprits.n", { n }));
+      o.value = String(n);
+      choix.append(o);
+    }
+    ligne.append(el("span", "libelle", t("config.esprits")), choix);
+    return { ligne, choix };
+  })();
+  private readonly messageEsprits = el("p", "message-config");
+  private readonly blocEsprits = el("div");
   private readonly messageSauvegardes = el("p", "message-config");
   private readonly dialogueRestaurer = el("dialog", "dialogue");
   private aRestaurer: string | null = null;
@@ -196,6 +212,8 @@ export class PanneauConfiguration {
     this.coeurs.choix.addEventListener("change", () => void this.choisirCoeurs(Number(this.coeurs.choix.value)));
     this.clemence.curseur.addEventListener("input", () => (this.clemence.valeur.textContent = t("commun.pourcent", { v: Number(this.clemence.curseur.value) })));
     this.clemence.curseur.addEventListener("change", () => void this.choisirClemence(Number(this.clemence.curseur.value)));
+    this.esprits.choix.addEventListener("change", () => void this.choisirEsprits(Number(this.esprits.choix.value)));
+    this.blocEsprits.append(el("h3", undefined, t("config.esprits")), this.esprits.ligne, el("p", "discret", t("config.espritsAide")), this.messageEsprits);
 
     const lireGuide = el("button", undefined, t("guide.bouton"));
     lireGuide.type = "button";
@@ -229,6 +247,7 @@ export class PanneauConfiguration {
       this.clemence.ligne,
       el("p", "discret", t("config.clemenceAide")),
       this.messageClemence,
+      this.blocEsprits,
       this.titreSauvegardes,
       el("p", "discret", t("config.sauvegardesAide")),
       boutonsSauvegarde,
@@ -272,6 +291,9 @@ export class PanneauConfiguration {
     this.messageCoeurs.textContent = "";
     this.remplirClemence(c.clemence);
     this.messageClemence.textContent = "";
+    this.esprits.choix.value = String(c.espritsFertiles);
+    this.messageEsprits.textContent = "";
+    this.blocEsprits.hidden = c.generation < 2;
     this.actuel.textContent = `${t("config.graine")} ${c.graine} · ${t("config.nCouples", { n: c.couples })} · ${t("config.nContinents", { n: c.continents })}${c.origine ? ` ${t("config.origine")}` : ""}. ${c.resume}`;
     const km = (cases: number) => Math.round(cases * c.kilometresParCase);
     const bornes = (e: HTMLInputElement, min: number, max: number) => {
@@ -419,6 +441,17 @@ export class PanneauConfiguration {
     this.config = c;
     this.remplirClemence(c.clemence);
     this.messageClemence.textContent = c.clemence === 0 ? t("config.clemenceZero") : t("config.clemenceEcarte", { clemence: c.clemence });
+  }
+
+  private async choisirEsprits(facteur: number): Promise<void> {
+    const c = await connexion.invoke<Configuration>("ChoisirEspritsFertiles", facteur).catch(() => null);
+    if (!c) {
+      if (this.config) this.esprits.choix.value = String(this.config.espritsFertiles);
+      this.messageEsprits.textContent = t("config.reglageInchange");
+      return;
+    }
+    this.config = c;
+    this.esprits.choix.value = String(c.espritsFertiles);
   }
 
   private async lireSauvegardes(): Promise<void> {

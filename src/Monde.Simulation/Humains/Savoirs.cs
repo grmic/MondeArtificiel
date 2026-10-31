@@ -75,6 +75,8 @@ public enum Matiere : byte
     Minerai = 35,
     /// <summary>Une chose faite de main d'homme dont la matière a changé (pâte modelée, terre cuite, charbon, poix…) : sa composition est gardée avec l'objet.</summary>
     Substance = 36,
+    /// <summary>Une chose faite de main d'homme par façons et jointures (voir <see cref="Facture"/>) : sa recette est gardée avec l'objet.</summary>
+    Facture = 37,
 }
 
 /// <summary>Gestes à la portée de tout humain. Ce qu'ils produisent dépend de la matière, pas d'une découverte programmée.</summary>
@@ -156,6 +158,8 @@ public enum Geste : byte
     Melanger = 37,
     /// <summary>Jeter une pierre chauffée dans l'eau.</summary>
     Plonger = 38,
+    /// <summary>Façonner une chose par une suite de gestes et de jointures (voir <see cref="Facture"/>).</summary>
+    Faconner = 39,
 }
 
 /// <summary>Ce que l'humain constate après un geste.</summary>
@@ -293,6 +297,10 @@ public enum Effet : byte
     Apprivoiser = 66,
     /// <summary>Les femelles qui allaitent se laissent prendre leur lait.</summary>
     Traite = 67,
+    /// <summary>Une chose façonnée qui sert à un besoin (sa recette est dans le savoir : voir <see cref="Facture"/>).</summary>
+    Facture = 68,
+    /// <summary>Une propriété remarquée d'une matière (« la branche verte plie et revient ») : elle donne des idées.</summary>
+    Remarque = 69,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -611,6 +619,8 @@ public static class Physique
         ? Seul("decouverte.brouette")
         : e == Effet.Transformation && Comportement.LireRecette(pieces) is { } r
             ? new Recit("decouverte.Transformation", ("a", MatiereDeRecette(r.A, r.Famille)), ("chg", Chimie.Perception.Dire(r.Changements)))
+        : e == Effet.Facture && Facons.LireObjet(pieces) is { } f ? Facons.Decrire(f.Facture)
+        : e == Effet.Remarque && Facons.LireRemarque(pieces) is { } rq ? Seul($"decouverte.Remarque.{rq}")
         : NomEffet(e);
 
     /// <summary>Le geste et ses matières, en mots (« pousser un tronc sur l'eau »).</summary>
@@ -633,6 +643,7 @@ public static class Physique
     /// <summary>Nom d'un objet porté : un objet assemblé est décrit par ses pièces.</summary>
     public static Recit Nom(Objet o) => o.Matiere == Matiere.Assemblage && Assemblage.Lire(o.Pieces) is { } a ? Lois.Decrire(a)
         : o.Matiere is Matiere.Substance or Matiere.Minerai && Chimie.Substance.Lire(o.Pieces) is { } s ? Chimie.Perception.Nom(s)
+        : o.Matiere == Matiere.Facture && Facons.LireObjet(o.Pieces) is { } f ? Facons.Decrire(f.Facture)
         : Nom(o.Matiere);
 
     /// <summary>Le savoir en quelques mots, tel que l'humain se le dit.</summary>
@@ -658,6 +669,9 @@ public static class Physique
         Effet.Moisson => Seul($"savoir.Moisson.{s.Geste}"),
         Effet.Transformation when Comportement.LireRecette(s.Pieces) is { } r => DecrireRecette(r.Geste, r.A, r.B, r.Mode, r.Changements, r.Famille),
         Effet.Modelage => Seul(s.Pieces == "M|1" ? "savoir.Modelage.creux" : "savoir.Modelage"),
+        Effet.Facture when Facons.LireObjet(s.Pieces) is { } f => new Recit($"savoir.Facture.{f.Fonction}", ("objet", Facons.Decrire(f.Facture))),
+        Effet.Remarque when Facons.LireRemarque(s.Pieces) is { } r => new Recit($"savoir.Remarque.{r}", ("a", Nom(s.A))),
+        Effet.Rien when Facons.LireObjet(s.Pieces) is { } fr => new Recit("savoir.Facture.Rien", ("objet", Facons.Decrire(fr.Facture))),
         _ when Assemblage.Lire(s.Pieces) is { } a => Lois.Savoir(s.Effet, a),
         _ => Seul("savoir.Rien"),
     };

@@ -850,7 +850,9 @@ public sealed partial class Comportement
         {
             h.Activite = Activite.Pecher;
             // Une prise par heure ou deux sur un récif, pour un pêcheur adroit (ligne, harpon, mains) ; un poisson d'un ou deux kilos.
-            if (alea.Reel() < 0.12 * poissons * (0.5 + p.Adresse)) h.Faim = Math.Max(0, h.Faim - (12 + 18 * alea.Reel()));
+            var ligne = 0.0;
+            foreach (var o in h.Objets) if (o.Matiere == Matiere.Facture) ligne = Math.Max(ligne, Facons.Valeur(Fonction.Pecher, o));
+            if (alea.Reel() < 0.12 * poissons * (0.5 + p.Adresse) * (1 + ligne)) h.Faim = Math.Max(0, h.Faim - (12 + 18 * alea.Reel()));
         }
         else h.Activite = Activite.Naviguer;
         h.CibleX = h.CibleY = -1;

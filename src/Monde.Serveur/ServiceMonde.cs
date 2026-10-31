@@ -25,6 +25,7 @@ public sealed class ServiceMonde
     private const string CleJournalQuotidien = "journal_quotidien";
     private const string CleCoeurs = "coeurs";
     private const string CleClemence = "clemence";
+    private const string CleEspritsFertiles = "esprits_fertiles";
     private const string CleJournalConserver = "journal_conserver_ans";
     private const string CleJournalQuotidienConserver = "journal_quotidien_conserver_ans";
     private const string CleJournalEffacerMarquants = "journal_effacer_marquants";
@@ -37,6 +38,7 @@ public sealed class ServiceMonde
     private volatile bool _journalQuotidien;
     private volatile int _coeurs;
     private volatile int _clemence;
+    private volatile int _espritsFertiles = 1;
     private double _facteurAtteint;
 
     public ServiceMonde(IConfiguration configuration, ILogger<ServiceMonde> journal)
@@ -78,9 +80,12 @@ public sealed class ServiceMonde
         // Clémence du monde : 0 (le monde tel quel) par défaut, et pour une valeur illisible ou hors limites.
         _clemence = int.TryParse(Depot.LireReglage(CleClemence), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var cl)
                     && cl <= 100 ? cl : 0;
+        // Esprits fertiles : 1 (le monde tel quel) par défaut, et pour une valeur illisible ou non permise.
+        _espritsFertiles = int.TryParse(Depot.LireReglage(CleEspritsFertiles), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var ef)
+                           && Array.IndexOf(MondeSimule.EspritsFertilesPermis, ef) >= 0 ? ef : 1;
         _monde = new MondeSimule(carte, _reprendreVitesse ? etat : etat with { Facteur = 0 })
         {
-            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence,
+            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence, EspritsFertiles = _espritsFertiles,
         };
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
@@ -202,6 +207,20 @@ public sealed class ServiceMonde
         }
     }
 
+    /// <summary>« Esprits fertiles » (1, 3, 10 ou 30) : gardé en base ; un changement est noté au journal du monde.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">Valeur non permise.</exception>
+    public int EspritsFertiles
+    {
+        get => _espritsFertiles;
+        set
+        {
+            if (Array.IndexOf(MondeSimule.EspritsFertilesPermis, value) < 0) throw new ArgumentOutOfRangeException(nameof(value));
+            Depot.EcrireReglage(CleEspritsFertiles, value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            _espritsFertiles = value;
+            _monde.ChoisirEspritsFertiles(value);
+        }
+    }
+
     /// <summary>Vitesse réellement atteinte, mesurée par le moteur (secondes du monde par seconde réelle).</summary>
     public double FacteurAtteint
     {
@@ -244,7 +263,7 @@ public sealed class ServiceMonde
         var etat = MondeSimule.Nouveau(configuration);
         var nouveau = new MondeSimule(GenerateurContinent.Generer(configuration), etat)
         {
-            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence,
+            PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence, EspritsFertiles = _espritsFertiles,
         };
         lock (VerrouLectureLongue)
         lock (_verrou)
@@ -367,7 +386,7 @@ public sealed class ServiceMonde
                 var configuration = etat.Configuration ?? ConfigurationMonde.ParDefaut(etat.Graine);
                 restaure = new MondeSimule(GenerateurContinent.Generer(configuration), etat with { Facteur = 0 })
                 {
-                    PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence,
+                    PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence, EspritsFertiles = _espritsFertiles,
                 };
             }
             catch (Exception e) when (e is ArgumentException or InvalidOperationException)
