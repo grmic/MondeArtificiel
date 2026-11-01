@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.SignalR;
 using Monde.Serveur.Hubs;
 using Monde.Simulation;
 using Monde.Simulation.Humains;
+using Monde.Simulation.Temps;
 using Monde.Stockage;
 
 namespace Monde.Serveur.Entite;
@@ -23,8 +24,11 @@ public enum ModeEntite
 /// <summary>Réglages de l'Entité-LLM gardés avec le monde.</summary>
 /// <param name="PartOrdinaires">Part des prières ordinaires soumises au LLM (0 à 100 %).</param>
 /// <param name="Attendre">Arrêter l'horloge du monde pendant que le LLM réfléchit.</param>
+/// <param name="Regard">Son regard périodique sur le monde.</param>
+/// <param name="RegardJours">Jours du monde entre deux regards.</param>
+/// <param name="Caractere">Son caractère, écrit par le joueur (vide : elle se fait le sien).</param>
 public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdinaires, bool Attendre, bool Paroles, bool Bienfaits, bool Chatiments,
-    bool Catastrophes, bool Souffles)
+    bool Catastrophes, bool Souffles, bool Regard = true, int RegardJours = EntiteLlm.RegardParDefaut, string Caractere = "")
 {
     public ModeEntite ModeLu => Enum.TryParse<ModeEntite>(Mode, out var m) && Enum.IsDefined(m) ? m : ModeEntite.Joueur;
 
@@ -34,7 +38,10 @@ public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdina
 }
 
 /// <summary>Où en est l'Entité-LLM : réglages, file d'attente, ce qu'elle fait en ce moment, dernière erreur.</summary>
-public sealed record EtatEntiteLlmDto(ConnexionLlm Connexion, ReglagesEntiteLlm Reglages, int EnFile, string? EnCours, string? DerniereErreur, int Propositions);
+/// <param name="CaractereLlm">Le caractère que le LLM s'est donné (vide : aucun encore).</param>
+/// <param name="ProchainRegard">Date du monde de son prochain regard (null : pas de regard prévu).</param>
+public sealed record EtatEntiteLlmDto(ConnexionLlm Connexion, ReglagesEntiteLlm Reglages, int EnFile, string? EnCours, string? DerniereErreur, int Propositions,
+    string CaractereLlm = "", string? ProchainRegard = null);
 
 /// <summary>Un échange, pour la liste : date, occasion, destinataire, mots, résultat.</summary>
 public sealed record EchangeDto(long Id, string Date, string Quand, string Occasion, int Humain, string? NomHumain, int Communaute, string? NomCommunaute,
@@ -84,7 +91,14 @@ public static class MarquesLlm
 public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContext<MondeHub> hub, ILogger<EntiteLlm> journal) : BackgroundService
 {
     private const string CleMode = "llm_mode", ClePrieres = "llm_prieres", ClePart = "llm_part", CleAttendre = "llm_attendre", CleFamilles = "llm_familles",
-        CleLangue = "llm_langue";
+        CleLangue = "llm_langue", CleRegard = "llm_regard", CleRegardJours = "llm_regard_jours", CleDernierRegard = "llm_dernier_regard",
+        CleCaractere = "llm_caractere", CleCaractereLlm = "llm_caractere_llm";
+
+    /// <summary>Jours entre deux regards, par défaut : une saison.</summary>
+    public const int RegardParDefaut = (int)Calendrier.JoursParSaison;
+
+    /// <summary>Longueur maximale du caractère écrit par le joueur (ou choisi par le LLM).</summary>
+    public const int CaractereMax = 2000;
 
     /// <summary>Demandes en attente au plus ; au-delà, la moins urgente (la plus récente à urgence égale) est abandonnée.</summary>
     public const int FileMax = 40;
@@ -93,7 +107,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
     private static readonly TimeSpan DelaiReponse = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ReposApresPanne = TimeSpan.FromSeconds(30);
 
-    private sealed record Demande(OccasionLlm Occasion, int Humain, int Communaute, int Priere, long Rang);
+    /// <param name="Depuis">Pour un regard : date du monde du regard précédent.</param>
+    private sealed record Demande(OccasionLlm Occasion, int Humain, int Communaute, int Priere, long Rang, long Depuis = 0);
 
     private readonly Lock _verrou = new();
     private readonly List<Demande> _file = [];
@@ -141,24 +156,34 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             var d = service.Depot;
             var familles = int.TryParse(d.LireReglage(CleFamilles), NumberStyles.None, CultureInfo.InvariantCulture, out var f) ? (FamillesLlm)f & FamillesLlm.Toutes : FamillesLlm.Toutes;
             var part = int.TryParse(d.LireReglage(ClePart), NumberStyles.None, CultureInfo.InvariantCulture, out var p) && p <= 100 ? p : 10;
+            var jours = int.TryParse(d.LireReglage(CleRegardJours), NumberStyles.None, CultureInfo.InvariantCulture, out var j) && j is >= 1 and <= 3650 ? j : RegardParDefaut;
             return new ReglagesEntiteLlm(d.LireReglage(CleMode) is { } m && Enum.TryParse<ModeEntite>(m, out var mm) && Enum.IsDefined(mm) ? mm.ToString() : nameof(ModeEntite.Joueur),
                 d.LireReglage(ClePrieres) != "non", part, d.LireReglage(CleAttendre) == "oui",
                 familles.HasFlag(FamillesLlm.Paroles), familles.HasFlag(FamillesLlm.Bienfaits), familles.HasFlag(FamillesLlm.Chatiments),
-                familles.HasFlag(FamillesLlm.Catastrophes), familles.HasFlag(FamillesLlm.Souffles));
+                familles.HasFlag(FamillesLlm.Catastrophes), familles.HasFlag(FamillesLlm.Souffles), d.LireReglage(CleRegard) != "non", jours,
+                d.LireReglage(CleCaractere) ?? "");
         }
     }
 
     /// <summary>Change les réglages ; <paramref name="langue"/> : celle du navigateur, que le LLM parlera.</summary>
     public void Regler(ReglagesEntiteLlm r, string langue)
     {
-        if (!Enum.TryParse<ModeEntite>(r.Mode, out var mode) || !Enum.IsDefined(mode) || r.PartOrdinaires is < 0 or > 100)
+        if (!Enum.TryParse<ModeEntite>(r.Mode, out var mode) || !Enum.IsDefined(mode) || r.PartOrdinaires is < 0 or > 100 || r.RegardJours is < 1 or > 3650
+            || (r.Caractere?.Length ?? 0) > CaractereMax)
             throw new ArgumentException(L.T("llm.erreur.reglages"));
         var d = service.Depot;
+        // Le regard reprend : le premier viendra après une période entière, sans tout ce qui s'est passé pendant qu'il dormait.
+        var avant = Reglages;
+        if (mode != ModeEntite.Joueur && r.Regard && (avant.ModeLu == ModeEntite.Joueur || !avant.Regard || avant.RegardJours != r.RegardJours))
+            d.EcrireReglage(CleDernierRegard, service.Monde.Secondes.ToString(CultureInfo.InvariantCulture));
         d.EcrireReglage(CleMode, mode.ToString());
         d.EcrireReglage(ClePrieres, r.Prieres ? "oui" : "non");
         d.EcrireReglage(ClePart, r.PartOrdinaires.ToString(CultureInfo.InvariantCulture));
         d.EcrireReglage(CleAttendre, r.Attendre ? "oui" : "non");
         d.EcrireReglage(CleFamilles, ((int)r.Familles).ToString(CultureInfo.InvariantCulture));
+        d.EcrireReglage(CleRegard, r.Regard ? "oui" : "non");
+        d.EcrireReglage(CleRegardJours, r.RegardJours.ToString(CultureInfo.InvariantCulture));
+        d.EcrireReglage(CleCaractere, (r.Caractere ?? "").Trim());
         if (L.Toutes.ContainsKey(langue)) d.EcrireReglage(CleLangue, langue);
         if (mode == ModeEntite.Joueur)
             lock (_verrou) _file.RemoveAll(x => x.Occasion is not (OccasionLlm.DemandeHumain or OccasionLlm.DemandeCommunaute));
@@ -168,7 +193,39 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
     {
         int n;
         lock (_verrou) n = _file.Count;
-        return new EtatEntiteLlmDto(Connexion, Reglages, n, _enCours, _derniereErreur, service.Depot.Echanges(statut: 1, limite: 1000).Count);
+        var r = Reglages;
+        string? prochain = null;
+        if (r.ModeLu != ModeEntite.Joueur && r.Regard && !string.IsNullOrEmpty(Connexion.Modele))
+            prochain = L.Date((DernierRegard ?? service.Monde.Secondes) + r.RegardJours * Calendrier.SecondesParJour);
+        return new EtatEntiteLlmDto(Connexion, r, n, _enCours, _derniereErreur, service.Depot.Echanges(statut: 1, limite: 1000).Count,
+            service.Depot.LireReglage(CleCaractereLlm) ?? "", prochain);
+    }
+
+    /// <summary>Date du monde de son dernier regard (null : jamais).</summary>
+    private long? DernierRegard =>
+        long.TryParse(service.Depot.LireReglage(CleDernierRegard), NumberStyles.None, CultureInfo.InvariantCulture, out var s) ? s : null;
+
+    /// <summary>Oublie le caractère que le LLM s'était donné : il s'en choisira un autre au prochain appel.</summary>
+    public void OublierCaractere() => service.Depot.EcrireReglage(CleCaractereLlm, "");
+
+    /// <summary>Met en file son regard sur le monde quand le moment est venu (un seul à la fois).</summary>
+    private void Regarder(MondeSimule monde, ReglagesEntiteLlm r)
+    {
+        var maintenant = monde.Secondes;
+        var dernier = DernierRegard;
+        if (dernier is null || dernier > maintenant)
+        {
+            // Premier tour (ou monde revenu en arrière) : le premier regard viendra après une période entière.
+            service.Depot.EcrireReglage(CleDernierRegard, maintenant.ToString(CultureInfo.InvariantCulture));
+            return;
+        }
+        if (maintenant - dernier.Value < r.RegardJours * Calendrier.SecondesParJour) return;
+        lock (_verrou)
+        {
+            if (_file.Any(x => x.Occasion == OccasionLlm.Regard)) return;
+        }
+        service.Depot.EcrireReglage(CleDernierRegard, maintenant.ToString(CultureInfo.InvariantCulture));
+        Mettre(new Demande(OccasionLlm.Regard, 0, 0, 0, 0, dernier.Value));
     }
 
     /// <summary>Le joueur demande « Que ferait l'Entité ? » pour un humain ou une communauté ; rend la place dans la file.</summary>
@@ -187,7 +244,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         OccasionLlm.DemandeHumain or OccasionLlm.DemandeCommunaute => 0,
         OccasionLlm.PriereCollective => 1,
         OccasionLlm.PriereForte => 2,
-        _ => 3,
+        OccasionLlm.Regard => 3,
+        _ => 4,
     };
 
     private int Mettre(Demande d)
@@ -246,6 +304,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         else _dernierePriere = Math.Max(_dernierePriere, monde.Prieres().Select(p => p.Id).DefaultIfEmpty(0).Max());
 
         if (string.IsNullOrEmpty(Connexion.Modele)) return;
+        if (mode != ModeEntite.Joueur && reglages.Regard) Regarder(monde, reglages);
         Demande? d;
         lock (_verrou)
         {
@@ -283,9 +342,13 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var connexion = Connexion;
         var permises = reglages.Familles;
         var memoire = service.Depot.Echanges(limite: 8).Where(e => e.Statut is 0 or 1).Reverse().ToList();
-        var lecture = Contexte.Lire(service, permises, d.Occasion, d.Humain, d.Communaute, priere, memoire);
+        var caractereLlm = service.Depot.LireReglage(CleCaractereLlm) ?? "";
+        var lecture = d.Occasion == OccasionLlm.Regard
+            ? Contexte.LireRegard(service, permises, d.Depuis, memoire, reglages.Caractere, caractereLlm)
+            : Contexte.Lire(service, permises, d.Occasion, d.Humain, d.Communaute, priere, memoire, reglages.Caractere, caractereLlm);
         var (maintenant, humains) = monde.InstantaneHumains();
-        _enCours = d.Humain >= 1 && d.Humain <= humains.Count ? humains[d.Humain - 1].Nom : L.T("llm.etat.communaute");
+        _enCours = d.Occasion == OccasionLlm.Regard ? L.T("llm.etat.regard")
+            : d.Humain >= 1 && d.Humain <= humains.Count ? humains[d.Humain - 1].Nom : L.T("llm.etat.communaute");
         var chrono = Stopwatch.StartNew();
         var messages = new List<(string, string)> { ("user", lecture.Demande) };
         string reponse = "";
@@ -357,6 +420,9 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                 Lu(lecture), reponse, "", "", "[]", "[]", 3, 0, -1, erreur, 0));
             return;
         }
+        // Sans caractère écrit par le joueur, elle garde celui qu'elle s'est donné la première fois.
+        if (string.IsNullOrWhiteSpace(reglages.Caractere) && string.IsNullOrWhiteSpace(caractereLlm) && !string.IsNullOrWhiteSpace(decision.Caractere))
+            service.Depot.EcrireReglage(CleCaractereLlm, ClientLlm.Couper(decision.Caractere.Trim(), CaractereMax));
         // Les pièces P1, P2… sont remplacées par leur écriture : une proposition acceptée plus tard reste lisible.
         var actes = decision.Actes.Select(a => a.Type == Actes.SoufflerCombinaison ? a with { A = Actes.Piece(a.A, lecture.Pieces), B = Actes.Piece(a.B, lecture.Pieces) } : a).ToList();
         var echange = new EchangeEntite(0, maintenant, Maintenant(), (int)d.Occasion, d.Humain, d.Communaute, d.Priere, connexion.Libelle, duree,
@@ -397,23 +463,35 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             await hub.Clients.Diffuser("EntiteLlm", () => Etat());
             return [L.T("llm.resultat.tropTard")];
         }
-        var (resultats, premier, dernier) = monde.Executer(m =>
+        // Chaque acte d'un bloc (ses lignes du journal sont les siennes), noté au registre ; un acte refusé par les règles y est noté aussi.
+        var resultats = new List<string>();
+        long premier = 0, dernier = -1;
+        foreach (var a in actes)
         {
-            var lignes = new List<string>();
-            foreach (var a in actes)
+            if (a.Type == Actes.Rien)
             {
-                try
+                resultats.Add(L.T("llm.resultat.rien"));
+                continue;
+            }
+            try
+            {
+                var (fait, p, d) = monde.Executer(m => Actes.Appliquer(m, a, familles, []));
+                Registre.Noter(service, Registre.Llm, a, fait, p, d, e.Id);
+                resultats.Add(string.Join(" ", fait.Resultats));
+                if (d >= p)
                 {
-                    lignes.Add(Actes.Appliquer(m, a, familles, []));
-                }
-                catch (ArgumentException x)
-                {
-                    lignes.Add(L.T("llm.resultat.refuse", ("raison", x.Message)));
+                    if (premier == 0) premier = p;
+                    dernier = d;
                 }
             }
-            return lignes;
-        });
-        MarquesLlm.Ajouter(premier, dernier);
+            catch (ArgumentException x)
+            {
+                var refus = L.T("llm.resultat.refuse", ("raison", x.Message));
+                Registre.Noter(service, Registre.Llm, a, new FaitEntite([refus], -1, 0), 1, 0, e.Id);
+                resultats.Add(refus);
+            }
+        }
+        if (resultats.Count == 0) resultats.Add(L.T("llm.resultat.rien"));
         service.Depot.MettreAJourEchange(e with
         {
             Statut = 0, Resultats = JsonSerializer.Serialize(resultats, Actes.Json), JournalPremier = dernier >= premier ? premier : 0,

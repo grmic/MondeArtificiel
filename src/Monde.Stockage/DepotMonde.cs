@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 50;
+    public const int VersionSchema = 51;
 
     private readonly string _connexion;
 
@@ -616,6 +616,8 @@ public sealed partial class DepotMonde
         if (actuelle < 49) MigrerVersion49(connexion, transaction);
         // Version 50 : trace des échanges avec l'Entité jouée par un LLM.
         if (actuelle < 50) MigrerVersion50(connexion, transaction);
+        // Version 51 : chronologie des actes de l'Entité (ceux d'avant reconstitués depuis le journal).
+        if (actuelle < 51) MigrerVersion51(connexion, transaction);
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """

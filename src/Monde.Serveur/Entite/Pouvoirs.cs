@@ -20,7 +20,10 @@ public static class Pouvoirs
     }
 
     /// <summary>Souffle un geste ; rend ce que l'humain a obtenu, en mots.</summary>
-    public static string Souffler(MondeSimule monde, DemandeIntuition demande)
+    public static string Souffler(MondeSimule monde, DemandeIntuition demande) => SoufflerFait(monde, demande).Texte;
+
+    /// <summary>Souffle un geste ; rend ce que l'humain a obtenu, en mots, et s'il a obtenu quelque chose.</summary>
+    public static (string Texte, bool Reussi) SoufflerFait(MondeSimule monde, DemandeIntuition demande)
     {
         if (!Enum.TryParse<Geste>(demande.Geste, out var geste) || !Enum.IsDefined(geste)
             || !Enum.TryParse<Matiere>(demande.A, out var a) || !Enum.IsDefined(a)
@@ -31,16 +34,20 @@ public static class Pouvoirs
         if (!Physique.Convient(geste, a, b) || plante && (demande.Espece < 1 || demande.Espece > monde.Flore.Especes.Count))
             throw new ArgumentException(L.T("erreur.gesteMatieres"));
         var effet = monde.Souffler(demande.Humain, geste, a, b, plante ? demande.Espece : 0);
-        if (plante && effet == Effet.Rien) return L.T("geste.planteEssayee");
-        return effet == Effet.Rien ? L.T("geste.rien") : L.T("geste.obtenu", ("effet", L.T($"effet.{effet}")));
+        if (plante && effet == Effet.Rien) return (L.T("geste.planteEssayee"), false);
+        return effet == Effet.Rien ? (L.T("geste.rien"), false) : (L.T("geste.obtenu", ("effet", L.T($"effet.{effet}"))), true);
     }
 
     /// <summary>Souffle une combinaison ; rend ce qui est arrivé, en mots.</summary>
-    public static string SoufflerCombinaison(MondeSimule monde, DemandeCombinaison demande)
+    public static string SoufflerCombinaison(MondeSimule monde, DemandeCombinaison demande) => SoufflerCombinaisonFait(monde, demande).Texte;
+
+    /// <summary>Souffle une combinaison ; rend ce qui est arrivé, en mots, et si l'humain a obtenu quelque chose.</summary>
+    public static (string Texte, bool Reussi) SoufflerCombinaisonFait(MondeSimule monde, DemandeCombinaison demande)
     {
         if (Arbre.Recette(demande) is not { } recette) throw new ArgumentException(L.T("erreur.combinaison"));
         var (effet, recit) = monde.SoufflerFacture(demande.Humain, recette);
-        return recit is not null ? L.Rediger(recit) : effet == Effet.Rien ? L.T("fac.souffle.rien") : L.T("geste.obtenu", ("effet", L.T("effet.Facture")));
+        var texte = recit is not null ? L.Rediger(recit) : effet == Effet.Rien ? L.T("fac.souffle.rien") : L.T("geste.obtenu", ("effet", L.T("effet.Facture")));
+        return (texte, effet != Effet.Rien);
     }
 
     public static string Exaucer(MondeSimule monde, int priere)

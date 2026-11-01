@@ -6,8 +6,12 @@ interface ConnexionLlm { fournisseur: string; adresse: string; modele: string; c
 interface Reglages {
   mode: string; prieres: boolean; partOrdinaires: number; attendre: boolean;
   paroles: boolean; bienfaits: boolean; chatiments: boolean; catastrophes: boolean; souffles: boolean;
+  regard: boolean; regardJours: number; caractere: string;
 }
-interface Etat { connexion: ConnexionLlm; reglages: Reglages; enFile: number; enCours: string | null; derniereErreur: string | null; propositions: number }
+interface Etat {
+  connexion: ConnexionLlm; reglages: Reglages; enFile: number; enCours: string | null; derniereErreur: string | null; propositions: number;
+  caractereLlm: string; prochainRegard: string | null;
+}
 interface Echange {
   id: number; date: string; quand: string; occasion: string; humain: number; nomHumain: string | null; communaute: number; nomCommunaute: string | null;
   priere: number; modele: string; secondes: number; mots: string; pensee: string; actes: string[]; resultats: string[]; statut: string; statutCode: string;
@@ -103,6 +107,10 @@ export class PanneauEntiteLlm {
   private readonly prieres: HTMLInputElement;
   private readonly part = el("input");
   private readonly attendre: HTMLInputElement;
+  private readonly regard: HTMLInputElement;
+  private readonly regardJours = el("input");
+  private readonly caractere = el("textarea");
+  private readonly caractereLlm = el("p", "discret");
   private readonly familles = new Map<keyof Reglages, HTMLInputElement>();
   private readonly retourReglages = el("p", "discret");
   private readonly etat = el("p", "etat-llm");
@@ -153,8 +161,20 @@ export class PanneauEntiteLlm {
     this.part.step = "1";
     this.part.className = "nombre-court";
     reglagesBloc.append(ligne(t("ellm.part"), this.part, " %"), el("p", "discret", t("ellm.demandeAide")));
+    [l, this.regard] = caseACocher(t("ellm.regard"), t("ellm.regardAide"));
+    this.regardJours.type = "number";
+    this.regardJours.min = "1";
+    this.regardJours.max = "3650";
+    this.regardJours.step = "1";
+    this.regardJours.className = "nombre-court";
+    reglagesBloc.append(l, " ", ligne(t("ellm.regardJours"), this.regardJours, " " + t("ellm.jours")));
     [l, this.attendre] = caseACocher(t("ellm.attendre"), t("ellm.attendreAide"));
-    reglagesBloc.append(l, el("br"), el("h4", undefined, t("ellm.familles")));
+    reglagesBloc.append(l, el("br"), el("h4", undefined, t("ellm.caractere")), el("p", "discret", t("ellm.caractereAide")));
+    this.caractere.rows = 3;
+    this.caractere.maxLength = 2000;
+    this.caractere.className = "caractere-entite";
+    this.caractere.placeholder = t("ellm.caractereExemple");
+    reglagesBloc.append(this.caractere, this.caractereLlm, el("h4", undefined, t("ellm.familles")));
     for (const f of FAMILLES) {
       const [lf, i] = caseACocher(t(`ellm.famille.${f}`), t(`ellm.famille.${f}.aide`));
       this.familles.set(f, i);
@@ -205,6 +225,9 @@ export class PanneauEntiteLlm {
     this.prieres.checked = e.reglages.prieres;
     this.part.value = String(e.reglages.partOrdinaires);
     this.attendre.checked = e.reglages.attendre;
+    this.regard.checked = e.reglages.regard;
+    this.regardJours.value = String(e.reglages.regardJours);
+    this.caractere.value = e.reglages.caractere ?? "";
     for (const [f, i] of this.familles) i.checked = Boolean(e.reglages[f]);
     this.montrerEtat(e);
   }
@@ -214,7 +237,15 @@ export class PanneauEntiteLlm {
       t(`ellm.mode.${e.reglages.mode}`), t("ellm.etat.file", { n: e.enFile })];
     if (e.enCours) parts.push(t("ellm.etat.enCours", { nom: e.enCours }));
     if (e.propositions > 0) parts.push(t("ellm.etat.propositions", { n: e.propositions }));
+    if (e.prochainRegard) parts.push(t("ellm.etat.prochainRegard", { date: e.prochainRegard }));
     this.etat.textContent = parts.join(" · ");
+    this.caractereLlm.replaceChildren();
+    if (!e.reglages.caractere?.trim()) {
+      if (e.caractereLlm) {
+        this.caractereLlm.append(t("ellm.caractereLlm"), " ", el("q", "mots-entite", e.caractereLlm), " ",
+          bouton(t("ellm.oublier"), () => void this.oublierCaractere(), "lien"));
+      } else this.caractereLlm.append(t("ellm.caractereAucun"));
+    }
     if (e.derniereErreur) this.etat.append(el("br"), el("span", "erreur", e.derniereErreur));
   }
 
@@ -248,11 +279,21 @@ export class PanneauEntiteLlm {
       mode: this.modes.find((i) => i.checked)?.value ?? "Joueur", prieres: this.prieres.checked,
       partOrdinaires: Math.max(0, Math.min(100, Math.round(Number(this.part.value) || 0))), attendre: this.attendre.checked,
       paroles: false, bienfaits: false, chatiments: false, catastrophes: false, souffles: false,
+      regard: this.regard.checked, regardJours: Math.max(1, Math.min(3650, Math.round(Number(this.regardJours.value) || 91))),
+      caractere: this.caractere.value.trim().slice(0, 2000),
     };
     for (const [f, i] of this.familles) (r as unknown as Record<string, boolean>)[f] = i.checked;
     try {
       this.montrerEtat(await connexion.invoke<Etat>("ReglerEntiteLlm", r));
       this.retourReglages.textContent = t("ellm.enregistre");
+    } catch (e) {
+      this.retourReglages.textContent = message(e);
+    }
+  }
+
+  private async oublierCaractere(): Promise<void> {
+    try {
+      this.montrerEtat(await connexion.invoke<Etat>("OublierCaractereLlm"));
     } catch (e) {
       this.retourReglages.textContent = message(e);
     }

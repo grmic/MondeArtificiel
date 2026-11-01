@@ -19,6 +19,8 @@ public enum OccasionLlm
     PriereCollective = 3,
     /// <summary>Une prière ordinaire, tirée selon la part choisie.</summary>
     PriereOrdinaire = 4,
+    /// <summary>Son regard périodique sur le monde : ce qui s'est passé depuis le précédent.</summary>
+    Regard = 5,
 }
 
 /// <summary>Ce que le LLM lit : la consigne (qui il est, ce qu'il peut faire) et la demande (l'occasion, l'humain, sa communauté…).</summary>
@@ -55,10 +57,15 @@ public static class Contexte
     private const string FormeParler = """{"type":"parler","humains":[n°],"parole":"…","mode":"…","cible":n°,"param":n}""";
 
     /// <summary>La consigne : le rôle de l'Entité, la forme de la réponse et le catalogue des actes permis.</summary>
-    public static string Consigne(MondeSimule monde, FamillesLlm permises)
+    public static string Consigne(MondeSimule monde, FamillesLlm permises, string caractere = "", string caractereLlm = "")
     {
         var c = new StringBuilder();
         c.AppendLine(L.T("llm.consigne", ("langue", L.Courante.Nom), ("forme", FormeReponse)));
+        c.AppendLine();
+        // Son caractère : écrit par le joueur, sinon celui qu'elle s'est donné, sinon elle le choisit maintenant.
+        if (!string.IsNullOrWhiteSpace(caractere)) c.AppendLine(L.T("llm.caractere.joueur", ("texte", caractere.Trim())));
+        else if (!string.IsNullOrWhiteSpace(caractereLlm)) c.AppendLine(L.T("llm.caractere.llm", ("texte", caractereLlm.Trim())));
+        else c.AppendLine(L.T("llm.caractere.choisir"));
         c.AppendLine();
         c.AppendLine(L.T("llm.cat.titre"));
         if (permises.HasFlag(FamillesLlm.Paroles))
@@ -129,7 +136,7 @@ public static class Contexte
 
     /// <summary>La demande : l'occasion, l'humain et sa communauté (ou la communauté seule), les autres communautés, la mémoire de l'Entité.</summary>
     public static LectureLlm Lire(ServiceMonde service, FamillesLlm permises, OccasionLlm occasion, int humainId, int communauteId, Priere? priere,
-        IReadOnlyList<EchangeEntite> memoire)
+        IReadOnlyList<EchangeEntite> memoire, string caractere = "", string caractereLlm = "")
     {
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
@@ -168,20 +175,130 @@ public static class Contexte
             d.AppendLine(L.T("llm.d.autre", ("id", c.Id), ("nom", c.Nom), ("n", c.Membres.Count), ("x", c.X), ("y", c.Y),
                 ("relation", rel is null ? "" : $" — {rel.Etat}")));
         }
-        if (memoire.Count > 0)
-        {
-            d.AppendLine();
-            d.AppendLine(L.T("llm.d.memoire"));
-            foreach (var e in memoire)
-            {
-                var qui = e.Humain >= 1 && e.Humain <= humains.Count ? $"{humains[e.Humain - 1].Nom} (n°{e.Humain})"
-                    : e.Communaute >= 1 && e.Communaute <= communautes.Count ? L.Communaute(communautes[e.Communaute - 1].Nom) : "—";
-                d.AppendLine($"- {L.Date(e.Le)}, {qui} : {(e.Mots.Length > 0 ? $"« {ClientLlm.Couper(e.Mots, 200)} » " : "")}{ClientLlm.Couper(Resume(e), 300)}");
-            }
-        }
+        Memoire(d, memoire, humains, communautes);
         d.AppendLine();
         d.AppendLine(L.T("llm.d.fin"));
-        return new LectureLlm(Consigne(monde, permises), d.ToString(), pieces);
+        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm), d.ToString(), pieces);
+    }
+
+    private static void Memoire(StringBuilder d, IReadOnlyList<EchangeEntite> memoire, IReadOnlyList<Humain> humains, IReadOnlyList<Communaute> communautes)
+    {
+        if (memoire.Count == 0) return;
+        d.AppendLine();
+        d.AppendLine(L.T("llm.d.memoire"));
+        foreach (var e in memoire)
+        {
+            var qui = e.Humain >= 1 && e.Humain <= humains.Count ? $"{humains[e.Humain - 1].Nom} (n°{e.Humain})"
+                : e.Communaute >= 1 && e.Communaute <= communautes.Count ? L.Communaute(communautes[e.Communaute - 1].Nom)
+                : e.Occasion == (int)OccasionLlm.Regard ? L.T("llm.d.leMonde") : "—";
+            d.AppendLine($"- {L.Date(e.Le)}, {qui} : {(e.Mots.Length > 0 ? $"« {ClientLlm.Couper(e.Mots, 200)} » " : "")}{ClientLlm.Couper(Resume(e), 300)}");
+        }
+    }
+
+    /// <summary>Types d'événements les plus graves d'abord, pour choisir ce que l'Entité voit de la saison écoulée.</summary>
+    private static readonly TypeEvenement[] Graves =
+    [
+        TypeEvenement.Guerre, TypeEvenement.Catastrophe, TypeEvenement.Religion, TypeEvenement.Croyance, TypeEvenement.Communaute, TypeEvenement.Exclusion,
+        TypeEvenement.Mer, TypeEvenement.Decouverte, TypeEvenement.Mort, TypeEvenement.Maladie, TypeEvenement.Conflit, TypeEvenement.Geste,
+    ];
+
+    /// <summary>
+    /// Son regard sur le monde : l'état du monde, ce qui s'est passé depuis <paramref name="depuis"/> (faits marquants, premières
+    /// fois), les communautés, les figures religieuses et les prières qui attendent.
+    /// </summary>
+    public static LectureLlm LireRegard(ServiceMonde service, FamillesLlm permises, long depuis, IReadOnlyList<EchangeEntite> memoire, string caractere = "",
+        string caractereLlm = "")
+    {
+        var monde = service.Monde;
+        var (maintenant, humains) = monde.InstantaneHumains();
+        var communautes = monde.Communautes();
+        var vivants = humains.Where(h => h.EstVivant).ToList();
+        var d = new StringBuilder();
+        d.AppendLine(L.T("llm.d.date", ("date", L.Date(maintenant))));
+        d.AppendLine(L.T("llm.occasion.Regard", ("depuis", L.Date(depuis))));
+        d.AppendLine();
+        d.AppendLine(L.T("llm.r.monde", ("vivants", vivants.Count), ("enfants", vivants.Count(h => h.EstEnfant(maintenant))),
+            ("communautes", communautes.Count(c => c.Active)), ("seuls", vivants.Count(h => h.CommunauteId == 0)),
+            ("croyants", vivants.Count == 0 ? 0 : (int)Math.Round(100.0 * vivants.Count(h => h.Croyance >= 50) / vivants.Count))));
+
+        // Ce qui s'est passé depuis son dernier regard : comptes par sorte, puis les faits les plus graves.
+        var marquants = FicheDto.Journal(service, new FiltreJournal(Limite: Stockage.DepotMonde.LimiteJournal, Significatifs: true), [])
+            .Where(e => e.Secondes >= depuis).ToList();
+        var premieres = FicheDto.Journal(service, new FiltreJournal(Limite: 100, Premieres: true), []).Where(e => e.Secondes >= depuis).ToList();
+        d.AppendLine();
+        d.AppendLine(L.T("llm.r.depuis"));
+        if (marquants.Count == 0 && premieres.Count == 0) d.AppendLine(L.T("llm.r.calme"));
+        else
+        {
+            var comptes = marquants.GroupBy(e => e.Type).OrderByDescending(g => g.Count()).Select(g => $"{L.T($"journal.type.{EvenementDto.Cles.GetValueOrDefault(g.Key, "autre")}")} {g.Count()}");
+            d.AppendLine(L.T(marquants.Count >= Stockage.DepotMonde.LimiteJournal ? "llm.r.comptesAuMoins" : "llm.r.comptes", ("liste", string.Join(", ", comptes))));
+            if (premieres.Count > 0)
+            {
+                d.AppendLine(L.T("llm.r.premieres"));
+                foreach (var e in premieres.OrderBy(e => e.Id).Take(15)) d.AppendLine($"- {Ligne(e)}");
+            }
+            var choisis = marquants.Where(e => !premieres.Any(p => p.Id == e.Id))
+                .OrderBy(e => Array.IndexOf(Graves, e.Type) is var i && i < 0 ? Graves.Length : i).ThenByDescending(e => e.Id).Take(40).OrderBy(e => e.Id).ToList();
+            if (choisis.Count > 0)
+            {
+                d.AppendLine(L.T("llm.r.faits"));
+                foreach (var e in choisis) d.AppendLine($"- {Ligne(e)}");
+            }
+        }
+
+        // Les communautés, de la plus grande à la plus petite.
+        d.AppendLine();
+        d.AppendLine(L.T("llm.r.communautes"));
+        foreach (var c in CommunauteDto.Toutes(service).Where(c => c.DisperseeLe is null).OrderByDescending(c => c.Membres.Count).Take(30))
+        {
+            var membres = vivants.Where(h => h.CommunauteId == c.Id).ToList();
+            var details = new List<string> { L.T("llm.r.membres", ("n", c.Membres.Count)), $"({c.X}, {c.Y})" };
+            if (c.Figure > 0) details.Add(L.T("llm.r.figure", ("nom", c.NomFigure), ("id", c.Figure)));
+            if (c.Disette) details.Add(L.T("llm.c.disette"));
+            if (membres.Count > 0)
+                details.Add(L.T("llm.r.regard", ("croyance", N(membres.Average(h => h.Croyance))), ("amour", N(membres.Average(h => h.Amour))),
+                    ("crainte", N(membres.Average(h => h.Crainte))), ("revolte", N(membres.Average(h => h.Revolte)))));
+            details.AddRange(c.Guerre);
+            var relations = c.Relations.Where(r => r.Etat is not null).Take(6).Select(r => $"{L.Communaute(r.Nom)} n°{r.Id} : {r.Etat}").ToList();
+            if (relations.Count > 0) details.Add(string.Join(" ; ", relations));
+            d.AppendLine($"- n°{c.Id} {c.Nom} : {string.Join(", ", details)}");
+        }
+
+        // Ceux qui parlent en son nom, et les figures de la foi.
+        var figures = vivants.Where(h => h.Role != RoleReligieux.Aucun).OrderByDescending(h => h.Ferveur).Take(15).ToList();
+        if (figures.Count > 0)
+        {
+            d.AppendLine();
+            d.AppendLine(L.T("llm.r.figures"));
+            foreach (var h in figures)
+                d.AppendLine($"- n°{h.Id} {h.Nom}, {L.T($"llm.r.role.{h.Role}")}, {h.AgeEnAnnees(maintenant):0} {L.T("llm.c.ans")}"
+                    + (h.CommunauteId >= 1 && h.CommunauteId <= communautes.Count ? $", {L.Communaute(communautes[h.CommunauteId - 1].Nom)} n°{h.CommunauteId}" : ""));
+        }
+
+        // Les prières qui attendent encore : fortes et collectives d'abord.
+        var prieres = Religions.Prieres(service, enAttente: true).Where(p => p.Exaucable)
+            .OrderByDescending(p => p.CollectiveId > 0).ThenByDescending(p => p.Ferveur).Take(10).ToList();
+        if (prieres.Count > 0)
+        {
+            d.AppendLine();
+            d.AppendLine(L.T("llm.c.prieres"));
+            foreach (var p in prieres) d.AppendLine($"- n°{p.Id}, {p.Nom} (n°{p.Humain}) : {p.Texte}");
+        }
+        Memoire(d, memoire, humains, communautes);
+        d.AppendLine();
+        d.AppendLine(L.T("llm.r.fin"));
+        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm), d.ToString(), []);
+    }
+
+    /// <summary>Une ligne du journal pour le LLM : date, texte, et les numéros des humains et communautés en cause.</summary>
+    private static string Ligne(EvenementJournal e)
+    {
+        var dto = EvenementDto.Depuis(e);
+        var numeros = new List<string>();
+        if (e.HumainId > 0) numeros.Add($"n°{e.HumainId}");
+        if (e.AutreId > 0) numeros.Add($"n°{e.AutreId}");
+        if (e.CommunauteId > 0) numeros.Add(L.T("llm.r.communauteNo", ("id", e.CommunauteId)));
+        return $"{dto.Date} : {dto.Texte}{(numeros.Count > 0 ? $" [{string.Join(", ", numeros)}]" : "")}";
     }
 
     /// <summary>Résumé des actes d'un échange et de ce qu'ils ont donné.</summary>

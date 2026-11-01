@@ -1,4 +1,5 @@
 import { PanneauEntiteLlm } from "./entitellm";
+import { PanneauActesEntite } from "./actesentite";
 import { oublierSuivis, PanneauSuivis, signalerSuivis } from "./suivis";
 import { chargerCarte, distanceEnMots, VueCarte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
@@ -336,6 +337,21 @@ async function demarrer(): Promise<void> {
     religions.fermer();
     suivis.fermer();
     entiteLlm.basculer();
+  });
+  const actesEntite = new PanneauActesEntite(element("#actesEntite"), (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id);
+  }, (id) => ouvrirCommunaute(id));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
+    if (b.id !== "boutonActesEntite") b.addEventListener("click", () => actesEntite.fermer());
+  }
+  element("#boutonActesEntite").addEventListener("click", () => {
+    fermerAutres();
+    prieres.fermer();
+    religions.fermer();
+    suivis.fermer();
+    entiteLlm.fermer();
+    actesEntite.basculer();
   });
   element("#boutonDecouvertes").addEventListener("click", () => {
     journal.fermer();

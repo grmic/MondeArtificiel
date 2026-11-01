@@ -310,7 +310,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>L'Entité provoque une catastrophe. Renvoie le numéro de l'événement qui l'annonce (0 si elle n'a pas pu avoir lieu).</summary>
     public async Task<long> Declencher(DemandeCatastrophe demande)
     {        var monde = service.Monde;
-        var id = Appeler(() => Entite.Pouvoirs.Declencher(monde, demande));
+        var id = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, Entite.Registre.Depuis(demande), m => Entite.Pouvoirs.Declencher(m, demande),
+            r => Entite.Registre.Texte(L.T(r > 0 ? "llm.resultat.catastrophe" : "llm.resultat.catastropheImpossible"), r > 0)));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return id;
@@ -336,7 +337,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// décident du résultat. Renvoie ce qu'il a obtenu, en mots.
     /// </summary>
     public async Task<string> Souffler(DemandeIntuition demande)
-    {        var texte = Appeler(() => Entite.Pouvoirs.Souffler(service.Monde, demande));
+    {
+        var texte = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, Entite.Registre.Depuis(demande), m => Entite.Pouvoirs.SoufflerFait(m, demande),
+            r => Entite.Registre.Texte(r.Texte, r.Reussi))).Texte;
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return texte;
@@ -353,7 +356,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// ce qui est arrivé, en mots (la ligne du journal).
     /// </summary>
     public async Task<string> SoufflerCombinaison(DemandeCombinaison demande)
-    {        var texte = Appeler(() => Entite.Pouvoirs.SoufflerCombinaison(service.Monde, demande));
+    {
+        var texte = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, Entite.Registre.Depuis(demande), m => Entite.Pouvoirs.SoufflerCombinaisonFait(m, demande),
+            r => Entite.Registre.Texte(r.Texte, r.Reussi))).Texte;
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return texte;
@@ -370,7 +375,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     /// <summary>L'Entité exauce une prière en attente. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Exaucer(int priere)
-    {        var texte = Appeler(() => Entite.Pouvoirs.Exaucer(service.Monde, priere));
+    {
+        var texte = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, new Entite.ActeLlm { Type = Entite.Actes.Exaucer, Priere = priere },
+            m => Entite.Pouvoirs.Exaucer(m, priere), r => Entite.Registre.Texte(r, true)));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return texte;
@@ -378,16 +385,22 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     /// <summary>L'Entité refuse une prière en attente, en secret (par défaut) ou par un signe. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Refuser(int priere, bool signe = false)
-    {        var texte = Appeler(() => Entite.Pouvoirs.Refuser(service.Monde, priere, signe));
+    {
+        var texte = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, new Entite.ActeLlm { Type = Entite.Actes.Refuser, Priere = priere, Signe = signe },
+            m => Entite.Pouvoirs.Refuser(m, priere, signe), r => Entite.Registre.Texte(r, true)));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return texte;
     }
 
+    private int EnAttente() => service.Monde.Prieres().Count(p => p.Issue == Simulation.Humains.IssuePriere.EnAttente && p.Refus == Simulation.Humains.RefusPriere.Aucun);
+
     /// <summary>L'Entité exauce toutes les prières en attente. Renvoie le bilan en mots.</summary>
     public async Task<string> ExaucerToutes()
     {
-        var texte = service.Monde.ExaucerToutes();
+        var n = EnAttente();
+        var texte = Entite.Registre.Faire(service, Entite.Registre.Joueur, new Entite.ActeLlm { Type = "exaucer_toutes" }, m => m.ExaucerToutes(),
+            r => Entite.Registre.Texte(L.Rediger(r), n > 0, n));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return L.Rediger(texte);
@@ -396,7 +409,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>L'Entité refuse toutes les prières en attente, en secret (par défaut) ou par un signe. Renvoie le bilan en mots.</summary>
     public async Task<string> RefuserToutes(bool signe = false)
     {
-        var texte = service.Monde.RefuserToutes(signe);
+        var n = EnAttente();
+        var texte = Entite.Registre.Faire(service, Entite.Registre.Joueur, new Entite.ActeLlm { Type = "refuser_toutes", Signe = signe }, m => m.RefuserToutes(signe),
+            r => Entite.Registre.Texte(L.Rediger(r), n > 0, n));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
         return L.Rediger(texte);
@@ -407,8 +422,10 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     /// <summary>L'Entité fait un geste sur un humain ou une communauté. Renvoie, en mots, ce qui s'est passé.</summary>
     public async Task<string> Agir(DemandeGeste demande)
-    {        var monde = service.Monde;
-        var texte = Appeler(() => Entite.Pouvoirs.Agir(monde, demande));
+    {
+        var monde = service.Monde;
+        var texte = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, Entite.Registre.Depuis(demande), m => Entite.Pouvoirs.Agir(m, demande),
+            r => Entite.Registre.Texte(r, true)));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return texte;
@@ -425,8 +442,10 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// selon ce qu'il est. Renvoie ce que chacun en a fait.
     /// </summary>
     public async Task<List<ResultatParoleDto>> Parler(DemandeParole demande)
-    {        var monde = service.Monde;
-        var resultats = Appeler(() => Entite.Pouvoirs.Parler(monde, demande));
+    {
+        var monde = service.Monde;
+        var resultats = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, Entite.Registre.Depuis(demande), m => Entite.Pouvoirs.Parler(m, demande),
+            r => Entite.Registre.Chacun(monde, r)));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return Resultats(resultats);
@@ -440,8 +459,10 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// en pense ; le groupe en débattra le jour venu. Renvoie ce que chacun en a fait et quand le groupe en débattra.
     /// </summary>
     public async Task<ResultatParoleCommunauteDto> ParlerACommunaute(DemandeParoleCommunaute demande)
-    {        var monde = service.Monde;
-        var (resultats, groupe) = Appeler(() => Entite.Pouvoirs.ParlerACommunaute(monde, demande));
+    {
+        var monde = service.Monde;
+        var (resultats, groupe) = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, Entite.Registre.Depuis(demande),
+            m => Entite.Pouvoirs.ParlerACommunaute(m, demande), r => Entite.Registre.Chacun(monde, r.Membres) with { Resultats = r.Groupe.Concat(Entite.Registre.Chacun(monde, r.Membres).Resultats).ToList() }));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return new ResultatParoleCommunauteDto(Resultats(resultats), groupe);
@@ -449,8 +470,10 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     /// <summary>L'Entité inspire un penchant amoureux (ou une passion) à des humains, pour quelqu'un ou pour qui le monde choisit.</summary>
     public async Task<List<ResultatParoleDto>> Inspirer(DemandePenchant demande)
-    {        var monde = service.Monde;
-        var resultats = Appeler(() => Entite.Pouvoirs.Inspirer(monde, demande));
+    {
+        var monde = service.Monde;
+        var resultats = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, Entite.Registre.Depuis(demande), m => Entite.Pouvoirs.Inspirer(m, demande),
+            r => Entite.Registre.Chacun(monde, r)));
         service.Sauvegarder();
         await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         return Resultats(resultats);
@@ -517,6 +540,19 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
         Appeler(() => { entite.Rejeter(id); return 0; });
         return entite.Etat();
     }
+
+    /// <summary>Oublie le caractère que le LLM s'était donné (il s'en choisira un autre).</summary>
+    public Entite.EtatEntiteLlmDto OublierCaractereLlm()
+    {
+        entite.OublierCaractere();
+        return entite.Etat();
+    }
+
+    /// <summary>Fenêtre « Actes de l'Entité » : comptes, courbe par année et une page d'actes (du plus récent au plus ancien).</summary>
+    public Entite.ActesEntiteDto ActesEntite(Entite.FiltreActesDto filtre) => Appeler(() => Entite.ActesEntite.Lister(service, filtre));
+
+    /// <summary>Les lignes du journal écrites par un acte de l'Entité.</summary>
+    public List<EvenementDto> JournalActe(long id) => Entite.ActesEntite.Journal(service, id);
 
     /// <summary>Applique un pouvoir de l'Entité ; une demande invalide devient une erreur pour le navigateur.</summary>
     private static T Appeler<T>(Func<T> pouvoir)

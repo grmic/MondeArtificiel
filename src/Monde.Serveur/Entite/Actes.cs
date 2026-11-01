@@ -45,7 +45,8 @@ public sealed record ActeLlm
 }
 
 /// <summary>La réponse du LLM : pourquoi, les mots dits, et les actes (zéro ou plus).</summary>
-public sealed record DecisionLlm(string Pensee, string Mots, List<ActeLlm> Actes);
+/// <param name="Caractere">Le caractère qu'elle se donne (seulement quand elle n'en a pas encore ; vide sinon).</param>
+public sealed record DecisionLlm(string Pensee, string Mots, List<ActeLlm> Actes, string Caractere = "");
 
 /// <summary>Familles d'actes que le joueur permet au LLM.</summary>
 [Flags]
@@ -115,6 +116,7 @@ public static class Actes
             {
                 ["pensee"] = T("string"),
                 ["mots"] = T("string"),
+                ["caractere"] = T("string"),
                 ["actes"] = new JsonObject { ["type"] = "array", ["items"] = acte, ["maxItems"] = ParReponse },
             },
             ["required"] = new JsonArray("pensee", "mots", "actes"),
@@ -149,7 +151,7 @@ public static class Actes
                 }
             }
         }
-        return new DecisionLlm(Texte(o["pensee"]), Texte(o["mots"]), actes);
+        return new DecisionLlm(Texte(o["pensee"]), Texte(o["mots"]), actes, Texte(o["caractere"]));
     }
 
     private static string Texte(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? ClientLlm.Couper(s.Trim(), 2000) : "";
@@ -183,45 +185,46 @@ public static class Actes
     /// <see cref="ArgumentException"/> si la demande est invalide (rien n'a changé). <paramref name="pieces"/> : les pièces
     /// numérotées montrées au LLM pour les combinaisons (P1, P2…).
     /// </summary>
-    public static string Appliquer(MondeSimule monde, ActeLlm a, FamillesLlm permises, IReadOnlyList<string> pieces)
+    public static FaitEntite Appliquer(MondeSimule monde, ActeLlm a, FamillesLlm permises, IReadOnlyList<string> pieces)
     {
         Verifier(a, permises);
-        var (_, humains) = monde.InstantaneHumains();
-        string Nom(int id) => id >= 1 && id <= humains.Count ? humains[id - 1].Nom : "?";
-        string Liste(List<(int Humain, Recit Resultat)> r) => r.Count == 0
-            ? L.T("llm.resultat.personne")
-            : string.Join(" ", r.Take(12).Select(x => $"{Nom(x.Humain)} : {L.Rediger(x.Resultat)}")) + (r.Count > 12 ? " " + L.T("llm.resultat.etAutres", ("n", r.Count - 12)) : "");
         switch (a.Type)
         {
             case Parler:
-                return Liste(Pouvoirs.Parler(monde, new DemandeParole(Humains(a), a.Communautes, a.Parole ?? "", a.Mode ?? "", a.Cible ?? 0, a.Param ?? a.Direction ?? 0)));
+                return Registre.Chacun(monde, Pouvoirs.Parler(monde, new DemandeParole(Humains(a), a.Communautes, a.Parole ?? "", a.Mode ?? "", a.Cible ?? 0, a.Param ?? a.Direction ?? 0)));
             case ParlerCommunaute:
             {
                 var (membres, groupe) = Pouvoirs.ParlerACommunaute(monde,
                     new DemandeParoleCommunaute(a.Communaute ?? 0, a.Parole ?? "", a.Mode ?? "", a.Cibles ?? (a.Cible is { } c ? [c] : null), a.Direction ?? a.Param ?? 0));
-                return string.Join(" ", groupe.Prepend(L.T("llm.resultat.membres", ("n", membres.Count))));
+                return new FaitEntite([string.Join(" ", groupe.Prepend(L.T("llm.resultat.membres", ("n", membres.Count))))], membres.Count > 0 ? 1 : 0, membres.Count);
             }
             case Geste:
-                return Pouvoirs.Agir(monde, new DemandeGeste(a.Geste ?? "", a.Cible ?? a.Humain ?? a.Communaute ?? 0, a.Maniere ?? nameof(ManiereGeste.Cachee),
-                    a.Param ?? 0, a.Calamite, a.Force ?? 0, a.Jours ?? 0));
+                return Registre.Texte(Pouvoirs.Agir(monde, new DemandeGeste(a.Geste ?? "", a.Cible ?? a.Humain ?? a.Communaute ?? 0, a.Maniere ?? nameof(ManiereGeste.Cachee),
+                    a.Param ?? 0, a.Calamite, a.Force ?? 0, a.Jours ?? 0)), true);
             case Catastrophe:
             {
                 var id = Pouvoirs.Declencher(monde, new DemandeCatastrophe(a.Catastrophe ?? "", a.X ?? -1, a.Y ?? -1, a.Intensite ?? Intensite(a.Catastrophe)));
-                return id > 0 ? L.T("llm.resultat.catastrophe") : L.T("llm.resultat.catastropheImpossible");
+                return Registre.Texte(id > 0 ? L.T("llm.resultat.catastrophe") : L.T("llm.resultat.catastropheImpossible"), id > 0);
             }
             case Exaucer:
-                return Pouvoirs.Exaucer(monde, a.Priere ?? 0);
+                return Registre.Texte(Pouvoirs.Exaucer(monde, a.Priere ?? 0), true);
             case Refuser:
-                return Pouvoirs.Refuser(monde, a.Priere ?? 0, a.Signe ?? false);
+                return Registre.Texte(Pouvoirs.Refuser(monde, a.Priere ?? 0, a.Signe ?? false), true);
             case SoufflerGeste:
-                return Pouvoirs.Souffler(monde, new DemandeIntuition(a.Humain ?? a.Cible ?? 0, a.Geste ?? "", a.A ?? "", a.B, a.Espece ?? 0));
+            {
+                var (texte, reussi) = Pouvoirs.SoufflerFait(monde, new DemandeIntuition(a.Humain ?? a.Cible ?? 0, a.Geste ?? "", a.A ?? "", a.B, a.Espece ?? 0));
+                return Registre.Texte(texte, reussi);
+            }
             case SoufflerCombinaison:
-                return Pouvoirs.SoufflerCombinaison(monde, new DemandeCombinaison(a.Humain ?? a.Cible ?? 0, a.Operation ?? "", Piece(a.A, pieces) ?? "",
+            {
+                var (texte, reussi) = Pouvoirs.SoufflerCombinaisonFait(monde, new DemandeCombinaison(a.Humain ?? a.Cible ?? 0, a.Operation ?? "", Piece(a.A, pieces) ?? "",
                     Piece(a.B, pieces), a.Lien ?? 0));
+                return Registre.Texte(texte, reussi);
+            }
             case Penchant:
-                return Liste(Pouvoirs.Inspirer(monde, new DemandePenchant(Humains(a), a.Communautes, a.Cible ?? 0, a.Mutuel ?? false, a.Passion ?? false)));
+                return Registre.Chacun(monde, Pouvoirs.Inspirer(monde, new DemandePenchant(Humains(a), a.Communautes, a.Cible ?? 0, a.Mutuel ?? false, a.Passion ?? false)));
             default:
-                return L.T("llm.resultat.rien");
+                return new FaitEntite([L.T("llm.resultat.rien")], 0, 0);
         }
     }
 
