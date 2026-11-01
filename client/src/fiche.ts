@@ -483,7 +483,7 @@ export class PanneauFiche {
     this.rencontres(corps, f.rencontres ?? null);
     this.foi(corps, f.foi);
     this.langage(corps, f.langage);
-    if (h.vivant) corps.append(this.formulaireSouffle(), this.formulaireCombinaison(), blocQueFerait(() => this.id, () => 0));
+    if (h.vivant) corps.append(blocQueFerait(() => this.id, () => 0), this.formulaireSouffle(), this.formulaireCombinaison());
     this.communaute = f.communaute?.id ?? 0;
     this.nomCourant = h.nom;
     if (f.paroles.length > 0) {

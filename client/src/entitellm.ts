@@ -79,7 +79,8 @@ async function copier(texte: string, retour: HTMLElement): Promise<void> {
  * la réponse (appliquée ou proposée selon le mode) apparaît dans la fenêtre « Entité LLM ».
  */
 export function blocQueFerait(humain: () => number, communaute: () => number): HTMLElement {
-  const bloc = el("div", "que-ferait");
+  // « entite-bloc » : la fiche d'un humain le range avec les formulaires de l'Entité, hors des sections repliables.
+  const bloc = el("div", "que-ferait entite-bloc");
   const retour = el("span", "discret");
   const b = bouton(t("ellm.queFerait"), () => {
     b.disabled = true;
