@@ -118,7 +118,8 @@ public sealed partial class Comportement
     private double FeconditeDonnee(Humain femme, Humain homme, long maintenant)
     {
         var f = Math.Max(femme.FeconditeJusqua > maintenant ? femme.FeconditeEntite : 1, homme.FeconditeJusqua > maintenant ? homme.FeconditeEntite : 1);
-        return Cultes is { Effets.Count: > 0 } c ? Math.Max(f, c.Fecondite(femme.CommunauteId, maintenant)) : f;
+        return (Cultes is { Effets.Count: > 0 } c ? Math.Max(f, c.Fecondite(femme.CommunauteId, maintenant)) : f)
+               * Decrets.Facteur(LoiDecret.Fecondite, femme.CommunauteId, maintenant);
     }
 
     // ───────────── Sur un humain ─────────────

@@ -65,7 +65,7 @@ public sealed partial class Comportement
         var difficile = Difficile(lecon.Effet, lecon.Pieces);
         var idee = lecon.Espece > 0 ? Idees.Plante(lecon.Espece) : Idees.Savoir(lecon.Effet);
         var chance = (0.35 + 0.35 * eleve.Personnalite.Ouverture) * (difficile ? 0.5 + 0.5 * Ingeniosite(eleve) : 1)
-                     * (Langues.Partagent(h, eleve, idee) ? 1.3 : 0.85);
+                     * (Langues.Partagent(h, eleve, idee) ? 1.3 : 0.85) * Decrets.Facteur(LoiDecret.Apprentissage, eleve.CommunauteId, _maintenant);
         if (alea.Reel() >= chance) return true;
 
         var sait = eleve.Savoirs.Exists(s => s.Meme(lecon.Geste, lecon.A, lecon.B, lecon.Effet, lecon.Espece, lecon.Symptome) && s.Pieces == lecon.Pieces);

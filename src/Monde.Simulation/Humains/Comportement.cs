@@ -72,7 +72,17 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     public Catastrophes? Catastrophes { get; set; }
 
     /// <summary>Température de la case, avec l'écart dû aux vagues de froid, canicules et hivers volcaniques.</summary>
-    private double Temperature(int x, int y, long maintenant) => Climat.Temperature(carte, x, y, maintenant) + (Catastrophes?.Anomalie ?? 0);
+    private double Temperature(int x, int y, long maintenant)
+    {
+        var t = Climat.Temperature(carte, x, y, maintenant) + (Catastrophes?.Anomalie ?? 0);
+        // Un décret sur la rigueur du climat creuse (ou adoucit) l'écart à 18 °C ; sans décret, rien ne change.
+        if (Decrets.Liste.Count == 0) return t;
+        var f = Decrets.Facteur(LoiDecret.Climat, maintenant);
+        return f == 1 ? t : 18 + (t - 18) * f;
+    }
+
+    /// <summary>Les décrets de l'Entité libre (aucun d'ordinaire).</summary>
+    public Decrets Decrets { get; set; } = new();
 
     /// <summary>Température ressentie par l'humain en cours, pour le coup de chaleur.</summary>
     [ThreadStatic] private static double _temperature;
@@ -427,7 +437,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                          // souvent malades (Larsen, 1995 ; Cohen et Armelagos, 1984).
                          * (h.PartDesChamps > 0.4 ? 1 + 0.6 * (h.PartDesChamps - 0.4) / 0.6 : 1) * (Sedentaire(h) ? 1.15 : 1) * AuMilieuDesBetes(h);
             var surcroit = sevre ? Sevre.Risque(h.AgeEnAnnees(maintenant)) : 1;
-            if (alea.Reel() < risque * fragilite * AdouciPour(h, maintenant) * surcroit)
+            if (alea.Reel() < risque * fragilite * AdouciPour(h, maintenant) * surcroit * Decrets.Facteur(LoiDecret.Maladies, h.CommunauteId, maintenant))
             {
                 var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea, FumeeInterieure(h));
                 // Le surcroît du tout-petit sans lait ne porte que sur les poumons et le ventre.

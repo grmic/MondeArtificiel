@@ -6,11 +6,11 @@ interface ConnexionLlm { fournisseur: string; adresse: string; modele: string; c
 interface Reglages {
   mode: string; prieres: boolean; partOrdinaires: number; attendre: boolean;
   paroles: boolean; bienfaits: boolean; chatiments: boolean; catastrophes: boolean; souffles: boolean;
-  regard: boolean; regardJours: number; caractere: string;
+  regard: boolean; regardJours: number; caractere: string; libre: boolean; juge: boolean;
 }
 interface Etat {
   connexion: ConnexionLlm; reglages: Reglages; enFile: number; enCours: string | null; derniereErreur: string | null; propositions: number;
-  caractereLlm: string; prochainRegard: string | null;
+  caractereLlm: string; prochainRegard: string | null; libreDepuis: string | null;
 }
 interface Echange {
   id: number; date: string; quand: string; occasion: string; humain: number; nomHumain: string | null; communaute: number; nomCommunaute: string | null;
@@ -109,6 +109,8 @@ export class PanneauEntiteLlm {
   private readonly part = el("input");
   private readonly attendre: HTMLInputElement;
   private readonly regard: HTMLInputElement;
+  private readonly libre: HTMLInputElement;
+  private readonly juge: HTMLInputElement;
   private readonly regardJours = el("input");
   private readonly caractere = el("textarea");
   private readonly caractereLlm = el("p", "discret");
@@ -143,7 +145,7 @@ export class PanneauEntiteLlm {
     const reglagesBloc = el("section", "bloc-llm");
     reglagesBloc.append(el("h3", undefined, t("ellm.quiJoue")));
     for (const m of MODES) {
-      const i = el("input");
+      const i: HTMLInputElement = el("input");
       i.type = "radio";
       i.name = "modeEntiteLlm";
       i.value = m;
@@ -154,6 +156,11 @@ export class PanneauEntiteLlm {
       reglagesBloc.append(l, el("br"));
     }
     let l: HTMLLabelElement;
+    // Entité libre : s'ajoute aux modes « agit » et « propose » (0.35.2).
+    let lj: HTMLLabelElement;
+    [l, this.libre] = caseACocher(t("ellm.libre"), t("ellm.libreAide"));
+    [lj, this.juge] = caseACocher(t("ellm.juge"), t("ellm.jugeAide"));
+    reglagesBloc.append(el("h4", undefined, t("ellm.libreTitre")), l, el("br"), lj, el("p", "discret", t("ellm.libreDetail")));
     [l, this.prieres] = caseACocher(t("ellm.prieres"), t("ellm.prieresAide"));
     reglagesBloc.append(el("h4", undefined, t("ellm.occasions")), l, el("br"));
     this.part.type = "number";
@@ -229,6 +236,8 @@ export class PanneauEntiteLlm {
     this.regard.checked = e.reglages.regard;
     this.regardJours.value = String(e.reglages.regardJours);
     this.caractere.value = e.reglages.caractere ?? "";
+    this.libre.checked = e.reglages.libre;
+    this.juge.checked = e.reglages.juge;
     for (const [f, i] of this.familles) i.checked = Boolean(e.reglages[f]);
     this.montrerEtat(e);
   }
@@ -239,6 +248,8 @@ export class PanneauEntiteLlm {
     if (e.enCours) parts.push(t("ellm.etat.enCours", { nom: e.enCours }));
     if (e.propositions > 0) parts.push(t("ellm.etat.propositions", { n: e.propositions }));
     if (e.prochainRegard) parts.push(t("ellm.etat.prochainRegard", { date: e.prochainRegard }));
+    if (e.reglages.libre && e.reglages.mode !== "Joueur") parts.push(t("ellm.etat.libre"));
+    if (e.libreDepuis) parts.push(t("ellm.etat.libreDepuis", { date: e.libreDepuis }));
     this.etat.textContent = parts.join(" · ");
     this.caractereLlm.replaceChildren();
     if (!e.reglages.caractere?.trim()) {
@@ -281,7 +292,7 @@ export class PanneauEntiteLlm {
       partOrdinaires: Math.max(0, Math.min(100, Math.round(Number(this.part.value) || 0))), attendre: this.attendre.checked,
       paroles: false, bienfaits: false, chatiments: false, catastrophes: false, souffles: false,
       regard: this.regard.checked, regardJours: Math.max(1, Math.min(3650, Math.round(Number(this.regardJours.value) || 91))),
-      caractere: this.caractere.value.trim().slice(0, 2000),
+      caractere: this.caractere.value.trim().slice(0, 2000), libre: this.libre.checked, juge: this.juge.checked,
     };
     for (const [f, i] of this.familles) (r as unknown as Record<string, boolean>)[f] = i.checked;
     try {

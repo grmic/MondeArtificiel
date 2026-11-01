@@ -140,7 +140,7 @@ public sealed partial class Catastrophes
                     var risque = p.Transmission * (dx == 0 && dy == 0 ? 1 : 0.3);
                     foreach (var v in voisins)
                     {
-                        if (v.Id == m.Id || v.InfectionId != 0 || EstImmunise(v, p, maintenant) || _alea.Reel() >= risque * Epargne(v, maintenant)) continue;
+                        if (v.Id == m.Id || v.InfectionId != 0 || EstImmunise(v, p, maintenant) || _alea.Reel() >= risque * Epargne(v, maintenant) * (Comportement?.Decrets.Facteur(LoiDecret.Maladies, v.CommunauteId, maintenant) ?? 1)) continue;
                         var id = Noter(maintenant, v, new Recit("cat.patho.contagion", ("v", v), ("m", p.Dit), ("h", m)), m.InfectionEvenementId,
                             type: TypeEvenement.Maladie);
                         Infecter(v, p, maintenant, id);

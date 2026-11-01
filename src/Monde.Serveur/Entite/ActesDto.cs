@@ -11,7 +11,12 @@ public sealed record FiltreActesDto(string? Auteur = null, string? Sorte = null,
 
 /// <summary>Un acte de l'Entité pour la fenêtre : quand, par qui, quoi, sur qui, ce que les règles en ont fait, et où le retrouver.</summary>
 public sealed record ActeDto(long Id, string Date, string Auteur, string Sorte, string Quoi, int Humain, string? NomHumain, int Communaute, string? NomCommunaute,
-    int Priere, int Nombre, IReadOnlyList<string> Resultats, string Issue, long JournalPremier, long JournalDernier, long Echange, bool Repris);
+    int Priere, int Nombre, IReadOnlyList<string> Resultats, string Issue, long JournalPremier, long JournalDernier, long Echange, bool Repris,
+    bool Defaire = false, bool Defait = false, string? Recit = null);
+
+/// <summary>Un décret de l'Entité libre, pour la fenêtre : la loi, le facteur, où, depuis quand, jusqu'à quand, pourquoi.</summary>
+public sealed record DecretDto(int Id, string Loi, string NomLoi, double Facteur, int Communaute, string? NomCommunaute, string Debut, string? Fin, bool EnVigueur,
+    string Raison);
 
 /// <summary>Nombre d'actes une année du monde (comptée depuis 1), par le joueur et par le LLM.</summary>
 public sealed record AnActesDto(int An, int Joueur, int Llm);
@@ -21,7 +26,8 @@ public sealed record ComptesActesDto(int Total, int ParLlm, int Exaucees, int Re
     int SoufflesReussis, int Catastrophes, IReadOnlyList<AnActesDto> ParAn);
 
 /// <summary>Une page d'actes et les comptes du filtre.</summary>
-public sealed record ActesEntiteDto(ComptesActesDto Comptes, IReadOnlyList<ActeDto> Actes, bool Plus);
+/// <param name="LibreDepuis">Date du premier acte libre (null : aucun).</param>
+public sealed record ActesEntiteDto(ComptesActesDto Comptes, IReadOnlyList<ActeDto> Actes, bool Plus, string? LibreDepuis = null, IReadOnlyList<DecretDto>? Decrets = null);
 
 /// <summary>La fenêtre « Actes de l'Entité » : chronologie de tout ce qu'elle a fait, par le joueur ou par le LLM.</summary>
 public static class ActesEntite
@@ -30,7 +36,7 @@ public static class ActesEntite
     public static readonly string[] Sortes =
     [
         "parler", "parler_communaute", "penchant", "geste.bienfait", "geste.chatiment", "catastrophe", "exaucer", "refuser", "exaucer_toutes", "refuser_toutes",
-        "souffler_geste", "souffler_combinaison", "reglage",
+        "souffler_geste", "souffler_combinaison", "reglage", "libre", "lever_decret",
     ];
 
     public const int ParPage = 150;
@@ -55,7 +61,19 @@ public static class ActesEntite
         var (_, humains) = service.Monde.InstantaneHumains();
         var communautes = service.Monde.Communautes();
         var liste = actes.Take(ParPage).Select(a => Dto(service, a, humains, communautes)).ToList();
-        return new ActesEntiteDto(comptes, liste, actes.Count > ParPage);
+        return new ActesEntiteDto(comptes, liste, actes.Count > ParPage, depot.PremierActeLibre() is { } l ? L.Date(l) : null, Decrets(service));
+    }
+
+    /// <summary>Les décrets de l'Entité libre : en vigueur d'abord, puis les plus récents.</summary>
+    public static List<DecretDto> Decrets(ServiceMonde service)
+    {
+        var monde = service.Monde;
+        var maintenant = monde.Secondes;
+        var communautes = monde.Communautes();
+        return [.. monde.Decrets().OrderByDescending(d => d.EnVigueur(maintenant)).ThenByDescending(d => d.Id).Select(d => new DecretDto(d.Id, d.Loi.ToString(),
+            L.T($"loi.{d.Loi}"), d.Facteur, d.CommunauteId,
+            d.CommunauteId >= 1 && d.CommunauteId <= communautes.Count ? L.Communaute(communautes[d.CommunauteId - 1].Nom) : null,
+            L.Date(d.Debut), d.Fin > 0 ? L.Date(d.Fin) : null, d.EnVigueur(maintenant), d.Raison))];
     }
 
     private static ActeDto Dto(ServiceMonde service, ActeEntite a, IReadOnlyList<Simulation.Humains.Humain> humains, IReadOnlyList<Simulation.Humains.Communaute> communautes)
@@ -80,7 +98,8 @@ public static class ActesEntite
         return new ActeDto(a.Id, L.Date(a.Le), a.Auteur == Registre.Llm ? "llm" : "joueur", a.Sorte, Quoi(a, acte), a.Humain,
             a.Humain >= 1 && a.Humain <= humains.Count ? humains[a.Humain - 1].Nom : null, a.Communaute,
             a.Communaute >= 1 && a.Communaute <= communautes.Count ? L.Communaute(communautes[a.Communaute - 1].Nom) : null,
-            a.Priere, a.Nombre, resultats, a.Issue switch { 1 => "effet", -1 => "refuse", _ => "rien" }, a.JournalPremier, a.JournalDernier, a.Echange, a.Repris);
+            a.Priere, a.Nombre, resultats, a.Issue switch { 1 => "effet", -1 => "refuse", _ => "rien" }, a.JournalPremier, a.JournalDernier, a.Echange, a.Repris,
+            a.Sorte == Actes.Libre && a.Defaire.Length > 0 && !a.Defait, a.Defait, a.Sorte == Actes.Libre ? acte?.Recit : null);
     }
 
     private static string Nom(string cle, string repli) => L.Existe(cle) ? L.T(cle) : repli;
@@ -115,6 +134,10 @@ public static class ActesEntite
                 break;
             case Actes.SoufflerGeste when x?.Geste is { } g:
                 precisions.Add(string.Join(" ", new[] { Nom($"geste.nom.{g}", g), x.A, x.B }.Where(s => !string.IsNullOrEmpty(s) && s != "Aucune")));
+                break;
+            case Actes.Libre:
+                precisions.Add(L.T(a.Genre == "visible" ? "libre.visible" : "libre.cache"));
+                if (x?.Decrets is { Count: > 0 } ds) precisions.Add(L.T("actes.decrets", ("n", ds.Count.ToString(CultureInfo.InvariantCulture))));
                 break;
             case Actes.SoufflerCombinaison when x is not null:
                 precisions.Add(string.Join(" + ", new[] { x.A, x.B }.Where(s => !string.IsNullOrEmpty(s))));

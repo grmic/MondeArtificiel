@@ -231,7 +231,7 @@ public sealed class Humain
     public required int Emplacement { get; init; }
 
     /// <summary>Date de naissance en secondes du monde (négative si avant l'an 1).</summary>
-    public required long Naissance { get; init; }
+    public required long Naissance { get; set; }
 
     public required Personnalite Personnalite { get; set; }
 

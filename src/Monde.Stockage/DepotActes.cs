@@ -22,8 +22,10 @@ namespace Monde.Stockage;
 /// <param name="JournalDernier">Dernier numéro du journal écrit (−1 : aucun).</param>
 /// <param name="Echange">Échange du LLM qui l'a décidé (0 : aucun).</param>
 /// <param name="Repris">Reconstitué depuis le journal (actes d'avant la 0.35.1).</param>
+/// <param name="Defaire">Pour un acte libre : de quoi le défaire (JSON ; vide sinon).</param>
+/// <param name="Defait">Acte libre défait par le joueur.</param>
 public sealed record ActeEntite(long Id, long Le, int Auteur, string Sorte, string Genre, int Humain, int Communaute, int Priere, int Nombre,
-    string Acte, string Resultats, int Issue, long JournalPremier, long JournalDernier, long Echange, bool Repris);
+    string Acte, string Resultats, int Issue, long JournalPremier, long JournalDernier, long Echange, bool Repris, string Defaire = "", bool Defait = false);
 
 /// <summary>Filtre des actes de l'Entité (null ou 0 : tous).</summary>
 public sealed record FiltreActes(int? Auteur = null, string? Sorte = null, int Humain = 0, int Communaute = 0, long Depuis = 0, long Jusqua = 0,
@@ -37,7 +39,7 @@ public sealed record ComptesActes(int Total, int ParLlm, int Exaucees, int Refus
 public sealed partial class DepotMonde
 {
     private const string ColonnesActes =
-        "id, le, auteur, sorte, genre, humain, communaute, priere, nombre, acte, resultats, issue, journal_premier, journal_dernier, echange, repris";
+        "id, le, auteur, sorte, genre, humain, communaute, priere, nombre, acte, resultats, issue, journal_premier, journal_dernier, echange, repris, defaire, defait";
 
     /// <summary>Gestes de l'Entité qui font du bien (les autres sont des châtiments), par leur nom.</summary>
     public static readonly IReadOnlySet<string> GestesBienfaits = new HashSet<string> { "Guerir", "RendreFecond", "SortirDeFamine", "ArreterEpidemie", "Fecondite", "Benir" };
@@ -65,7 +67,9 @@ public sealed partial class DepotMonde
                 journal_premier INTEGER NOT NULL,
                 journal_dernier INTEGER NOT NULL,
                 echange         INTEGER NOT NULL,
-                repris          INTEGER NOT NULL
+                repris          INTEGER NOT NULL,
+                defaire         TEXT    NOT NULL DEFAULT '',
+                defait          INTEGER NOT NULL DEFAULT 0
             );
             CREATE INDEX IF NOT EXISTS entite_actes_le ON entite_actes (le);
             CREATE INDEX IF NOT EXISTS entite_actes_humain ON entite_actes (humain);
@@ -91,7 +95,7 @@ public sealed partial class DepotMonde
             using var l = c.ExecuteReader();
             while (l.Read()) lignes.Add(new LigneEntite(l.GetInt64(0), l.GetInt64(1), l.GetByte(2), l.GetInt32(3), l.GetInt32(4), l.GetInt64(5), l.GetString(6)));
         }
-        using var ecrire = Preparer(connexion, transaction, $"INSERT INTO entite_actes ({ColonnesActes[4..]}) VALUES ($le, $auteur, $sorte, $genre, $h, $c, 0, $n, '', '[]', $issue, $jp, $jd, $e, 1);",
+        using var ecrire = Preparer(connexion, transaction, $"INSERT INTO entite_actes ({ColonnesActes[4..]}) VALUES ($le, $auteur, $sorte, $genre, $h, $c, 0, $n, '', '[]', $issue, $jp, $jd, $e, 1, '', 0);",
             "$le", "$auteur", "$sorte", "$genre", "$h", "$c", "$n", "$issue", "$jp", "$jd", "$e");
         foreach (var a in Reconstituer(lignes))
         {
@@ -182,7 +186,7 @@ public sealed partial class DepotMonde
         using var commande = connexion.CreateCommand();
         commande.CommandText = $"""
             INSERT INTO entite_actes ({ColonnesActes[4..]})
-            VALUES ($le, $auteur, $sorte, $genre, $h, $c, $p, $n, $acte, $resultats, $issue, $jp, $jd, $e, $repris) RETURNING id;
+            VALUES ($le, $auteur, $sorte, $genre, $h, $c, $p, $n, $acte, $resultats, $issue, $jp, $jd, $e, $repris, $defaire, $defait) RETURNING id;
             """;
         commande.Parameters.AddWithValue("$le", a.Le);
         commande.Parameters.AddWithValue("$auteur", a.Auteur);
@@ -199,6 +203,8 @@ public sealed partial class DepotMonde
         commande.Parameters.AddWithValue("$jd", a.JournalDernier);
         commande.Parameters.AddWithValue("$e", a.Echange);
         commande.Parameters.AddWithValue("$repris", a.Repris ? 1 : 0);
+        commande.Parameters.AddWithValue("$defaire", a.Defaire);
+        commande.Parameters.AddWithValue("$defait", a.Defait ? 1 : 0);
         return Convert.ToInt64(commande.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
@@ -279,7 +285,7 @@ public sealed partial class DepotMonde
 
     private static ActeEntite LireActe(SqliteDataReader l) => new(l.GetInt64(0), l.GetInt64(1), l.GetInt32(2), l.GetString(3), l.GetString(4), l.GetInt32(5),
         l.GetInt32(6), l.GetInt32(7), l.GetInt32(8), l.GetString(9), l.GetString(10), l.GetInt32(11), l.GetInt64(12), l.GetInt64(13), l.GetInt64(14),
-        l.GetInt32(15) != 0);
+        l.GetInt32(15) != 0, l.GetString(16), l.GetInt32(17) != 0);
 
     /// <summary>Comptes des actes (avec le même filtre, sans pagination) et nombre d'actes par année du monde.</summary>
     public ComptesActes CompterActes(FiltreActes f, long secondesParAn)

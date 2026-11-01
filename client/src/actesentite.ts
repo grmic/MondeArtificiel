@@ -5,19 +5,23 @@ import { t } from "./langue";
 interface Acte {
   id: number; date: string; auteur: string; sorte: string; quoi: string; humain: number; nomHumain: string | null; communaute: number;
   nomCommunaute: string | null; priere: number; nombre: number; resultats: string[]; issue: string; journalPremier: number; journalDernier: number;
-  echange: number; repris: boolean;
+  echange: number; repris: boolean; defaire: boolean; defait: boolean; recit: string | null;
+}
+interface Decret {
+  id: number; loi: string; nomLoi: string; facteur: number; communaute: number; nomCommunaute: string | null; debut: string; fin: string | null;
+  enVigueur: boolean; raison: string;
 }
 interface An { an: number; joueur: number; llm: number }
 interface Comptes {
   total: number; parLlm: number; exaucees: number; refusees: number; morts: number; bienfaits: number; chatiments: number; paroles: number;
   souffles: number; soufflesReussis: number; catastrophes: number; parAn: An[];
 }
-interface Page { comptes: Comptes; actes: Acte[]; plus: boolean }
+interface Page { comptes: Comptes; actes: Acte[]; plus: boolean; libreDepuis: string | null; decrets: Decret[] | null }
 interface Ligne { id: number; date: string; texte: string }
 interface Echange { mots: string; pensee: string; occasion: string; statut: string }
 
 const SORTES = ["parler", "parler_communaute", "penchant", "geste.bienfait", "geste.chatiment", "catastrophe", "exaucer", "refuser", "exaucer_toutes",
-  "refuser_toutes", "souffler_geste", "souffler_combinaison", "reglage"];
+  "refuser_toutes", "souffler_geste", "souffler_combinaison", "reglage", "libre", "lever_decret"];
 
 const SVG = "http://www.w3.org/2000/svg";
 
@@ -64,6 +68,7 @@ export class PanneauActesEntite {
   private readonly liste = el("ul", "liste actes-entite");
   private readonly plus = el("button", "lien");
   private readonly retour = el("p", "discret");
+  private readonly libre = el("div", "libre-actes");
   private dernier = 0;
 
   constructor(private readonly racine: HTMLElement, private readonly ouvrirHumain: (id: number) => void,
@@ -93,7 +98,7 @@ export class PanneauActesEntite {
     this.plus.hidden = true;
     this.plus.addEventListener("click", () => void this.charger(true));
     const corps = el("div", "corps");
-    corps.append(el("p", "discret", t("actes.aide")), filtres, this.comptes, this.courbe, this.retour, this.liste, this.plus);
+    corps.append(el("p", "discret", t("actes.aide")), filtres, this.comptes, this.libre, this.courbe, this.retour, this.liste, this.plus);
     racine.append(tete, corps);
   }
 
@@ -148,6 +153,7 @@ export class PanneauActesEntite {
     }
     if (!suite) {
       this.montrerComptes(page.comptes);
+      this.montrerLibre(page.libreDepuis, page.decrets ?? []);
       this.liste.replaceChildren();
       if (page.actes.length === 0) this.liste.append(el("li", "discret", t("actes.aucun")));
     }
@@ -199,16 +205,61 @@ export class PanneauActesEntite {
     this.courbe.append(s, legende);
   }
 
+  /** Entité libre : depuis quand le monde n'est plus le fruit des seules règles, et ses décrets (on peut lever ceux en vigueur). */
+  private montrerLibre(depuis: string | null, decrets: Decret[]): void {
+    this.libre.replaceChildren();
+    if (depuis) this.libre.append(el("p", "libre-depuis", t("actes.libreDepuis", { date: depuis })));
+    if (decrets.length === 0) return;
+    this.libre.append(el("h4", undefined, t("actes.decretsTitre")));
+    const ul = el("ul", "liste decrets");
+    for (const d of decrets) {
+      const li = el("li", d.enVigueur ? "decret en-vigueur" : "decret fini");
+      const ou = d.nomCommunaute ?? t("actes.decret.partout");
+      li.append(el("strong", undefined, `${d.nomLoi} ×${d.facteur.toLocaleString(undefined, { maximumFractionDigits: 2 })}`),
+        ` · ${ou} · ${t("actes.decret.depuis", { date: d.debut })}${d.fin ? " · " + t(d.enVigueur ? "actes.decret.jusqua" : "actes.decret.finiLe", { date: d.fin }) : ""}`);
+      if (d.raison) li.append(" · ", el("q", "mots-entite", d.raison));
+      if (d.enVigueur) li.append(" ", bouton(t("actes.decret.lever"), () => void this.lever(d.id), "lien"));
+      ul.append(li);
+    }
+    this.libre.append(ul);
+  }
+
+  private async lever(id: number): Promise<void> {
+    try {
+      await connexion.invoke("LeverDecret", id);
+      await this.charger();
+    } catch (e) {
+      this.retour.textContent = message(e);
+    }
+  }
+
+  private async defaire(a: Acte, b: HTMLButtonElement): Promise<void> {
+    if (!confirm(t("actes.defaireConfirmer"))) return;
+    b.disabled = true;
+    try {
+      const lignes = await connexion.invoke<string[]>("DefaireActe", a.id);
+      this.retour.textContent = t("actes.defaitOk", { n: lignes.length });
+      await this.charger();
+    } catch (e) {
+      b.disabled = false;
+      this.retour.textContent = message(e);
+    }
+  }
+
   private ligne(a: Acte): HTMLLIElement {
     const li = el("li", `acte-entite ${a.issue} ${a.auteur}`);
     li.append(`${a.date} · `, el("span", `auteur-acte ${a.auteur}`, t(`actes.auteur.${a.auteur}`)), " · ", el("strong", undefined, a.quoi));
     if (a.humain > 0 && a.nomHumain) li.append(" · ", bouton(a.nomHumain, () => this.ouvrirHumain(a.humain), "lien"));
     if (a.communaute > 0 && a.nomCommunaute) li.append(" · ", bouton(a.nomCommunaute, () => this.ouvrirCommunaute(a.communaute), "lien"));
     li.append(el("span", "issue-acte", ` · ${t(`actes.issue.${a.issue}`)}`));
+    if (a.defait) li.append(el("span", "defait-acte", ` · ${t("actes.defait")}`));
+    if (a.recit) li.append(el("q", "mots-entite recit-libre", a.recit));
     if (a.resultats.length > 0) {
+      // Un acte libre montre tous ses changements (jusqu'à 40) : c'est ce que « Défaire » remettrait.
+      const max = a.sorte === "libre" ? 60 : 6;
       const ul = el("ul", "resultats-acte");
-      for (const r of a.resultats.slice(0, 6)) ul.append(el("li", undefined, r));
-      if (a.resultats.length > 6) ul.append(el("li", "discret", t("actes.etAutres", { n: a.resultats.length - 6 })));
+      for (const r of a.resultats.slice(0, max)) ul.append(el("li", undefined, r));
+      if (a.resultats.length > max) ul.append(el("li", "discret", t("actes.etAutres", { n: a.resultats.length - max })));
       li.append(ul);
     }
     const details = el("div", "details-acte");
@@ -217,6 +268,11 @@ export class PanneauActesEntite {
     if (a.journalPremier > 0) liens.append(bouton(t("actes.voirJournal"), () => void this.voirJournal(a, details), "lien"), " ");
     if (a.echange > 0) liens.append(bouton(t("actes.voirEchange"), () => void this.voirEchange(a, details), "lien"), " ");
     if (a.repris) liens.append(el("span", "discret", t("actes.repris")));
+    if (a.defaire) {
+      const b = bouton(t("actes.defaire"), () => void this.defaire(a, b), "defaire-acte");
+      b.title = t("actes.defaireAide");
+      liens.append(b);
+    }
     li.append(liens, details);
     return li;
   }

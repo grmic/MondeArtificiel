@@ -10,7 +10,7 @@ namespace Monde.Serveur;
 /// <param name="Karma">Karma gagné ou perdu par l'humain par cet acte (regard de l'Entité) ; <paramref name="KarmaAutre"/> : par l'autre.</param>
 public sealed record EvenementDto(long Id, long Secondes, string Date, string Type, int Humain, int Autre, string Texte, string Origine,
     long Cause, int Communaute, int AutreCommunaute, bool Significatif, double Karma = 0, double KarmaAutre = 0,
-    bool Ancien = false, bool Premiere = false, int PremiereDe = 0, bool Llm = false)
+    bool Ancien = false, bool Premiere = false, int PremiereDe = 0, bool Llm = false, bool Libre = false)
 {
     /// <summary>Clés des types, dans l'ordre de l'énumération (le navigateur filtre avec ces clés).</summary>
     public static readonly IReadOnlyDictionary<TypeEvenement, string> Cles = new Dictionary<TypeEvenement, string>
@@ -55,7 +55,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
     public static EvenementDto Depuis(EvenementJournal e) => new(e.Id, e.Secondes, L.Date(e.Secondes),
         Cles.GetValueOrDefault(e.Type, "autre"), e.HumainId, e.AutreId, L.Ecrire(e),
         e.Origine == Simulation.Origine.Entite ? "entite" : "naturelle", e.CauseId, e.CommunauteId, e.AutreCommunauteId, e.Significatif,
-        e.Karma, e.KarmaAutre, L.Ancien(e.Recit), PremieresFois.Est(e), e.Premiere, Entite.MarquesLlm.Contient(e.Id));
+        e.Karma, e.KarmaAutre, L.Ancien(e.Recit), PremieresFois.Est(e), e.Premiere, Entite.MarquesLlm.Contient(e.Id), Entite.MarquesLibre.Contient(e.Id));
 
     /// <summary>Traduit les clés reçues ; une clé inconnue rend la demande invalide (null).</summary>
     public static List<TypeEvenement>? TypesDepuis(IEnumerable<string>? cles)

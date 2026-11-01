@@ -27,8 +27,10 @@ public enum ModeEntite
 /// <param name="Regard">Son regard périodique sur le monde.</param>
 /// <param name="RegardJours">Jours du monde entre deux regards.</param>
 /// <param name="Caractere">Son caractère, écrit par le joueur (vide : elle se fait le sien).</param>
+/// <param name="Libre">Entité libre : elle peut changer l'état du monde et décréter, hors des règles (0.35.2).</param>
+/// <param name="Juge">Juge de cohérence : un second appel relit chaque acte libre.</param>
 public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdinaires, bool Attendre, bool Paroles, bool Bienfaits, bool Chatiments,
-    bool Catastrophes, bool Souffles, bool Regard = true, int RegardJours = EntiteLlm.RegardParDefaut, string Caractere = "")
+    bool Catastrophes, bool Souffles, bool Regard = true, int RegardJours = EntiteLlm.RegardParDefaut, string Caractere = "", bool Libre = false, bool Juge = true)
 {
     public ModeEntite ModeLu => Enum.TryParse<ModeEntite>(Mode, out var m) && Enum.IsDefined(m) ? m : ModeEntite.Joueur;
 
@@ -40,8 +42,9 @@ public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdina
 /// <summary>Où en est l'Entité-LLM : réglages, file d'attente, ce qu'elle fait en ce moment, dernière erreur.</summary>
 /// <param name="CaractereLlm">Le caractère que le LLM s'est donné (vide : aucun encore).</param>
 /// <param name="ProchainRegard">Date du monde de son prochain regard (null : pas de regard prévu).</param>
+/// <param name="LibreDepuis">Date du premier acte libre : depuis, le monde n'est plus le fruit des seules règles (null : aucun).</param>
 public sealed record EtatEntiteLlmDto(ConnexionLlm Connexion, ReglagesEntiteLlm Reglages, int EnFile, string? EnCours, string? DerniereErreur, int Propositions,
-    string CaractereLlm = "", string? ProchainRegard = null);
+    string CaractereLlm = "", string? ProchainRegard = null, string? LibreDepuis = null);
 
 /// <summary>Un échange, pour la liste : date, occasion, destinataire, mots, résultat.</summary>
 public sealed record EchangeDto(long Id, string Date, string Quand, string Occasion, int Humain, string? NomHumain, int Communaute, string? NomCommunaute,
@@ -92,7 +95,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
 {
     private const string CleMode = "llm_mode", ClePrieres = "llm_prieres", ClePart = "llm_part", CleAttendre = "llm_attendre", CleFamilles = "llm_familles",
         CleLangue = "llm_langue", CleRegard = "llm_regard", CleRegardJours = "llm_regard_jours", CleDernierRegard = "llm_dernier_regard",
-        CleCaractere = "llm_caractere", CleCaractereLlm = "llm_caractere_llm";
+        CleCaractere = "llm_caractere", CleCaractereLlm = "llm_caractere_llm", CleLibre = "llm_libre", CleJuge = "llm_juge";
 
     /// <summary>Jours entre deux regards, par défaut : une saison.</summary>
     public const int RegardParDefaut = (int)Calendrier.JoursParSaison;
@@ -161,7 +164,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                 d.LireReglage(ClePrieres) != "non", part, d.LireReglage(CleAttendre) == "oui",
                 familles.HasFlag(FamillesLlm.Paroles), familles.HasFlag(FamillesLlm.Bienfaits), familles.HasFlag(FamillesLlm.Chatiments),
                 familles.HasFlag(FamillesLlm.Catastrophes), familles.HasFlag(FamillesLlm.Souffles), d.LireReglage(CleRegard) != "non", jours,
-                d.LireReglage(CleCaractere) ?? "");
+                d.LireReglage(CleCaractere) ?? "", d.LireReglage(CleLibre) == "oui", d.LireReglage(CleJuge) != "non");
         }
     }
 
@@ -184,6 +187,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         d.EcrireReglage(CleRegard, r.Regard ? "oui" : "non");
         d.EcrireReglage(CleRegardJours, r.RegardJours.ToString(CultureInfo.InvariantCulture));
         d.EcrireReglage(CleCaractere, (r.Caractere ?? "").Trim());
+        d.EcrireReglage(CleLibre, r.Libre ? "oui" : "non");
+        d.EcrireReglage(CleJuge, r.Juge ? "oui" : "non");
         if (L.Toutes.ContainsKey(langue)) d.EcrireReglage(CleLangue, langue);
         if (mode == ModeEntite.Joueur)
             lock (_verrou) _file.RemoveAll(x => x.Occasion is not (OccasionLlm.DemandeHumain or OccasionLlm.DemandeCommunaute));
@@ -197,8 +202,9 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         string? prochain = null;
         if (r.ModeLu != ModeEntite.Joueur && r.Regard && !string.IsNullOrEmpty(Connexion.Modele))
             prochain = L.Date((DernierRegard ?? service.Monde.Secondes) + r.RegardJours * Calendrier.SecondesParJour);
+        var libre = service.Depot.PremierActeLibre();
         return new EtatEntiteLlmDto(Connexion, r, n, _enCours, _derniereErreur, service.Depot.Echanges(statut: 1, limite: 1000).Count,
-            service.Depot.LireReglage(CleCaractereLlm) ?? "", prochain);
+            service.Depot.LireReglage(CleCaractereLlm) ?? "", prochain, libre is { } l ? L.Date(l) : null);
     }
 
     /// <summary>Date du monde de son dernier regard (null : jamais).</summary>
@@ -297,6 +303,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             _monde = monde;
             _dernierePriere = monde.Prieres().Select(p => p.Id).DefaultIfEmpty(0).Max();
             MarquesLlm.Remplacer(service.Depot.PlagesJournalLlm());
+            MarquesLibre.Remplacer(service.Depot.PlagesJournalLibre());
         }
         var reglages = Reglages;
         var mode = reglages.ModeLu;
@@ -343,9 +350,12 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var permises = reglages.Familles;
         var memoire = service.Depot.Echanges(limite: 8).Where(e => e.Statut is 0 or 1).Reverse().ToList();
         var caractereLlm = service.Depot.LireReglage(CleCaractereLlm) ?? "";
+        var libre = reglages.Libre;
         var lecture = d.Occasion == OccasionLlm.Regard
-            ? Contexte.LireRegard(service, permises, d.Depuis, memoire, reglages.Caractere, caractereLlm)
-            : Contexte.Lire(service, permises, d.Occasion, d.Humain, d.Communaute, priere, memoire, reglages.Caractere, caractereLlm);
+            ? Contexte.LireRegard(service, permises, d.Depuis, memoire, reglages.Caractere, caractereLlm, libre)
+            : Contexte.Lire(service, permises, d.Occasion, d.Humain, d.Communaute, priere, memoire, reglages.Caractere, caractereLlm, libre);
+        var schema = Actes.Schema(libre);
+        var traceJuge = new System.Text.StringBuilder();
         var (maintenant, humains) = monde.InstantaneHumains();
         _enCours = d.Occasion == OccasionLlm.Regard ? L.T("llm.etat.regard")
             : d.Humain >= 1 && d.Humain <= humains.Count ? humains[d.Humain - 1].Nom : L.T("llm.etat.communaute");
@@ -361,7 +371,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             {
                 using var delai = CancellationTokenSource.CreateLinkedTokenSource(arret);
                 delai.CancelAfter(DelaiReponse);
-                reponse = await client.Demander(connexion, lecture.Consigne, messages, Actes.Schema(), delai.Token);
+                reponse = await client.Demander(connexion, lecture.Consigne, messages, schema, delai.Token);
                 try
                 {
                     var lu = Actes.Lire(reponse);
@@ -370,11 +380,35 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                     {
                         try
                         {
-                            Actes.Verifier(a, permises);
+                            Actes.Verifier(a, permises, libre);
                         }
                         catch (ArgumentException e)
                         {
                             fautes.Add(e.Message);
+                        }
+                    }
+                    // Le juge de cohérence relit un acte libre : incohérent, la décision revient une fois à l'Entité avec la raison.
+                    if (fautes.Count == 0 && libre && reglages.Juge && lu.Actes.Any(a => a.Type == Actes.Libre))
+                    {
+                        using var delaiJuge = CancellationTokenSource.CreateLinkedTokenSource(arret);
+                        delaiJuge.CancelAfter(DelaiReponse);
+                        var brut = await client.Demander(connexion, L.T("libre.juge.consigne", ("langue", L.Courante.Nom)), [("user", Libres.DemandeJuge(lecture, reponse))],
+                            Libres.SchemaJuge(), delaiJuge.Token);
+                        var verdict = Libres.LireVerdict(brut);
+                        traceJuge.AppendLine($"---- {L.T("libre.juge.nom")} ({essai + 1}) ----").AppendLine(brut);
+                        if (!verdict.Coherent)
+                        {
+                            var raison = L.T("libre.juge.incoherent", ("raison", verdict.Raison));
+                            if (essai == 1)
+                            {
+                                erreur = L.T("libre.juge.abandon", ("raison", verdict.Raison));
+                                decision = null;
+                                break;
+                            }
+                            erreur = raison;
+                            messages.Add(("assistant", reponse));
+                            messages.Add(("user", L.T("libre.juge.corriger", ("raison", verdict.Raison))));
+                            continue;
                         }
                     }
                     if (fautes.Count == 0 || essai == 1) decision = lu;
@@ -417,16 +451,17 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         if (decision is null)
         {
             Enregistrer(new EchangeEntite(0, maintenant, Maintenant(), (int)d.Occasion, d.Humain, d.Communaute, d.Priere, connexion.Libelle, duree,
-                Lu(lecture), reponse, "", "", "[]", "[]", 3, 0, -1, erreur, 0));
+                Lu(lecture), Trace(reponse, traceJuge), "", "", "[]", "[]", 3, 0, -1, erreur, 0));
             return;
         }
         // Sans caractère écrit par le joueur, elle garde celui qu'elle s'est donné la première fois.
         if (string.IsNullOrWhiteSpace(reglages.Caractere) && string.IsNullOrWhiteSpace(caractereLlm) && !string.IsNullOrWhiteSpace(decision.Caractere))
             service.Depot.EcrireReglage(CleCaractereLlm, ClientLlm.Couper(decision.Caractere.Trim(), CaractereMax));
         // Les pièces P1, P2… sont remplacées par leur écriture : une proposition acceptée plus tard reste lisible.
-        var actes = decision.Actes.Select(a => a.Type == Actes.SoufflerCombinaison ? a with { A = Actes.Piece(a.A, lecture.Pieces), B = Actes.Piece(a.B, lecture.Pieces) } : a).ToList();
+        var actes = decision.Actes.Select(a => a.Type == Actes.SoufflerCombinaison ? a with { A = Actes.Piece(a.A, lecture.Pieces), B = Actes.Piece(a.B, lecture.Pieces) }
+            : Libres.Resoudre(a, lecture.Jardin)).ToList();
         var echange = new EchangeEntite(0, maintenant, Maintenant(), (int)d.Occasion, d.Humain, d.Communaute, d.Priere, connexion.Libelle, duree,
-            Lu(lecture), reponse, decision.Mots, decision.Pensee, JsonSerializer.Serialize(actes, Actes.Json), "[]", 1, 0, -1, erreur, 0);
+            Lu(lecture), Trace(reponse, traceJuge), decision.Mots, decision.Pensee, JsonSerializer.Serialize(actes, Actes.Json), "[]", 1, 0, -1, erreur, 0);
         var proposer = reglages.ModeLu != ModeEntite.Agit;
         if (actes.All(a => a.Type == Actes.Rien)) echange = echange with { Statut = 5 };
         var id = Enregistrer(echange);
@@ -434,6 +469,9 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
     }
 
     private static string Lu(LectureLlm l) => l.Consigne + "\n\n----\n\n" + l.Demande;
+
+    /// <summary>La réponse brute, suivie de ce qu'a dit le juge de cohérence (s'il a été appelé).</summary>
+    private static string Trace(string reponse, System.Text.StringBuilder juge) => juge.Length == 0 ? reponse : reponse + "\n\n" + juge;
 
     private static string Maintenant() => DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
 
@@ -453,6 +491,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var e = service.Depot.Echange(id) ?? throw new ArgumentException(L.T("llm.erreur.echange"));
         if (e.Statut is not (1 or 5)) throw new ArgumentException(L.T("llm.erreur.dejaTraite"));
         var familles = permises ?? Reglages.Familles;
+        var libre = Reglages.Libre;
         var actes = JsonSerializer.Deserialize<List<ActeLlm>>(e.Actes, Actes.Json) ?? [];
         var monde = service.Monde;
         // Une prière déjà close : l'échange arrive trop tard.
@@ -475,7 +514,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             }
             try
             {
-                var (fait, p, d) = monde.Executer(m => Actes.Appliquer(m, a, familles, []));
+                var (fait, p, d) = monde.Executer(m => Actes.Appliquer(m, a, familles, [], libre));
                 Registre.Noter(service, Registre.Llm, a, fait, p, d, e.Id);
                 resultats.Add(string.Join(" ", fait.Resultats));
                 if (d >= p)
@@ -533,8 +572,17 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         return new EchangeDto(e.Id, L.Date(e.Le), e.Quand, L.T($"llm.occasion.court.{(OccasionLlm)e.Occasion}"), e.Humain,
             e.Humain >= 1 && e.Humain <= humains.Count ? humains[e.Humain - 1].Nom : null, e.Communaute,
             e.Communaute >= 1 && e.Communaute <= communautes.Count ? L.Communaute(communautes[e.Communaute - 1].Nom) : null,
-            e.Priere, e.Modele, Math.Round(e.DureeMs / 1000.0, 1), e.Mots, e.Pensee, actes.Select(Decrire).ToList(), resultats,
+            e.Priere, e.Modele, Math.Round(e.DureeMs / 1000.0, 1), e.Mots, e.Pensee, Decrire(actes).ToList(), resultats,
             L.T($"llm.statut.{code}"), code, e.Erreur, e.JournalPremier, complet ? e.Lu : null, complet ? e.Reponse : null);
+    }
+
+    private static IEnumerable<string> Decrire(IEnumerable<ActeLlm> actes)
+    {
+        foreach (var a in actes)
+        {
+            if (a.Type == Actes.Libre) yield return string.Join("\n", Libres.Decrire(a));
+            else yield return Decrire(a);
+        }
     }
 
     /// <summary>Un acte en mots courts (pour la liste des échanges).</summary>

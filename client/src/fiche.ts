@@ -34,6 +34,7 @@ interface Evenement {
   ancien?: boolean;
   /** Écrit par un acte de l'Entité jouée par le LLM. */
   llm?: boolean;
+  libre?: boolean;
 }
 
 /** Une chose du jardin secret. */
@@ -1045,7 +1046,8 @@ export function ligneEvenement(e: Evenement): HTMLElement {
   }
   li.append(" ", ...texteAvecLiens(e));
   if (e.origine === "entite") li.append(el("span", "entite", " " + t("evenement.entite")));
-  if (e.llm) li.append(Object.assign(el("span", "entite llm", " " + t("evenement.llm")), { title: t("evenement.llmAide") }));
+  if (e.libre) li.append(Object.assign(el("span", "entite llm libre", " " + t("evenement.libre")), { title: t("evenement.libreAide") }));
+  else if (e.llm) li.append(Object.assign(el("span", "entite llm", " " + t("evenement.llm")), { title: t("evenement.llmAide") }));
   const karmas: string[] = [];
   if (e.karma) karmas.push(`${nomDeId(e.humain)} ${signe(e.karma)}`);
   if (e.karmaAutre) karmas.push(`${nomDeId(e.autre)} ${signe(e.karmaAutre)}`);

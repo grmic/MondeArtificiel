@@ -116,6 +116,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     public IReadOnlyList<(int Communaute, IdeeDesChamps Idee)>? IdeesChamps { get; init; }
     /// <summary>Bêtes gardées (null : aucune ; depuis la 0.33.1).</summary>
     public IReadOnlyList<Troupeau>? Troupeaux { get; init; }
+
+    /// <summary>Décrets de l'Entité libre (null : aucun).</summary>
+    public IReadOnlyList<Decret>? Decrets { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -131,7 +134,7 @@ public sealed record Indicateurs(int Vivants, int Enfants, double Abondance, dou
 /// Tout le hasard vient d'un seul générateur sauvegardé : un monde rechargé continue exactement
 /// comme s'il n'avait jamais été arrêté.
 /// </summary>
-public sealed class MondeSimule
+public sealed partial class MondeSimule
 {
     public const long SecondesParPas = 600;
     private const long PasParJour = Calendrier.SecondesParJour / SecondesParPas;
@@ -227,6 +230,8 @@ public sealed class MondeSimule
             Numeros = _numeros, Generation = configuration.Generation, Comportement = _comportement, Communautes = _communautes,
         };
         _comportement.Catastrophes = _catastrophes;
+        _decrets = new Decrets(etat.Decrets);
+        _comportement.Decrets = _ecosysteme.Decrets = _decrets;
         _comportement.Outremer = _social.Outremer = new Outremer(etat.Outremer);
         _cultes = new Cultes(etat.Religions, etat.Prieres, etat.LieuxSacres, etat.Propheties, etat.EffetsEntite, etat.SouvenirsEntite);
         if (etat.ProchainePriere > _cultes.ProchainePriere) _cultes.ProchainePriere = etat.ProchainePriere;
@@ -332,6 +337,7 @@ public sealed class MondeSimule
                     Lignees = _champs.Lignees.Count == 0 ? null : _champs.Lignees.ToList(),
                     IdeesChamps = _champs.Idees.Count == 0 ? null : _champs.Idees.OrderBy(x => x.Key).Select(x => (x.Key, x.Value.Copier())).ToList(),
                     Troupeaux = _champs.Troupeaux.Count == 0 ? null : _champs.Troupeaux.ToList(),
+                    Decrets = _decrets.Liste.Count == 0 ? null : _decrets.Liste.ToList(),
                 };
             }
         }

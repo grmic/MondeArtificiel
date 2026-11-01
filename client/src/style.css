@@ -406,3 +406,11 @@ p.bilan-prieres { font-size: 0.9em; }
 .resultats-acte, .journal-acte { margin: 0.2em 0 0.2em 1em; padding: 0; font-size: 0.9em; }
 .liens-acte { font-size: 0.9em; }
 .nombre-moyen { width: 9.5em; }
+
+/* Entité libre (0.35.2) */
+.entite.llm.libre { color: #b5532c; }
+.libre-depuis { font-weight: 600; color: #b5532c; }
+.decrets > li.fini { opacity: 0.6; }
+.recit-libre { display: block; margin: 0.2em 0 0.2em 1em; font-style: italic; }
+.defait-acte { font-weight: 600; color: #888; }
+.defaire-acte { margin-left: 0.6em; }

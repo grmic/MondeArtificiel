@@ -198,7 +198,7 @@ public sealed partial class Comportement
         var connus = 0;
         foreach (var s in h.Savoirs) if (s.Effet != Effet.Rien && s.Confiance >= 0.4) connus++;
         var voisinage = Math.Min(3, Math.Log(1 + connus) / Math.Log(10));
-        if (alea.Reel() >= 0.00015 * ingenieux * ingenieux * (0.5 + p.Ouverture) * pousse * voisinage * EspritsFertiles) return false;
+        if (alea.Reel() >= 0.00015 * ingenieux * ingenieux * (0.5 + p.Ouverture) * pousse * voisinage * EspritsFertiles * Decrets.Facteur(LoiDecret.Idees, h.CommunauteId, _maintenant)) return false;
 
         var materiaux = Materiaux(h);
         var (facons, jointures) = GestesConnus(h);

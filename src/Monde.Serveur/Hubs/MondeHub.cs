@@ -554,6 +554,34 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Les lignes du journal écrites par un acte de l'Entité.</summary>
     public List<EvenementDto> JournalActe(long id) => Entite.ActesEntite.Journal(service, id);
 
+    /// <summary>Défait un acte de l'Entité libre : les valeurs d'avant reviennent, les suites restent.</summary>
+    public async Task<List<string>> DefaireActe(long id)
+    {
+        var lignes = Appeler(() => Entite.Libres.Defaire(service, id));
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(service.Monde));
+        await Clients.Diffuser("EntiteLlm", () => entite.Etat());
+        return lignes;
+    }
+
+    /// <summary>Lève un décret de l'Entité libre.</summary>
+    public List<Entite.DecretDto> LeverDecret(int id)
+    {
+        Appeler(() =>
+        {
+            var (r, premier, dernier) = service.Monde.Executer(m => m.LeverDecret(id));
+            if (r is null) throw new ArgumentException(L.T("libre.erreur.decret"));
+            Entite.MarquesLibre.Ajouter(premier, dernier);
+            Entite.Registre.Noter(service, Entite.Registre.Joueur, new Entite.ActeLlm { Type = "lever_decret", Param = id }, Entite.Registre.Texte(L.Rediger(r), true),
+                premier, dernier);
+            return 0;
+        });
+        service.Sauvegarder();
+        return Entite.ActesEntite.Decrets(service);
+    }
+
+    /// <summary>Les décrets de l'Entité libre (en vigueur d'abord).</summary>
+    public List<Entite.DecretDto> Decrets() => Entite.ActesEntite.Decrets(service);
+
     /// <summary>Applique un pouvoir de l'Entité ; une demande invalide devient une erreur pour le navigateur.</summary>
     private static T Appeler<T>(Func<T> pouvoir)
     {

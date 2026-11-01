@@ -640,6 +640,7 @@ public sealed partial class Comportement
         // Avant 50 ans, ces morts sont des maladies (voir plus bas) et des morts de tout-petits : la clémence du monde les écarte ;
         // l'usure de l'âge, non.
         if (age < 50) taux *= AdouciPour(h, maintenant);
+        taux /= Decrets.Facteur(LoiDecret.Longevite, h.CommunauteId, maintenant);
         if (alea.Reel() < taux / Calendrier.JoursParAn)
         {
             // Avant 50 ans, ces morts sont surtout des infections, des poumons et du ventre (Gurven et Kaplan, 2007).

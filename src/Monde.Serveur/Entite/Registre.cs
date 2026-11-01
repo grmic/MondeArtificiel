@@ -6,7 +6,8 @@ using Monde.Stockage;
 namespace Monde.Serveur.Entite;
 
 /// <summary>Ce qu'un acte a donné : en mots, son issue (1 effet, 0 sans effet, −1 refusé) et le nombre d'humains ou de prières touchés.</summary>
-public sealed record FaitEntite(IReadOnlyList<string> Resultats, int Issue, int Nombre);
+/// <param name="Defaire">Pour un acte libre : de quoi le défaire (JSON).</param>
+public sealed record FaitEntite(IReadOnlyList<string> Resultats, int Issue, int Nombre, string Defaire = "");
 
 /// <summary>
 /// Registre des actes de l'Entité (table <c>entite_actes</c>) : chaque pouvoir exercé, par le joueur ou par le LLM, y est noté avec
@@ -36,9 +37,10 @@ public static class Registre
         // Rien d'écrit au journal : rien ne s'est passé dans le monde (une communauté vide, un humain déjà guéri…).
         if (!ecrit && fait.Issue == 1) fait = fait with { Issue = 0 };
         if (auteur == Llm && ecrit) MarquesLlm.Ajouter(premier, dernier);
+        if (acte.Type == Actes.Libre && ecrit) MarquesLibre.Ajouter(premier, dernier);
         service.Depot.AjouterActe(new ActeEntite(0, monde.Secondes, auteur, acte.Type, genre, humain, communaute, acte.Priere ?? 0, fait.Nombre,
             JsonSerializer.Serialize(acte, Actes.Json), JsonSerializer.Serialize(fait.Resultats, Actes.Json), fait.Issue,
-            ecrit ? premier : 0, ecrit ? dernier : -1, echange, false));
+            ecrit ? premier : 0, ecrit ? dernier : -1, echange, false, fait.Defaire));
     }
 
     /// <summary>Humain et communauté visés, et la précision (geste, parole, catastrophe).</summary>
@@ -66,6 +68,15 @@ public static class Registre
                 return (0, a.Communaute ?? 0, a.Parole ?? "");
             case Actes.Catastrophe:
                 return (0, 0, a.Catastrophe ?? "");
+            case Actes.Libre:
+            {
+                var c = a.Changements ?? [];
+                var h = c.Select(x => x.Humain).FirstOrDefault(x => x > 0);
+                var (_, humains) = monde.InstantaneHumains();
+                var communaute = c.Select(x => x.Communaute).FirstOrDefault(x => x > 0);
+                if (communaute == 0 && h >= 1 && h <= humains.Count) communaute = humains[h - 1].CommunauteId;
+                return (h, communaute, a.Visible == true ? "visible" : "cache");
+            }
             case Actes.Exaucer:
             case Actes.Refuser:
             {

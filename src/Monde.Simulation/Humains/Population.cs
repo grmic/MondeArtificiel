@@ -61,6 +61,14 @@ public sealed class Population : List<Humain>
         return rechange;
     }
 
+    /// <summary>Un mort revient parmi les vivants (Entité libre), à sa place dans l'ordre des identifiants.</summary>
+    public void Revenir(Humain h)
+    {
+        if (_vivants.Contains(h)) return;
+        var i = _vivants.FindIndex(x => x.Id > h.Id);
+        _vivants.Insert(i < 0 ? _vivants.Count : i, h);
+    }
+
     /// <summary>Retire des vivants ceux qui sont morts depuis le dernier recensement.</summary>
     public void Recenser() => _vivants.RemoveAll(h => !h.EstVivant);
 

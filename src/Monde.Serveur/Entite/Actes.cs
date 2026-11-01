@@ -42,6 +42,14 @@ public sealed record ActeLlm
     public int? Espece { get; init; }
     public bool? Mutuel { get; init; }
     public bool? Passion { get; init; }
+
+    // Entité libre (type « libre ») : son récit, s'il se voit et de qui, s'il fait du bien, les changements et les décrets.
+    public string? Recit { get; init; }
+    public bool? Visible { get; init; }
+    public bool? Bienfait { get; init; }
+    public int[]? Temoins { get; init; }
+    public List<ChangementLibre>? Changements { get; init; }
+    public List<DecretLibre>? Decrets { get; init; }
 }
 
 /// <summary>La réponse du LLM : pourquoi, les mots dits, et les actes (zéro ou plus).</summary>
@@ -73,7 +81,11 @@ public static class Actes
     public const string SoufflerCombinaison = "souffler_combinaison";
     public const string Penchant = "penchant";
     public const string Rien = "rien";
+    public const string Libre = "libre";
     public static readonly string[] Types = [Parler, ParlerCommunaute, Geste, Catastrophe, Exaucer, Refuser, SoufflerGeste, SoufflerCombinaison, Penchant, Rien];
+
+    /// <summary>Types permis, avec l'acte libre quand la case « Entité libre » est cochée.</summary>
+    public static string[] TypesPermis(bool libre) => libre ? [.. Types, Libre] : Types;
 
     /// <summary>Plus d'actes par réponse : au-delà, ils sont ignorés.</summary>
     public const int ParReponse = 4;
@@ -90,7 +102,7 @@ public static class Actes
     };
 
     /// <summary>Schéma JSON imposé à la réponse (format structuré d'Ollama, response_format des API compatibles OpenAI).</summary>
-    public static JsonObject Schema()
+    public static JsonObject Schema(bool libre = false)
     {
         static JsonObject T(string type) => new() { ["type"] = type };
         static JsonObject Entiers() => new() { ["type"] = "array", ["items"] = T("integer") };
@@ -99,7 +111,7 @@ public static class Actes
             ["type"] = "object",
             ["properties"] = new JsonObject
             {
-                ["type"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Types.Select(t => (JsonNode)t)]) },
+                ["type"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. TypesPermis(libre).Select(t => (JsonNode)t)]) },
                 ["humain"] = T("integer"), ["humains"] = Entiers(), ["communaute"] = T("integer"), ["communautes"] = Entiers(),
                 ["cible"] = T("integer"), ["cibles"] = Entiers(), ["parole"] = T("string"), ["mode"] = T("string"), ["param"] = T("integer"),
                 ["direction"] = T("integer"), ["geste"] = T("string"), ["maniere"] = T("string"), ["calamite"] = T("string"), ["force"] = T("number"),
@@ -109,6 +121,43 @@ public static class Actes
             },
             ["required"] = new JsonArray("type"),
         };
+        if (libre)
+        {
+            var proprietes = (JsonObject)acte["properties"]!;
+            proprietes["recit"] = T("string");
+            proprietes["visible"] = T("boolean");
+            proprietes["bienfait"] = T("boolean");
+            proprietes["temoins"] = Entiers();
+            proprietes["changements"] = new JsonObject
+            {
+                ["type"] = "array", ["maxItems"] = Simulation.Libre.ChangementsMax,
+                ["items"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["quoi"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Simulation.Libre.Sortes.Select(s => (JsonNode)s)]) },
+                        ["humain"] = T("integer"), ["communaute"] = T("integer"), ["autre"] = T("integer"), ["valeur"] = T("number"), ["texte"] = T("string"),
+                        ["genre"] = T("string"), ["x"] = T("integer"), ["y"] = T("integer"), ["rayon"] = T("integer"),
+                    },
+                    ["required"] = new JsonArray("quoi"),
+                },
+            };
+            proprietes["decrets"] = new JsonObject
+            {
+                ["type"] = "array", ["maxItems"] = Simulation.Libre.DecretsMax,
+                ["items"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["loi"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<LoiDecret>().Select(s => (JsonNode)s)]) },
+                        ["facteur"] = T("number"), ["communaute"] = T("integer"), ["jours"] = T("number"), ["raison"] = T("string"),
+                    },
+                    ["required"] = new JsonArray("loi", "facteur"),
+                },
+            };
+        }
         return new JsonObject
         {
             ["type"] = "object",
@@ -171,9 +220,10 @@ public static class Actes
     /// Vérifie un acte sans rien changer au monde (type connu, famille permise, ce qui ne se voit qu'avant d'appliquer). Lève
     /// <see cref="ArgumentException"/> avec la raison, pour le LLM.
     /// </summary>
-    public static void Verifier(ActeLlm a, FamillesLlm permises)
+    public static void Verifier(ActeLlm a, FamillesLlm permises, bool libre = false)
     {
-        if (Array.IndexOf(Types, a.Type) < 0) throw new ArgumentException(L.T("llm.erreur.type", ("type", a.Type)));
+        if (Array.IndexOf(TypesPermis(libre), a.Type) < 0) throw new ArgumentException(L.T(a.Type == Libre ? "llm.erreur.pasLibre" : "llm.erreur.type", ("type", a.Type)));
+        if (a.Type == Libre && (a.Changements?.Count ?? 0) + (a.Decrets?.Count ?? 0) == 0) throw new ArgumentException(L.T("libre.erreur.vide"));
         var f = Famille(a);
         if (f != FamillesLlm.Aucune && (permises & f) == 0) throw new ArgumentException(L.T("llm.erreur.famille", ("type", a.Type)));
         if (a.Type == Parler && Enum.TryParse<Parole>(a.Parole, out var p) && Paroles.Collective(p))
@@ -185,11 +235,13 @@ public static class Actes
     /// <see cref="ArgumentException"/> si la demande est invalide (rien n'a changé). <paramref name="pieces"/> : les pièces
     /// numérotées montrées au LLM pour les combinaisons (P1, P2…).
     /// </summary>
-    public static FaitEntite Appliquer(MondeSimule monde, ActeLlm a, FamillesLlm permises, IReadOnlyList<string> pieces)
+    public static FaitEntite Appliquer(MondeSimule monde, ActeLlm a, FamillesLlm permises, IReadOnlyList<string> pieces, bool libre = false)
     {
-        Verifier(a, permises);
+        Verifier(a, permises, libre);
         switch (a.Type)
         {
+            case Libre:
+                return Libres.Appliquer(monde, a);
             case Parler:
                 return Registre.Chacun(monde, Pouvoirs.Parler(monde, new DemandeParole(Humains(a), a.Communautes, a.Parole ?? "", a.Mode ?? "", a.Cible ?? 0, a.Param ?? a.Direction ?? 0)));
             case ParlerCommunaute:

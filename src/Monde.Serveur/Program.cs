@@ -82,12 +82,17 @@ app.UseStaticFiles(new StaticFileOptions
 {
     OnPrepareResponse = fichier =>
     {
-        // La page est revalidée à chaque chargement : une nouvelle version s'affiche sans rechargement forcé.
+        // La page n'est jamais gardée (ni en cache, ni dans le cache « page précédente » des navigateurs) : une nouvelle version
+        // s'affiche au premier chargement, même après une installation où la date du fichier a reculé (0.35.2).
         // Les scripts et styles de Vite portent une empreinte dans leur nom : ils peuvent rester en cache.
         var entetes = fichier.Context.Response.Headers;
-        entetes.CacheControl = fichier.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase)
-            ? "no-cache"
-            : fichier.Context.Request.Path.StartsWithSegments("/assets") ? "public, max-age=31536000, immutable" : "no-cache";
+        if (fichier.File.Name.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+        {
+            entetes.CacheControl = "no-store, no-cache, must-revalidate, max-age=0";
+            entetes.Pragma = "no-cache";
+            entetes.Expires = "0";
+        }
+        else entetes.CacheControl = fichier.Context.Request.Path.StartsWithSegments("/assets") ? "public, max-age=31536000, immutable" : "no-cache";
     },
 });
 

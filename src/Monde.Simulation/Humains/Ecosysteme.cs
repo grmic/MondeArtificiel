@@ -84,6 +84,9 @@ public sealed class Ecosysteme
     }
 
     public ushort[] Gibier { get; }
+
+    /// <summary>Les décrets de l'Entité libre (aucun d'ordinaire).</summary>
+    public Decrets Decrets { get; set; } = new();
     public ushort[] Plantes { get; }
 
     /// <summary>
@@ -245,6 +248,7 @@ public sealed class Ecosysteme
     {
         var saison = FacteurSaison(maintenant);
         var croissanceDuJour = CroissanceGibierParAn / Calendrier.JoursParAn;
+        var (decretPlantes, decretGibier) = (Decrets.Facteur(LoiDecret.Plantes, maintenant), Decrets.Facteur(LoiDecret.Gibier, maintenant));
         for (var i = 0; i < Plantes.Length; i++)
         {
             if (Degats[i] > 0) Degats[i] = (ushort)Math.Max(0, Degats[i] - Math.Max(1, (int)Math.Round(GuerisonParJour(i))));
@@ -254,7 +258,7 @@ public sealed class Ecosysteme
             if (_carte.Plantes[i] == 0 && _carte.Gibier[i] == 0) continue;
 
             // Plantes : la repousse suit la saison ; une tuile dépouillée (moins de 20 % de son niveau) repart plus lentement.
-            var niveau = NiveauPlantes(i, saison);
+            var niveau = NiveauPlantes(i, saison) * decretPlantes;
             double p = Plantes[i];
             if (p < niveau)
             {
@@ -268,7 +272,7 @@ public sealed class Ecosysteme
             Plantes[i] = Arrondir(p);
 
             // Gibier : croissance logistique, nulle sous le seuil d'Allee.
-            var capacite = NiveauGibier(i);
+            var capacite = NiveauGibier(i) * decretGibier;
             double g = Gibier[i];
             if (capacite > 0 && g >= SeuilAllee * capacite) g += croissanceDuJour * EffetPluie(PluieEn(i)) * g * (1 - g / capacite);
             else if (g > capacite) g = capacite;
