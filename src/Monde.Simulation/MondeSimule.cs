@@ -119,6 +119,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Décrets de l'Entité libre (null : aucun).</summary>
     public IReadOnlyList<Decret>? Decrets { get; init; }
+
+    /// <summary>Plantes et bêtes inventées par l'Entité libre (null : aucune ; depuis la 0.35.3).</summary>
+    public IReadOnlyList<Invention>? Inventions { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -220,6 +223,7 @@ public sealed partial class MondeSimule
         _social.Installations = _installations;
         _champs = new Champs(etat.Parcelles, etat.Lignees, etat.IdeesChamps?.Select(x => (x.Communaute, x.Idee.Copier())), etat.Troupeaux);
         Faune = new Faune(etat.Graine, carte.Biomes.Any(b => b >= (byte)Biome.ForetDeFeuillus));
+        ChargerInventions(etat.Inventions);
         _social.Champs = _champs;
         _comportement = new Comportement(carte, _ecosysteme, _alea)
         {
@@ -338,6 +342,7 @@ public sealed partial class MondeSimule
                     IdeesChamps = _champs.Idees.Count == 0 ? null : _champs.Idees.OrderBy(x => x.Key).Select(x => (x.Key, x.Value.Copier())).ToList(),
                     Troupeaux = _champs.Troupeaux.Count == 0 ? null : _champs.Troupeaux.ToList(),
                     Decrets = _decrets.Liste.Count == 0 ? null : _decrets.Liste.ToList(),
+                    Inventions = _inventions.Count == 0 ? null : _inventions.ToList(),
                 };
             }
         }

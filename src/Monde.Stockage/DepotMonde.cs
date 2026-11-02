@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 52;
+    public const int VersionSchema = 53;
 
     private readonly string _connexion;
 
@@ -620,6 +620,8 @@ public sealed partial class DepotMonde
         if (actuelle < 51) MigrerVersion51(connexion, transaction);
         // Version 52 : Entité libre (décrets, actes à défaire).
         if (actuelle < 52) MigrerVersion52(connexion, transaction);
+        // Version 53 : inventions de l'Entité libre (plantes et bêtes).
+        if (actuelle < 53) MigrerVersion53(connexion, transaction);
         if (actuelle < 37 && !Colonnes(connexion, transaction, "etat").Contains("generation"))
         {
             Executer(connexion, transaction, """
@@ -859,6 +861,8 @@ public sealed partial class DepotMonde
         if (mandats.Count > 0) etat = etat with { Mandats = mandats };
         var decrets = LireDecrets(commande);
         if (decrets.Count > 0) etat = etat with { Decrets = decrets };
+        var inventions = LireInventions(commande);
+        if (inventions.Count > 0) etat = etat with { Inventions = inventions };
         var (parcelles, lignees, idees) = LireChamps(commande);
         if (lignees.Count > 0) etat = etat with { Parcelles = parcelles, Lignees = lignees };
         if (idees.Count > 0) etat = etat with { IdeesChamps = idees };
@@ -1270,6 +1274,7 @@ public sealed partial class DepotMonde
         if (etat.Outremer is not null) EnregistrerOutremer(connexion, transaction, etat.Outremer);
         if (etat.Mandats is not null) EnregistrerMandats(connexion, transaction, etat.Mandats);
         EnregistrerDecrets(connexion, transaction, etat.Decrets ?? []);
+        EnregistrerInventions(connexion, transaction, etat.Inventions ?? []);
         if (etat.Humains is not null) EnregistrerChamps(connexion, transaction, etat);
         if (etat.Religions is not null || etat.Prieres is not null || etat.LieuxSacres is not null || etat.Propheties is not null)
             EnregistrerCultes(connexion, transaction, etat);

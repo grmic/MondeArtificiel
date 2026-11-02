@@ -58,9 +58,14 @@ public sealed class Flore
         "à la tige rouge", "aux fleurs bleues", "aux fruits velus", "à l'écorce rouge", "aux feuilles en étoile", "à la racine jaune",
     ];
 
-    public IReadOnlyList<Espece> Especes { get; }
+    public IReadOnlyList<Espece> Especes => _especes;
 
-    private readonly Dictionary<Biome, Espece[]> _parBiome;
+    private IReadOnlyList<Espece> _especes;
+
+    private Dictionary<Biome, Espece[]> _parBiome;
+
+    /// <summary>Espèces inventées par l'Entité libre puis disparues (« Défaire ») : elles ne poussent plus nulle part.</summary>
+    private readonly HashSet<int> _disparues = [];
 
     /// <param name="nouveauxTerrains">La carte porte des terrains de la génération 1 (feuillus, mangrove, lande) : leurs
     /// espèces sont tirées après toutes les autres, qui restent donc les mêmes que sur une carte plus ancienne.</param>
@@ -95,20 +100,44 @@ public sealed class Flore
         // Ce que chaque espèce donne à manger, tiré d'un hasard à part : les vertus et les noms ci-dessus ne changent pas.
         var nourrir = new Alea(graine ^ 0x4E4F555252495245UL);
         for (var k = 0; k < especes.Count; k++) especes[k] = especes[k] with { Aliment = Aliment.Tirer(especes[k], nourrir) };
-        Especes = especes;
-        _parBiome = especes.GroupBy(e => e.Biomes[0]).ToDictionary(g => g.Key, g => g.ToArray());
+        _especes = especes;
+        _parBiome = Repartir();
     }
+
+    private Dictionary<Biome, Espece[]> Repartir() =>
+        _especes.Where(e => !_disparues.Contains(e.Numero)).GroupBy(e => e.Biomes[0]).ToDictionary(g => g.Key, g => g.ToArray());
+
+    /// <summary>Une espèce inventée par l'Entité libre (0.35.3) : elle prend le numéro suivant et pousse sur son terrain.</summary>
+    public Espece Ajouter(Espece e)
+    {
+        var neuve = e with { Numero = _especes.Count + 1 };
+        _especes = [.. _especes, neuve];
+        _parBiome = Repartir();
+        _nourricieres = [];
+        return neuve;
+    }
+
+    /// <summary>Une espèce disparaît (une invention défaite) : son numéro reste, pour ce qu'on en savait.</summary>
+    public void Retirer(int numero)
+    {
+        if (!_disparues.Add(numero)) return;
+        _parBiome = Repartir();
+        _nourricieres = [];
+    }
+
+    public bool EstDisparue(int numero) => _disparues.Contains(numero);
 
     public Espece Get(int numero) => Especes[numero - 1];
 
     /// <summary>Espèces de ce terrain qui donnent à manger.</summary>
     public IReadOnlyList<Espece> NourricieresSur(Biome b)
     {
-        if (_nourricieres.TryGetValue(b, out var l)) return l;
-        lock (_nourricieres) return _nourricieres[b] = Sur(b).Where(e => e.Aliment is { Sorte: not SorteAliment.Aucune }).ToArray();
+        var cache = _nourricieres;
+        if (cache.TryGetValue(b, out var l)) return l;
+        lock (cache) return cache[b] = Sur(b).Where(e => e.Aliment is { Sorte: not SorteAliment.Aucune }).ToArray();
     }
 
-    private readonly Dictionary<Biome, Espece[]> _nourricieres = [];
+    private Dictionary<Biome, Espece[]> _nourricieres = [];
 
     /// <summary>Espèces qui poussent sur ce terrain.</summary>
     public IReadOnlyList<Espece> Sur(Biome b) => _parBiome.TryGetValue(b, out var l) ? l : [];
@@ -187,6 +216,12 @@ public sealed record Aliment(SorteAliment Sorte, double Egrenage, double Tenaces
             SorteAliment.Fruits when u > 0.85 => SorteAliment.Aucune,
             _ => sorte,
         };
+        return Selon(sorte, e, alea);
+    }
+
+    /// <summary>Ce que donne une espèce d'une sorte choisie (une plante inventée par l'Entité libre, ou tirée ci-dessus).</summary>
+    internal static Aliment? Selon(SorteAliment sorte, Espece e, Alea alea)
+    {
         double R(double a, double b) => a + (b - a) * alea.Reel();
         var amertume = Math.Clamp(Math.Max(e.Toxicite, alea.Reel() < 0.3 ? R(0.2, 0.8) : R(0, 0.15)), 0, 1);
         return sorte switch

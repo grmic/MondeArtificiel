@@ -79,6 +79,10 @@ public static class Libres
             if (c.Autre != 0) morceaux.Add($"→ {c.Autre}");
             if (c.Valeur is { } v) morceaux.Add($"= {N(v, 2)}");
             if (!string.IsNullOrEmpty(c.Texte)) morceaux.Add($"« {ClientLlm.Couper(c.Texte, 120)} »");
+            if (!string.IsNullOrEmpty(c.Nom)) morceaux.Add($"« {ClientLlm.Couper(c.Nom, 80)} »");
+            if (!string.IsNullOrEmpty(c.Forme)) morceaux.Add(c.Forme);
+            if (!string.IsNullOrEmpty(c.Geste)) morceaux.Add($"{c.Geste} {c.A} {c.B}".Trim());
+            if (c.Proprietes is { Count: > 0 } p) morceaux.Add(string.Join(", ", p.Select(x => $"{x.Key} {N(x.Value, 2)}")));
             if (c.X >= 0) morceaux.Add($"({c.X}, {c.Y}{(c.Rayon > 0 ? $", r {c.Rayon}" : "")})");
             yield return "  · " + string.Join(" ", morceaux);
         }
@@ -99,13 +103,20 @@ public static class Libres
         var nombres = Simulation.Libre.Sortes.Where(s => Simulation.Libre.Bornes(s) is not null)
             .Select(s => { var (min, max) = Simulation.Libre.Bornes(s)!.Value; return $"{s} ({N(min, max <= 1 ? 1 : 0)}–{N(max, max <= 1 ? 1 : 0)})"; });
         c.AppendLine(L.T("libre.cat.nombres", ("liste", string.Join(", ", nombres))));
-        foreach (var s in Simulation.Libre.SortesHumain.Concat(Simulation.Libre.SortesMonde)) c.AppendLine($"  - {s} : {L.T($"libre.cat.{s}")}");
+        foreach (var s in Simulation.Libre.SortesHumain.Concat(Simulation.Libre.SortesMonde).Concat(Simulation.Libre.SortesInvention))
+            c.AppendLine($"  - {s} : {L.T($"libre.cat.{s}")}");
         c.AppendLine(L.T("libre.cat.causes", ("liste", string.Join(", ", Enum.GetNames<CauseDeMort>().Where(n => n != nameof(CauseDeMort.Aucune))))));
         c.AppendLine(L.T("libre.cat.maladies", ("liste", string.Join(", ", Enum.GetNames<Maladie>().Where(n => n != nameof(Maladie.Aucune))))));
         c.AppendLine(L.T("libre.cat.pensees", ("liste", string.Join(", ", Enum.GetNames<TypeIntime>()))));
         c.AppendLine(L.T("libre.cat.relations", ("liste", string.Join(", ", Simulation.Libre.Relations))));
         c.AppendLine(L.T("libre.cat.decrets", ("liste", string.Join(", ", Enum.GetValues<LoiDecret>().Select(l => $"{l} ({L.T($"loi.{l}")})"))),
             ("min", N(Decrets.FacteurMin, 1)), ("max", N(Decrets.FacteurMax))));
+        c.AppendLine(L.T("libre.cat.inventions", ("plantes", string.Join(", ", Inventions.FormesPlante)), ("betes", string.Join(", ", Inventions.FormesBete)),
+            ("vertus", string.Join(", ", Inventions.VertusPlante)), ("aliments", string.Join(", ", Inventions.Aliments)),
+            ("traits", string.Join(", ", Inventions.TraitsBete.Select(t => $"{t.Key} {N(t.Value.Min, t.Value.Min < 1 ? 1 : 0)}–{N(t.Value.Max)}")))));
+        c.AppendLine(L.T("libre.cat.gestes", ("gestes", string.Join(", ", Enum.GetNames<Geste>())),
+            ("matieres", string.Join(", ", Enum.GetNames<Matiere>().Where(n => n != nameof(Matiere.Aucune))))));
+        c.AppendLine(L.T("libre.cat.idees", ("liste", string.Join(", ", Idees.Libelles.Keys))));
         c.AppendLine(L.T("libre.cat.regles"));
     }
 

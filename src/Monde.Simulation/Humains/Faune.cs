@@ -33,7 +33,10 @@ public enum RegimeBete : byte
 public sealed record Bete(int Numero, Biome Biome, int Forme, int Trait, RegimeBete Regime, double Poids, double AnsMaturite, double Portee,
     bool Captive, double Agressivite, double Panique, bool Hierarchie, bool Charognarde, double Lait)
 {
-    public object Dit => _dit ??= new Recit("bete", ("forme", Recit.Seul($"bete.forme.{Forme}")), ("trait", Recit.Seul($"bete.trait.{Trait}")));
+    /// <summary>Le nom d'une bête inventée par l'Entité libre (écrit par le LLM, dans sa langue) ; null pour les bêtes de la graine.</summary>
+    public string? Nom { get; init; }
+
+    public object Dit => Nom is { Length: > 0 } n ? n : _dit ??= new Recit("bete", ("forme", Recit.Seul($"bete.forme.{Forme}")), ("trait", Recit.Seul($"bete.trait.{Trait}")));
 
     private Recit? _dit;
 
@@ -56,9 +59,36 @@ public sealed class Faune
 
     public const int NombreDeTraits = 12;
 
-    public IReadOnlyList<Bete> Betes { get; }
+    public IReadOnlyList<Bete> Betes => _betes;
 
-    private readonly Dictionary<Biome, Bete[]> _parBiome;
+    private IReadOnlyList<Bete> _betes;
+
+    private Dictionary<Biome, Bete[]> _parBiome;
+
+    private readonly HashSet<int> _disparues = [];
+
+    private Dictionary<Biome, Bete[]> Repartir() =>
+        _betes.Where(e => !_disparues.Contains(e.Numero)).GroupBy(e => e.Biome).ToDictionary(g => g.Key, g => g.ToArray());
+
+    /// <summary>Une bête inventée par l'Entité libre (0.35.3) : elle prend le numéro suivant et vit sur son terrain.</summary>
+    public Bete Ajouter(Bete b)
+    {
+        var neuve = b with { Numero = _betes.Count + 1 };
+        _betes = [.. _betes, neuve];
+        _parBiome = Repartir();
+        return neuve;
+    }
+
+    /// <summary>Une bête disparaît (une invention défaite) : son numéro reste, pour les troupeaux et ce qu'on en savait.</summary>
+    public void Retirer(int numero)
+    {
+        if (_disparues.Add(numero)) _parBiome = Repartir();
+    }
+
+    public bool EstDisparue(int numero) => _disparues.Contains(numero);
+
+    /// <summary>Les traits d'une bête de cette forme, tirés comme pour la faune de la graine (pour une bête inventée).</summary>
+    internal static Bete Modele(Biome b, int forme, Alea alea) => Tirer(0, b, forme, alea.Entier(NombreDeTraits), alea);
 
     public Faune(ulong graine, bool nouveauxTerrains = false)
     {
@@ -78,15 +108,15 @@ public sealed class Faune
                 betes.Add(Tirer(betes.Count + 1, b, forme, alea.Entier(NombreDeTraits), alea));
             }
         }
-        Betes = betes;
-        _parBiome = betes.GroupBy(e => e.Biome).ToDictionary(g => g.Key, g => g.ToArray());
+        _betes = betes;
+        _parBiome = Repartir();
     }
 
     /// <summary>Une faune donnée (pour les essais).</summary>
     internal Faune(IReadOnlyList<Bete> betes)
     {
-        Betes = betes;
-        _parBiome = betes.GroupBy(e => e.Biome).ToDictionary(g => g.Key, g => g.ToArray());
+        _betes = betes;
+        _parBiome = Repartir();
     }
 
     public Bete Get(int numero) => Betes[numero - 1];

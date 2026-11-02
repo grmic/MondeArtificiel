@@ -13,8 +13,14 @@ namespace Monde.Simulation;
 /// <param name="Texte">Cause d'une mort, nom d'une maladie ou d'un savoir, pensée à confier, état d'une relation…</param>
 /// <param name="Genre">Pour une pensée : sa sorte (Souvenir, Reve, Espoir, Peur…).</param>
 /// <param name="Rayon">Pour les plantes et le gibier : rayon en cases autour de (X, Y).</param>
+/// <param name="Nom">Nom d'une plante ou d'une bête inventée ; forme d'un mot donné.</param>
+/// <param name="Forme">Forme d'une plante ou d'une bête inventée (voir <see cref="Inventions"/>).</param>
+/// <param name="Aliment">Ce qu'une plante inventée donne à manger.</param>
+/// <param name="Proprietes">Vertus d'une plante, traits d'une bête inventée.</param>
+/// <param name="Geste">Geste d'un savoir nouveau (avec les matières <see cref="A"/> et <see cref="B"/>).</param>
 public sealed record ChangementLibre(string Quoi, int Humain = 0, int Communaute = 0, int Autre = 0, double? Valeur = null, string? Texte = null,
-    string? Genre = null, int X = -1, int Y = -1, int Rayon = 0);
+    string? Genre = null, int X = -1, int Y = -1, int Rayon = 0, string? Nom = null, string? Forme = null, string? Aliment = null,
+    Dictionary<string, double>? Proprietes = null, string? Geste = null, string? A = null, string? B = null);
 
 /// <summary>Un décret demandé : une loi (<see cref="LoiDecret"/>, par son nom), un facteur, une durée en jours (0 : pour toujours).</summary>
 public sealed record DecretLibre(string Loi, double Facteur, int Communaute = 0, double Jours = 0, string Raison = "");
@@ -33,7 +39,7 @@ public sealed record ChangementFait(string Quoi, int Humain, int Communaute, int
 /// <summary>Ce qu'a donné un acte libre : ce qui s'est passé, en récits ; de quoi le défaire ; les décrets pris ; les témoins.</summary>
 public sealed record ResultatLibre(IReadOnlyList<Recit> Lignes, IReadOnlyList<ChangementFait> Faits, IReadOnlyList<Decret> Decrets, int Savent, long Annonce);
 
-/// <summary>Sortes de changements et bornes des valeurs : ce que l'Entité libre peut changer (0.35.2, sans inventions).</summary>
+/// <summary>Sortes de changements et bornes des valeurs : ce que l'Entité libre peut changer (0.35.2 ; inventions en 0.35.3).</summary>
 public static class Libre
 {
     /// <summary>Champs chiffrés d'un humain : bornes et accès.</summary>
@@ -105,8 +111,11 @@ public static class Libre
     /// <summary>Sortes qui touchent une communauté ou la nature.</summary>
     public static readonly string[] SortesMonde = ["relation", "plantes", "gibier", "pluie"];
 
+    /// <summary>Inventions (0.35.3) : ce que le monde n'avait jamais connu.</summary>
+    public static readonly string[] SortesInvention = ["plante_nouvelle", "bete_nouvelle", "savoir_nouveau", "mot"];
+
     /// <summary>Toutes les sortes de changements.</summary>
-    public static IEnumerable<string> Sortes => Nombres.Keys.Concat(SortesHumain).Concat(SortesMonde);
+    public static IEnumerable<string> Sortes => Nombres.Keys.Concat(SortesHumain).Concat(SortesMonde).Concat(SortesInvention);
 
     /// <summary>Bornes d'un champ chiffré (pour la consigne du LLM).</summary>
     public static (double Min, double Max)? Bornes(string quoi) => Nombres.TryGetValue(quoi, out var n) ? (n.Min, n.Max) : null;
@@ -374,7 +383,8 @@ public sealed partial class MondeSimule
                 Borne(c.Valeur, 0.1, 3, quoi);
                 return;
             default:
-                throw Faute($"sorte|{quoi}");
+                if (!VerifierInvention(c)) throw Faute($"sorte|{quoi}");
+                return;
         }
     }
 
@@ -558,7 +568,7 @@ public sealed partial class MondeSimule
                 var chose = h.Memoire.Jardin[i];
                 h.Memoire.Jardin.RemoveAt(i);
                 var r = Ecrire(new Recit("libre.ch.oublier", ("h", h), ("t", (object?)chose.Recit ?? chose.Brut ?? "")), h);
-                return (new ChangementFait(quoi, h.Id, h.CommunauteId, 0, [], [], JsonSerializer.Serialize(new IntimeGarde(chose))), r);
+                return (new ChangementFait(quoi, h.Id, h.CommunauteId, 0, [], [], JsonSerializer.Serialize(IntimeGarde.De(chose))), r);
             }
             case "savoir":
             {
@@ -572,7 +582,7 @@ public sealed partial class MondeSimule
                 var deja = h.Savoirs.Exists(s => s.Meme(donne.Geste, donne.A, donne.B, donne.Effet, donne.Espece, donne.Symptome) && s.Pieces == donne.Pieces);
                 if (!deja) h.Savoirs.Add(donne);
                 var r = Ecrire(new Recit(deja ? "libre.ch.savoir.deja" : "libre.ch.savoir", ("h", h), ("e", Recit.Seul($"effet.{e}"))), h);
-                return (new ChangementFait(quoi, h.Id, h.CommunauteId, 0, [], [], deja ? "" : JsonSerializer.Serialize(new SavoirGarde(donne))), r);
+                return (new ChangementFait(quoi, h.Id, h.CommunauteId, 0, [], [], deja ? "" : JsonSerializer.Serialize(SavoirGarde.De(donne))), r);
             }
             case "oublier_savoir":
             {
@@ -581,7 +591,7 @@ public sealed partial class MondeSimule
                 var retires = h.Savoirs.Where(s => s.Effet == e).ToList();
                 h.Savoirs.RemoveAll(s => s.Effet == e);
                 var r = Ecrire(new Recit("libre.ch.oublierSavoir", ("h", h), ("e", Recit.Seul($"effet.{e}"))), h);
-                return (new ChangementFait(quoi, h.Id, h.CommunauteId, 0, [], [], JsonSerializer.Serialize(retires.Select(s => new SavoirGarde(s)).ToList())), r);
+                return (new ChangementFait(quoi, h.Id, h.CommunauteId, 0, [], [], JsonSerializer.Serialize(retires.Select(s => SavoirGarde.De(s)).ToList())), r);
             }
             case "enfant":
             {
@@ -631,7 +641,7 @@ public sealed partial class MondeSimule
                 return (new ChangementFait(quoi, 0, 0, 0, avant, new() { ["region"] = region, ["pluie"] = c.Valeur.Value }), r);
             }
             default:
-                throw Faute($"sorte|{quoi}");
+                return AppliquerInvention(c, annonce, maintenant, (r, h, com) => Ecrire(r, h, null, com));
         }
     }
 
@@ -747,7 +757,7 @@ public sealed partial class MondeSimule
                 return Recit.Seul("libre.d.pluie");
             }
             default:
-                return null;
+                return RetablirInvention(f, h);
         }
     }
 }
@@ -756,8 +766,8 @@ public sealed partial class MondeSimule
 internal sealed record SavoirGarde(byte Geste, byte A, byte B, byte Effet, int Espece, byte Symptome, int Essais, int Succes, long AppriLe, long UtiliseLe,
     byte Origine, int MaitreId, long EvenementId, string Pieces)
 {
-    public SavoirGarde(Savoir s) : this((byte)s.Geste, (byte)s.A, (byte)s.B, (byte)s.Effet, s.Espece, (byte)s.Symptome, s.Essais, s.Succes, s.AppriLe, s.UtiliseLe,
-        (byte)s.Origine, s.MaitreId, s.EvenementId, s.Pieces) { }
+    public static SavoirGarde De(Savoir s) => new((byte)s.Geste, (byte)s.A, (byte)s.B, (byte)s.Effet, s.Espece, (byte)s.Symptome, s.Essais, s.Succes, s.AppriLe, s.UtiliseLe,
+        (byte)s.Origine, s.MaitreId, s.EvenementId, s.Pieces);
 
     public Savoir Rendre() => new((Geste)Geste, (Matiere)A, (Matiere)B, (Effet)Effet, Espece, (Symptome)Symptome, Essais, Succes, AppriLe, UtiliseLe,
         (OrigineSavoir)Origine, MaitreId, EvenementId, Pieces);
@@ -766,7 +776,7 @@ internal sealed record SavoirGarde(byte Geste, byte A, byte B, byte Effet, int E
 /// <summary>Une chose du jardin secret mise de côté pour être rendue (son récit est gardé encodé).</summary>
 internal sealed record IntimeGarde(long Secondes, byte Type, int SujetId, string? Brut, double Intensite, long CauseId, string Cle, string? Recit)
 {
-    public IntimeGarde(Intime i) : this(i.Secondes, (byte)i.Type, i.SujetId, i.Brut, i.Intensite, i.CauseId, i.Cle, i.Recit?.Encoder()) { }
+    public static IntimeGarde De(Intime i) => new(i.Secondes, (byte)i.Type, i.SujetId, i.Brut, i.Intensite, i.CauseId, i.Cle, i.Recit?.Encoder());
 
     public Intime Rendre() => new(Secondes, (TypeIntime)Type, SujetId, Brut, Intensite, CauseId, Cle, Recits.Recit.Decoder(Recit));
 }

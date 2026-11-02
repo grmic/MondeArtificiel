@@ -139,6 +139,18 @@ public static class Actes
                         ["quoi"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Simulation.Libre.Sortes.Select(s => (JsonNode)s)]) },
                         ["humain"] = T("integer"), ["communaute"] = T("integer"), ["autre"] = T("integer"), ["valeur"] = T("number"), ["texte"] = T("string"),
                         ["genre"] = T("string"), ["x"] = T("integer"), ["y"] = T("integer"), ["rayon"] = T("integer"),
+                        ["nom"] = T("string"),
+                        ["forme"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Inventions.FormesPlante.Concat(Inventions.FormesBete).Select(s => (JsonNode)s)]) },
+                        ["aliment"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Inventions.Aliments.Select(s => (JsonNode)s)]) },
+                        ["proprietes"] = new JsonObject
+                        {
+                            ["type"] = "object",
+                            ["properties"] = new JsonObject([.. Inventions.VertusPlante.Concat(Inventions.TraitsBete.Keys)
+                                .Select(k => new KeyValuePair<string, JsonNode?>(k, T("number")))]),
+                        },
+                        ["geste"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<Geste>().Select(s => (JsonNode)s)]) },
+                        ["a"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<Matiere>().Select(s => (JsonNode)s)]) },
+                        ["b"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<Matiere>().Select(s => (JsonNode)s)]) },
                     },
                     ["required"] = new JsonArray("quoi"),
                 },

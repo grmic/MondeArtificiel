@@ -1285,3 +1285,27 @@ public sealed partial class Comportement
         return r.Effet;
     }
 }
+
+public sealed partial class Comportement
+{
+    /// <summary>
+    /// L'Entité libre donne un geste (0.35.3) : les lois du monde disent ce qu'il donne, ici, à cet humain, avec un hasard à part
+    /// (la même graine donne le même jugement à la vérification et à l'application).
+    /// </summary>
+    internal Resultat JugerGeste(Humain h, Geste g, Matiere a, Matiere b, ulong graine, long maintenant)
+    {
+        _maintenant = maintenant;
+        _temperature = Temperature(h.X, h.Y, maintenant);
+        return Physique.Tenter(g, a, b, Contexte(h), new Alea(graine));
+    }
+
+    /// <summary>L'humain sait désormais ce geste et ce qu'il donne, comme s'il l'avait trouvé (marqué venu de l'Entité).</summary>
+    internal void DonnerGeste(Humain h, Geste g, Matiere a, Matiere b, Resultat r, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        var debut = Journal.Count;
+        _maintenant = maintenant;
+        Constater(h, g, a, b, r, OrigineSavoir.Entite, tous);
+        for (var i = debut; i < Journal.Count; i++)
+            if (Journal[i].HumainId == h.Id) Journal[i] = Journal[i] with { Origine = Origine.Entite };
+    }
+}
