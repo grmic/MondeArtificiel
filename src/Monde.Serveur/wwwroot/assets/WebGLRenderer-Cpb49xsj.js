@@ -1,0 +1,1 @@
+export{r as WebGLRenderer}from"./main-B8IKHeIt.js";

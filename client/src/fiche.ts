@@ -7,6 +7,7 @@ import type { HumainVue } from "./carte";
 import { FormulaireEntite } from "./entite";
 import { FormulaireGeste } from "./gestes";
 import { nombre, t } from "./langue";
+import { dessinerVisage, vignette, type Visage } from "./visage";
 
 interface Evenement {
   id: number;
@@ -142,6 +143,8 @@ interface Fiche {
   /** Visite, rassemblement, communauté d'origine, métier et ouvrages faits pour d'autres (absent d'un serveur plus ancien). */
   rencontres?: { visite: string | null; rassemblement: string | null; venuDe: string | null; metier: string | null; metierDepuis: string | null;
     servisTaille: number; servisAssemblage: number; servisPeau: number; attend: string | null } | null;
+  /** De quoi dessiner son portrait (absent d'un serveur plus ancien). */
+  visage?: Visage | null;
 }
 
 /** Un mot et sa traduction. */
@@ -372,6 +375,11 @@ export class PanneauFiche {
       b.addEventListener("click", () => retour.aller());
       corps.append(b);
     }
+    if (f.visage) {
+      const portrait = el("div", "visage-portrait");
+      portrait.append(dessinerVisage(f.visage, 120));
+      corps.append(portrait);
+    }
     const g = h.sexe === "femme" ? "f" : "m";
     const age = h.age < 2 ? t("age.mois", { n: Math.round(h.age * 12) }) : t("age.ans", { n: Math.floor(h.age) });
     const etat = h.vivant ? `${h.activite}${h.malade ? ` · ${t("fiche.malade", { g })}` : ""}${h.enceinte ? ` · ${t("fiche.enceinte")}` : ""}`
@@ -514,7 +522,7 @@ export class PanneauFiche {
     const liens = el("ul", "liste");
     for (const l of f.liens.slice(0, 15)) {
       const li = el("li", `lien-${l.statut}`);
-      li.append(this.lien(l.id, l.nom), ` ${l.vivant ? "" : "✝ "}— ` + t("fiche.lien", { statut: t(`statut.${l.statut}`), affection: l.affection, familiarite: l.familiarite }));
+      li.append(vignette(l.id), this.lien(l.id, l.nom), ` ${l.vivant ? "" : "✝ "}— ` + t("fiche.lien", { statut: t(`statut.${l.statut}`), affection: l.affection, familiarite: l.familiarite }));
       liens.append(li);
     }
     if (f.liens.length === 0) liens.append(el("li", "discret", t("fiche.personne")));

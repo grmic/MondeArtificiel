@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.36.0 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.36.1 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -131,6 +131,8 @@ Clicking on a human opens their **profile**, in collapsible sections (you open t
 
 **Speed: background humans** (`Humains/Fond.cs`, 0.36.0, all worlds, no schema change). Configuration has a **Speed: background humans simulated as a group** box (unchecked by default, can be changed during a game) and a threshold **Only from (living humans)** (empty: always). A background human keeps everything that makes them who they are, and their body lives every step (hunger, thirst, fatigue, cold, health, pregnancy); their kin feed them every step. But as long as they are **at rest** (asleep with no reason to wake, or resting with no pressing need), they do not decide every step: they play their free time (ideas, trials, learned gestures, the wish to go elsewhere) once an hour, with the chance of the whole hour. At the slightest need or event, they live the full step like everyone else: thirst, hunger, cold when they know where warmth comes from, a camp fire burning low or embers to revive, illness or wound, danger, a word from the Entity, a walk or stroll under way, a journey, raid, visit, gathering, commissioned work. This is the "level-of-detail AI" of large-world games (Brockington, 2002). Always kept as individuals: babies and their mothers, figures and religious figures, specialists, communities at war, and those you keep: the sheet of a human and of a community have a **Keep as an individual** box, and followed ☆ humans are kept automatically. The clock shows how many live in the background. Measured over 8 worlds × 20 years (33 couples): population, births, discoveries, deaths and kept fire are the same as with individuals, within chance; the computation runs **1.2 to 1.5 times faster**, mostly at night. That is less than first estimated: humans are rarely at rest, and every shortcut that changed their lives (fire no longer lit, stones no longer picked up while walking) was removed. Without the box, the simulation is exactly that of 0.35.3.
 
+**A face for every human** (`Humains/Visages.cs`, `Serveur/VisageDto.cs`, `client/src/visage.ts`, 0.36.1, all worlds, no schema change). A human's sheet shows their **portrait**, drawn by the game, and a small face precedes each name in the sheet's bonds and in a community's list of members. Each human has a dozen inherited traits: width and length of the face, jaw, cheekbones, spacing, size and shape of the eyes, eye colour, nose, lips, eyebrows, ears, hair colour and texture, beard, baldness, age of the first grey hairs. A child receives the average of their parents plus the scatter of gene shuffling: brothers and sisters look alike without being identical, and an isolated group slowly takes on a family look. Heritabilities from twin studies (face shape 0.6 to 0.8, eye and hair colour 0.9, baldness 0.8). The founders come from one population, whose origin is specific to each world. Skin tone, symmetry, harmony of features and build are those the simulation already knows; hair and eyes are darker the darker the skin. Life shows in the face: a child's round face, wrinkles, grey hair and baldness with age, cheeks hollowed by hunger, pallor and fever of illness, an open wound, a scar from a blow or a war, mood (joy, sadness, anger, fear), and the portrait of a dead person is dulled. Nothing is stored or drawn from the simulation's randomness: the face is computed from the world's seed, the human's number and their parents, so worlds already under way have their faces too and the simulation is exactly that of 0.36.0. The face does not count in attraction yet.
+
 **Smooth map** (0.32.3). The map is rendered at the screen's real resolution (Retina, 4K) and the terrain is drawn at several pixels per tile (up to 8): altitude, water and colours are interpolated between tiles, shores and rivers become curves, neighbouring biomes meet along sharp, curved borders (0.32.4: no more blurry gradient), and relief shading is finer. Since 0.32.4, the layers (resources, territories, disasters, rocks, soils, sea floor) are smoothed the same way. Everything happens in the browser (Mac, Windows, Linux); the simulation is unchanged.
 
 **First times** (0.32.1). The journal has a "First times" checkbox: the first discovery of each piece of knowledge in the world, the first words and the first grammar, the first gathering of two communities, the first trance, each community's first word, each religion's first rite, and each group's first land sighted, first landing and first contact overseas. They are never deleted by the journal retention settings nor packed into its archives (`PremieresFois.cs`).
@@ -212,7 +214,7 @@ Choose the model according to your machine's memory. With 16 GB or more, a 12-bi
 dotnet test
 ```
 
-The full suite (609 tests) takes about ten minutes, because some tests simulate several entire years.
+The full suite (610 tests) takes about ten minutes, because some tests simulate several entire years.
 
 ## Modifying the web client
 
@@ -239,6 +241,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.36.1** (2 Nov 2026): a drawn face for every human, inherited from their parents, on their sheet and as a thumbnail before names.
 - **0.36.0** (2 Nov 2026): "Speed: background humans simulated as a group" option (threshold in number of living humans), "Keep as an individual" box on sheets.
 - **0.35.3, fix 4** (2 Nov 2026): an LLM gesture on a number that is not a living human (or a community, depending on the gesture) is refused before the act, with the reason.
 - **0.35.3, fix 3** (2 Nov 2026): during its look at the world, the LLM receives the exact keys of the gestures and their materials; a gesture with guessed names is refused before the act, with the correct list.

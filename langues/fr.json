@@ -1,5 +1,6 @@
 {
   "_langue": {"code": "fr", "nom": "Français", "locale": "fr-FR"},
+  "visage.aide": "Visage dessiné d'après ses traits hérités, son âge et son état du moment",
   "_grammaire": {"elisions": {"de": "d'", "De": "D'", "que": "qu'", "Que": "Qu'", "jusque": "jusqu'", "lorsque": "lorsqu'", "puisque": "puisqu'"}, "contractions": {"de le": "du", "de les": "des", "à le": "au", "à les": "aux", "de de": "de", "de des": "de", "de du": "de"}, "pluriels": ["one", "other"], "et": "et"},
   "app.titre": "Monde artificiel",
   "connexion.enCours": "Connexion au serveur…",

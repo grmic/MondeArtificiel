@@ -639,6 +639,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Fiche détaillée d'un humain (null s'il n'existe pas).</summary>
     public FicheDto? Fiche(int id) => FicheDto.Depuis(service, id);
 
+    /// <summary>Visages de plusieurs humains, pour les vignettes des listes (200 au plus).</summary>
+    public List<VisageDto> Visages(int[] ids) => VisageDto.De(service.Monde, ids ?? []);
+
     /// <summary>Communautés actives puis dispersées, avec leurs membres.</summary>
     public List<CommunauteDto> Communautes() => CommunauteDto.Toutes(service);
 

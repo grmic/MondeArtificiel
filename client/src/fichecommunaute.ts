@@ -7,6 +7,7 @@ import { blocLangue, courbe, type Communaute, type Taille } from "./communautes"
 import { ligneBilan, lignePriere, type BilanPrieres, type Priere } from "./cultes";
 import { FormulaireEntite } from "./entite";
 import { FormulaireGeste } from "./gestes";
+import { vignette } from "./visage";
 import { boutonCause, el, ligneEvenement, replierCauses, signe, type Evenement } from "./fiche";
 import { langue, nombre as ecrireNombre, t } from "./langue";
 
@@ -812,7 +813,7 @@ export class PanneauFicheCommunaute {
     for (const m of tries) {
       const tr = el("tr");
       const nom = el("td");
-      nom.append(this.lienHumain(m.id, m.nom), el("span", "discret", ` ${m.sexe === "femme" ? "♀" : "♂"}${m.role ? ` · ${m.role}` : ""}`));
+      nom.append(vignette(m.id), this.lienHumain(m.id, m.nom), el("span", "discret", ` ${m.sexe === "femme" ? "♀" : "♂"}${m.role ? ` · ${m.role}` : ""}`));
       tr.append(nom, el("td", undefined, String(m.age)), el("td", undefined, String(m.qi)), el("td", undefined, signe(m.karma)),
         el("td", undefined, String(m.croyance)));
       table.append(tr);

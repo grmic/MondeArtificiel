@@ -184,7 +184,8 @@ public sealed record FicheDto(
     LangageDto? Langage = null,
     FoiDto? Foi = null,
     FeuDto? Feu = null,
-    RencontresDto? Rencontres = null)
+    RencontresDto? Rencontres = null,
+    VisageDto? Visage = null)
 {
     private static string Date(long s) => L.Date(s);
 
@@ -289,7 +290,8 @@ public sealed record FicheDto(
             LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore),
             Religions.Foi(service, h, humains),
             LireFeu(monde, h),
-            LireRencontres(monde, h, humains));
+            LireRencontres(monde, h, humains),
+            VisageDto.De(monde, h, humains, maintenant));
     }
 
     private static RencontresDto? LireRencontres(MondeSimule monde, Humain h, IReadOnlyList<Humain> humains)

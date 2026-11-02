@@ -1,5 +1,6 @@
 {
   "_langue": {"code": "en", "nom": "English", "locale": "en-GB"},
+  "visage.aide": "Face drawn from inherited traits, age and current state",
   "_grammaire": {"elisions": {}, "pluriels": ["one", "other"], "et": "and"},
   "app.titre": "Artificial World",
   "connexion.enCours": "Connecting to the server…",

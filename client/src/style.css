@@ -414,3 +414,9 @@ p.bilan-prieres { font-size: 0.9em; }
 .recit-libre { display: block; margin: 0.2em 0 0.2em 1em; font-style: italic; }
 .defait-acte { font-weight: 600; color: #888; }
 .defaire-acte { margin-left: 0.6em; }
+
+/* Portraits (0.36.1) : en haut à droite de la fiche, et en vignette devant les noms. */
+.fiche .visage-portrait { float: right; margin: 0 0 6px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); line-height: 0; }
+.vignette-visage { display: inline-block; vertical-align: middle; margin-right: 5px; border-radius: 4px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.05); line-height: 0; }
+.vignette-visage svg { display: block; }
