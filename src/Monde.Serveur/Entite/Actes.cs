@@ -240,6 +240,10 @@ public static class Actes
         if (f != FamillesLlm.Aucune && (permises & f) == 0) throw new ArgumentException(L.T("llm.erreur.famille", ("type", a.Type)));
         if (a.Type == Parler && Enum.TryParse<Parole>(a.Parole, out var p) && Paroles.Collective(p))
             throw new ArgumentException(L.T("llm.erreur.paroleCollective", ("parole", a.Parole)));
+        // Une parole à un humain envoyée à toute une communauté : on le dit avant d'appliquer, pour que le LLM corrige au second essai.
+        if (a.Type == ParlerCommunaute && Enum.TryParse<Parole>(a.Parole, out var q) && Enum.IsDefined(q) && !Paroles.Collective(q))
+            throw new ArgumentException(L.T("llm.erreur.paroleIndividuelle", ("parole", a.Parole),
+                ("liste", string.Join(", ", Enum.GetValues<Parole>().Where(Paroles.Collective)))));
     }
 
     /// <summary>

@@ -116,6 +116,10 @@ public sealed class EntiteLlmTests
         Assert.Throws<ArgumentException>(() => Actes.Verifier(new ActeLlm { Type = Actes.Catastrophe, Catastrophe = "seisme" }, FamillesLlm.Paroles));
         // Une parole collective passe par parler_communaute.
         Assert.Throws<ArgumentException>(() => Actes.Verifier(new ActeLlm { Type = Actes.Parler, Parole = nameof(Parole.FaitesLaGuerre) }, FamillesLlm.Toutes));
+        // Une parole à un humain envoyée à une communauté : refusée avant d'appliquer, avec la raison (second essai possible).
+        var e = Assert.Throws<ArgumentException>(() => Actes.Verifier(new ActeLlm { Type = Actes.ParlerCommunaute, Parole = nameof(Parole.UnisToi) }, FamillesLlm.Toutes));
+        Assert.Contains(nameof(Parole.UnissezVous), e.Message);
+        Actes.Verifier(new ActeLlm { Type = Actes.ParlerCommunaute, Parole = nameof(Parole.UnissezVous) }, FamillesLlm.Toutes);
         Assert.Equal("P2écrit", Actes.Piece("p2", ["P1écrit", "P2écrit"]));
         Assert.Equal("X(1)", Actes.Piece("X(1)", ["P1écrit"]));
     }
