@@ -232,7 +232,8 @@ public static class Actes
     /// Vérifie un acte sans rien changer au monde (type connu, famille permise, ce qui ne se voit qu'avant d'appliquer). Lève
     /// <see cref="ArgumentException"/> avec la raison, pour le LLM.
     /// </summary>
-    public static void Verifier(ActeLlm a, FamillesLlm permises, bool libre = false)
+    /// <paramref name="pieces"/> : les pièces numérotées montrées au LLM (P1, P2…) ; null quand on ne les connaît pas ici.
+    public static void Verifier(ActeLlm a, FamillesLlm permises, bool libre = false, IReadOnlyList<string>? pieces = null)
     {
         if (Array.IndexOf(TypesPermis(libre), a.Type) < 0) throw new ArgumentException(L.T(a.Type == Libre ? "llm.erreur.pasLibre" : "llm.erreur.type", ("type", a.Type)));
         if (a.Type == Libre && (a.Changements?.Count ?? 0) + (a.Decrets?.Count ?? 0) == 0) throw new ArgumentException(L.T("libre.erreur.vide"));
@@ -244,6 +245,19 @@ public static class Actes
         if (a.Type == ParlerCommunaute && Enum.TryParse<Parole>(a.Parole, out var q) && Enum.IsDefined(q) && !Paroles.Collective(q))
             throw new ArgumentException(L.T("llm.erreur.paroleIndividuelle", ("parole", a.Parole),
                 ("liste", string.Join(", ", Enum.GetValues<Parole>().Where(Paroles.Collective)))));
+        // Une combinaison faite de pièces « P1, P2… » qu'il n'a pas reçues (son regard sur le monde ne les donne pas) : on le
+        // dit avant d'appliquer, pour qu'il souffle plutôt un geste au second essai.
+        if (a.Type == SoufflerCombinaison && pieces is not null && (PieceInconnue(a.A, pieces) || PieceInconnue(a.B, pieces)))
+            throw new ArgumentException(L.T(pieces.Count == 0 ? "llm.erreur.piecesAbsentes" : "llm.erreur.pieceInconnue", ("n", pieces.Count)));
+    }
+
+    /// <summary>Vrai si <paramref name="s"/> est un numéro de pièce (P3, 3) hors de la liste montrée.</summary>
+    private static bool PieceInconnue(string? s, IReadOnlyList<string> pieces)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return false;
+        var t = s.Trim();
+        if (t.StartsWith('P') || t.StartsWith('p')) t = t[1..];
+        return int.TryParse(t, NumberStyles.None, CultureInfo.InvariantCulture, out var i) && (i < 1 || i > pieces.Count);
     }
 
     /// <summary>

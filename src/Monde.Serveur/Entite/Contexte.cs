@@ -61,7 +61,7 @@ public static class Contexte
     private const string FormeParler = """{"type":"parler","humains":[n°],"parole":"…","mode":"…","cible":n°,"param":n}""";
 
     /// <summary>La consigne : le rôle de l'Entité, la forme de la réponse et le catalogue des actes permis.</summary>
-    public static string Consigne(MondeSimule monde, FamillesLlm permises, string caractere = "", string caractereLlm = "", bool libre = false)
+    public static string Consigne(MondeSimule monde, FamillesLlm permises, string caractere = "", string caractereLlm = "", bool libre = false, bool combinaisons = true)
     {
         var c = new StringBuilder();
         c.AppendLine(L.T("llm.consigne", ("langue", L.Courante.Nom), ("forme", FormeReponse)));
@@ -131,7 +131,8 @@ public static class Contexte
         }
         if (permises.HasFlag(FamillesLlm.Souffles))
         {
-            c.AppendLine($"- {L.T("llm.cat.soufflerCombinaison")} : {FormeSoufflerCombinaison}");
+            // Une combinaison se fait des pièces numérotées d'un humain : seulement quand on les lui a montrées.
+            if (combinaisons) c.AppendLine($"- {L.T("llm.cat.soufflerCombinaison")} : {FormeSoufflerCombinaison}");
             c.AppendLine($"- {L.T("llm.cat.soufflerGeste")} : {FormeSoufflerGeste}");
         }
         c.AppendLine($"- {L.T("llm.cat.rien")} : {FormeRien}");
@@ -190,7 +191,7 @@ public static class Contexte
         Memoire(d, memoire, humains, communautes);
         d.AppendLine();
         d.AppendLine(L.T("llm.d.fin"));
-        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm, libre), d.ToString(), pieces, jardin);
+        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm, libre, pieces.Count > 0), d.ToString(), pieces, jardin);
     }
 
     private static void Memoire(StringBuilder d, IReadOnlyList<EchangeEntite> memoire, IReadOnlyList<Humain> humains, IReadOnlyList<Communaute> communautes)
@@ -304,7 +305,7 @@ public static class Contexte
             d.AppendLine();
             Libres.SavoirsDuMonde(d, monde);
         }
-        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm, libre), d.ToString(), []);
+        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm, libre, false), d.ToString(), []);
     }
 
     /// <summary>Une ligne du journal pour le LLM : date, texte, et les numéros des humains et communautés en cause.</summary>

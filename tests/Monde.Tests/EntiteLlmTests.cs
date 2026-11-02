@@ -120,6 +120,11 @@ public sealed class EntiteLlmTests
         var e = Assert.Throws<ArgumentException>(() => Actes.Verifier(new ActeLlm { Type = Actes.ParlerCommunaute, Parole = nameof(Parole.UnisToi) }, FamillesLlm.Toutes));
         Assert.Contains(nameof(Parole.UnissezVous), e.Message);
         Actes.Verifier(new ActeLlm { Type = Actes.ParlerCommunaute, Parole = nameof(Parole.UnissezVous) }, FamillesLlm.Toutes);
+        // Une combinaison de pièces « P1 + P2 » sans pièces montrées (regard sur le monde) ou hors de la liste : refusée avant l'acte.
+        var combinaison = new ActeLlm { Type = Actes.SoufflerCombinaison, Humain = 1, Operation = "a", A = "P1", B = "P2" };
+        Assert.Throws<ArgumentException>(() => Actes.Verifier(combinaison, FamillesLlm.Toutes, pieces: []));
+        Assert.Throws<ArgumentException>(() => Actes.Verifier(combinaison with { B = "P3" }, FamillesLlm.Toutes, pieces: ["x", "y"]));
+        Actes.Verifier(combinaison, FamillesLlm.Toutes, pieces: ["x", "y"]);
         Assert.Equal("P2écrit", Actes.Piece("p2", ["P1écrit", "P2écrit"]));
         Assert.Equal("X(1)", Actes.Piece("X(1)", ["P1écrit"]));
     }

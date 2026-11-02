@@ -5412,6 +5412,8 @@
   "llm.erreur.delai": "le LLM n'a pas répondu à temps.",
   "llm.erreur.json": "Réponse illisible (JSON attendu) : {detail}",
   "llm.erreur.type": "Acte inconnu : « {type} ».",
+  "llm.erreur.piecesAbsentes": "Pour souffler une combinaison, il faut les pièces numérotées d'un humain (P1, P2…), qui ne te sont données que sur sa fiche (« Ce qu'on peut lui souffler ») ; ici, souffle plutôt un geste (souffler_geste).",
+  "llm.erreur.pieceInconnue": "Pièce inconnue : choisis a et b parmi les pièces P1 à P{n} de « Ce qu'on peut lui souffler ».",
   "llm.erreur.famille": "Acte non permis par le joueur : « {type} ».",
   "llm.erreur.paroleIndividuelle": "« {parole} » s'adresse à un seul humain : pour une communauté, choisis une parole de groupe ({liste}), par exemple UnissezVous avec les communautés en cibles ; pour un humain, utilise parler.",
   "llm.erreur.paroleCollective": "« {parole} » s'adresse à une communauté entière : utilise parler_communaute.",
