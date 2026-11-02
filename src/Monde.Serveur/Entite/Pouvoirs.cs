@@ -25,9 +25,9 @@ public static class Pouvoirs
     /// <summary>Souffle un geste ; rend ce que l'humain a obtenu, en mots, et s'il a obtenu quelque chose.</summary>
     public static (string Texte, bool Reussi) SoufflerFait(MondeSimule monde, DemandeIntuition demande)
     {
-        if (!Enum.TryParse<Geste>(demande.Geste, out var geste) || !Enum.IsDefined(geste)
-            || !Enum.TryParse<Matiere>(demande.A, out var a) || !Enum.IsDefined(a)
-            || !Enum.TryParse<Matiere>(demande.B ?? nameof(Matiere.Aucune), out var b) || !Enum.IsDefined(b))
+        if (!Enum.TryParse<Geste>(demande.Geste, true, out var geste) || !Enum.IsDefined(geste)
+            || !Enum.TryParse<Matiere>(demande.A, true, out var a) || !Enum.IsDefined(a)
+            || !Enum.TryParse<Matiere>(string.IsNullOrWhiteSpace(demande.B) ? nameof(Matiere.Aucune) : demande.B, true, out var b) || !Enum.IsDefined(b))
             throw new ArgumentException(L.T("erreur.geste"));
         // Liste blanche : seules les matières qui ont un sens pour ce geste ; une plante doit être désignée par son espèce.
         var plante = geste is Geste.Manger or Geste.Appliquer;

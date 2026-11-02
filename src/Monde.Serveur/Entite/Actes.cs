@@ -249,7 +249,22 @@ public static class Actes
         // dit avant d'appliquer, pour qu'il souffle plutôt un geste au second essai.
         if (a.Type == SoufflerCombinaison && pieces is not null && (PieceInconnue(a.A, pieces) || PieceInconnue(a.B, pieces)))
             throw new ArgumentException(L.T(pieces.Count == 0 ? "llm.erreur.piecesAbsentes" : "llm.erreur.pieceInconnue", ("n", pieces.Count)));
+        // Un geste soufflé dont le nom ou les matières ne sont pas des clés connues, ou qui ne va pas avec ces matières : on lui
+        // redonne les clés, pour qu'il corrige au second essai.
+        if (a.Type == SoufflerGeste)
+        {
+            if (!Enum.TryParse<Geste>(a.Geste, true, out var g) || !Enum.IsDefined(g) || Physique.Formes.FirstOrDefault(f => f.Geste == g) is not { } forme)
+                throw new ArgumentException(L.T("llm.erreur.gesteInconnu", ("geste", a.Geste ?? ""), ("liste", string.Join(", ", Physique.Formes.Select(f => f.Geste)))));
+            if (!Enum.TryParse<Matiere>(a.A, true, out var m1) || !Enum.IsDefined(m1)
+                || !Enum.TryParse<Matiere>(string.IsNullOrWhiteSpace(a.B) ? nameof(Matiere.Aucune) : a.B, true, out var m2) || !Enum.IsDefined(m2)
+                || !Physique.Convient(g, m1, m2))
+                throw new ArgumentException(L.T("llm.erreur.gesteMatieres", ("geste", g), ("forme", Forme(forme))));
+        }
     }
+
+    /// <summary>Un geste et ses matières, en clés : Frapper(Galet|Silex, Galet|Silex).</summary>
+    public static string Forme(FormeGeste f) =>
+        $"{f.Geste}({string.Join("|", f.A)}{(f.B.Length > 0 ? ", " + string.Join("|", f.B) : "")})";
 
     /// <summary>Vrai si <paramref name="s"/> est un numéro de pièce (P3, 3) hors de la liste montrée.</summary>
     private static bool PieceInconnue(string? s, IReadOnlyList<string> pieces)

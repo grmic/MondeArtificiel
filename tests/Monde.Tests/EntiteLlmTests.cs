@@ -125,6 +125,12 @@ public sealed class EntiteLlmTests
         Assert.Throws<ArgumentException>(() => Actes.Verifier(combinaison, FamillesLlm.Toutes, pieces: []));
         Assert.Throws<ArgumentException>(() => Actes.Verifier(combinaison with { B = "P3" }, FamillesLlm.Toutes, pieces: ["x", "y"]));
         Actes.Verifier(combinaison, FamillesLlm.Toutes, pieces: ["x", "y"]);
+        // Un geste aux noms devinés (« frapper Galet Pierre ») : refusé avant l'acte ; les clés sans tenir compte des majuscules passent.
+        Assert.Throws<ArgumentException>(() => Actes.Verifier(new ActeLlm { Type = Actes.SoufflerGeste, Humain = 1, Geste = "frapper", A = "Galet", B = "Pierre" }, FamillesLlm.Toutes));
+        Assert.Throws<ArgumentException>(() => Actes.Verifier(new ActeLlm { Type = Actes.SoufflerGeste, Humain = 1, Geste = "Inexistant", A = "Galet" }, FamillesLlm.Toutes));
+        var frapper = Physique.Formes.First(f => f.Geste == Geste.Frapper);
+        Actes.Verifier(new ActeLlm { Type = Actes.SoufflerGeste, Humain = 1, Geste = "frapper", A = frapper.A[0].ToString(),
+            B = frapper.B.Length > 0 ? frapper.B[0].ToString().ToLowerInvariant() : null }, FamillesLlm.Toutes);
         Assert.Equal("P2écrit", Actes.Piece("p2", ["P1écrit", "P2écrit"]));
         Assert.Equal("X(1)", Actes.Piece("X(1)", ["P1écrit"]));
     }

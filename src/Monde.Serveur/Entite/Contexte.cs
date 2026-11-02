@@ -134,6 +134,11 @@ public static class Contexte
             // Une combinaison se fait des pièces numérotées d'un humain : seulement quand on les lui a montrées.
             if (combinaisons) c.AppendLine($"- {L.T("llm.cat.soufflerCombinaison")} : {FormeSoufflerCombinaison}");
             c.AppendLine($"- {L.T("llm.cat.soufflerGeste")} : {FormeSoufflerGeste}");
+            // Sans la fiche d'un humain, il n'a pas la liste de ses gestes : on lui donne les clés de tous (hors plantes, qui
+            // se désignent par leur espèce sur la fiche).
+            if (!combinaisons)
+                c.AppendLine(L.T("llm.cat.gestesTous", ("liste", string.Join(" ; ", Physique.Formes
+                    .Where(f => f.Geste is not (Geste.Manger or Geste.Appliquer)).Select(Actes.Forme)))));
         }
         c.AppendLine($"- {L.T("llm.cat.rien")} : {FormeRien}");
         if (libre) Libres.Consigne(c);
