@@ -26,6 +26,10 @@ public sealed class ServiceMonde
     private const string CleCoeurs = "coeurs";
     private const string CleClemence = "clemence";
     private const string CleEspritsFertiles = "esprits_fertiles";
+    private const string CleFond = "fond";
+    private const string CleFondSeuil = "fond_seuil";
+    private const string CleFondHumains = "fond_humains";
+    private const string CleFondCommunautes = "fond_communautes";
     private const string CleJournalConserver = "journal_conserver_ans";
     private const string CleJournalQuotidienConserver = "journal_quotidien_conserver_ans";
     private const string CleJournalEffacerMarquants = "journal_effacer_marquants";
@@ -87,6 +91,7 @@ public sealed class ServiceMonde
         {
             PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence, EspritsFertiles = _espritsFertiles,
         };
+        ReglerLeFond(_monde);
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
     }
@@ -167,6 +172,55 @@ public sealed class ServiceMonde
     public T SurLaBase<T>(Func<DepotMonde, MondeSimule, T> travail)
     {
         lock (_verrou) return travail(Depot, _monde);
+    }
+
+    // ───────────── Humains de fond (0.36.0) ─────────────
+
+    /// <summary>Option « humains de fond simulés en groupe » de ce monde, et le nombre de vivants à partir duquel elle joue (0 : toujours).</summary>
+    public (bool Actif, int Seuil) Fond
+    {
+        get => (Depot.LireReglage(CleFond) == "oui",
+            int.TryParse(Depot.LireReglage(CleFondSeuil), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var s) ? s : 0);
+        set
+        {
+            ArgumentOutOfRangeException.ThrowIfNegative(value.Seuil);
+            Depot.EcrireReglage(CleFond, value.Actif ? "oui" : "non");
+            Depot.EcrireReglage(CleFondSeuil, value.Seuil.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            ReglerLeFond(_monde);
+        }
+    }
+
+    /// <summary>Humains et communautés que le joueur garde en individu (« Garder en individu »).</summary>
+    public (HashSet<int> Humains, HashSet<int> Communautes) GardesEnIndividu() => (Ids(CleFondHumains), Ids(CleFondCommunautes));
+
+    /// <summary>Garde (ou rend au fond) un humain, ou une communauté entière.</summary>
+    public void GarderEnIndividu(bool communaute, int id, bool garder)
+    {
+        var cle = communaute ? CleFondCommunautes : CleFondHumains;
+        var ids = Ids(cle);
+        if (garder ? !ids.Add(id) : !ids.Remove(id)) return;
+        Depot.EcrireReglage(cle, string.Join(",", ids.Order()));
+        ReglerLeFond(_monde);
+    }
+
+    /// <summary>Les suivis ☆ ont changé : ils restent en individu.</summary>
+    public void SuivisChanges() => ReglerLeFond(_monde);
+
+    private HashSet<int> Ids(string cle) =>
+        [.. (Depot.LireReglage(cle) ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(x => int.TryParse(x, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var i) ? i : 0)
+            .Where(i => i > 0)];
+
+    /// <summary>Donne au monde ses réglages des humains de fond (lus dans sa base) : option, seuil, gardés et suivis.</summary>
+    private void ReglerLeFond(MondeSimule monde)
+    {
+        var (actif, seuil) = Fond;
+        var (humains, communautes) = GardesEnIndividu();
+        foreach (var id in Depot.LireSuivis()) humains.Add(id);
+        monde.GardesEnIndividu = humains;
+        monde.CommunautesGardees = communautes;
+        monde.SeuilFond = seuil;
+        monde.HumainsDeFond = actif;
     }
 
     /// <summary>Cœurs logiques de cette machine.</summary>
@@ -265,6 +319,8 @@ public sealed class ServiceMonde
         {
             PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence, EspritsFertiles = _espritsFertiles,
         };
+        // L'option des humains de fond est un réglage de vitesse : elle passe au nouveau monde (pas les humains gardés).
+        var fond = Fond;
         lock (VerrouLectureLongue)
         lock (_verrou)
         {
@@ -275,6 +331,7 @@ public sealed class ServiceMonde
             }
             else Depot.Recommencer(nouveau.Etat);
             _monde = nouveau;
+            Fond = fond;
         }
         if (garderAncien)
             _journal.LogInformation("Monde réinitialisé ({Configuration}) ; ancien monde copié dans {Copie}", configuration, CheminCopieAvantReinitialisation);
@@ -398,6 +455,7 @@ public sealed class ServiceMonde
             var copie = SauvegarderMaintenant("avant-restauration");
             Depot.RemplacerPar(prepare);
             _monde = restaure;
+            ReglerLeFond(restaure);
             _journal.LogInformation("Sauvegarde {Source} restaurée ; l'ancien monde est dans {Copie}", source, copie);
             return restaure;
         }

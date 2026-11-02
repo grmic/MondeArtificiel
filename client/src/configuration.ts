@@ -37,6 +37,9 @@ interface Configuration {
   clemence: number;
   /** Esprits fertiles : les idées par combinaison viennent ce nombre de fois plus souvent (1 : le monde tel quel). */
   espritsFertiles: number;
+  /** Option « humains de fond simulés en groupe » (0.36.0) et le nombre de vivants à partir duquel elle joue (0 : toujours). */
+  fond: boolean;
+  fondSeuil: number;
 }
 
 /** Réglages d'un nouveau monde (graine null : au hasard). */
@@ -124,6 +127,25 @@ export class PanneauConfiguration {
     return { ligne, choix };
   })();
   private readonly messageCoeurs = el("p", "message-config");
+  /** Humains de fond : la case, et le seuil de vivants (vide : toujours). */
+  private readonly fond = (() => {
+    const caseFond = el("input");
+    caseFond.type = "checkbox";
+    caseFond.id = "configFond";
+    const etiquette = el("label", "case-config");
+    etiquette.append(caseFond, ` ${t("config.fond")}`);
+    const seuil = el("input");
+    seuil.type = "number";
+    seuil.id = "configFondSeuil";
+    seuil.min = "0";
+    seuil.step = "50";
+    seuil.placeholder = t("config.fondToujours");
+    seuil.className = "nombre-court";
+    const ligne = el("label", "reglage");
+    ligne.append(el("span", "libelle", t("config.fondSeuil")), seuil);
+    return { caseFond, etiquette, seuil, ligne };
+  })();
+  private readonly messageFond = el("p", "message-config");
   private readonly clemence = (() => {
     const ligne = el("label", "reglage");
     const curseur = el("input");
@@ -210,6 +232,8 @@ export class PanneauConfiguration {
     this.journalQuotidien.type = "checkbox";
     this.journalQuotidien.addEventListener("change", () => void this.choisirJournalQuotidien(this.journalQuotidien.checked));
     this.coeurs.choix.addEventListener("change", () => void this.choisirCoeurs(Number(this.coeurs.choix.value)));
+    this.fond.caseFond.addEventListener("change", () => void this.choisirFond());
+    this.fond.seuil.addEventListener("change", () => void this.choisirFond());
     this.clemence.curseur.addEventListener("input", () => (this.clemence.valeur.textContent = t("commun.pourcent", { v: Number(this.clemence.curseur.value) })));
     this.clemence.curseur.addEventListener("change", () => void this.choisirClemence(Number(this.clemence.curseur.value)));
     this.esprits.choix.addEventListener("change", () => void this.choisirEsprits(Number(this.esprits.choix.value)));
@@ -243,6 +267,10 @@ export class PanneauConfiguration {
       this.coeurs.ligne,
       el("p", "discret", t("config.calculAide")),
       this.messageCoeurs,
+      this.fond.etiquette,
+      this.fond.ligne,
+      el("p", "discret", t("config.fondAide")),
+      this.messageFond,
       el("h3", undefined, t("config.clemence")),
       this.clemence.ligne,
       el("p", "discret", t("config.clemenceAide")),
@@ -289,6 +317,8 @@ export class PanneauConfiguration {
     void this.journalBase.remplir();
     this.remplirCoeurs(c);
     this.messageCoeurs.textContent = "";
+    this.remplirFond(c);
+    this.messageFond.textContent = "";
     this.remplirClemence(c.clemence);
     this.messageClemence.textContent = "";
     this.esprits.choix.value = String(c.espritsFertiles);
@@ -382,6 +412,31 @@ export class PanneauConfiguration {
     options.push(tous);
     this.coeurs.choix.replaceChildren(...options);
     this.coeurs.choix.value = String(c.coeurs === c.coeursMachine && c.coeursMachine > 1 ? 0 : c.coeurs);
+  }
+
+  private remplirFond(c: Configuration): void {
+    this.fond.caseFond.checked = c.fond;
+    this.fond.seuil.value = c.fondSeuil > 0 ? String(c.fondSeuil) : "";
+    this.fond.seuil.disabled = !c.fond;
+  }
+
+  /** Coche ou décoche les humains de fond, ou change leur seuil : pris en compte au pas suivant. */
+  private async choisirFond(): Promise<void> {
+    const brut = this.fond.seuil.value.trim();
+    const seuil = brut === "" ? 0 : Math.max(0, Math.floor(Number(brut)));
+    if (!Number.isFinite(seuil)) {
+      this.messageFond.textContent = t("config.reglageInchange");
+      return;
+    }
+    const c = await connexion.invoke<Configuration>("ChoisirFond", this.fond.caseFond.checked, seuil).catch(() => null);
+    if (!c) {
+      if (this.config) this.remplirFond(this.config);
+      this.messageFond.textContent = t("config.reglageInchange");
+      return;
+    }
+    this.config = c;
+    this.remplirFond(c);
+    this.messageFond.textContent = !c.fond ? t("config.fondNon") : c.fondSeuil > 0 ? t("config.fondDes", { n: c.fondSeuil }) : t("config.fondOui");
   }
 
   private async choisirCoeurs(coeurs: number): Promise<void> {

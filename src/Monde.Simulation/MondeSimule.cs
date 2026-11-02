@@ -824,6 +824,8 @@ public sealed partial class MondeSimule
         _installations.Bruler(SecondesParPas / (double)Calendrier.SecondesParHeure);
 
         _comportement.RecenserLesGisements(_humains);
+        _comportement.RecenserLesDemandes(_humains);
+        if (nouveauJour || !_fondAJour) ChoisirLeFond();
         if (Coeurs == 1) VivreChacunSonTour(nouveauJour);
         else VivreEnsemble(nouveauJour);
 
@@ -913,6 +915,98 @@ public sealed partial class MondeSimule
 
     private int _coeurs;
 
+    // ───────────── Humains de fond (0.36.0) ─────────────
+
+    /// <summary>
+    /// Option « Vitesse : humains de fond simulés en groupe » : décochée, tout le monde vit chaque pas en entier (et la
+    /// simulation est exactement celle d'avant). Cochée, ceux qui n'ont rien de particulier vivent au calme
+    /// (voir <see cref="Comportement.VivreEnFond"/>). Modifiable en cours de partie : pris en compte au pas suivant.
+    /// </summary>
+    public bool HumainsDeFond
+    {
+        get => Volatile.Read(ref _humainsDeFond);
+        set { Volatile.Write(ref _humainsDeFond, value); _fondAJour = false; }
+    }
+
+    private bool _humainsDeFond;
+
+    /// <summary>Nombre de vivants à partir duquel l'option joue (0 : toujours).</summary>
+    public int SeuilFond
+    {
+        get => Volatile.Read(ref _seuilFond);
+        set { Volatile.Write(ref _seuilFond, Math.Max(0, value)); _fondAJour = false; }
+    }
+
+    private int _seuilFond;
+
+    /// <summary>Humains gardés en individu : suivis ☆ et « Garder en individu » (numéros), fournis par le serveur.</summary>
+    public IReadOnlySet<int> GardesEnIndividu
+    {
+        get => _gardes;
+        set { _gardes = value; _fondAJour = false; }
+    }
+
+    private IReadOnlySet<int> _gardes = new HashSet<int>();
+
+    /// <summary>Communautés gardées en individu (« Garder en individu » sur leur fiche).</summary>
+    public IReadOnlySet<int> CommunautesGardees
+    {
+        get => _communautesGardees;
+        set { _communautesGardees = value; _fondAJour = false; }
+    }
+
+    private IReadOnlySet<int> _communautesGardees = new HashSet<int>();
+
+    // De fond ou non, par numéro d'humain (null : personne) ; recalculé chaque jour et quand un réglage change.
+    private bool[]? _fond;
+    private volatile bool _fondAJour;
+
+    /// <summary>Vivants de fond au dernier recensement, et ceux d'entre eux qui ont vécu le dernier pas en entier.</summary>
+    public int DeFond { get; private set; }
+
+    public int DeFondEveilles { get; private set; }
+
+    /// <summary>Vrai si cet humain vit en ce moment au calme, de fond.</summary>
+    public bool EstDeFond(int id) => _fond is { } f && id > 0 && id < f.Length && f[id];
+
+    /// <summary>
+    /// Qui vit de fond : tout vivant, sauf ceux qui font l'histoire. Restent en individu les suivis et ceux qu'on garde,
+    /// ceux qui ont un rôle (chef de communauté, prophète, prêtre, spécialiste), les bébés et leur mère, les membres d'une
+    /// communauté en guerre. Le reste (besoin, maladie, danger, voyage, parole de l'Entité…) se voit à chaque pas.
+    /// </summary>
+    private void ChoisirLeFond()
+    {
+        _fondAJour = true;
+        var vivants = _humains.Vivants;
+        if (!HumainsDeFond || vivants.Count < SeuilFond)
+        {
+            _fond = null;
+            DeFond = 0;
+            return;
+        }
+        var fond = _fond is { } f && f.Length > _humains.Count ? f : new bool[_humains.Count + 64];
+        Array.Clear(fond);
+        var enGuerre = new HashSet<int>();
+        foreach (var g in _social.Guerres)
+            if (g.Fin is null) { enGuerre.Add(g.A); enGuerre.Add(g.B); }
+        var figures = new HashSet<int>();
+        foreach (var c in _communautes) if (c.Active) figures.Add(c.FigureId);
+        var meres = new HashSet<int>();
+        foreach (var h in vivants)
+            if (h.EstVivant && h.EstBebe(_secondes) && h.MereId > 0) meres.Add(h.MereId);
+        var n = 0;
+        foreach (var h in vivants)
+        {
+            if (!h.EstVivant || h.EstBebe(_secondes) || meres.Contains(h.Id) || figures.Contains(h.Id)) continue;
+            if (_gardes.Contains(h.Id) || h.CommunauteId != 0 && (_communautesGardees.Contains(h.CommunauteId) || enGuerre.Contains(h.CommunauteId))) continue;
+            if (h.Role != RoleReligieux.Aucun || h.Specialite != Ouvrage.Aucun) continue;
+            fond[h.Id] = true;
+            n++;
+        }
+        _fond = fond;
+        DeFond = n;
+    }
+
     /// <summary>Pas classique : ceux qui vivaient au début du pas vivent l'un après l'autre, et chacun voit ce qu'ont fait ceux d'avant.</summary>
     private void VivreChacunSonTour(bool nouveauJour)
     {
@@ -920,12 +1014,19 @@ public sealed partial class MondeSimule
         _humains.Recenser();
         var vivants = _humains.Vivants;
         var nombre = vivants.Count;
+        var fond = _fond;
+        var eveilles = 0;
         for (var i = 0; i < nombre; i++)
         {
             var humain = vivants[i];
-            _comportement.Vivre(humain, _humains, _secondes);
+            if (fond is not null && humain.Id < fond.Length && fond[humain.Id])
+            {
+                if (_comportement.VivreEnFond(humain, _humains, _secondes, (_pas + humain.Id) % Comportement.PasParCreneau == 0)) eveilles++;
+            }
+            else _comportement.Vivre(humain, _humains, _secondes);
             if (nouveauJour) _comportement.Vieillir(humain, _secondes);
         }
+        DeFondEveilles = eveilles;
     }
 
     // Les tours des humains, réutilisés de pas en pas.
@@ -950,6 +1051,9 @@ public sealed partial class MondeSimule
         _comportement.Preparer();
         while (_tours.Count < nombre) _tours.Add(new Tour());
         var tours = _tours;
+        var fond = _fond;
+        var pas = _pas;
+        var eveilles = 0;
         Surveillant?.Invoke(true);
         var coeurs = Coeurs;
         var options = new ParallelOptions { MaxDegreeOfParallelism = coeurs > 0 ? coeurs : Environment.ProcessorCount };
@@ -965,7 +1069,12 @@ public sealed partial class MondeSimule
                 Alea.Detourner(tour.Alea);
                 try
                 {
-                    _comportement.Vivre(soi, _humains, _secondes);
+                    if (fond is not null && original.Id < fond.Length && fond[original.Id])
+                    {
+                        if (_comportement.VivreEnFond(soi, _humains, _secondes, (pas + original.Id) % Comportement.PasParCreneau == 0))
+                            Interlocked.Increment(ref eveilles);
+                    }
+                    else _comportement.Vivre(soi, _humains, _secondes);
                     if (nouveauJour) _comportement.Vieillir(soi, _secondes);
                 }
                 finally
@@ -981,6 +1090,7 @@ public sealed partial class MondeSimule
         }
 
         Surveillant?.Invoke(false);
+        DeFondEveilles = eveilles;
 
         // Chacun reprend sa place sous sa nouvelle version ; les numéros d'événements reprennent après ceux du pas.
         var pris = 0;

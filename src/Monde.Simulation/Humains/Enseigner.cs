@@ -35,7 +35,7 @@ public sealed partial class Comportement
         var envoye = h.RassemblementId != 0 && Social?.Mission(h) is { Parole: Parole.EnseignezVosSavoirs };
         var patience = (0.3 + 0.35 * p.Conscience + 0.35 * p.Agreabilite) * (0.5 + p.Moral.EmpathieCognitive) * (h.Specialite != Ouvrage.Aucun ? 1.5 : 1)
                        * (envoye ? 12 : 1);
-        if (alea.Reel() >= 0.004 * patience) return false;
+        if (TiragePas() >= 0.004 * patience) return false;
 
         // L'élève : quelqu'un d'éveillé sur la même case, ses enfants d'abord, puis ceux qu'il aime, puis les curieux.
         var jaloux = Psyche.EstPsychopathe(h, _maintenant) || p.Moral.Compassion < 0.25;

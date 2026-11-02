@@ -1,4 +1,5 @@
 import { blocQueFerait } from "./entitellm";
+import { blocFond } from "./fond";
 import { boutonSuivre } from "./suivis";
 import { connexion } from "./connexion";
 import { distanceDeCases, surfaceDeCases } from "./carte";
@@ -828,6 +829,6 @@ export class PanneauFicheCommunaute {
       }), () => this.id);
     }
     this.geste ??= new FormulaireGeste(false, () => ({ id: this.id, nom: this.nom }));
-    return [this.entite.bloc, this.geste.bloc, blocQueFerait(() => 0, () => this.id)];
+    return [this.entite.bloc, this.geste.bloc, blocQueFerait(() => 0, () => this.id), blocFond(() => 0, () => this.id, true)];
   }
 }

@@ -54,7 +54,7 @@ public sealed partial class Comportement
         if (h.Sait(Effet.Braises) || !h.Sait(Effet.Foyer)) return;
         var heure = Calendrier.Decomposer(_maintenant).Heure;
         if (heure < 5 || heure > 9) return;
-        if (alea.Reel() >= 0.02 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
+        if (TiragePas() >= 0.02 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
         var id = Retenir(h, Geste.Couvrir, Matiere.Aucune, Matiere.Feu, Effet.Braises, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
             recit: new Recit("feu.braise", ("h", h)));
         Montrer(h, Geste.Couvrir, Matiere.Aucune, Matiere.Feu, Effet.Braises, 0, Symptome.Aucun, tous, id);
@@ -90,7 +90,7 @@ public sealed partial class Comportement
         }
         // Au matin, la braise de la nuit : si personne autour ne sait refaire le feu, on la ranime aussitôt.
         if (heure >= 5 && heure <= 9 && Installations.BraiseEn(h.X, h.Y) is not null && h.Sait(Effet.Foyer)
-            && alea.Reel() < 0.3 * (0.5 + h.Personnalite.Conscience) && FeuPrecieux(h, tous) >= 0.5 && RanimerLaBraise(h, tous))
+            && TiragePas() < 0.3 * (0.5 + h.Personnalite.Conscience) && FeuPrecieux(h, tous) >= 0.5 && RanimerLaBraise(h, tous))
             return true;
         if (GarderLeFeuEnRoute(h, tous)) return true;
         return ChercherLeFeu(h, tous);
@@ -100,7 +100,7 @@ public sealed partial class Comportement
     private bool NourrirPourLaNuit(Humain h, Foyer foyer, IReadOnlyList<Humain> tous)
     {
         if (foyer.Heures >= 6 || !h.Sait(Effet.Foyer) || !APortee(h, Matiere.BoisSec)) return false;
-        if (alea.Reel() >= 0.3 * (0.5 + h.Personnalite.Conscience) || FeuPrecieux(h, tous) < 0.5) return false;
+        if (TiragePas() >= 0.3 * (0.5 + h.Personnalite.Conscience) || FeuPrecieux(h, tous) < 0.5) return false;
         h.Activite = Activite.Veiller;
         h.CibleX = h.CibleY = -1;
         Faire(h, Geste.Entasser, Matiere.BoisSec, Matiere.Feu, OrigineSavoir.Essai, tous);
@@ -111,7 +111,7 @@ public sealed partial class Comportement
     private bool CouvrirLeFeu(Humain h, Foyer foyer, IReadOnlyList<Humain> tous)
     {
         if (foyer.Couvert || !h.Savoirs.Exists(s => s.Effet == Effet.Braises && s.Confiance >= 0.4)) return false;
-        if (alea.Reel() >= 0.2 * (0.4 + h.Personnalite.Conscience)) return false;
+        if (TiragePas() >= 0.2 * (0.4 + h.Personnalite.Conscience)) return false;
         h.Activite = Activite.Veiller;
         h.CibleX = h.CibleY = -1;
         var (x, y) = (h.X, h.Y);
@@ -135,7 +135,7 @@ public sealed partial class Comportement
         if (!sait && !h.Sait(Effet.Brandon)) return false;
         var p = sait ? 0.03 * (0.4 + h.Personnalite.Conscience) : 0.0003 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h));
         // Le tirage d'abord : compter ceux qui savent refaire le feu coûte plus cher.
-        if (alea.Reel() >= 1.5 * p || alea.Reel() >= (0.5 + FeuPrecieux(h, tous)) / 1.5) return false;
+        if (TiragePas() >= 1.5 * p || alea.Reel() >= (0.5 + FeuPrecieux(h, tous)) / 1.5) return false;
         h.Activite = sait ? Activite.Fabriquer : Activite.Experimenter;
         h.CibleX = h.CibleY = -1;
         Faire(h, Geste.Approcher, m, Matiere.Feu, OrigineSavoir.Essai, tous);
@@ -243,7 +243,7 @@ public sealed partial class Comportement
         if (!enRoute)
         {
             if (h.FeuDemandeLe > 0 && _maintenant - h.FeuDemandeLe < 3 * Calendrier.SecondesParJour) return false;
-            if (alea.Reel() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
+            if (TiragePas() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
         }
         // La fumée d'un feu de camp se voit de loin, bien plus loin que ce qu'on distingue d'ordinaire.
         var rayon = 3 * RayonPerception(h);

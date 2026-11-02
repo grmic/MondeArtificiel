@@ -80,7 +80,7 @@ public sealed partial class Comportement
         if (parcelles.Count > 0) Garder(h);
         // Déjà en route vers une parcelle : on continue.
         var enRoute = h.Activite == Activite.Cultiver && h.CibleX >= 0;
-        if (!enRoute && alea.Reel() >= 0.25) return false;
+        if (!enRoute && TiragePas() >= 0.25) return false;
         if (parcelles.Count > 0 && Soigner(h, tous)) return true;
         return sait && Semer(h, tous);
     }

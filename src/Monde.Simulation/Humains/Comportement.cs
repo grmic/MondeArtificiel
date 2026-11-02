@@ -106,7 +106,17 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     public void Vivre(Humain h, IReadOnlyList<Humain> tous, long maintenant)
     {
-        if (!h.EstVivant) return;
+        if (Commencer(h, tous, maintenant, out var partenaire)) Agir(h, partenaire, tous, maintenant);
+    }
+
+    /// <summary>
+    /// Début du pas d'un humain : le corps (faim, soif, fatigue, froid, santé). Un bébé vit son pas entier ici. Renvoie vrai s'il
+    /// reste à agir (vivant, plus un bébé), avec celui qu'il rejoint (compagnon, ou gardien d'un enfant).
+    /// </summary>
+    private bool Commencer(Humain h, IReadOnlyList<Humain> tous, long maintenant, out Humain? partenaire)
+    {
+        partenaire = null;
+        if (!h.EstVivant) return false;
         _maintenant = maintenant;
         _tous = tous;
         _nageur = false;
@@ -115,14 +125,19 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // Sans sa mère, le bébé est porté par une femme qui allaite, ou, sevrable, par celui qui veille sur lui.
             var mere = Vivant(tous, h.MereId);
             VivreBebe(h, mere ?? Nourrice(h, tous, maintenant), maintenant, mere is null);
-            return;
+            return false;
         }
         // Pour un enfant, le « compagnon » à rejoindre (pour dormir, se tenir chaud) est celui qui veille sur lui.
-        var partenaire = h.EstEnfant(maintenant) ? Gardien(h, tous, maintenant) : Vivant(tous, h.PartenaireId);
+        partenaire = h.EstEnfant(maintenant) ? Gardien(h, tous, maintenant) : Vivant(tous, h.PartenaireId);
         var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId))
                               || AmiAuMemeEndroit(h, tous);
         Metaboliser(h, chaleurPartagee, maintenant);
-        if (!h.EstVivant) return;
+        return h.EstVivant;
+    }
+
+    /// <summary>Le reste du pas : ce qu'il voit et ramasse, ce qu'il partage, puis ce qu'il décide de faire.</summary>
+    private void Agir(Humain h, Humain? partenaire, IReadOnlyList<Humain> tous, long maintenant)
+    {
         // La soif fait nager même épuisé, au risque de se noyer : on ne reste pas mourir sur une rive sans eau douce.
         SuivreSesObjets(h);
         if (h.Continent == 0) EtablirContinent(h, tous);
@@ -137,15 +152,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         ObserverLeFeu(h, tous);
         DecouvrirLaBraise(h, tous);
         SentirLaFumee(h, tous);
-        if (h.EstEnfant(maintenant))
-        {
-            // Un orphelin est nourri par celui qui l'a pris sous son aile.
-            var pere = Vivant(tous, h.PereId);
-            NourrirEnfant(h, Vivant(tous, h.MereId) ?? (partenaire != pere ? partenaire : null), pere, tous);
-        }
-        PartagerAvecProches(h, tous);
-        NourrirLaMere(h, tous);
-        RecevoirViande(h, tous);
+        NourrirEntreProches(h, partenaire, tous, maintenant);
         Voler(h, tous, maintenant);
         if (!h.EstVivant) return;
         Grossesse(h, tous, maintenant);
@@ -173,6 +180,23 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                            && !h.Memoire.PenseeRecente(pensee, Memoire.PenseesMax);
             if (h.Memoire.Penser(maintenant, pensee) && nouvelle) Noter(maintenant, TypeEvenement.Pensee, h, _autre, new Recit("j.pensee", ("h", h), ("p", pensee)));
         }
+    }
+
+    /// <summary>
+    /// Ce que les proches donnent à manger, à chaque pas : l'enfant nourri par les siens, l'affamé par un proche rassasié,
+    /// la mère enceinte ou qui allaite, la part de viande. Un humain de fond le vit aussi entre deux heures.
+    /// </summary>
+    private void NourrirEntreProches(Humain h, Humain? partenaire, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        if (h.EstEnfant(maintenant))
+        {
+            // Un orphelin est nourri par celui qui l'a pris sous son aile.
+            var pere = Vivant(tous, h.PereId);
+            NourrirEnfant(h, Vivant(tous, h.MereId) ?? (partenaire != pere ? partenaire : null), pere, tous);
+        }
+        PartagerAvecProches(h, tous);
+        NourrirLaMere(h, tous);
+        RecevoirViande(h, tous);
     }
 
     // À part : la fermeture n'est créée que si la routine est comptée.
@@ -704,7 +728,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (h.CibleX >= 0) return;
         }
         // Les sociables vont retrouver ceux qu'ils aiment ; c'est ainsi que les groupes se forment.
-        if (!abattu && !ailleurs && (h.Activite == Activite.RejoindreProche || alea.Reel() < 0.1 + 0.4 * p.Extraversion)
+        if (!abattu && !ailleurs && (h.Activite == Activite.RejoindreProche || TiragePas() < 0.1 + 0.4 * p.Extraversion)
             && ProcheARejoindre(h, tous) is { } proche && !Bannissement.Separes(h, proche, maintenant))
         {
             _autre = proche;
@@ -724,7 +748,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (PratiquerLaMatiere(h, tous)) return;
         if (Experimenter(h, tous)) return;
         if (!ailleurs && !abattu && PrendreLaMer(h, tous)) return;
-        if (!ailleurs && alea.Reel() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
+        if (!ailleurs && TiragePas() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
         {
             Explorer(h);
         }

@@ -19,6 +19,18 @@ namespace Monde.Simulation.Humains;
 /// </summary>
 public sealed partial class Comportement
 {
+    // Ceux à qui quelqu'un a demandé un ouvrage (au début du pas, plus ceux du pas en cours) : sans demande, inutile de
+    // chercher un demandeur parmi tous les vivants.
+    private readonly HashSet<int> _demandes = [];
+
+    /// <summary>Recense, au début de chaque pas, ceux à qui un ouvrage est demandé.</summary>
+    internal void RecenserLesDemandes(IReadOnlyList<Humain> tous)
+    {
+        _demandes.Clear();
+        foreach (var o in tous.Vivants())
+            if (o.DemandeAId != 0 && o.EstVivant) _demandes.Add(o.DemandeAId);
+    }
+
     /// <summary>Savoirs qui font chaque ouvrage.</summary>
     private static bool Fait(Ouvrage o, Savoir s) => o switch
     {
@@ -60,6 +72,7 @@ public sealed partial class Comportement
     /// <summary>Faire l'ouvrage qu'on vous demande, à cet instant (pour les essais).</summary>
     internal bool Servir(Humain h, IReadOnlyList<Humain> tous, long maintenant)
     {
+        RecenserLesDemandes(tous);
         _maintenant = maintenant;
         _temperature = Temperature(h.X, h.Y, maintenant);
         return Servir(h, tous);
@@ -74,7 +87,7 @@ public sealed partial class Comportement
     {
         if (h.EstEnfant(_maintenant) || h.CommunauteId == 0 || h.DemandeAId != 0) return false;
         var p = h.Personnalite;
-        if (alea.Reel() >= 0.03 * (0.5 + p.Conscience)) return false;
+        if (TiragePas() >= 0.03 * (0.5 + p.Conscience)) return false;
         var ouvrage = Manque(h);
         if (ouvrage == Ouvrage.Aucun) return false;
         var sienne = Habilete(h, ouvrage, 0.4);
@@ -99,6 +112,7 @@ public sealed partial class Comportement
         }
         if (artisan is null || alea.Reel() >= meilleur * (0.3 + 0.4 * p.Extraversion + 0.3 * p.Agreabilite)) return false;
         h.DemandeAId = artisan.Id;
+        if (Tour.Courant is null) _demandes.Add(artisan.Id);
         h.DemandeOuvrage = ouvrage;
         h.DemandeLe = _maintenant;
         _autre = artisan;
@@ -146,7 +160,7 @@ public sealed partial class Comportement
     /// </summary>
     private bool Servir(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (h.EstEnfant(_maintenant)) return false;
+        if (h.EstEnfant(_maintenant) || !_demandes.Contains(h.Id)) return false;
         Humain? demandeur = null;
         foreach (var o in tous.Vivants())
         {
@@ -154,7 +168,7 @@ public sealed partial class Comportement
             demandeur = o;
             break;
         }
-        if (demandeur is null || alea.Reel() >= 0.25) return false;
+        if (demandeur is null || TiragePas() >= 0.25) return false;
         var p = h.Personnalite;
         var ouvrage = demandeur.DemandeOuvrage;
         var envie = Math.Clamp((0.3 + 0.4 * p.Agreabilite + 0.3 * p.Conscience) * (1 - 0.7 * Psyche.Froideur(p)) + h.AffectionPour(demandeur.Id) / 150

@@ -198,7 +198,7 @@ public sealed partial class Comportement
         var connus = 0;
         foreach (var s in h.Savoirs) if (s.Effet != Effet.Rien && s.Confiance >= 0.4) connus++;
         var voisinage = Math.Min(3, Math.Log(1 + connus) / Math.Log(10));
-        if (alea.Reel() >= 0.00015 * ingenieux * ingenieux * (0.5 + p.Ouverture) * pousse * voisinage * EspritsFertiles * Decrets.Facteur(LoiDecret.Idees, h.CommunauteId, _maintenant)) return false;
+        if (TiragePas() >= 0.00015 * ingenieux * ingenieux * (0.5 + p.Ouverture) * pousse * voisinage * EspritsFertiles * Decrets.Facteur(LoiDecret.Idees, h.CommunauteId, _maintenant)) return false;
 
         var materiaux = Materiaux(h);
         var (facons, jointures) = GestesConnus(h);
@@ -483,7 +483,7 @@ public sealed partial class Comportement
     private bool OutillerParFacons(Humain h, IReadOnlyList<Humain> tous)
     {
         if (!AvecLaMatiere || !h.Savoirs.Exists(s => s.Effet == Effet.Facture)) return false;
-        if (alea.Reel() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
+        if (TiragePas() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
         foreach (var f in FonctionsUtiles)
             if (FaconnerPour(h, f, tous)) return true;
         return false;

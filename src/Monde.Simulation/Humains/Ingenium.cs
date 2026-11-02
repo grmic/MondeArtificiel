@@ -101,7 +101,7 @@ public sealed partial class Comportement
         var p = h.Personnalite;
         var enfant = h.EstEnfant(_maintenant);
         var envie = 0.004 * (0.3 + p.Ouverture) * (enfant ? 2.5 : 1) * (h.Humeur < 30 ? 0.4 : 1);
-        if (alea.Reel() >= envie) return false;
+        if (TiragePas() >= envie) return false;
 
         var materiaux = Materiaux(h);
         // Les gestes du jeu : frapper, frotter, tordre, entasser, pousser… (assembler, percer, trancher demandent une intention).
@@ -706,7 +706,7 @@ public sealed partial class Comportement
                     if (!Physique.Ressemble(s.Effet, Effet.Flamme) || !APortee(h, s.A) || !APortee(h, s.B)) continue;
                     if (s.Geste == Geste.Frapper && !APortee(h, Matiere.HerbeSeche)) continue;
                     if (s.Geste == Geste.Frotter && (s.A != Matiere.BoisSec || s.B != Matiere.BoisSec)) continue;
-                    if (alea.Reel() >= 0.15 * Ingeniosite(h) * (0.5 + h.Personnalite.Conscience)) continue;
+                    if (TiragePas() >= 0.15 * Ingeniosite(h) * (0.5 + h.Personnalite.Conscience)) continue;
                     h.Activite = Activite.Fabriquer;
                     h.CibleX = h.CibleY = -1;
                     var r = Physique.Tenter(s.Geste, s.A, s.B, Contexte(h, s), alea);
@@ -749,7 +749,7 @@ public sealed partial class Comportement
     /// </summary>
     private bool Outiller(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (h.Savoirs.Count == 0 || alea.Reel() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
+        if (h.Savoirs.Count == 0 || TiragePas() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
         Savoir? Moyen(Effet e) => h.Savoirs.Where(s => s.Effet == e && s.Espece == 0 && s.Confiance >= 0.4 && APortee(h, s.A) && APortee(h, s.B))
             .MaxBy(s => s.Confiance);
         var lame = h.Porte(Matiere.Eclat) || h.Porte(Matiere.Obsidienne);
@@ -841,16 +841,16 @@ public sealed partial class Comportement
         var flammes = Catastrophes.BruleAutour(h.X, h.Y);
         if (flammes || Catastrophes.BraisesEn(h.X, h.Y, _maintenant))
         {
-            if (h.Faim > 40 && !flammes && alea.Reel() < 0.01)
+            if (h.Faim > 40 && !flammes && TiragePas() < 0.01)
             {
                 // Des bêtes surprises par le feu, cuites sur place : faciles à mâcher (Pruetz et Herzog, 2017).
                 h.Faim = Math.Max(0, h.Faim - 25);
                 Constater(h, Geste.Approcher, Matiere.Carcasse, Matiere.Feu, new Resultat(Effet.Cuisson, Matiere.Aucune, 1), OrigineSavoir.Observation, tous);
             }
-            if (!h.Sait(Effet.Chaleur) && alea.Reel() < (h.Froid > 15 ? 0.3 : 0.05))
+            if (!h.Sait(Effet.Chaleur) && TiragePas() < (h.Froid > 15 ? 0.3 : 0.05))
                 Constater(h, Geste.Approcher, Matiere.Aucune, Matiere.Feu, new Resultat(Effet.Chaleur, Matiere.Aucune, 1), OrigineSavoir.Observation, tous);
             if (!h.EstPetitEnfant(_maintenant) && APortee(h, Matiere.Branche) && !h.Porte(Matiere.Brandon)
-                && alea.Reel() < (h.Sait(Effet.Brandon) ? 0.5 : 0.01 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))))
+                && TiragePas() < (h.Sait(Effet.Brandon) ? 0.5 : 0.01 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))))
             {
                 Constater(h, Geste.Approcher, Matiere.Branche, Matiere.Feu, new Resultat(Effet.Brandon, Matiere.Brandon, 1),
                     h.Sait(Effet.Brandon) ? OrigineSavoir.Essai : OrigineSavoir.Observation, tous);

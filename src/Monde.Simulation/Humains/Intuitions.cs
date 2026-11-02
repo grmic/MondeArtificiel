@@ -34,7 +34,7 @@ public sealed partial class Comportement
         var p = h.Personnalite;
         var besoin = h.Faim > 40 || h.Soif > 40 || h.Froid > 30 ? 2 : 1;
         var ingenieux = 0.2 + Ingeniosite(h);
-        if (alea.Reel() >= 0.002 * ingenieux * ingenieux * (0.5 + p.Ouverture) * besoin * Decrets.Facteur(LoiDecret.Idees, h.CommunauteId, _maintenant)) return false;
+        if (TiragePas() >= 0.002 * ingenieux * ingenieux * (0.5 + p.Ouverture) * besoin * Decrets.Facteur(LoiDecret.Idees, h.CommunauteId, _maintenant)) return false;
 
         var depart = h.Savoirs[alea.Entier(h.Savoirs.Count)];
         if (depart.Confiance < 0.5 || depart.Espece != 0 || depart.Pieces.Length > 0) return false;

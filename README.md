@@ -4,7 +4,7 @@
 
 Simulation d'une communauté humaine née d'un mythe fondateur. Application client-serveur : un serveur .NET 10 avec serveur HTTP intégré (Kestrel), et un client web ouvert dans le navigateur.
 
-Version 0.35.3 (affichée dans « Configuration »), auteur : MicG. Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine, voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
+Version 0.36.0 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine, voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
 
 ![Un monde à l'an 108 : 5 198 humains répartis en communautés sur quatre îles, avec la fenêtre du temps et la courbe de démographie](docs/capture-an108.png)
 
@@ -129,6 +129,8 @@ Cliquer sur un humain ouvre sa **fiche**, en sections déroulantes (on ouvre cel
 
 **Les inventions de l'Entité libre** (0.35.3, schéma v53, tous les mondes). Avec la case **Entité libre**, l'Entité peut maintenant créer ce que le monde n'avait jamais connu. **Une plante** : sa forme (arbuste, liane, herbe, fougère, arbre, buisson, racine), son nom, ses vertus (toxique, astringente, fébrifuge, antipaludique, antiseptique, vermifuge, psychotrope) et ce qu'elle donne à manger (graines, gousses, tubercules, fruits, noix) ; elle pousse sur tout le terrain du lieu choisi, et les humains la goûtent, s'en soignent, la sèment selon les lois habituelles. **Une bête** : sa forme (à cornes, à sabots, petit brouteur, fouisseur, rôdeur, grand chasseur, oiseau coureur, grimpeur), son nom et les traits qu'elle veut fixer (poids, agressivité, panique, lait, portée, se reproduire en captivité, vie en troupe…) ; les autres sont ceux de sa forme, et on la chasse ou on l'apprivoise comme les autres. **Un savoir** : un geste et ses matières, même jamais trouvé ; les lois du monde jugent ce qu'il donne (refusé s'il ne donne jamais rien), et l'humain le sait désormais, marqué « soufflé par l'Entité ». **Un mot** : une forme donnée à une communauté ou à un humain pour une idée (sans forme, il est fait des sons de leur langue). Chaque invention a sa ligne au journal, marquée « (LLM libre) », est gardée avec le monde (table `inventions`) et se défait comme les autres actes libres : la plante ou la bête disparaît, le savoir et le mot sont retirés. Pas encore de matière nouvelle : les matières sont liées à la chimie du monde, ce sera pour plus tard. Corrigé : « Défaire » échouait sur un savoir donné ou une pensée oubliée (0.35.2). Nouveau : un tutoriel pour faire jouer l'Entité par un LLM, plus haut dans ce guide. Sans acte libre, la simulation est exactement celle de la 0.35.2.
 
+**Vitesse : les humains de fond** (`Humains/Fond.cs`, 0.36.0, tous les mondes, sans changement de schéma). La Configuration a une case **Vitesse : humains de fond simulés en groupe** (décochée par défaut, modifiable en cours de partie) et un seuil **Seulement à partir de (vivants)** (vide : toujours). Un humain de fond garde tout ce qui fait de lui quelqu'un, et son corps vit chaque pas (faim, soif, fatigue, froid, santé, grossesse) ; les siens le nourrissent à chaque pas. Mais tant qu'il est **au calme** (il dort sans raison de se réveiller, ou il se repose sans besoin pressant), il ne décide pas à chaque pas : il joue son temps libre (idées, essais, gestes appris, envie d'aller voir ailleurs) une fois par heure, avec la chance de toute l'heure. Au moindre besoin ou événement, il vit le pas en entier comme tout le monde : soif, faim, froid quand il sait d'où vient la chaleur, feu du camp qui faiblit ou braise à ranimer, maladie ou plaie, danger, parole de l'Entité, marche ou promenade en cours, voyage, raid, visite, rassemblement, ouvrage. C'est l'« intelligence à niveau de détail » des jeux à grand monde (Brockington, 2002). Restent toujours en individu : les bébés et leurs mères, les figures et les personnages religieux, les spécialistes, les communautés en guerre, et ceux que vous gardez : la fiche d'un humain et celle d'une communauté ont une case **Garder en individu**, et les humains suivis ☆ sont gardés d'office. L'horloge affiche combien vivent de fond. Mesure sur 8 mondes × 20 ans (33 couples) : population, naissances, découvertes, morts et feu gardé sont les mêmes qu'en individu, aux écarts du hasard près ; le calcul va **1,2 à 1,5 fois plus vite**, surtout la nuit. C'est moins que l'estimation de départ : les humains sont rarement au calme, et chaque fois qu'un raccourci changeait leur vie (le feu qu'on n'allumait plus, les pierres qu'on ne ramassait plus en marchant), il a été retiré. Sans la case, la simulation est exactement celle de la 0.35.3.
+
 **Carte lissée** (0.32.3). La carte est rendue à la résolution réelle de l'écran (Retina, 4K) et le terrain est dessiné à plusieurs pixels par case (jusqu'à 8) : altitude, eau et couleurs sont interpolées entre les cases, les rivages et les rivières deviennent des courbes, les biomes voisins se touchent le long de limites nettes et courbes (0.32.4 : fini le dégradé flou), le relief est ombré plus finement. Depuis la 0.32.4, les calques (ressources, territoires, catastrophes, roches, sols, fonds) sont lissés de la même façon. Tout se fait dans le navigateur (Mac, Windows, Linux) ; la simulation ne change pas.
 
 **Premières fois** (0.32.1). Le journal a une case « Premières fois » : les premières découvertes de chaque savoir au monde, les premiers mots et la première grammaire, le premier rassemblement de deux communautés, la première transe, le premier mot de chaque communauté, le premier rite de chaque religion, et la première terre vue, le premier pied posé et le premier contact outre-mer de chaque groupe. Elles ne sont jamais effacées par la conservation du journal ni rangées dans ses archives (`PremieresFois.cs`).
@@ -210,7 +212,7 @@ Choisissez le modèle selon la mémoire de votre machine. Avec 16 Go ou plus, un
 dotnet test
 ```
 
-La suite complète (402 tests) prend environ six minutes, car des tests simulent plusieurs années entières.
+La suite complète (609 tests) prend une dizaine de minutes, car des tests simulent plusieurs années entières.
 
 ## Modifier le client web
 
@@ -232,3 +234,58 @@ npm run dev     # ou : rechargement à chaud sur http://localhost:5173 (serveur 
 | `client` | Client TypeScript (PixiJS pour la carte) construit avec Vite : un module par fenêtre (`fiche.ts`, `fichecommunaute.ts`, `journal.ts`, `cultes.ts`, `gestes.ts`…) |
 
 Le serveur n'écoute que sur `localhost:5080` (voir `src/Monde.Serveur/appsettings.json`).
+
+## Notes de version
+
+Les versions, de la plus récente à la plus ancienne. Le détail de chaque nouveauté est dans le guide ci-dessus.
+
+- **0.36.0** (2 nov. 2026) : option « Vitesse : humains de fond simulés en groupe » (seuil en nombre de vivants), case « Garder en individu » sur les fiches.
+- **0.35.3, correctif 4** (2 nov. 2026) : un geste du LLM sur un numéro qui n'est pas un humain vivant (ou une communauté, selon le geste) est refusé avant l'acte, avec la raison.
+- **0.35.3, correctif 3** (2 nov. 2026) : pendant son regard sur le monde, le LLM reçoit les clés exactes des gestes et de leurs matières ; un geste aux noms devinés est refusé avant l'acte, avec la liste correcte.
+- **0.35.3, correctif 2** (2 nov. 2026) : pendant son regard sur le monde, le LLM ne se voit plus proposer de souffler une combinaison (il n'a pas les pièces des humains) ; une combinaison aux pièces inconnues est refusée avant l'acte, avec la raison.
+- **0.35.3, correctif** (2 nov. 2026) : quand le LLM envoie à toute une communauté une parole faite pour un seul humain (« Unis-toi avec… »), elle est refusée avant l'acte avec la raison, et le LLM peut corriger au second essai.
+- **0.35.3** (2 nov. 2026) : l'Entité libre invente plantes, bêtes, savoirs et mots ; tutoriel pour faire jouer l'Entité par un LLM. Corrigé : « Défaire » sur un savoir donné ou une pensée oubliée.
+- **0.35.2** (1er nov. 2026) : l'Entité libre (le LLM peut changer tout l'état du monde), décrets, juge de cohérence, bouton Défaire ; la page n'est plus gardée en cache.
+- **0.35.1, correctif** (1er nov. 2026) : « Que ferait l'Entité ? » visible en haut de la fiche d'un humain.
+- **0.35.1** (1er nov. 2026) : l'Entité prend l'initiative : regard périodique, caractère de l'Entité, fenêtre « Actes de l'Entité ».
+- **0.35.0** (31 oct. 2026) : l'Entité jouée par un LLM local (Ollama, LM Studio, llama.cpp) ; durée de la courbe des Découvertes.
+- **0.34.1** (31 oct. 2026) : idées à plusieurs (cerveau collectif) ; régularités : lune, saisons, étoiles, compter.
+- **0.34.0** (31 oct. 2026) : découvertes par combinaison de pièces jugées par les lois du monde, arbre des savoirs, semis selon le besoin, case « Esprits fertiles ».
+- **0.33.1** (31 oct. 2026) : bêtes apprivoisées, troupeaux, lait, chiens ; courbe de diffusion des savoirs.
+- **0.33.0** (31 oct. 2026) : semer, récolter, garder la semence ; bouton « Lire le guide ».
+- **0.32.8** (31 oct. 2026) : séquelles des blessures graves, camp sur la plaine de crue, ce qui repousse autour du camp.
+- **0.32.7** (30 oct. 2026) : falaises, cols, chutes, et limon fertile des crues.
+- **0.32.6** (30 oct. 2026) : cuire dans l'eau, usages de la chaux, taches vertes du cuivre.
+- **0.32.5** (30 oct. 2026) : premières fois du monde et des communautés ; cuivre tiré de la pierre, creuset, parure et alêne ; lexique dans la copie pour analyse.
+- **0.32.4** (30 oct. 2026) : limites nettes et courbes entre les terrains, calques lissés.
+- **0.32.3** (30 oct. 2026) : carte nette à la résolution de l'écran, terrain lissé.
+- **0.32.2** (28 oct. 2026) : recherche de texte dans le journal.
+- **0.32.1** (28 oct. 2026) : case « Premières fois » du journal, jamais effacée.
+- **0.32.0** (27 oct. 2026) : la matière et la chaleur (modeler, cuire, charbon, souffler), mondes neufs.
+- **0.31.6** (25 oct. 2026) : l'Entité parle à une communauté, envers d'autres communautés (guerre, paix, alliance…).
+- **0.31.5** (25 oct. 2026) : traverser la mer ; copie de l'ancien monde facultative.
+- **0.31.4** (25 oct. 2026) : prières en bloc ; conservation et compression du journal ; copie pour analyse.
+- **0.31.3** (24 oct. 2026) : forêt de feuillus, mangrove, lande, mer entre les continents.
+- **0.31.2** (24 oct. 2026) : côtes et mer, bouton Calques.
+- **0.31.0 et 0.31.1** (24 oct. 2026) : roches, sols, gisements, relief, grottes, sources et cours d'eau.
+- **0.30.0 à 0.30.5** (23-24 oct. 2026) : interface, journal, pensées et jardin secret en français et en anglais.
+- **0.29.3** (23 oct. 2026) : fenêtre du temps sous la barre, sauvegardes à la corbeille.
+- **0.29.2** (23 oct. 2026) : visites, rassemblements entre groupes amis, spécialistes.
+- **0.29.1** (23 oct. 2026) : copier le plus habile, enseigner exprès, courbe du progrès.
+- **0.29.0** (21 oct. 2026) : garder le feu, feux de camp, réserves d'eau et de nourriture.
+- **0.28.1** (21 oct. 2026) : refuser une prière, durée de vie des prières, prières collectives.
+- **0.28.0** (21 oct. 2026) : vengeance et malédictions, plaidoyer avant l'exil, alertes, suivi ☆.
+- **0.27.1** (20 oct. 2026) : gestes de l'Entité, regard sur l'invisible.
+- **0.27.0** (20 oct. 2026) : fiche Communauté.
+- **0.25.1 et 0.26** (20 oct. 2026) : santé des petits, prières, prophètes et religions.
+- **0.25.0** (19 oct. 2026) : hygiène, leçons du feu, idées spontanées, bébés portés.
+- **0.24.0** (19 oct. 2026) : nourrir les mères, clémence du monde, fenêtre Remarquables.
+- **0.22.0 à 0.22.3** (17-18 oct. 2026) : vitesse, calcul sur plusieurs cœurs, communautés stables.
+- **0.21.0 et 0.21.1** (17 oct. 2026) : le langage.
+- **0.20.0 à 0.20.6** (13-16 oct. 2026) : physique inventive, amour inspiré et parole de l'Entité, karma, croyance, médecine, arts et musique.
+- **0.19.0** (13 oct. 2026) : pensées et jardin secret selon la personnalité.
+- **0.18.0 et 0.18.1** (12-13 oct. 2026) : découvertes faites par les humains, fondateurs de 14 à 40 ans.
+- **0.17.0** (12 oct. 2026) : traits psychologiques corrélés, morale, extinction.
+- **0.16.0** (12 oct. 2026) : suites des catastrophes, courbes démographiques.
+- **0.14.0 et 0.15** (11-12 oct. 2026) : guerres et alliances, jardin secret, attirance, mœurs, exil, maladies nommées.
+- **Premières étapes** (10-11 oct. 2026) : carte, horloge, humains et leurs besoins, reproduction, contrôle du temps, pensées, journal, caractère, liens, communautés, ressources, causes, catastrophes, configuration.

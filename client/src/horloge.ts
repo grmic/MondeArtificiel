@@ -21,6 +21,8 @@ export interface Horloge {
   pauseCatastrophe: boolean;
   /** Plus aucun humain ne vit : seule la nature continue. */
   eteint: boolean;
+  /** Vivants simulés de fond en ce moment (0 : option décochée ou sous le seuil). */
+  deFond: number;
 }
 
 interface Vitesse {
@@ -177,6 +179,7 @@ export class PanneauHorloge {
     const atteint = this.el("#vitesseAtteinte");
     const enRetard = h.facteur > 0 && h.facteurAtteint > 0 && h.facteurAtteint < h.facteur * 0.9;
     atteint.textContent = h.facteur > 0 && h.facteurAtteint > 0 ? t("temps.reelle", { vitesse: decrireFacteur(h.facteurAtteint) }) : "";
+    if (h.deFond > 0) atteint.textContent = `${atteint.textContent}${atteint.textContent ? " · " : ""}${t("temps.deFond", { n: ecrire(h.deFond) })}`;
     atteint.classList.toggle("alerte", enRetard);
 
     const zoneObjectif = this.el("#objectifEnCours");

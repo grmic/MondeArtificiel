@@ -161,7 +161,35 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// Humains suivis dans un navigateur (leur journal est gardé quand le journal ancien est effacé). Chaque navigateur
     /// envoie ses suivis en se connectant, puis chaque changement ; un humain n'est retiré que si on cesse de le suivre.
     /// </summary>
-    public void SignalerSuivis(int[] ajoutes, int[] retires) => service.Depot.ChangerSuivis(ajoutes ?? [], retires ?? []);
+    public void SignalerSuivis(int[] ajoutes, int[] retires)
+    {
+        if (service.Depot.ChangerSuivis(ajoutes ?? [], retires ?? [])) service.SuivisChanges();
+    }
+
+    /// <summary>Option « humains de fond simulés en groupe » et son seuil (nombre de vivants, 0 : toujours).</summary>
+    public ConfigurationDto ChoisirFond(bool actif, int seuil)
+    {
+        if (seuil < 0 || seuil > 10_000_000) throw new HubException(L.T("erreur.fondSeuil"));
+        service.Fond = (actif, seuil);
+        return ConfigurationDto.Depuis(service);
+    }
+
+    /// <summary>Où en est un humain (et sa communauté) avec les humains de fond, pour sa fiche.</summary>
+    public FondDto EtatFond(int humain, int communaute)
+    {
+        var (humains, communautes) = service.GardesEnIndividu();
+        var monde = service.Monde;
+        return new FondDto(monde.HumainsDeFond, monde.EstDeFond(humain), humains.Contains(humain), communautes.Contains(communaute),
+            monde.DeFond, monde.SeuilFond);
+    }
+
+    /// <summary>« Garder en individu » : un humain (<paramref name="communaute"/> faux) ou une communauté entière.</summary>
+    public FondDto GarderEnIndividu(bool communaute, int id, bool garder, int humain, int communauteDuHumain)
+    {
+        if (id < 1) throw new HubException(L.T("erreur.fondNumero"));
+        service.GarderEnIndividu(communaute, id, garder);
+        return EtatFond(humain, communauteDuHumain);
+    }
 
     /// <summary>Copie du monde pour un client SQL (journal en clair, phrase rédigée), dans le dossier « analyses ».</summary>
     public async Task<string> CopierPourAnalyse(int? anDebut, int? anFin)
@@ -694,6 +722,12 @@ public sealed record ReponsePing(DateTimeOffset HeureServeur, string Monde);
 /// <summary>Demande « avancer jusqu'à » venue du navigateur.</summary>
 public sealed record DemandeObjectif(string Type, long? Annee = null, int? Saison = null, int? Jour = null, int? Heure = null);
 
+/// <summary>
+/// Les humains de fond, vus d'une fiche : option active, cet humain est de fond en ce moment, il est gardé en individu, sa
+/// communauté l'est, combien de vivants sont de fond, et le seuil.
+/// </summary>
+public sealed record FondDto(bool Actif, bool DeFond, bool Garde, bool CommunauteGardee, int Nombre, int Seuil);
+
 /// <summary>État de l'horloge envoyé au navigateur.</summary>
 /// <param name="NiveauVitesse">Vitesse préréglée en cours, ou -1 pour une vitesse libre ou un objectif.</param>
 /// <param name="Facteur">Vitesse demandée (secondes du monde par seconde réelle).</param>
@@ -716,7 +750,8 @@ public sealed record HorlogeDto(
     string? Objectif,
     bool ReprendreVitesse,
     bool PauseCatastrophe,
-    bool Eteint)
+    bool Eteint,
+    int DeFond)
 {
     public static HorlogeDto Depuis(ServiceMonde service)
     {
@@ -726,6 +761,7 @@ public sealed record HorlogeDto(
         return new HorlogeDto(secondes, pas, L.Date(date), date.Annee, L.Saison(date.Saison),
             date.JourDeSaison, date.Heure, date.Minute, date.EstJour, date.Lumiere,
             objectif is null ? Vitesse.NiveauDe(facteur) : -1, facteur,
-            facteur == 0 ? 0 : service.FacteurAtteint, objectif is null ? null : Lib.Objectif(objectif), service.ReprendreVitesse, service.PauseSurCatastrophe, service.Monde.Eteint);
+            facteur == 0 ? 0 : service.FacteurAtteint, objectif is null ? null : Lib.Objectif(objectif), service.ReprendreVitesse, service.PauseSurCatastrophe, service.Monde.Eteint,
+            service.Monde.DeFond);
     }
 }

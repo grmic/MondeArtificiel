@@ -28,7 +28,7 @@ public sealed partial class Comportement
         var p = h.Personnalite;
         var ingenieux = 0.2 + Ingeniosite(h);
         // Un seul tirage : la chance se calcule ensuite avec l'autre, sous un plafond (son ingéniosité, un mot commun, ce qu'ils savent à deux).
-        var tirage = alea.Reel();
+        var tirage = TiragePas();
         const double Plafond = 1.2 * 1.5 * 3 * 1.3;
         var sansAutre = 0.00015 * ingenieux * pousse * EspritsFertiles;
         if (tirage >= sansAutre * Plafond) return false;

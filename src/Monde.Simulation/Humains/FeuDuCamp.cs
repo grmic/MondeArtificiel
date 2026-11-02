@@ -38,7 +38,7 @@ public sealed partial class Comportement
         if (h.EstEnfant(_maintenant) || h.CaptifDe != 0 || !APortee(h, Matiere.BoisSec)) return false;
         // Le feu du camp qui faiblit : qui sait le nourrir y remet du bois, de jour comme de nuit. C'est ainsi qu'on garde
         // un feu qu'on ne sait pas rallumer.
-        if (Installations.FoyerEn(h.X, h.Y) is { Heures: < 3 } && h.Sait(Effet.Foyer) && alea.Reel() < 0.1)
+        if (Installations.FoyerEn(h.X, h.Y) is { Heures: < 3 } && h.Sait(Effet.Foyer) && TiragePas() < 0.1)
         {
             h.Activite = Activite.Veiller;
             h.CibleX = h.CibleY = -1;
@@ -57,7 +57,7 @@ public sealed partial class Comportement
         if (AttendreLeCalme(h, tous)) return false;
         var moustiques = Moustiques(carte.BiomeEn(h.X, h.Y)) && _temperature >= 18;
         var motif = 1 + (moustiques && h.Sait(Effet.Fumee) ? 2 : 0) + (h.Porte(Matiere.Carcasse) ? 1 : 0) + (h.CommunauteId != 0 ? 0.5 : 0);
-        if (alea.Reel() >= 0.02 * (0.5 + h.Personnalite.Conscience) * motif) return false;
+        if (TiragePas() >= 0.02 * (0.5 + h.Personnalite.Conscience) * motif) return false;
         h.Activite = Activite.Fabriquer;
         h.CibleX = h.CibleY = -1;
         if (porte is { } p && h.Sait(Effet.Foyer)) Faire(h, Geste.Entasser, Matiere.BoisSec, p, OrigineSavoir.Essai, tous);
@@ -82,7 +82,7 @@ public sealed partial class Comportement
     {
         if (h.Activite != Activite.Dormir || h.EstEnfant(_maintenant) || h.Sait(Effet.Fumee)) return;
         if (!Moustiques(carte.BiomeEn(h.X, h.Y)) || _temperature < 18 || Installations.FoyerEn(h.X, h.Y) is null) return;
-        if (alea.Reel() >= 0.0005 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
+        if (TiragePas() >= 0.0005 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
         Retenir(h, Geste.Approcher, Matiere.Aucune, Matiere.Feu, Effet.Fumee, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
             recit: new Recit("feu.moustiques", ("h", h)));
     }
@@ -105,7 +105,7 @@ public sealed partial class Comportement
         var i = h.Objets.FindIndex(o => o.Matiere == Matiere.Carcasse && !o.Plein);
         if (i < 0) return false;
         var sait = h.Savoirs.Exists(s => s.Effet == Effet.Fumage && s.Confiance >= 0.4);
-        if (!sait && alea.Reel() >= 0.003 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return false;
+        if (!sait && TiragePas() >= 0.003 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return false;
         h.Objets[i] = h.Objets[i] with { Plein = true, Usure = 1 };
         h.Activite = Activite.Fabriquer;
         h.CibleX = h.CibleY = -1;
@@ -139,7 +139,7 @@ public sealed partial class Comportement
     /// <summary>Une prise sur une terre en feu : un esprit attentif fait le lien entre les flammes et la chasse.</summary>
     private void ChasseAuFeu(Humain h, IReadOnlyList<Humain> tous)
     {
-        if (h.Sait(Effet.Brulis) || alea.Reel() >= 0.3 * (0.3 + Ingeniosite(h))) return;
+        if (h.Sait(Effet.Brulis) || TiragePas() >= 0.3 * (0.3 + Ingeniosite(h))) return;
         Retenir(h, Geste.Incendier, Matiere.HerbeSeche, Matiere.Feu, Effet.Brulis, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
             recit: new Recit("feu.brulis", ("h", h)));
     }
@@ -158,7 +158,7 @@ public sealed partial class Comportement
         if (!PorteLeFeu(h) && flamme is null) return false;
         if (AttendreLeCalme(h, tous)) return false;
         // La prudence retient : le feu peut se retourner contre les siens.
-        if (alea.Reel() >= 0.05 * (1.2 - h.Personnalite.Prudence)) return false;
+        if (TiragePas() >= 0.05 * (1.2 - h.Personnalite.Prudence)) return false;
         h.Activite = Activite.Chasser;
         h.CibleX = h.CibleY = -1;
         var id = Noter(_maintenant, TypeEvenement.Catastrophe, h, null,

@@ -1,4 +1,5 @@
 import { blocQueFerait } from "./entitellm";
+import { blocFond } from "./fond";
 import { boutonSuivre } from "./suivis";
 import { ligneBilan, lignePriere, type BilanPrieres, type Priere } from "./cultes";
 import { connexion } from "./connexion";
@@ -484,7 +485,7 @@ export class PanneauFiche {
     this.rencontres(corps, f.rencontres ?? null);
     this.foi(corps, f.foi);
     this.langage(corps, f.langage);
-    if (h.vivant) corps.append(blocQueFerait(() => this.id, () => 0), this.formulaireSouffle(), this.formulaireCombinaison());
+    if (h.vivant) corps.append(blocQueFerait(() => this.id, () => 0), blocFond(() => this.id, () => this.communaute, false), this.formulaireSouffle(), this.formulaireCombinaison());
     this.communaute = f.communaute?.id ?? 0;
     this.nomCourant = h.nom;
     if (f.paroles.length > 0) {

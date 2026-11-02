@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.35.3 (shown in "Configuration"), author: MicG. The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.36.0 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -129,6 +129,8 @@ Clicking on a human opens their **profile**, in collapsible sections (you open t
 
 **Inventions of the Free Entity** (0.35.3, schema v53, all worlds). With the **Free Entity** box, the Entity can now create what the world had never known. **A plant**: its form (shrub, liana, grass, fern, tree, bush, root), its name, its virtues (toxic, astringent, febrifuge, antimalarial, antiseptic, vermifuge, psychotropic) and what it gives to eat (seeds, pods, tubers, fruits, nuts); it grows on the whole terrain of the chosen place, and humans taste it, heal themselves with it, and sow it according to the usual laws. **A beast**: its form (horned, hoofed, small grazer, digger, prowler, great hunter, running bird, climber), its name and the traits she wants to fix (weight, aggressiveness, panic, milk, litter, breeding in captivity, living in herds…); the others are those of its form, and it is hunted or tamed like the others. **Knowledge**: a gesture and its materials, even one never found; the laws of the world judge what it yields (rejected if it never yields anything), and the human now knows it, marked "whispered by the Entity". **A word**: a form given to a community or to a human for an idea (without a form, it is made from the sounds of their language). Each invention has its line in the log, marked "(free LLM)", is kept with the world (table `inventions`) and is undone like the other free acts: the plant or the beast vanishes, the knowledge and the word are withdrawn. No new material yet: materials are tied to the chemistry of the world, that will come later. Fixed: "Undo" failed on a granted knowledge or a forgotten thought (0.35.2). New: a tutorial for having an LLM play the Entity, higher up in this guide. Without a free act, the simulation is exactly that of 0.35.2.
 
+**Speed: background humans** (`Humains/Fond.cs`, 0.36.0, all worlds, no schema change). Configuration has a **Speed: background humans simulated as a group** box (unchecked by default, can be changed during a game) and a threshold **Only from (living humans)** (empty: always). A background human keeps everything that makes them who they are, and their body lives every step (hunger, thirst, fatigue, cold, health, pregnancy); their kin feed them every step. But as long as they are **at rest** (asleep with no reason to wake, or resting with no pressing need), they do not decide every step: they play their free time (ideas, trials, learned gestures, the wish to go elsewhere) once an hour, with the chance of the whole hour. At the slightest need or event, they live the full step like everyone else: thirst, hunger, cold when they know where warmth comes from, a camp fire burning low or embers to revive, illness or wound, danger, a word from the Entity, a walk or stroll under way, a journey, raid, visit, gathering, commissioned work. This is the "level-of-detail AI" of large-world games (Brockington, 2002). Always kept as individuals: babies and their mothers, figures and religious figures, specialists, communities at war, and those you keep: the sheet of a human and of a community have a **Keep as an individual** box, and followed ☆ humans are kept automatically. The clock shows how many live in the background. Measured over 8 worlds × 20 years (33 couples): population, births, discoveries, deaths and kept fire are the same as with individuals, within chance; the computation runs **1.2 to 1.5 times faster**, mostly at night. That is less than first estimated: humans are rarely at rest, and every shortcut that changed their lives (fire no longer lit, stones no longer picked up while walking) was removed. Without the box, the simulation is exactly that of 0.35.3.
+
 **Smooth map** (0.32.3). The map is rendered at the screen's real resolution (Retina, 4K) and the terrain is drawn at several pixels per tile (up to 8): altitude, water and colours are interpolated between tiles, shores and rivers become curves, neighbouring biomes meet along sharp, curved borders (0.32.4: no more blurry gradient), and relief shading is finer. Since 0.32.4, the layers (resources, territories, disasters, rocks, soils, sea floor) are smoothed the same way. Everything happens in the browser (Mac, Windows, Linux); the simulation is unchanged.
 
 **First times** (0.32.1). The journal has a "First times" checkbox: the first discovery of each piece of knowledge in the world, the first words and the first grammar, the first gathering of two communities, the first trance, each community's first word, each religion's first rite, and each group's first land sighted, first landing and first contact overseas. They are never deleted by the journal retention settings nor packed into its archives (`PremieresFois.cs`).
@@ -210,7 +212,7 @@ Choose the model according to your machine's memory. With 16 GB or more, a 12-bi
 dotnet test
 ```
 
-The full suite (402 tests) takes about six minutes, because some tests simulate several entire years.
+The full suite (609 tests) takes about ten minutes, because some tests simulate several entire years.
 
 ## Modifying the web client
 
@@ -232,3 +234,58 @@ npm run dev     # ou : rechargement à chaud sur http://localhost:5173 (serveur 
 | `client` | TypeScript client (PixiJS for the map) built with Vite: one module per window (`fiche.ts`, `fichecommunaute.ts`, `journal.ts`, `cultes.ts`, `gestes.ts`…) |
 
 The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.json`).
+
+## Release notes
+
+Versions, newest first. Each new feature is described in detail in the guide above.
+
+- **0.36.0** (2 Nov 2026): "Speed: background humans simulated as a group" option (threshold in number of living humans), "Keep as an individual" box on sheets.
+- **0.35.3, fix 4** (2 Nov 2026): an LLM gesture on a number that is not a living human (or a community, depending on the gesture) is refused before the act, with the reason.
+- **0.35.3, fix 3** (2 Nov 2026): during its look at the world, the LLM receives the exact keys of the gestures and their materials; a gesture with guessed names is refused before the act, with the correct list.
+- **0.35.3, fix 2** (2 Nov 2026): during its look at the world, the LLM is no longer offered to whisper a combination (it does not have the humans' pieces); a combination with unknown pieces is refused before the act, with the reason.
+- **0.35.3, fix** (2 Nov 2026): when the LLM sends a whole community a word meant for a single human ("Unite with…"), it is refused before the act, with the reason, and the LLM can correct itself on a second try.
+- **0.35.3** (2 Nov 2026): the Free Entity invents plants, animals, knowledge and words; tutorial for having an LLM play the Entity. Fixed: "Undo" on a given piece of knowledge or a forgotten thought.
+- **0.35.2** (1 Nov 2026): the Free Entity (the LLM can change the whole state of the world), decrees, coherence judge, Undo button; the page is no longer cached.
+- **0.35.1, fix** (1 Nov 2026): "What would the Entity do?" visible at the top of a human's sheet.
+- **0.35.1** (1 Nov 2026): the Entity takes the initiative: periodic look, the Entity's character, "Acts of the Entity" window.
+- **0.35.0** (31 Oct 2026): the Entity played by a local LLM (Ollama, LM Studio, llama.cpp); duration of the Discoveries curve.
+- **0.34.1** (31 Oct 2026): ideas shared by several people (collective brain); regularities: moon, seasons, stars, counting.
+- **0.34.0** (31 Oct 2026): discoveries by combining pieces judged by the laws of the world, knowledge tree, sowing according to need, "Fertile minds" box.
+- **0.33.1** (31 Oct 2026): tamed animals, herds, milk, dogs; knowledge spread curve.
+- **0.33.0** (31 Oct 2026): sowing, harvesting, keeping seed; "Read the guide" button.
+- **0.32.8** (31 Oct 2026): after-effects of serious injuries, camp on the floodplain, what regrows around the camp.
+- **0.32.7** (30 Oct 2026): cliffs, passes, falls, and fertile silt from floods.
+- **0.32.6** (30 Oct 2026): cooking in water, uses of lime, green stains from copper.
+- **0.32.5** (30 Oct 2026): first times of the world and of communities; copper drawn from stone, crucible, ornament and awl; lexicon in the copy for analysis.
+- **0.32.4** (30 Oct 2026): sharp, curved boundaries between terrains, smoothed layers.
+- **0.32.3** (30 Oct 2026): sharp map at screen resolution, smoothed terrain.
+- **0.32.2** (28 Oct 2026): text search in the log.
+- **0.32.1** (28 Oct 2026): "First times" box in the log, never deleted.
+- **0.32.0** (27 Oct 2026): matter and heat (shaping, firing, charcoal, blowing), new worlds.
+- **0.31.6** (25 Oct 2026): the Entity speaks to a community, toward other communities (war, peace, alliance…).
+- **0.31.5** (25 Oct 2026): crossing the sea; copy of the old world optional.
+- **0.31.4** (25 Oct 2026): bulk prayers; log retention and compression; copy for analysis.
+- **0.31.3** (24 Oct 2026): broadleaf forest, mangrove, heath, sea between the continents.
+- **0.31.2** (24 Oct 2026): coasts and sea, Layers button.
+- **0.31.0 and 0.31.1** (24 Oct 2026): rocks, soils, deposits, relief, caves, springs and watercourses.
+- **0.30.0 to 0.30.5** (23-24 Oct 2026): interface, log, thoughts and secret garden in French and English.
+- **0.29.3** (23 Oct 2026): time window under the bar, backups moved to the trash.
+- **0.29.2** (23 Oct 2026): visits, gatherings between friendly groups, specialists.
+- **0.29.1** (23 Oct 2026): copying the most skilled, teaching on purpose, progress curve.
+- **0.29.0** (21 Oct 2026): keeping the fire, campfires, water and food stores.
+- **0.28.1** (21 Oct 2026): refusing a prayer, lifespan of prayers, collective prayers.
+- **0.28.0** (21 Oct 2026): revenge and curses, pleading before exile, alerts, ☆ follow.
+- **0.27.1** (20 Oct 2026): gestures of the Entity, look into the invisible.
+- **0.27.0** (20 Oct 2026): Community sheet.
+- **0.25.1 and 0.26** (20 Oct 2026): health of the young, prayers, prophets and religions.
+- **0.25.0** (19 Oct 2026): hygiene, lessons from fire, spontaneous ideas, carried babies.
+- **0.24.0** (19 Oct 2026): feeding mothers, leniency of the world, "Remarkable" window.
+- **0.22.0 to 0.22.3** (17-18 Oct 2026): speed, multi-core computation, stable communities.
+- **0.21.0 and 0.21.1** (17 Oct 2026): language.
+- **0.20.0 to 0.20.6** (13-16 Oct 2026): inventive physics, inspired love and the Entity's word, karma, belief, medicine, arts and music.
+- **0.19.0** (13 Oct 2026): thoughts and secret garden according to personality.
+- **0.18.0 and 0.18.1** (12-13 Oct 2026): discoveries made by humans, founders aged 14 to 40.
+- **0.17.0** (12 Oct 2026): correlated psychological traits, morality, extinction.
+- **0.16.0** (12 Oct 2026): aftermath of catastrophes, population curves.
+- **0.14.0 and 0.15** (11-12 Oct 2026): wars and alliances, secret garden, attraction, customs, exile, named diseases.
+- **First steps** (10-11 Oct 2026): map, clock, humans and their needs, reproduction, time control, thoughts, log, character, bonds, communities, resources, causes, catastrophes, configuration.

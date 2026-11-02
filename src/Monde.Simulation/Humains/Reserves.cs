@@ -55,7 +55,7 @@ public sealed partial class Comportement
     private void DecouvrirLeSechage(Humain h, IReadOnlyList<Humain> tous)
     {
         if (h.Sait(Effet.Sechage) || !Calendrier.Decomposer(_maintenant).EstJour || _temperature < 20 || Humide(carte.BiomeEn(h.X, h.Y))) return;
-        if (Sec(h) < 0.6 || alea.Reel() >= 0.0005 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
+        if (Sec(h) < 0.6 || TiragePas() >= 0.0005 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
         var id = Retenir(h, Geste.Secher, Matiere.Carcasse, Matiere.Aucune, Effet.Sechage, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
             recit: new Recit("res.sechage", ("h", h)));
         Montrer(h, Geste.Secher, Matiere.Carcasse, Matiere.Aucune, Effet.Sechage, 0, Symptome.Aucun, tous, id);
@@ -65,7 +65,7 @@ public sealed partial class Comportement
     private void DecouvrirLaCacheFroide(Humain h, IReadOnlyList<Humain> tous)
     {
         if (h.Sait(Effet.CacheFroide) || _temperature >= 0) return;
-        if (alea.Reel() >= 0.002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
+        if (TiragePas() >= 0.002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h))) return;
         var id = Retenir(h, Geste.Cacher, Matiere.Carcasse, Matiere.Aucune, Effet.CacheFroide, 0, Symptome.Aucun, OrigineSavoir.Observation, 0, tous,
             recit: new Recit("res.gel", ("h", h)));
         Montrer(h, Geste.Cacher, Matiere.Carcasse, Matiere.Aucune, Effet.CacheFroide, 0, Symptome.Aucun, tous, id);
@@ -100,7 +100,7 @@ public sealed partial class Comportement
             qualite = Math.Clamp(0.3 + 0.6 * h.Personnalite.Adresse * (0.5 + 0.5 * alea.Reel()), 0, 1);
         }
         else return false;
-        if (alea.Reel() >= 0.1 * (0.4 + h.Personnalite.Conscience)) return false;
+        if (TiragePas() >= 0.1 * (0.4 + h.Personnalite.Conscience)) return false;
         var reste = viande.Qualite - surplus / 100;
         if (reste <= 0.005) h.Objets.RemoveAt(indice);
         else h.Objets[indice] = viande with { Qualite = reste };
@@ -148,7 +148,7 @@ public sealed partial class Comportement
     {
         if (h.Soif >= 30 || !h.Savoirs.Exists(s => s.Effet == Effet.CacheDEau && s.Confiance >= 0.4)) return false;
         var i = h.Objets.FindIndex(o => o.Plein && o.Matiere is Matiere.Calebasse or Matiere.Peau);
-        if (i < 0 || alea.Reel() >= 0.02 * (0.4 + h.Personnalite.Conscience)) return false;
+        if (i < 0 || TiragePas() >= 0.02 * (0.4 + h.Personnalite.Conscience)) return false;
         if (DistanceEau(h.X, h.Y) < 4) return false;
         foreach (var r in Installations.Reserves)
             if (r.Sorte == SorteReserve.Eau && r.AuteurId == h.Id && Distance(r.X, r.Y, h.X, h.Y) <= 3) return false;
@@ -165,7 +165,7 @@ public sealed partial class Comportement
     private void PenserALaCacheDEau(Humain h, IReadOnlyList<Humain> tous)
     {
         if (h.Soif < 70 || h.EstEnfant(_maintenant) || h.Sait(Effet.CacheDEau) || !h.Sait(Effet.EauPortee)) return;
-        if (alea.Reel() >= 0.0002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h)) || DistanceEau(h.X, h.Y) < 4) return;
+        if (TiragePas() >= 0.0002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h)) || DistanceEau(h.X, h.Y) < 4) return;
         Retenir(h, Geste.Cacher, Matiere.Calebasse, Matiere.Aucune, Effet.CacheDEau, 0, Symptome.Aucun, OrigineSavoir.Reflexion, 0, tous,
             recit: new Recit("res.cacheDEau", ("h", h)));
     }
@@ -178,7 +178,7 @@ public sealed partial class Comportement
         // Qui sait que le froid revient n'attend pas d'avoir faim pour y penser : à l'automne, il prévoit (depuis la 0.34.1).
         var prevoit = saison == Saison.Automne && PrevoitLesSaisons(h);
         if (!prevoit && (h.Faim < 45 || saison != Saison.Hiver)) return;
-        if (alea.Reel() >= 0.00002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h)) * (0.5 + h.Personnalite.Conscience)) return;
+        if (TiragePas() >= 0.00002 * (0.3 + h.Personnalite.Ouverture) * (0.5 + Ingeniosite(h)) * (0.5 + h.Personnalite.Conscience)) return;
         var calendrier = prevoit ? Regularite(h, Serie.Saisons) : null;
         Retenir(h, Geste.Amasser, Matiere.Plante, Matiere.Aucune, Effet.Provisions, 0, Symptome.Aucun, OrigineSavoir.Reflexion, 0, tous,
             recit: new Recit(prevoit ? "res.provisions.prevoit" : "res.provisions", ("h", h)), parents: calendrier is null ? "" : CleDeSavoir(calendrier));
@@ -213,7 +213,7 @@ public sealed partial class Comportement
                      && h.Savoirs.Exists(s => s.Effet == Effet.Sechage && s.Confiance >= 0.4);
         // Qui sait quand le froid revient s'y met plus volontiers (depuis la 0.34.1).
         var prevoit = PrevoitLesSaisons(h) ? 1 + ConfianceDans(h, Serie.Saisons) : 1;
-        if (!noix && !fruits || alea.Reel() >= 0.05 * (0.4 + h.Personnalite.Conscience) * prevoit) return false;
+        if (!noix && !fruits || TiragePas() >= 0.05 * (0.4 + h.Personnalite.Conscience) * prevoit) return false;
         var besoin = BesoinDeReserve(h, tous);
         if (alea.Reel() >= besoin) return false;
         var pris = Ecosysteme.Prelever(ecosysteme.Plantes, i, Math.Clamp(ecosysteme.Plantes[i] / 1000, 1, 8));

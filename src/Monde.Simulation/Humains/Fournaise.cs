@@ -485,7 +485,7 @@ public sealed partial class Comportement
     {
         if (!AvecLaMatiere) return false;
         VoirLEnduit(h, tous);
-        if (h.Savoirs.Count == 0 || alea.Reel() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
+        if (h.Savoirs.Count == 0 || TiragePas() >= 0.05 * (0.5 + h.Personnalite.Conscience)) return false;
         if (Chauler(h, tous)) return true;
         // Un peu faim, au feu, et l'on sait cuire dans l'eau : on met des racines à bouillir sans attendre d'être affamé.
         if (h.Faim > 30 && SavoirDeLaCuisine(h) is not null && Cuisiner(h, tous)) return true;

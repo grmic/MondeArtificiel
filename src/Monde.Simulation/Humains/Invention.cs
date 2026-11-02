@@ -613,7 +613,7 @@ public sealed partial class Comportement
         if (hache is null && (h.Sait(Effet.Abri) || h.Sait(Effet.Foyer)) && Repondre(h, Besoin.Couper, 0, 0.0004, tous) is not null) return true;
         // Une hache en main, un tronc à terre : on en tranche une rondelle (du bois pour le feu, ou pour autre chose).
         if (hache is not null && !h.Porte(Matiere.Rondelle) && Combien(h, Matiere.Tronc) > 0
-            && (FeuIci(h) || h.Sait(Effet.Rondelle)) && alea.Reel() < 0.02)
+            && (FeuIci(h) || h.Sait(Effet.Rondelle)) && TiragePas() < 0.02)
         {
             var effet = Faire(h, Geste.Trancher, Matiere.Tronc, Matiere.Assemblage, OrigineSavoir.Essai, tous);
             if (effet == Effet.Rondelle && Installations.FoyerEn(h.X, h.Y) is not null)
