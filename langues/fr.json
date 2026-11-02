@@ -5417,6 +5417,8 @@
   "llm.erreur.gesteInconnu": "Geste inconnu « {geste} » : utilise une de ces clés exactes : {liste}.",
   "llm.erreur.gesteMatieres": "Matières qui ne vont pas avec {geste} : a et b doivent être des clés de cette liste : {forme}.",
   "llm.cat.gestesTous": "  Gestes et matières qu'on peut souffler (clés exactes ; a | b) : {liste}",
+  "llm.erreur.cibleHumain": "« {geste} » vise un humain : « cible » doit être le n° d'un humain vivant cité dans ce que tu as lu ; {cible} n'en est pas un. Pour toute une communauté, choisis un geste qui vise une communauté (par exemple Fecondite au lieu de RendreFecond).",
+  "llm.erreur.cibleCommunaute": "« {geste} » vise une communauté : « cible » doit être le n° d'une communauté qui existe ; {cible} n'en est pas une.",
   "llm.erreur.famille": "Acte non permis par le joueur : « {type} ».",
   "llm.erreur.paroleIndividuelle": "« {parole} » s'adresse à un seul humain : pour une communauté, choisis une parole de groupe ({liste}), par exemple UnissezVous avec les communautés en cibles ; pour un humain, utilise parler.",
   "llm.erreur.paroleCollective": "« {parole} » s'adresse à une communauté entière : utilise parler_communaute.",

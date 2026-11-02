@@ -105,6 +105,19 @@ public sealed class EntiteLlmTests
     }
 
     [Fact]
+    public void Verifier_RefuseUnGesteSurUnNumeroQuiNEstPasUnHumainVivant()
+    {
+        var config = ConfigurationMonde.Nouvelle(7);
+        var monde = new MondeSimule(GenerateurContinent.Generer(config), MondeSimule.Nouveau(config));
+        var (_, humains) = monde.InstantaneHumains();
+        var feconder = new ActeLlm { Type = Actes.Geste, Geste = nameof(GesteEntite.RendreFecond), Maniere = "Cachee" };
+        Assert.True(Gestes.SurHumain(GesteEntite.RendreFecond));
+        Assert.Throws<ArgumentException>(() => Actes.Verifier(feconder with { Cible = humains.Count + 50 }, FamillesLlm.Toutes, monde: monde));
+        Assert.Throws<ArgumentException>(() => Actes.Verifier(feconder, FamillesLlm.Toutes, monde: monde));
+        Actes.Verifier(feconder with { Cible = humains.First(h => h.EstVivant).Id }, FamillesLlm.Toutes, monde: monde);
+    }
+
+    [Fact]
     public void Verifier_RefuseLesActesInconnusOuNonPermis()
     {
         Assert.Throws<ArgumentException>(() => Actes.Verifier(new ActeLlm { Type = "detruire" }, FamillesLlm.Toutes));

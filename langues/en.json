@@ -5417,6 +5417,8 @@
   "llm.erreur.gesteInconnu": "Unknown gesture “{geste}”: use one of these exact keys: {liste}.",
   "llm.erreur.gesteMatieres": "Materials that do not go with {geste}: a and b must be keys from this list: {forme}.",
   "llm.cat.gestesTous": "  Gestures and materials that can be whispered (exact keys; a | b): {liste}",
+  "llm.erreur.cibleHumain": "“{geste}” targets a human: “cible” must be the number of a living human mentioned in what you read; {cible} is not one. For a whole community, choose a gesture that targets a community (for example Fecondite instead of RendreFecond).",
+  "llm.erreur.cibleCommunaute": "“{geste}” targets a community: “cible” must be the number of an existing community; {cible} is not one.",
   "llm.erreur.famille": "Act not permitted by the player: “{type}”.",
   "llm.erreur.paroleIndividuelle": "“{parole}” is addressed to a single human: for a community, choose a group word ({liste}), for example UnissezVous with the communities as targets; for a human, use parler.",
   "llm.erreur.paroleCollective": "“{parole}” is addressed to a whole community: use parler_communaute.",

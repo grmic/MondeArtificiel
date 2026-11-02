@@ -380,7 +380,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                     {
                         try
                         {
-                            Actes.Verifier(a, permises, libre, lecture.Pieces);
+                            Actes.Verifier(a, permises, libre, lecture.Pieces, monde);
                         }
                         catch (ArgumentException e)
                         {

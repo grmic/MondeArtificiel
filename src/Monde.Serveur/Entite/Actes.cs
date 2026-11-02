@@ -233,7 +233,8 @@ public static class Actes
     /// <see cref="ArgumentException"/> avec la raison, pour le LLM.
     /// </summary>
     /// <paramref name="pieces"/> : les pièces numérotées montrées au LLM (P1, P2…) ; null quand on ne les connaît pas ici.
-    public static void Verifier(ActeLlm a, FamillesLlm permises, bool libre = false, IReadOnlyList<string>? pieces = null)
+    /// <paramref name="monde"/> : pour vérifier la cible d'un geste (null : pas vérifiée ici).
+    public static void Verifier(ActeLlm a, FamillesLlm permises, bool libre = false, IReadOnlyList<string>? pieces = null, MondeSimule? monde = null)
     {
         if (Array.IndexOf(TypesPermis(libre), a.Type) < 0) throw new ArgumentException(L.T(a.Type == Libre ? "llm.erreur.pasLibre" : "llm.erreur.type", ("type", a.Type)));
         if (a.Type == Libre && (a.Changements?.Count ?? 0) + (a.Decrets?.Count ?? 0) == 0) throw new ArgumentException(L.T("libre.erreur.vide"));
@@ -259,6 +260,20 @@ public static class Actes
                 || !Enum.TryParse<Matiere>(string.IsNullOrWhiteSpace(a.B) ? nameof(Matiere.Aucune) : a.B, true, out var m2) || !Enum.IsDefined(m2)
                 || !Physique.Convient(g, m1, m2))
                 throw new ArgumentException(L.T("llm.erreur.gesteMatieres", ("geste", g), ("forme", Forme(forme))));
+        }
+        // Un geste de l'Entité sur un numéro qui n'est pas un humain vivant (ou une communauté, selon le geste) : on le dit
+        // avant d'appliquer, pour qu'il corrige au second essai.
+        if (a.Type == Geste && monde is not null && Enum.TryParse<GesteEntite>(a.Geste, out var ge) && Enum.IsDefined(ge))
+        {
+            var cible = a.Cible ?? a.Humain ?? a.Communaute ?? 0;
+            if (Gestes.SurHumain(ge))
+            {
+                var (_, humains) = monde.InstantaneHumains();
+                if (cible < 1 || cible > humains.Count || !humains[cible - 1].EstVivant)
+                    throw new ArgumentException(L.T("llm.erreur.cibleHumain", ("geste", ge), ("cible", cible)));
+            }
+            else if (cible < 1 || monde.Communautes().FirstOrDefault(c => c.Id == cible) is not { Active: true })
+                throw new ArgumentException(L.T("llm.erreur.cibleCommunaute", ("geste", ge), ("cible", cible)));
         }
     }
 
