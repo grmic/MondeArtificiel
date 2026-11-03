@@ -9,7 +9,7 @@ namespace Monde.Serveur.Hubs;
 /// Canal temps réel entre le serveur et les navigateurs.
 /// Le serveur diffuse le message « Horloge » plusieurs fois par seconde.
 /// </summary>
-public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.EntiteLlm entite) : Hub
+public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.EntiteLlm entite, Entite.Dialogues dialogues) : Hub
 {
     public const string Route = "/hub/monde";
 
@@ -541,6 +541,22 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     /// <summary>« Que ferait l'Entité ? » pour un humain (ou une communauté si humain = 0) ; rend la place dans la file.</summary>
     public int QueFeraitLEntite(int humain, int communaute) => Appeler(() => entite.Demander(humain, communaute));
+
+    // ───────────── Dialogue direct avec un humain (0.36.2) ─────────────
+
+    /// <summary>Ouvre un dialogue avec un humain (voie : Reve, Voix, Apparition ; prière : celle par laquelle il appelle, 0 : aucune).</summary>
+    public Entite.DialogueDto OuvrirDialogue(int humain, string voie, int priere = 0) => Appeler(() => dialogues.Ouvrir(humain, voie, priere));
+
+    /// <summary>L'Entité dit quelque chose ; la réponse arrive par « Dialogue ».</summary>
+    public Entite.DialogueDto DireAuDialogue(long id, string texte) => Appeler(() => dialogues.Dire(id, texte));
+
+    public Entite.DialogueDto TerminerDialogue(long id) => Appeler(() => dialogues.Terminer(id));
+
+    public Entite.DialogueDto? DialogueEnCours() => dialogues.Courant();
+
+    public Entite.DialogueDto LireDialogue(long id) => Appeler(() => dialogues.Dto(id));
+
+    public List<Entite.DialogueResumeDto> ListeDialogues(int humain = 0) => dialogues.Liste(humain);
 
     /// <summary>Échanges avec le LLM, du plus récent au plus ancien (100 au plus), filtrés par humain, communauté ou statut.</summary>
     public List<Entite.EchangeDto> EchangesLlm(int humain = 0, int communaute = 0, int? statut = null, long avant = 0) =>

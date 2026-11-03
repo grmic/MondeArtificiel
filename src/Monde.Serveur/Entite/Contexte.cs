@@ -343,7 +343,7 @@ public static class Contexte
         if (!string.IsNullOrWhiteSpace(valeur)) d.AppendLine($"{L.T(cle)} : {valeur}");
     }
 
-    private static void Humain(StringBuilder d, ServiceMonde service, int id)
+    internal static void Humain(StringBuilder d, ServiceMonde service, int id)
     {
         if (FicheDto.Depuis(service, id) is not { } f) return;
         var h = f.Humain;

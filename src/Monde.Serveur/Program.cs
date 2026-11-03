@@ -25,6 +25,8 @@ builder.Services.AddHostedService<EntretienJournal>();
 builder.Services.AddSingleton(new Monde.Serveur.Entite.ClientLlm(new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan }));
 builder.Services.AddSingleton<Monde.Serveur.Entite.EntiteLlm>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Monde.Serveur.Entite.EntiteLlm>());
+builder.Services.AddSingleton<Monde.Serveur.Entite.Dialogues>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Monde.Serveur.Entite.Dialogues>());
 
 var app = builder.Build();
 

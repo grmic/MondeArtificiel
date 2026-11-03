@@ -420,3 +420,30 @@ p.bilan-prieres { font-size: 0.9em; }
 .vignette-visage { display: inline-block; vertical-align: middle; margin-right: 5px; border-radius: 4px; overflow: hidden;
   background: rgba(255, 255, 255, 0.05); line-height: 0; }
 .vignette-visage svg { display: block; }
+
+/* Dialogue direct avec un humain (0.36.2) : une fenêtre à part, en bas à droite, qui laisse la fiche ouverte. */
+.dialogue-panneau { right: 12px; bottom: 12px; width: min(440px, calc(100vw - 24px)); max-height: min(72vh, calc(100vh - 120px)); z-index: 4; border: 1px solid #8a6cc0; background: #161d2e; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5); }
+.dialogue-panneau .tete { gap: 8px; }
+.dialogue-panneau .tete h2 { flex: 1; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.dialogue-panneau .lien-discret { background: none; border: none; color: var(--discret); cursor: pointer; font-size: 0.8rem; text-decoration: underline; }
+.dialogue-panneau .lien { background: none; border: none; color: var(--texte); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; }
+.dialogue-fil { display: flex; flex-direction: column; gap: 8px; }
+.dialogue-replique { display: flex; flex-direction: column; gap: 3px; }
+.dialogue-entite { align-self: flex-end; max-width: 88%; padding: 5px 9px; border-radius: 10px 10px 2px 10px; background: rgba(138, 108, 192, 0.25); color: #e7dcff; }
+.dialogue-humain { align-self: flex-start; max-width: 92%; padding: 5px 9px; border-radius: 10px 10px 10px 2px; background: rgba(91, 155, 213, 0.18); }
+.dialogue-pensee { margin: 0 0 0 30px; font-style: italic; color: var(--discret); font-size: 0.8rem; }
+.dialogue-regles { align-self: flex-end; max-width: 88%; font-size: 0.76rem; color: var(--discret); }
+.dialogue-regles summary { cursor: pointer; }
+.dialogue-regles .libre { color: #ffd479; }
+.dialogue-priere { font-style: italic; color: #ffe6a8; margin: 0; }
+.dialogue-erreur { color: #ff8a8a; margin: 0; }
+.dialogue-fin { color: var(--discret); margin: 4px 0; }
+.dialogue-pied { padding: 6px 14px 10px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.dialogue-pied[hidden] { display: none; }
+.dialogue-pied textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; }
+.dialogue-pied .boutons { margin-top: 4px; }
+.dialogue-choix p { margin: 4px 0; }
+.dialogue-panneau .attente { animation: dialogue-attente 1.6s ease-in-out infinite; }
+@keyframes dialogue-attente { 50% { opacity: 0.4; } }
+.alerte-carte.appel { border-color: #ffd479; }
+.alerte-carte.appel .lien { flex: 1; }

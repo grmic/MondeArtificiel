@@ -1,4 +1,5 @@
 import { PanneauEntiteLlm } from "./entitellm";
+import { BandeauAppels, FenetreDialogue } from "./dialogue";
 import { PanneauActesEntite } from "./actesentite";
 import { oublierSuivis, PanneauSuivis, signalerSuivis } from "./suivis";
 import { chargerCarte, distanceEnMots, VueCarte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
@@ -338,6 +339,12 @@ async function demarrer(): Promise<void> {
     suivis.fermer();
     entiteLlm.basculer();
   });
+  // Dialogue direct avec un humain (0.36.2) : une fenêtre à part, qui laisse la fiche ouverte ; les appels des prières fortes.
+  new FenetreDialogue(element("#dialogue"), (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id);
+  });
+  new BandeauAppels(element("#alerte"));
   const actesEntite = new PanneauActesEntite(element("#actesEntite"), (id) => {
     vue.selectionner(id);
     void fiche.ouvrir(id);

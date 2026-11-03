@@ -672,7 +672,7 @@ public sealed partial class MondeSimule
     /// </summary>
     public int Avancer(TimeSpan dureeReelle, TimeSpan? budget = null)
     {
-        if (dureeReelle <= TimeSpan.Zero || _retenu) return 0;
+        if (dureeReelle <= TimeSpan.Zero || _retenu || _enDialogue) return 0;
         lock (_verrou)
         {
             var facteur = _objectif is null ? _facteur : Vitesse.FacteurMax;
@@ -695,6 +695,10 @@ public sealed partial class MondeSimule
     /// </summary>
     public bool Retenu { get => _retenu; set => _retenu = value; }
     private volatile bool _retenu;
+
+    /// <summary>Vrai pendant un dialogue entre l'Entité et un humain (0.36.2) : l'horloge du monde est arrêtée, comme pour <see cref="Retenu"/>.</summary>
+    public bool EnDialogue { get => _enDialogue; set => _enDialogue = value; }
+    private volatile bool _enDialogue;
 
     /// <summary>
     /// Fait <paramref name="acte"/> sous le verrou du monde (personne ne le fait avancer pendant ce temps) ; rend aussi les numéros
@@ -1472,6 +1476,41 @@ public sealed partial class MondeSimule
             VerserJournal();
             return resultats;
         }
+    }
+
+    /// <summary>
+    /// Une réplique de l'Entité dans un dialogue avec un humain (0.36.2) : voir <see cref="Comportement.Ecouter"/>. Celui qui vivait
+    /// de fond vit de nouveau en individu. Lève <see cref="ArgumentException"/> si l'humain n'existe pas.
+    /// </summary>
+    public RegleReplique Ecouter(int humainId, ModeParole mode, int rang, bool? croyait, IReadOnlyList<Reponse> paroles, string mots)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count) throw new ArgumentException("humain");
+            var r = _comportement.Ecouter(_humains[humainId - 1], mode, rang, croyait, paroles, mots, _humains, _secondes);
+            if (_fond is { } f && humainId < f.Length) f[humainId] = false;
+            VerserJournal();
+            return r;
+        }
+    }
+
+    /// <summary>Fin d'un dialogue (voir <see cref="Comportement.FinirDialogue"/>) ; rend la ligne du journal.</summary>
+    public long FinirDialogue(int humainId, ModeParole mode, int repliques, bool croit, bool comprise, FinDialogue fin, long cause)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count) throw new ArgumentException("humain");
+            var id = _comportement.FinirDialogue(_humains[humainId - 1], mode, repliques, croit, comprise, fin, cause, _humains, _secondes);
+            VerserJournal();
+            return id;
+        }
+    }
+
+    /// <summary>Ce que l'humain a fait de la dernière parole de l'Entité (null : aucune).</summary>
+    public Reponse? DerniereReponse(int humainId)
+    {
+        lock (_verrou)
+            return humainId >= 1 && humainId <= _humains.Count && _humains[humainId - 1].Impulsions.Count > 0 ? _humains[humainId - 1].Impulsions[^1].Reponse : null;
     }
 
     /// <summary>

@@ -770,10 +770,13 @@ public sealed partial class Comportement
     /// plutôt. Ceux qui l'entendent y croient ou en rient selon leur penchant pour l'invisible et ce qu'ils pensent de lui :
     /// le croyant gagne du prestige, le moqué en souffre.
     /// </summary>
-    private void Raconter(Humain h, Parole parole, ModeParole mode, Recit phrase, long reception, IReadOnlyList<Humain> tous, long maintenant)
+    private void Raconter(Humain h, Parole parole, ModeParole mode, Recit phrase, long reception, IReadOnlyList<Humain> tous, long maintenant) =>
+        Raconter(h, Paroles.Nuit(parole) || parole is Parole.UnisToi or Parole.Quitte, mode, reception, tous, maintenant);
+
+    /// <summary>Raconte aux siens ce que l'Entité lui a fait vivre ; <paramref name="honte"/> : une chose qu'on garde plutôt pour soi.</summary>
+    private void Raconter(Humain h, bool honte, ModeParole mode, long reception, IReadOnlyList<Humain> tous, long maintenant)
     {
         var p = h.Personnalite;
-        var honte = Paroles.Nuit(parole) || parole is Parole.UnisToi or Parole.Quitte;
         if (h.EstEnfant(maintenant) && h.AgeEnAnnees(maintenant) < 5 || alea.Reel() >= (0.15 + 0.6 * p.Extraversion) * (honte ? 0.25 : 1)) return;
         var auditeurs = tous.Vivants().Where(o => o.Id != h.Id && o.EstVivant && !o.EstEnfant(maintenant) && Distance(o.X, o.Y, h.X, h.Y) <= 3
                                         && (h.CommunauteId == 0 || o.CommunauteId == h.CommunauteId)).Take(12).ToList();
