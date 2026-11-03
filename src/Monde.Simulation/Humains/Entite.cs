@@ -27,8 +27,13 @@ public sealed partial class Comportement
     /// L'Entité fait comprendre une parole à <paramref name="h"/>. <paramref name="ensemble"/> : d'autres reçoivent la même au
     /// même moment (ils pourront en parler, et y croient plus). Renvoie, en mots, ce qu'il en a fait.
     /// </summary>
+    /// <para>
+    /// Dans un dialogue (0.36.4), <paramref name="dialogue"/> est la ligne du journal de la manifestation qui l'a ouvert : la parole
+    /// n'est pas une nouvelle manifestation (ni témoins, ni harcèlement), et s'il croit déjà (ou non) lui parler,
+    /// <paramref name="croyait"/> le dit : la foi n'est pas tirée de nouveau. Il ne la raconte qu'à la fin du dialogue.
+    /// </para>
     public Recit Parler(Humain h, Parole parole, ModeParole mode, Humain? cible, int param, IReadOnlyList<Humain> tous, long maintenant,
-        bool ensemble = false)
+        bool ensemble = false, long dialogue = 0, bool? croyait = null)
     {
         _maintenant = maintenant;
         if (!h.EstVivant) return new Recit("ent.r.mort", ("h", h));
@@ -36,7 +41,8 @@ public sealed partial class Comportement
         var p = h.Personnalite;
         var extra = Extra(parole, param);
         var phrase = Paroles.Phrase(parole, cible, extra, h.Sexe == Sexe.Femme);
-        var reception = Recevoir(h, mode, phrase, tous, maintenant, ensemble);
+        var reception = dialogue > 0 ? dialogue : Recevoir(h, mode, phrase, tous, maintenant, ensemble);
+        if (dialogue == 0) croyait = null;
 
         // Comprendre.
         if (alea.Reel() >= Comprehension(h, mode, cible, maintenant))
@@ -56,8 +62,8 @@ public sealed partial class Comportement
 
         // Croire.
         var foi = Foi(h, mode, ensemble, maintenant);
-        Repetition(h, reception, maintenant);
-        if (alea.Reel() >= foi)
+        if (croyait is null) Repetition(h, reception, maintenant);
+        if (!(croyait ?? alea.Reel() < foi))
         {
             var texte = mode switch
             {
@@ -77,12 +83,12 @@ public sealed partial class Comportement
             Garder(h, new Impulsion(parole, mode, cible?.Id ?? 0, param, 0, maintenant, maintenant, maintenant, Reponse.Incrue, reception));
             return Recits.Recit.Seul("ent.r.incrue");
         }
-        Eprouver(h, mode, reception, maintenant);
+        if (croyait is null) Eprouver(h, mode, reception, maintenant);
 
         // Vouloir, puis agir.
         var resultat = Obeir(h, parole, mode, cible, param, phrase, foi, reception, tous, maintenant);
         if (h.Role == RoleReligieux.Prophete && parole != Parole.PorteMaParole) Reveler(h, parole, param, reception, tous, maintenant);
-        Raconter(h, parole, mode, phrase, reception, tous, maintenant);
+        if (dialogue == 0) Raconter(h, parole, mode, phrase, reception, tous, maintenant);
         return resultat;
     }
 

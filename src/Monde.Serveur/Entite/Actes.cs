@@ -54,7 +54,8 @@ public sealed record ActeLlm
 
 /// <summary>La réponse du LLM : pourquoi, les mots dits, et les actes (zéro ou plus).</summary>
 /// <param name="Caractere">Le caractère qu'elle se donne (seulement quand elle n'en a pas encore ; vide sinon).</param>
-public sealed record DecisionLlm(string Pensee, string Mots, List<ActeLlm> Actes, string Caractere = "");
+/// <param name="Ignores">Actes au-delà de <see cref="Actes.ParReponse"/>, ignorés.</param>
+public sealed record DecisionLlm(string Pensee, string Mots, List<ActeLlm> Actes, string Caractere = "", int Ignores = 0);
 
 /// <summary>Familles d'actes que le joueur permet au LLM.</summary>
 [Flags]
@@ -217,7 +218,8 @@ public static class Actes
                 }
             }
         }
-        return new DecisionLlm(Texte(o["pensee"]), Texte(o["mots"]), actes, Texte(o["caractere"]));
+        var ignores = o["actes"] is JsonArray tous ? Math.Max(0, tous.Count - ParReponse) : 0;
+        return new DecisionLlm(Texte(o["pensee"]), Texte(o["mots"]), actes, Texte(o["caractere"]), ignores);
     }
 
     /// <summary>
@@ -238,7 +240,7 @@ public static class Actes
         };
     }
 
-    private static string Texte(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? ClientLlm.Couper(s.Trim(), 2000) : "";
+    private static string Texte(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? ClientLlm.Resserrer(s, 2000) : "";
 
     /// <summary>La famille d'un acte (pour les cases du joueur), ou Aucune pour « rien » et un type inconnu.</summary>
     public static FamillesLlm Famille(ActeLlm a) => a.Type switch

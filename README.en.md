@@ -216,7 +216,7 @@ Choose the model according to your machine's memory. With 16 GB or more, a 12-bi
 dotnet test
 ```
 
-The full suite (616 tests) takes about ten minutes, because some tests simulate several entire years.
+The full suite (618 tests) takes about ten minutes, because some tests simulate several entire years.
 
 ## Modifying the web client
 
@@ -243,6 +243,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.36.4** (3 Nov 2026): dialogue truer to the rules. One speaks in a dream only to a sleeping human: otherwise, “Wait until they sleep” lets the world go on and opens the dialogue when they fall asleep; a voice or an appearance wakes a sleeper. The whole dialogue counts as a single manifestation: no more witnesses or “harassment” at each order, and if they already believe they are speaking to her, their faith is not drawn again. With the Free Entity, one exchange does not change a heart at once: each change is bounded by their character (neuroticism for emotions, openness for belief, agreeableness for affection); deciding to join a community makes them set off on foot towards its camp, with no teleporting. The LLM: repetitive output is tightened, too many acts are pointed out to it, and a proposal accepted too late is marked “too late” with the reason. The simulation without an LLM is identical.
 - **0.36.3** (3 Nov 2026): the LLM makes fewer mistakes and corrects itself. Each of its acts is tried against the world before acting (living human, community still there, prayer still open, direction, plant, place, bounds of a free act): a mistake is sent back to it with the reason for a second try, instead of a “refused by the rules”. Names (sayings, ways, gestures, manners, catastrophes, free changes) are given to it as closed lists and read regardless of capitals; “direction” works everywhere. In a dialogue: the target of an order must be named in your words, the human's free reaction cannot contradict what the rules decided (believing or doubting), the LLM Entity waits for the dialogue to end and no longer answers a prayer you answered by speaking to them, and a dialogue cut off by a server stop is closed at restart. The simulation without an LLM is identical.
 - **0.36.2** (3 Nov 2026): speak directly with a human played by the local LLM (dream, voice or appearance); the rules decide what they understand, believe and do; "X is calling you" on a strong prayer. Fix of 3 Nov: a question is no longer translated into orders (each saying must quote the words that say it), and a freely changed bond must name the other human.
 - **0.36.1** (2 Nov 2026): a drawn face for every human, inherited from their parents, on their sheet and as a thumbnail before names.

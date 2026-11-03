@@ -25,6 +25,9 @@ public sealed record DialogueDto(long Id, int Humain, string Nom, string Mode, s
 /// <summary>Un dialogue dans une liste.</summary>
 public sealed record DialogueResumeDto(long Id, int Humain, string Nom, string Voie, string Debut, int Repliques, string? FinTexte, bool EnCours, string Croit);
 
+/// <summary>Un rêve attendu : le dialogue s'ouvrira quand cet humain s'endormira.</summary>
+public sealed record AttenteDto(int Humain, string Nom);
+
 /// <summary>« X t'appelle » : une prière forte, à laquelle le joueur peut répondre par un dialogue.</summary>
 public sealed record AppelDto(int Priere, int Humain, string Nom, string Texte);
 
@@ -64,6 +67,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         public required int Priere;
         public int Rang;
         public bool? Croit;
+        /// <summary>La ligne du journal de la manifestation qui a ouvert le dialogue (0 : pas encore).</summary>
+        public long Reception;
         public bool Comprise;
         public DateTime Contact = DateTime.UtcNow;
         public string? Attend;
@@ -75,13 +80,15 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
     private readonly Lock _verrou = new();
     private EnCours? _courant;
+    /// <summary>Un rêve demandé pendant qu'il veille : le dialogue s'ouvrira quand il s'endormira (le monde continue d'ici là).</summary>
+    private (int Humain, int Priere, MondeSimule Monde)? _attente;
     private MondeSimule? _monde;
     private int _dernierePriere = -1;
 
     // ───────────── Ouvrir, dire, finir ─────────────
 
     /// <summary>Ouvre un dialogue avec un humain vivant (ou rend celui qui est ouvert avec lui).</summary>
-    public DialogueDto Ouvrir(int humain, string mode, int priere)
+    public DialogueDto? Ouvrir(int humain, string mode, int priere, bool attendre = false)
     {
         if (string.IsNullOrEmpty(entite.Connexion.Modele)) throw new ArgumentException(L.T("llm.erreur.pasDeModele"));
         if (!Enum.TryParse<ModeParole>(mode, out var voie) || Array.IndexOf(Voies, voie) < 0) throw new ArgumentException(L.T("dlg.erreur.voie"));
@@ -89,8 +96,17 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         var (maintenant, humains) = monde.InstantaneHumains();
         if (humain < 1 || humain > humains.Count || !humains[humain - 1].EstVivant) throw new ArgumentException(L.T("erreur.humainVivant"));
         if (humains[humain - 1].EstBebe(maintenant)) throw new ArgumentException(L.T("dlg.erreur.bebe"));
+        // On ne parle en rêve qu'à un dormeur : sinon, on attend qu'il s'endorme (0.36.4).
+        if (voie == ModeParole.Reve && !monde.Dort(humain) && !(_courant is { } deja && deja.Humain == humain && ReferenceEquals(deja.Monde, monde)))
+        {
+            if (!attendre) throw new ArgumentException(L.T("dlg.erreur.eveille", ("nom", humains[humain - 1].Nom)));
+            lock (_verrou) _attente = (humain, priere, monde);
+            _ = hub.Clients.Diffuser("DialogueAttente", () => Attente());
+            return null;
+        }
         lock (_verrou)
         {
+            _attente = null;
             if (_courant is { } c)
             {
                 if (c.Humain == humain && ReferenceEquals(c.Monde, monde)) return Dto(c.Id);
@@ -105,6 +121,23 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         }
         _ = Diffuser();
         return Dto(_courant!.Id);
+    }
+
+    /// <summary>Le rêve attendu (humain, nom), ou null.</summary>
+    public AttenteDto? Attente()
+    {
+        (int Humain, int Priere, MondeSimule Monde)? a;
+        lock (_verrou) a = _attente;
+        if (a is not { } x) return null;
+        var (_, humains) = x.Monde.InstantaneHumains();
+        return new AttenteDto(x.Humain, x.Humain <= humains.Count ? humains[x.Humain - 1].Nom : "?");
+    }
+
+    /// <summary>Le joueur renonce à attendre son sommeil.</summary>
+    public void AnnulerAttente()
+    {
+        lock (_verrou) _attente = null;
+        _ = hub.Clients.Diffuser("DialogueAttente", () => (AttenteDto?)null);
     }
 
     /// <summary>L'Entité dit quelque chose : la réplique est traitée en arrière-plan, le résultat arrive par « Dialogue ».</summary>
@@ -233,11 +266,21 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             if (premier == 0 || p < premier) premier = p;
             dernier = Math.Max(dernier, d);
         }
+        // Le dialogue est une seule manifestation : la première réplique l'ouvre, les suivantes et leurs paroles n'en sont pas de nouvelles.
+        if (c.Reception == 0)
+        {
+            var (rec, pm, dm) = monde.Executer(m => m.Manifester(c.Humain, c.Mode, ClientLlm.Couper(texte, 240)));
+            c.Reception = rec;
+            Plage(pm, dm);
+        }
         foreach (var a in paroles)
         {
             try
             {
-                var (fait, p, d) = monde.Executer(m => Actes.Appliquer(m, a, FamillesLlm.Toutes, []));
+                var parole = Enum.Parse<Parole>(a.Parole ?? "", true);
+                var croyait = c.Croit;
+                var (recit, p, d) = monde.Executer(m => m.ParlerEnDialogue(c.Humain, parole, c.Mode, a.Cible ?? 0, a.Param ?? 0, c.Reception, croyait));
+                var fait = Registre.Chacun(monde, [(c.Humain, recit)]);
                 Registre.Noter(service, Registre.Joueur, a, fait, p, d);
                 Plage(p, d);
                 var r = monde.DerniereReponse(c.Humain);
@@ -245,13 +288,15 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                 var t = string.Join(" ", fait.Resultats);
                 issues.Add((a, r, t));
                 regles.Add($"{Libelle(a)} → {t}");
+                // Ce qu'il a fait de cette parole dit s'il y croit, pour les suivantes.
+                if (r is { } x && x != Reponse.Incomprise) c.Croit = x != Reponse.Incrue;
             }
             catch (ArgumentException e)
             {
                 regles.Add($"{Libelle(a)} → {L.T("llm.resultat.refuse", ("raison", e.Message))}");
             }
         }
-        var (regle, p2, d2) = monde.Executer(m => m.Ecouter(c.Humain, c.Mode, rang, c.Croit, reponses, ClientLlm.Couper(texte, 240)));
+        var (regle, p2, d2) = monde.Executer(m => m.Ecouter(c.Humain, c.Mode, rang, c.Croit, reponses, c.Reception));
         Plage(p2, d2);
         c.Comprise |= regle.Comprise;
         if (regle.Comprise || c.Croit is not null) c.Croit = regle.Croit;
@@ -293,6 +338,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     string? fauteLibre = null;
                     if (acte is not null) acte = Completer(acte, c.Humain);
                     if (acte is not null) fauteLibre = VerifierLibre(acte, c.Humain, humains) ?? Contredit(acte, h, regle.Croit);
+                    // Une parole ne change pas un cœur d'un coup : chaque changement est borné selon son caractère (0.36.4).
+                    if (acte is not null && fauteLibre is null) acte = Borner(acte, h, humains);
                     // Puis les règles des actes libres, sans rien changer : une faute donne un second essai, pas un refus.
                     if (acte is not null && fauteLibre is null)
                     {
@@ -325,6 +372,27 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     }
                     erreur = null;
                     if (fauteLibre is not null) acte = null;
+                    // Rejoindre une communauté est une intention : il part à pied vers son camp, les règles du monde font le reste.
+                    var rejoindre = acte?.Changements?.Where(x => x.Quoi == "communaute").ToList() ?? [];
+                    if (rejoindre.Count > 0 && ReferenceEquals(monde, service.Monde))
+                    {
+                        acte = acte!.Changements!.Count == rejoindre.Count ? null : acte with { Changements = [.. acte.Changements!.Where(x => x.Quoi != "communaute")] };
+                        foreach (var x in rejoindre.Take(1))
+                        {
+                            if (x.Communaute == h.CommunauteId) continue;
+                            try
+                            {
+                                var (_, p, d) = monde.Executer(m => m.PartirRejoindre(c.Humain, x.Communaute, c.Reception));
+                                Plage(p, d);
+                                var nom = monde.Communautes().FirstOrDefault(k => k.Id == x.Communaute) is { } k ? L.Communaute(k.Nom) : "?";
+                                libreTextes.Add(L.T("dlg.libre.rejoindre", ("nom", h.Nom), ("c", nom)));
+                            }
+                            catch (ArgumentException)
+                            {
+                                libreTextes.Add(L.T("dlg.libre.rejoindreVide"));
+                            }
+                        }
+                    }
                     if (acte is not null && ReferenceEquals(monde, service.Monde))
                     {
                         acte = acte with { Recit = string.IsNullOrWhiteSpace(acte.Recit) ? L.T("dlg.libre.recit", ("nom", h.Nom)) : acte.Recit, Visible = false };
@@ -689,7 +757,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             faute = L.T("llm.erreur.json", ("detail", "{}"));
             return false;
         }
-        string Texte(string cle) => o[cle] is JsonValue v && v.TryGetValue<string>(out var s) ? ClientLlm.Couper(s.Trim(), 1500) : "";
+        string Texte(string cle) => o[cle] is JsonValue v && v.TryGetValue<string>(out var s) ? ClientLlm.Resserrer(s, 1500) : "";
         (mots, pensee) = (Texte("mots"), Texte("pensee"));
         if (o["changements"] is JsonArray ch && ch.Count > 0)
         {
@@ -724,6 +792,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             if (c.Quoi == "lien" && (c.Autre < 1 || c.Autre > humains.Count || c.Autre == humain || !humains[c.Autre - 1].EstVivant || c.Valeur is null))
                 return L.T("dlg.erreur.libreLien", ("id", humain));
             if (c.Quoi == "pensee" && string.IsNullOrWhiteSpace(c.Texte)) return L.T("dlg.erreur.librePensee");
+            if (c.Quoi == "communaute" && c.Communaute < 1) return L.T("dlg.erreur.libreSeul");
         }
         return null;
     }
@@ -746,6 +815,49 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             if (contraire) return L.T(croit ? "dlg.erreur.contraireCroit" : "dlg.erreur.contraireDoute", ("quoi", c.Quoi), ("nom", h.Nom));
         }
         return null;
+    }
+
+    /// <summary>
+    /// Une réplique ne change pas un cœur d'un coup (0.36.4) : chaque changement libre est ramené à un écart borné par son caractère.
+    /// Émotions : la réactivité émotionnelle suit le névrosisme ; désir : l'extraversion ; croyance, ferveur et regard sur l'invisible :
+    /// l'ouverture (changer d'idée sur le sacré est rare et lent) ; affection : l'agréabilité. Écart : de 10 à 50 points selon le trait
+    /// (0,1 à 0,5 pour la ferveur), jamais au-delà des bornes.
+    /// </summary>
+    public static ActeLlm Borner(ActeLlm acte, Humain h, IReadOnlyList<Humain> humains)
+    {
+        var p = h.Personnalite;
+        var liste = new List<ChangementLibre>();
+        foreach (var c in acte.Changements ?? [])
+        {
+            if (c.Valeur is not { } v)
+            {
+                liste.Add(c);
+                continue;
+            }
+            (double Actuel, double Trait, double Echelle)? b = c.Quoi switch
+            {
+                "humeur" => (h.Humeur, p.Nevrosisme, 1),
+                "peur" => (h.Peur, p.Nevrosisme, 1),
+                "chagrin" => (h.Chagrin, p.Nevrosisme, 1),
+                "colere" => (h.Colere, p.Nevrosisme, 1),
+                "desir" => (h.Desir, p.Extraversion, 1),
+                "croyance" => (h.Croyance, p.Ouverture, 1),
+                "amour" => (h.Amour, p.Ouverture, 1),
+                "crainte" => (h.Crainte, p.Ouverture, 1),
+                "revolte" => (h.Revolte, p.Ouverture, 1),
+                "ferveur" => (h.Ferveur, p.Ouverture, 0.01),
+                "lien" when c.Autre >= 1 && c.Autre <= humains.Count => (h.LienAvec(c.Autre)?.Affection ?? 0, p.Agreabilite, 1),
+                _ => null,
+            };
+            if (b is not { } x)
+            {
+                liste.Add(c);
+                continue;
+            }
+            var ecart = (10 + 40 * Math.Clamp(x.Trait, 0, 1)) * x.Echelle;
+            liste.Add(c with { Valeur = Math.Round(Math.Clamp(v, x.Actuel - ecart, x.Actuel + ecart), 2) });
+        }
+        return acte with { Changements = liste };
     }
 
     // ───────────── Pour le navigateur ─────────────
@@ -874,6 +986,29 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             }
         }
         if (change) await Diffuser();
+
+        // Le rêve attendu : il s'est endormi, le dialogue s'ouvre ; il est mort ou le monde a changé, on n'attend plus.
+        (int Humain, int Priere, MondeSimule Monde)? attente;
+        lock (_verrou) attente = _attente;
+        if (attente is { } a)
+        {
+            var (_, hs) = monde.InstantaneHumains();
+            if (!ReferenceEquals(a.Monde, monde) || a.Humain > hs.Count || !hs[a.Humain - 1].EstVivant) AnnulerAttente();
+            else if (monde.Dort(a.Humain))
+            {
+                try
+                {
+                    Ouvrir(a.Humain, nameof(ModeParole.Reve), a.Priere);
+                }
+                catch (ArgumentException e)
+                {
+                    journal.LogDebug(e, "Dialogue : rêve attendu impossible");
+                }
+                lock (_verrou) _attente = null;
+                await hub.Clients.Diffuser("DialogueAttente", () => (AttenteDto?)null);
+                await Diffuser();
+            }
+        }
 
         // « X t'appelle » : les prières fortes nouvelles d'un humain seul (pas collectives), si un LLM peut le faire parler.
         var prieres = monde.Prieres();

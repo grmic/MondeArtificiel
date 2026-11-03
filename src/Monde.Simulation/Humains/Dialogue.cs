@@ -51,13 +51,12 @@ public sealed partial class Comportement
     /// ce qu'il a fait des paroles codées de cette réplique (déjà passées par les règles des paroles ; vide : elle ne fait que parler).
     /// <paramref name="mots"/> : ses mots, pour le journal.
     /// </summary>
-    public RegleReplique Ecouter(Humain h, ModeParole mode, int rang, bool? croyait, IReadOnlyList<Reponse> paroles, string mots,
+    public RegleReplique Ecouter(Humain h, ModeParole mode, int rang, bool? croyait, IReadOnlyList<Reponse> paroles, long reception,
         IReadOnlyList<Humain> tous, long maintenant)
     {
         _maintenant = maintenant;
         if (!h.EstVivant || h.EstBebe(maintenant)) return new RegleReplique(false, croyait ?? false, FinDialogue.Absent, 0);
         var p = h.Personnalite;
-        long reception = 0;
         bool comprise, croit;
         if (paroles.Count > 0)
         {
@@ -67,8 +66,6 @@ public sealed partial class Comportement
         }
         else
         {
-            // La première réplique est une manifestation (au journal, et vue des témoins si elle apparaît) ; les suivantes non.
-            if (rang <= 1) reception = Recevoir(h, mode, new Recit("dlg.phrase", ("t", mots)), tous, maintenant, false);
             comprise = alea.Reel() < Comprehension(h, mode, null, maintenant);
             if (!comprise) croit = croyait ?? false;
             else if (croyait is { } deja) croit = deja;
@@ -86,6 +83,16 @@ public sealed partial class Comportement
             }
         }
         return new RegleReplique(comprise, croit, Fin(h, mode, comprise, croit, maintenant), reception);
+    }
+
+    /// <summary>
+    /// Le dialogue s'ouvre : c'est une seule manifestation (au journal, et vue des témoins si elle apparaît), quel que soit le nombre
+    /// de répliques et de paroles qui suivent (0.36.4). Rend sa ligne du journal.
+    /// </summary>
+    public long Manifester(Humain h, ModeParole mode, string mots, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        _maintenant = maintenant;
+        return Recevoir(h, mode, new Recit("dlg.phrase", ("t", mots)), tous, maintenant, false);
     }
 
     /// <summary>Le dialogue continue-t-il ? Le rêve s'arrête, la peur fait fuir, l'incrédule se détourne.</summary>
@@ -111,6 +118,28 @@ public sealed partial class Comportement
         var age = h.AgeEnAnnees(maintenant);
         if (age < 8 && alea.Reel() < 0.25 * (8 - age) / 5) return mode == ModeParole.Reve ? FinDialogue.Reveil : FinDialogue.Detourne;
         return FinDialogue.Aucune;
+    }
+
+    /// <summary>
+    /// De lui-même, au cours d'un dialogue, il décide de rejoindre une communauté : il part vers son camp (là où se tiennent la plupart
+    /// de ses membres), comme pour « Pars vers… ». Ce n'est qu'une intention : la route, la mer, la fatigue et l'accueil des autres
+    /// décident s'il y arrive et s'il en devient membre. L'intention s'efface avec le temps, plus lentement chez le consciencieux.
+    /// </summary>
+    public long PartirRejoindre(Humain h, Communaute c, IReadOnlyList<Humain> tous, long cause, long maintenant)
+    {
+        _maintenant = maintenant;
+        var membres = tous.Where(x => x.EstVivant && x.CommunauteId == c.Id && x.Id != h.Id).ToList();
+        if (membres.Count == 0) throw new ArgumentException("communaute");
+        var (cx, cy) = (membres.Average(m => m.X), membres.Average(m => m.Y));
+        var camp = membres.MinBy(m => (m.X - cx) * (m.X - cx) + (m.Y - cy) * (m.Y - cy))!;
+        var p = h.Personnalite;
+        var force = 0.4 + 0.6 * p.Conscience;
+        var jusqua = maintenant + (long)((10 + 30 * p.Conscience) * Calendrier.SecondesParJour);
+        var id = NoterEntite(maintenant, TypeEvenement.Communaute, h, null, new Recit("dlg.rejoindre", ("h", h), ("c", c)), cause, significatif: true);
+        Garder(h, new Impulsion(Parole.PartsVers, h.Impulsions.LastOrDefault()?.Mode ?? ModeParole.Voix, 0, camp.Y * carte.Largeur + camp.X, force,
+            maintenant, jusqua, maintenant, Reponse.Acceptee, id));
+        Confier(h, TypeIntime.Intention, 0, new Recit("js.dialogue.rejoindre", ("c", c)), 40 + 40 * force, id, maintenant, "entite:rejoindre");
+        return id;
     }
 
     /// <summary>

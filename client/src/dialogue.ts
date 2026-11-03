@@ -73,6 +73,8 @@ export class FenetreDialogue {
   private readonly pied = el("div", "dialogue-pied");
   private readonly retour = el("p", "discret");
   private id = 0;
+  /** Humain dont on attend le sommeil pour lui parler en rêve (0 : aucun). */
+  private attente = 0;
   private dernier: Dialogue | null = null;
 
   constructor(private readonly racine: HTMLElement, private readonly ouvrirHumain: (id: number) => void) {
@@ -101,7 +103,16 @@ export class FenetreDialogue {
     racine.append(tete, this.corps, this.pied);
     ouvrir = (h, n, p) => void this.preparer(h, n, p ?? 0);
     connexion.on("Dialogue", (d: Dialogue | null) => {
-      if (this.racine.hidden || this.id === 0) return;
+      if (this.racine.hidden) return;
+      // Le rêve attendu s'ouvre : il s'est endormi.
+      if (d && this.id === 0 && this.attente !== 0 && d.humain === this.attente) {
+        this.attente = 0;
+        this.id = d.id;
+        this.afficher(d);
+        this.saisie.focus();
+        return;
+      }
+      if (this.id === 0) return;
       if (d && d.id === this.id) this.afficher(d);
       else if (!d && this.dernier?.enCours) void this.relire();
     });
@@ -129,6 +140,11 @@ export class FenetreDialogue {
     this.dernier = null;
     this.titre.replaceChildren(vignette(humain, 28), " ", t("dlgc.titre", { nom }));
     this.pied.hidden = true;
+    const attendu = await connexion.invoke<{ humain: number } | null>("DialogueAttendu").catch(() => null);
+    if (attendu && attendu.humain === humain) {
+      this.attendre(humain, nom);
+      return;
+    }
     const choix = el("div", "dialogue-choix");
     if (courant) choix.append(el("p", "discret", t("dlgc.autreEnCours", { nom: courant.nom })));
     choix.append(el("p", undefined, t("dlgc.choisirVoie", { nom })));
@@ -146,14 +162,45 @@ export class FenetreDialogue {
       choix.append(l, el("br"));
     }
     const erreur = el("p", "discret");
+    // On ne parle en rêve qu'à un dormeur : sinon, on attend son sommeil (le monde continue).
+    const sommeil = el("p", "discret");
+    const dort = await connexion.invoke<boolean>("Endormi", humain).catch(() => true);
+    const montrerSommeil = (): void => {
+      sommeil.textContent = voie === "Reve" ? t(dort ? "dlgc.dort" : "dlgc.veille", { nom }) : "";
+      commencer.textContent = voie === "Reve" && !dort ? t("dlgc.attendre") : t("dlgc.commencer");
+    };
+    choix.querySelectorAll<HTMLInputElement>("input[name=voieDialogue]").forEach((r) => r.addEventListener("change", montrerSommeil));
     const commencer = bouton(t("dlgc.commencer"), () => {
       commencer.disabled = true;
-      connexion.invoke<Dialogue>("OuvrirDialogue", humain, voie, priere)
-        .then((d) => { this.id = d.id; this.afficher(d); this.saisie.focus(); })
+      const attendre = voie === "Reve" && !dort;
+      connexion.invoke<Dialogue | null>("OuvrirDialogue", humain, voie, priere, attendre)
+        .then((d) => {
+          if (d) {
+            this.id = d.id;
+            this.afficher(d);
+            this.saisie.focus();
+            return;
+          }
+          this.attendre(humain, nom);
+        })
         .catch((e: unknown) => { erreur.textContent = message(e); commencer.disabled = false; });
     }, "entite");
-    choix.append(el("p", "discret", t("dlgc.aide")), commencer, erreur);
+    montrerSommeil();
+    choix.append(sommeil, el("p", "discret", t("dlgc.aide")), commencer, erreur);
     this.corps.replaceChildren(choix);
+  }
+
+  /** En attente de son sommeil : le dialogue s'ouvrira de lui-même. */
+  private attendre(humain: number, nom: string): void {
+    this.attente = humain;
+    const bloc = el("div", "dialogue-choix");
+    const annuler = bouton(t("dlgc.annulerAttente"), () => {
+      this.attente = 0;
+      void connexion.invoke("AnnulerAttenteDialogue").catch(() => undefined);
+      this.fermer();
+    });
+    bloc.append(el("p", undefined, t("dlgc.attente", { nom })), annuler);
+    this.corps.replaceChildren(bloc);
   }
 
   private async relire(): Promise<void> {

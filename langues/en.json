@@ -5908,5 +5908,18 @@
   "ess.mode": "Unknown way of speaking “{mode}”. Possible: {liste}.",
   "dlg.erreur.contraireDoute": "The rules decided that {nom} does not believe it: “{quoi}” cannot rise in this exchange.",
   "dlg.erreur.contraireCroit": "The rules decided that {nom} believes it: “{quoi}” cannot fall in this exchange.",
-  "dlg.erreur.cibleNom": "The saying {parole} names {nom}, whom the Entity does not name. Only translate a saying that names someone if the Entity names them."
+  "dlg.erreur.cibleNom": "The saying {parole} names {nom}, whom the Entity does not name. Only translate a saying that names someone if the Entity names them.",
+  "dlg.erreur.eveille": "{nom} is not asleep: one speaks in a dream only to a sleeper. Choose a voice or an appearance, or wait until they sleep.",
+  "dlg.erreur.libreSeul": "In a dialogue, “communaute” gives the number of the community they set off to join, as their sheet gives it; leaving alone is not one.",
+  "dlg.libre.rejoindre": "{nom} decides to set off on foot to join {c}.",
+  "dlg.libre.rejoindreVide": "They wanted to join a community nobody is left in.",
+  "dlg.rejoindre": "After speaking with the Entity, {h} sets off to join {c}.",
+  "js.dialogue.rejoindre": "I must go towards {c}.",
+  "llm.resultat.tropTardRaison": "Too late: {raison}",
+  "llm.erreur.tropDActes": "You gave {n} acts, {max} at most: keep the ones that matter most.",
+  "dlgc.dort": "{nom} is asleep: you can speak to them in a dream.",
+  "dlgc.veille": "{nom} is not asleep: in a dream, you will have to wait until they sleep.",
+  "dlgc.attendre": "Wait until they sleep",
+  "dlgc.attente": "Waiting for {nom} to fall asleep. The world goes on; the dialogue will open when they fall asleep.",
+  "dlgc.annulerAttente": "Stop waiting"
 }

@@ -5908,5 +5908,18 @@
   "ess.mode": "Manière de parler « {mode} » inconnue. Possibles : {liste}.",
   "dlg.erreur.contraireDoute": "Les règles ont décidé que {nom} n'y croit pas : « {quoi} » ne peut pas monter dans cette réplique.",
   "dlg.erreur.contraireCroit": "Les règles ont décidé que {nom} y croit : « {quoi} » ne peut pas baisser dans cette réplique.",
-  "dlg.erreur.cibleNom": "La parole {parole} désigne {nom}, que l'Entité ne nomme pas. Ne traduis une parole qui désigne quelqu'un que si l'Entité le nomme."
+  "dlg.erreur.cibleNom": "La parole {parole} désigne {nom}, que l'Entité ne nomme pas. Ne traduis une parole qui désigne quelqu'un que si l'Entité le nomme.",
+  "dlg.erreur.eveille": "{nom} ne dort pas : on ne parle en rêve qu'à un dormeur. Choisis une voix ou une apparition, ou attends son sommeil.",
+  "dlg.erreur.libreSeul": "Dans un dialogue, « communaute » donne le numéro de la communauté qu'il part rejoindre, tel que sa fiche le donne ; partir seul n'en est pas une.",
+  "dlg.libre.rejoindre": "{nom} décide de partir rejoindre {c}, à pied.",
+  "dlg.libre.rejoindreVide": "Il voulait rejoindre une communauté dont plus personne n'est là.",
+  "dlg.rejoindre": "Après avoir parlé avec l'Entité, {h} part rejoindre {c}.",
+  "js.dialogue.rejoindre": "Je dois aller vers {c}.",
+  "llm.resultat.tropTardRaison": "Trop tard : {raison}",
+  "llm.erreur.tropDActes": "Tu as donné {n} actes, {max} au plus : garde ceux qui comptent le plus.",
+  "dlgc.dort": "{nom} dort : vous pouvez lui parler en rêve.",
+  "dlgc.veille": "{nom} ne dort pas : en rêve, il faudra attendre son sommeil.",
+  "dlgc.attendre": "Attendre son sommeil",
+  "dlgc.attente": "En attente du sommeil de {nom}. Le monde continue ; le dialogue s'ouvrira quand il ou elle s'endormira.",
+  "dlgc.annulerAttente": "Ne plus attendre"
 }

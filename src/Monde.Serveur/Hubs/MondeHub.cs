@@ -545,7 +545,16 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     // ───────────── Dialogue direct avec un humain (0.36.2) ─────────────
 
     /// <summary>Ouvre un dialogue avec un humain (voie : Reve, Voix, Apparition ; prière : celle par laquelle il appelle, 0 : aucune).</summary>
-    public Entite.DialogueDto OuvrirDialogue(int humain, string voie, int priere = 0) => Appeler(() => dialogues.Ouvrir(humain, voie, priere));
+    public Entite.DialogueDto? OuvrirDialogue(int humain, string voie, int priere = 0, bool attendre = false) => Appeler(() => dialogues.Ouvrir(humain, voie, priere, attendre));
+
+    /// <summary>Vrai si l'humain dort (on ne lui parle en rêve que s'il dort).</summary>
+    public bool Endormi(int humain) => service.Monde.Dort(humain);
+
+    /// <summary>Le rêve attendu (null : aucun).</summary>
+    public Entite.AttenteDto? DialogueAttendu() => dialogues.Attente();
+
+    /// <summary>Ne plus attendre son sommeil.</summary>
+    public void AnnulerAttenteDialogue() => dialogues.AnnulerAttente();
 
     /// <summary>L'Entité dit quelque chose ; la réponse arrive par « Dialogue ».</summary>
     public Entite.DialogueDto DireAuDialogue(long id, string texte) => Appeler(() => dialogues.Dire(id, texte));

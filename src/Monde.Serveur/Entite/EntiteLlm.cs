@@ -380,6 +380,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                 {
                     var lu = Actes.Lire(reponse);
                     var fautes = new List<string>();
+                    // Plus d'actes que permis : au premier essai, il choisit lui-même ceux qui comptent (0.36.4).
+                    if (lu.Ignores > 0 && essai == 0) fautes.Add(L.T("llm.erreur.tropDActes", ("max", Actes.ParReponse), ("n", Actes.ParReponse + lu.Ignores)));
                     foreach (var a in lu.Actes)
                     {
                         try
@@ -515,6 +517,26 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             {
                 resultats.Add(L.T("llm.resultat.rien"));
                 continue;
+            }
+            // Proposé puis accepté plus tard : le monde a pu changer (mort, communauté dispersée, prière close). Ce n'est pas un refus
+            // des règles, c'est trop tard (0.36.4).
+            if (monde.Secondes > e.Le)
+            {
+                string? tard = null;
+                try
+                {
+                    Essais.Essayer(monde, a, []);
+                }
+                catch (ArgumentException x)
+                {
+                    tard = L.T("llm.resultat.tropTardRaison", ("raison", x.Message));
+                }
+                if (tard is not null)
+                {
+                    Registre.Noter(service, Registre.Llm, a, new FaitEntite([tard], -1, 0), 1, 0, e.Id);
+                    resultats.Add(tard);
+                    continue;
+                }
             }
             try
             {

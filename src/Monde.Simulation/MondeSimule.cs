@@ -1482,15 +1482,71 @@ public sealed partial class MondeSimule
     /// Une réplique de l'Entité dans un dialogue avec un humain (0.36.2) : voir <see cref="Comportement.Ecouter"/>. Celui qui vivait
     /// de fond vit de nouveau en individu. Lève <see cref="ArgumentException"/> si l'humain n'existe pas.
     /// </summary>
-    public RegleReplique Ecouter(int humainId, ModeParole mode, int rang, bool? croyait, IReadOnlyList<Reponse> paroles, string mots)
+    public RegleReplique Ecouter(int humainId, ModeParole mode, int rang, bool? croyait, IReadOnlyList<Reponse> paroles, long reception)
     {
         lock (_verrou)
         {
             if (humainId < 1 || humainId > _humains.Count) throw new ArgumentException("humain");
-            var r = _comportement.Ecouter(_humains[humainId - 1], mode, rang, croyait, paroles, mots, _humains, _secondes);
+            var r = _comportement.Ecouter(_humains[humainId - 1], mode, rang, croyait, paroles, reception, _humains, _secondes);
             if (_fond is { } f && humainId < f.Length) f[humainId] = false;
             VerserJournal();
             return r;
+        }
+    }
+
+    /// <summary>Vrai si l'humain dort en ce moment (on ne lui parle en rêve que s'il dort).</summary>
+    public bool Dort(int humainId)
+    {
+        lock (_verrou) return humainId >= 1 && humainId <= _humains.Count && _humains[humainId - 1] is { EstVivant: true, Activite: Activite.Dormir };
+    }
+
+    /// <summary>
+    /// Le dialogue s'ouvre : une seule manifestation pour tout le dialogue (voir <see cref="Comportement.Manifester"/>). Une voix ou
+    /// une apparition réveille un dormeur. Rend la ligne du journal.
+    /// </summary>
+    public long Manifester(int humainId, ModeParole mode, string mots)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count) throw new ArgumentException("humain");
+            var h = _humains[humainId - 1];
+            if (mode != ModeParole.Reve && h.Activite == Activite.Dormir) h.Activite = Activite.Repos;
+            if (_fond is { } f && humainId < f.Length) f[humainId] = false;
+            var id = _comportement.Manifester(h, mode, mots, _humains, _secondes);
+            VerserJournal();
+            return id;
+        }
+    }
+
+    /// <summary>
+    /// Une parole dite au cours d'un dialogue : les règles des paroles, sans nouvelle manifestation, et sans nouveau tirage de foi
+    /// s'il croit déjà (ou non) lui parler (voir <see cref="Comportement.Parler"/>). Rend ce qu'il en a fait.
+    /// </summary>
+    public Recit ParlerEnDialogue(int humainId, Parole parole, ModeParole mode, int cibleId, int param, long reception, bool? croyait)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count) throw new ArgumentException("humain");
+            var cible = cibleId >= 1 && cibleId <= _humains.Count ? _humains[cibleId - 1] : null;
+            var r = _comportement.Parler(_humains[humainId - 1], parole, mode, cible, param, _humains, _secondes, dialogue: reception, croyait: croyait);
+            VerserJournal();
+            return r;
+        }
+    }
+
+    /// <summary>
+    /// Après un dialogue, il décide de rejoindre une communauté : il part à pied vers son camp, et les règles du monde (le chemin, la
+    /// mer, l'accueil) font le reste (voir <see cref="Comportement.PartirRejoindre"/>). Rend la ligne du journal.
+    /// </summary>
+    public long PartirRejoindre(int humainId, int communaute, long cause)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count || !_humains[humainId - 1].EstVivant) throw new ArgumentException("humain");
+            if (communaute < 1 || communaute > _communautes.Count || !_communautes[communaute - 1].Active) throw new ArgumentException("communaute");
+            var id = _comportement.PartirRejoindre(_humains[humainId - 1], _communautes[communaute - 1], _humains, cause, _secondes);
+            VerserJournal();
+            return id;
         }
     }
 

@@ -110,6 +110,40 @@ public sealed partial class ClientLlm(HttpClient http)
 
     public static string Couper(string s, int n) => s.Length <= n ? s : s[..n] + "…";
 
+    /// <summary>
+    /// Une sortie qui s'emballe ramenée à ce qu'elle dit (0.36.4) : un même mot répété plus de deux fois de suite, ou un même membre de
+    /// phrase revenu plus de deux fois (« Fécondité, Fécondité, Fécondité… »), n'est gardé que deux fois ; puis le texte est coupé à
+    /// <paramref name="n"/> caractères.
+    /// </summary>
+    public static string Resserrer(string s, int n)
+    {
+        s = s.Trim();
+        if (s.Length == 0) return s;
+        // Mots répétés de suite.
+        s = MotsRepetes().Replace(s, m => m.Groups[1].Value + " " + m.Groups[1].Value);
+        // Membres de phrase revenus trop souvent.
+        var morceaux = Membres().Split(s);
+        var vus = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var garde = new System.Text.StringBuilder();
+        foreach (var m in morceaux)
+        {
+            var cle = m.Trim().TrimEnd(',', ';', '.', '!', '?', '…', ' ').Trim();
+            if (cle.Length > 0)
+            {
+                vus[cle] = vus.GetValueOrDefault(cle) + 1;
+                if (vus[cle] > 2) continue;
+            }
+            garde.Append(m);
+        }
+        return Couper(garde.ToString().Trim().TrimEnd(','), n);
+    }
+
+    [GeneratedRegex(@"\b(\w+)(?:[\s,;]+\1\b){2,}", RegexOptions.IgnoreCase)]
+    private static partial Regex MotsRepetes();
+
+    [GeneratedRegex(@"(?<=[,;.!?…\n])")]
+    private static partial Regex Membres();
+
     [GeneratedRegex("<think>.*?</think>", RegexOptions.Singleline)]
     private static partial Regex Reflexion();
 }

@@ -28,15 +28,16 @@ public sealed class DialoguesTests
             var fin = FinDialogue.Aucune;
             var rang = 0;
             var comprise = false;
+            // Le dialogue est une seule manifestation : elle l'ouvre, au journal.
+            var reception = monde.Manifester(h.Id, ModeParole.Reve, "Qui es-tu ?");
+            Assert.True(reception > 0);
             while (fin == FinDialogue.Aucune && rang < 40)
             {
                 rang++;
-                var r = monde.Ecouter(h.Id, ModeParole.Reve, rang, croit, [], "Qui es-tu ?");
+                var r = monde.Ecouter(h.Id, ModeParole.Reve, rang, croit, [], reception);
                 comprise |= r.Comprise;
                 if (r.Comprise || croit is not null) croit = r.Croit;
                 fin = r.Fin;
-                if (rang == 1) Assert.True(r.Reception > 0);
-                else Assert.Equal(0, r.Reception);
             }
             if (fin != FinDialogue.Aucune) fins++;
             if (croit == true) croient++;
@@ -51,7 +52,7 @@ public sealed class DialoguesTests
         Assert.True(croient > 0, "personne n'y croit");
         Assert.True(comprises >= adultes.Count * 0.8, $"{comprises} ont compris");
         // Un numéro inconnu est refusé.
-        Assert.Throws<ArgumentException>(() => monde.Ecouter(99999, ModeParole.Voix, 1, null, [], "?"));
+        Assert.Throws<ArgumentException>(() => monde.Ecouter(99999, ModeParole.Voix, 1, null, [], 0));
     }
 
     [Fact]
@@ -120,6 +121,49 @@ public sealed class DialoguesTests
         Assert.False(Dialogues.Lire("pas du JSON", out _, out _, out _, out _));
     }
 
+    [Fact]
+    public void DansUnDialogue_LaFoiNEstPasRetiree_EtRejoindreEstUnVoyage()
+    {
+        var config = ConfigurationMonde.ParDefaut(2);
+        var monde = new MondeSimule(GenerateurContinent.Generer(config), MondeSimule.Nouveau(config)) { Coeurs = 1 };
+        monde.AvancerDe(3 * 360 * Calendrier.SecondesParJour);
+        var (_, humains) = monde.InstantaneHumains();
+        var adultes = humains.Where(h => h.EstVivant && h.AgeEnAnnees(monde.Secondes) >= 18).Take(20).ToList();
+        foreach (var h in adultes)
+        {
+            var reception = monde.Manifester(h.Id, ModeParole.Voix, "Écoute-moi.");
+            // Il y croit déjà : aucune parole du dialogue n'est « pas crue ».
+            for (var i = 0; i < 3; i++)
+                Assert.NotEqual("ent.r.incrue", monde.ParlerEnDialogue(h.Id, Parole.NAiePasPeur, ModeParole.Voix, 0, 0, reception, true).Cle);
+        }
+        // Rejoindre une autre communauté : il part vers son camp, il n'y est pas posé.
+        var communautes = monde.Communautes().Where(c => c.Active).ToList();
+        if (communautes.Count >= 2)
+        {
+            var (_, tous) = monde.InstantaneHumains();
+            var h = tous.First(x => x.EstVivant && x.AgeEnAnnees(monde.Secondes) >= 18 && x.CommunauteId == communautes[0].Id);
+            var (x0, y0) = (h.X, h.Y);
+            Assert.True(monde.PartirRejoindre(h.Id, communautes[1].Id, 0) > 0);
+            var apres = monde.InstantaneHumains().Humains[h.Id - 1];
+            Assert.Equal((communautes[0].Id, x0, y0), (apres.CommunauteId, apres.X, apres.Y));
+            Assert.Contains(apres.Impulsions, i => i.Parole == Parole.PartsVers && i.Reponse == Reponse.Acceptee);
+        }
+    }
+
+    [Fact]
+    public void ReactionLibre_EstBorneeParSonCaractere_EtLaSortieResserree()
+    {
+        var config = ConfigurationMonde.Nouvelle(5);
+        var humains = new MondeSimule(GenerateurContinent.Generer(config), MondeSimule.Nouveau(config)).InstantaneHumains().Humains;
+        var h = humains[3];
+        var acte = new ActeLlm { Type = Actes.Libre, Changements = [new ChangementLibre("peur", 4) { Valeur = 100 }, new ChangementLibre("croyance", 4) { Valeur = 0 }] };
+        var b = Dialogues.Borner(acte, h, humains).Changements!;
+        Assert.True(b[0].Valeur <= h.Peur + 50.0001 && b[0].Valeur >= h.Peur);
+        Assert.True(b[1].Valeur >= h.Croyance - 50.0001 && b[1].Valeur <= h.Croyance);
+        Assert.Equal("Fécondité Fécondité", ClientLlm.Resserrer("Fécondité Fécondité Fécondité Fécondité Fécondité", 2000));
+        Assert.Equal("Le feu, le feu", ClientLlm.Resserrer("Le feu, le feu, le feu, le feu,", 2000));
+    }
+
     private sealed record ConnexionLue(string Modele);
     private sealed record EtatLu(ConnexionLue Connexion);
     private sealed record RepliqueLue(int Rang, string Entite, List<string> Traduction, List<string> Regles, string Mots, string Pensee, string? Erreur);
@@ -143,11 +187,11 @@ public sealed class DialoguesTests
         var humain = service.Monde.InstantaneHumains().Humains.First(h => h.EstVivant && h.AgeEnAnnees(service.Monde.Secondes) >= 20).Id;
 
         // Sans modèle, pas de dialogue (le LLM joue l'humain).
-        await Assert.ThrowsAsync<HubException>(() => c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Voix", 0));
+        await Assert.ThrowsAsync<HubException>(() => c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Voix", 0, false));
         await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 16384 });
-        await Assert.ThrowsAsync<HubException>(() => c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Signe", 0));
+        await Assert.ThrowsAsync<HubException>(() => c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Signe", 0, false));
 
-        var d = await c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Voix", 0);
+        var d = await c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Voix", 0, false);
         Assert.True(d.EnCours);
         Assert.True(service.Monde.EnDialogue);
         d = await c.InvokeAsync<DialogueLu>("DireAuDialogue", d.Id, "N'aie pas peur, je suis là.");
