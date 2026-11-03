@@ -19,15 +19,22 @@ namespace Monde.Simulation.Monde;
 /// <param name="Generation">
 /// Version de la génération du monde : 0 pour les mondes créés avant la 0.31.3 (douze terrains), qui gardent ainsi
 /// leur carte ; 1 pour ceux de la 0.31.3 à la 0.31.6 (forêt de feuillus, mangrove, lande sèche) ; <see cref="GenerationActuelle"/>
-/// pour les mondes neufs, dont la matière a sa chimie et le feu sa température (0.32.0). Un monde garde sa génération : ce qui
+/// pour les mondes neufs, dont la matière a sa chimie et le feu sa température (0.32.0), et dont le langage a plus d'idées (0.37.0). Un monde garde sa génération : ce qui
 /// vient avec une génération nouvelle ne change rien aux mondes plus anciens.
 /// </param>
 /// <param name="Ecart">Mer entre les continents (s'il y en a plusieurs).</param>
+/// <param name="LangageAvance">
+/// « Langage avancé » (0.37.0) : les fondateurs arrivent avec une langue complète, une langue mère par terre de départ (voir
+/// <c>LangueHeritee</c>). Choisi à la création seulement ; faux pour tous les mondes plus anciens.
+/// </param>
 public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement = 1,
-    int Generation = 0, EcartContinents Ecart = EcartContinents.Proches)
+    int Generation = 0, EcartContinents Ecart = EcartContinents.Proches, bool LangageAvance = false)
 {
-    /// <summary>Génération des mondes neufs : 1 depuis la 0.31.3, 2 depuis la 0.32.0.</summary>
-    public const int GenerationActuelle = 2;
+    /// <summary>
+    /// Génération des mondes neufs : 1 depuis la 0.31.3, 2 depuis la 0.32.0, 3 depuis la 0.37.0 (le langage connaît des idées
+    /// nouvelles : corps, parenté, temps, nombres, morale, invisible, bêtes et lieux ; voir <c>Idees.Nouvelles</c>).
+    /// </summary>
+    public const int GenerationActuelle = 3;
 
     /// <summary>Couples répartis sur tous les continents, en proportion de leurs terres habitables.</summary>
     public const int PlacementTous = 0;

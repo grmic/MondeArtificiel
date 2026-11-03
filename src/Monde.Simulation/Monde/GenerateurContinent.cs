@@ -26,7 +26,7 @@ public static class GenerateurContinent
     /// <exception cref="InvalidOperationException">Le continent est trop petit pour le nombre de couples demandé.</exception>
     public static Carte Generer(ConfigurationMonde configuration)
     {
-        var (graine, couples, largeur, hauteur, continents, placement, generation, ecart) = configuration;
+        var (graine, couples, largeur, hauteur, continents, placement, generation, ecart, _) = configuration;
         ArgumentOutOfRangeException.ThrowIfLessThan(largeur, ConfigurationMonde.TailleMin);
         ArgumentOutOfRangeException.ThrowIfLessThan(hauteur, ConfigurationMonde.TailleMin);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(largeur, ConfigurationMonde.TailleMax);

@@ -99,6 +99,7 @@ public sealed record LangueDto(string Mode, string Stade, string? Ordre, string?
             ChangementMot.Emprunte => L.T("langue.histoire.emprunteAilleurs", ("sens", sens), ("dit", dit)),
             ChangementMot.Remplace => L.T("langue.histoire.remplace", ("sens", sens), ("dit", dit), ("avant", Avant(x))),
             ChangementMot.Oublie => L.T("langue.histoire.oublie", ("sens", sens), ("dit", dit)),
+            ChangementMot.Herite => L.T("langue.histoire.herite", ("sens", sens), ("dit", dit)),
             _ => L.T("langue.histoire.mot", ("sens", sens), ("dit", dit)),
         };
     }

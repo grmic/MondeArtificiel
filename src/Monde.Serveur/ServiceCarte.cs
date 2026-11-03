@@ -24,7 +24,9 @@ public sealed class ServiceCarte(ServiceMonde service)
     public Carte Obtenir(ConfigurationMonde configuration)
     {
         var monde = service.Monde;
-        if (configuration == monde.Configuration) return monde.Carte;
+        // Le langage avancé ne change rien à la carte.
+        configuration = configuration with { LangageAvance = false };
+        if (configuration == monde.Configuration with { LangageAvance = false }) return monde.Carte;
         if (_cache.Count >= TailleMaxCache && !_cache.ContainsKey(configuration))
         {
             _cache.Clear();

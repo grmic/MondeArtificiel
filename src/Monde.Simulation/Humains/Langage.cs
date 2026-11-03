@@ -21,6 +21,8 @@ public enum ChangementMot : byte
     /// <summary>Un autre mot, sans parenté, a pris la place.</summary>
     Remplace = 3,
     Oublie = 4,
+    /// <summary>Le mot vient de la langue des fondateurs (« Langage avancé », 0.37.0).</summary>
+    Herite = 5,
 }
 
 /// <summary>Une étape de l'histoire d'un mot dans une communauté.</summary>
@@ -44,6 +46,17 @@ public sealed record Sons(string[] Consonnes, string[] Voyelles, string[] Finale
     private static readonly string[] ToutesConsonnes = ["k", "t", "m", "n", "r", "s", "l", "v", "d", "b", "g", "h", "z", "j", "p", "f", "sh", "th"];
     private static readonly string[] ToutesVoyelles = ["a", "e", "i", "o", "u", "ai", "ei", "ou", "ia", "ae"];
     private static readonly string[] ToutesFinales = ["n", "r", "l", "k", "s", "m"];
+
+    /// <summary>
+    /// Les sons d'une langue que l'on parle déjà (langue héritée, 0.37.0) : ceux de ses mots, et son penchant pour les signes, la part
+    /// des signes parmi eux.
+    /// </summary>
+    public static Sons DeLaLangue(IEnumerable<Mot> mots, Alea alea)
+    {
+        var liste = mots.ToList();
+        var sons = Depuis(liste.Where(m => !m.Signe).Select(m => m.Forme), alea);
+        return sons with { Signes = Math.Clamp(liste.Count(m => m.Signe) / (double)Math.Max(1, liste.Count), 0.05, 0.5) };
+    }
 
     /// <summary>Un répertoire tiré au hasard : de 6 à 12 consonnes, 3 à 7 voyelles, 0 à 3 finales.</summary>
     public static Sons Tirer(Alea alea) => new(
@@ -117,7 +130,43 @@ public sealed record Sons(string[] Consonnes, string[] Voyelles, string[] Finale
 /// <summary>Les idées que les humains ont besoin de dire, et leur traduction pour l'observateur.</summary>
 public static class Idees
 {
-    /// <summary>Ce dont on parle tous les jours, et les mots déjà nés en nommant les groupes.</summary>
+    /// <summary>
+    /// Idées venues avec la génération 3 (0.37.0) : le corps, la parenté, le temps, les nombres, la morale, l'invisible, les lieux,
+    /// la nourriture et ce qu'on fait ensemble. Chacune n'est dite que si la vie en donne l'occasion (voir <see cref="Sujets"/>) ;
+    /// les mondes plus anciens ne les disent jamais.
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> Nouvelles = new Dictionary<string, string>
+    {
+        // Le corps.
+        ["main"] = "main", ["pied"] = "pied", ["oeil"] = "œil", ["bouche"] = "bouche", ["tete"] = "tête", ["sang"] = "sang", ["os"] = "os",
+        ["ventre"] = "ventre", ["dent"] = "dent", ["peau"] = "peau",
+        // La parenté.
+        ["frere"] = "frère", ["soeur"] = "sœur", ["grandmere"] = "grand-mère", ["grandpere"] = "grand-père", ["famille"] = "famille",
+        // Le temps.
+        ["hier"] = "hier", ["demain"] = "demain", ["matin"] = "matin", ["soir"] = "soir", ["saison"] = "saison", ["annee"] = "année",
+        ["longtemps"] = "il y a longtemps",
+        // Les nombres.
+        ["un"] = "un", ["deux"] = "deux", ["beaucoup"] = "beaucoup", ["trois"] = "trois", ["cinq"] = "cinq (une main)", ["compter"] = "compter",
+        // La morale.
+        ["bien"] = "bien", ["mal"] = "mal", ["mentir"] = "mentir", ["voler"] = "voler (prendre à un autre)", ["promettre"] = "promettre",
+        ["pardonner"] = "pardonner", ["partager"] = "partager",
+        // L'invisible.
+        ["esprit"] = "esprit", ["prier"] = "prier", ["offrande"] = "offrande", ["sacre"] = "sacré", ["ancetres"] = "les ancêtres",
+        // Les lieux et le ciel.
+        ["grotte"] = "grotte", ["source"] = "source", ["gue"] = "gué", ["chemin"] = "chemin", ["neige"] = "neige", ["mer"] = "mer",
+        ["ile"] = "terre au loin", ["nuage"] = "nuage",
+        // La nourriture.
+        ["viande"] = "viande", ["fruit"] = "fruit", ["racine"] = "racine", ["graine"] = "graine",
+        // Ce qu'on fait ensemble.
+        ["parler"] = "parler", ["nom"] = "nom", ["chanter"] = "chanter", ["danser"] = "danser", ["jouer"] = "jouer", ["apprendre"] = "apprendre",
+        ["fabriquer"] = "fabriquer", ["chef"] = "celui qu'on suit", ["dispute"] = "dispute",
+    };
+
+    /// <summary>Idées nouvelles de tous les jours (génération 3) : on en parle sans occasion particulière.</summary>
+    private static readonly string[] NouvellesCommunes = ["main", "pied", "oeil", "bouche", "tete", "hier", "demain", "matin", "soir", "un", "deux",
+        "beaucoup", "parler", "nuage"];
+
+    /// <summary>Ce dont on parle tous les jours, et les mots déjà nés en nommant les groupes (et les idées de la génération 3).</summary>
     public static readonly IReadOnlyDictionary<string, string> Libelles = new Dictionary<string, string>
     {
         ["eau"] = "eau", ["manger"] = "manger", ["boire"] = "boire", ["dormir"] = "dormir", ["venir"] = "viens", ["partir"] = "partir",
@@ -135,7 +184,11 @@ public static class Idees
         ["sables"] = "sables", ["foret"] = "forêt", ["fougeres"] = "fougères",
         // Mots nés en nommant les groupes, dont on ne parle pas autrement.
         ["ceux"] = "ceux (qui sont…)", ["enfants"] = "enfants de", ["marche"] = "marcher", ["partis"] = "partis",
-    };
+    }.Concat(Nouvelles).ToDictionary();
+
+    /// <summary>Les idées que connaît une langue héritée (0.37.0) : toutes, sauf les savoirs et les plantes, qui viennent avec la vie.</summary>
+    public static IEnumerable<string> DUneLangueHeritee(int generation) =>
+        Libelles.Keys.Where(i => generation >= 3 || !Nouvelles.ContainsKey(i));
 
     /// <summary>Idées qui ne vivent que dans les noms de groupes : elles ne s'oublient pas faute d'en parler.</summary>
     public static readonly HashSet<string> NomsSeuls = ["ceux", "enfants", "marche", "partis"];
@@ -150,7 +203,8 @@ public static class Idees
         "colere", "gens"];
 
     /// <summary>Les idées de tous les jours (mots courts, d'après la loi d'abréviation de Zipf, 1935).</summary>
-    public static bool Courante(string idee) => Array.IndexOf(Communes, idee) >= 0 || idee is "mere" or "pere" or "feu" or "faim" or "soif";
+    public static bool Courante(string idee) => Array.IndexOf(Communes, idee) >= 0 || Array.IndexOf(NouvellesCommunes, idee) >= 0
+        || idee is "mere" or "pere" or "feu" or "faim" or "soif";
 
     public static string Savoir(Effet e) => $"savoir:{(int)e}";
     public static string Plante(int espece) => $"plante:{espece}";
@@ -175,11 +229,15 @@ public static class Idees
 
     /// <summary>
     /// Ce dont <paramref name="h"/> a l'occasion de parler aujourd'hui : les choses de tous les jours, ses proches, son deuil, ce qu'il
-    /// sait faire, les plantes qu'il connaît, le paysage, l'invisible s'il y croit.
+    /// sait faire, les plantes qu'il connaît, le paysage, l'invisible s'il y croit. Depuis la génération 3, aussi son corps, sa parenté,
+    /// le temps, les nombres, la morale, les lieux qu'il connaît (voir <see cref="Nouvelles"/>).
     /// </summary>
-    public static List<string> Sujets(Humain h, IReadOnlyList<Humain> tous, Carte carte, long maintenant, IReadOnlySet<int> meres)
+    /// <param name="enfantsDe">Les vivants, par numéro de leur mère (génération 3 : frères et sœurs, grands-parents).</param>
+    public static List<string> Sujets(Humain h, IReadOnlyList<Humain> tous, Carte carte, long maintenant, IReadOnlySet<int> meres,
+        int generation = 0, ILookup<int, Humain>? enfantsDe = null)
     {
         var l = new List<string>(Communes);
+        if (generation >= 3) SujetsNouveaux(h, tous, carte, maintenant, enfantsDe, l);
         if (h.Faim > 40) { l.Add("faim"); l.Add("manger"); }
         if (h.Soif > 40) { l.Add("soif"); l.Add("eau"); }
         if (h.Froid > 20) l.Add("froid");
@@ -212,6 +270,84 @@ public static class Idees
             _ => "fougeres",
         });
         return l;
+    }
+
+    /// <summary>
+    /// Les occasions de dire les idées de la génération 3. Elles suivent ce que vit l'humain : une plaie fait parler du sang, une sœur
+    /// vivante de sa sœur, une lune comptée du temps, un grief de pardon ou de vol, une prière de l'invisible.
+    /// </summary>
+    private static void SujetsNouveaux(Humain h, IReadOnlyList<Humain> tous, Carte carte, long maintenant, ILookup<int, Humain>? enfantsDe, List<string> l)
+    {
+        l.AddRange(NouvellesCommunes);
+        var age = h.AgeEnAnnees(maintenant);
+        // Le corps.
+        if (h.BlessureGrave > 0 || h.PlaieLe > 0 && maintenant - h.PlaieLe < 30 * Calendrier.SecondesParJour || h.Sait(Effet.Chasse)) { l.Add("sang"); l.Add("os"); }
+        if (h.Faim > 40 || h.EnceinteDepuis is not null) l.Add("ventre");
+        if (age is >= 5 and < 12 || age >= 40) l.Add("dent");
+        if (h.Vetement is not null || h.Sait(Effet.Couvert) || h.Froid > 20) l.Add("peau");
+        // La parenté : frères et sœurs vivants (même mère), grands-parents vivants.
+        if (h.MereId > 0 && enfantsDe is not null)
+        {
+            foreach (var f in enfantsDe[h.MereId])
+            {
+                if (f.Id == h.Id || !f.EstVivant) continue;
+                l.Add(f.Sexe == Sexe.Femme ? "soeur" : "frere");
+                l.Add("famille");
+            }
+        }
+        foreach (var parent in new[] { h.MereId, h.PereId })
+        {
+            if (parent <= 0) continue;
+            var p = tous[parent - 1];
+            if (p.MereId > 0 && tous[p.MereId - 1].EstVivant) l.Add("grandmere");
+            if (p.PereId > 0 && tous[p.PereId - 1].EstVivant) l.Add("grandpere");
+            if (!p.EstVivant) l.Add("ancetres");
+        }
+        // Le temps et les nombres : ce qu'on a remarqué de la lune et des saisons, et l'idée de compter.
+        if (Comportement.ConfianceDans(h, Serie.Saisons) >= 0.4 || Comportement.ConfianceDans(h, Serie.Lune) >= 0.4) { l.Add("saison"); l.Add("annee"); }
+        if (age >= 40) l.Add("longtemps");
+        if (Comportement.ConfianceDans(h, Serie.Nombre) >= 0.4) { l.Add("trois"); l.Add("cinq"); l.Add("compter"); }
+        // La morale : la colère, les griefs, les rivaux, la faim qui pousse à prendre, le partage dans le groupe.
+        var rival = h.Liens.Exists(x => x.Rivaux);
+        if (h.Colere > 30 || rival || h.Croyance >= 30) { l.Add("bien"); l.Add("mal"); }
+        if (rival) l.Add("mentir");
+        if (h.Griefs.Count > 0 || h.Faim > 60) l.Add("voler");
+        if (h.Griefs.Count > 0 || rival) l.Add("pardonner");
+        if (h.PartenaireId > 0) l.Add("promettre");
+        if (h.CommunauteId > 0) { l.Add("partager"); l.Add("chef"); }
+        if (h.Colere > 30) l.Add("dispute");
+        // L'invisible.
+        if (h.Croyance >= 30) l.Add("esprit");
+        if (h.PrieLe > 0 && maintenant - h.PrieLe < 30 * Calendrier.SecondesParJour) l.Add("prier");
+        if (h.ReligionId > 0) { l.Add("offrande"); l.Add("sacre"); }
+        // Les lieux qu'il connaît, et le ciel.
+        foreach (var lieu in h.Memoire.Lieux)
+        {
+            var idee = lieu.Type switch
+            {
+                TypeLieu.Abri => "grotte",
+                TypeLieu.Eau => "source",
+                TypeLieu.Passage => "gue",
+                TypeLieu.TerreAuLoin => "ile",
+                _ => null,
+            };
+            if (idee is not null && !l.Contains(idee)) l.Add(idee);
+        }
+        if (h.Chemin is { Count: > 0 }) l.Add("chemin");
+        var biome = carte.BiomeEn(h.X, h.Y);
+        if (biome is Biome.SommetEnneige || h.Froid > 40) l.Add("neige");
+        if (biome is Biome.Plage or Biome.Mangrove || h.Mer.Active) l.Add("mer");
+        // La nourriture.
+        if (h.Sait(Effet.Chasse)) l.Add("viande");
+        if (h.Savoirs.Exists(x => x.Espece > 0 && x.Confiance >= 0.4)) l.Add("fruit");
+        if (h.Sait(Effet.Tubercules)) l.Add("racine");
+        if (h.PartDesChamps > 0) l.Add("graine");
+        // Ce qu'on fait ensemble.
+        if (h.NomLangue is not null) l.Add("nom");
+        if (h.Sait(Effet.Chant)) l.Add("chanter");
+        if (h.Sait(Effet.Danse)) l.Add("danser");
+        if (age < 12) { l.Add("jouer"); l.Add("apprendre"); }
+        if (h.Objets.Count > 0) l.Add("fabriquer");
     }
 }
 
@@ -367,8 +503,18 @@ public sealed partial class VieSociale
 
     private static double Age(Humain h, long maintenant) => h.AgeEnAnnees(maintenant);
 
-    internal Sons SonsDe(Communaute? c)
+    /// <summary>« Langage avancé » (0.37.0) : les fondateurs parlaient déjà ; une langue neuve garde les sons de celle qu'on parle.</summary>
+    public bool LangageAvance { get; init; }
+
+    /// <param name="h">Qui parle : avec le langage avancé, sans groupe ou dans un groupe qui n'a pas encore de mots, ses mots disent les sons.</param>
+    internal Sons SonsDe(Communaute? c, Humain? h = null)
     {
+        if (LangageAvance && c?.Sons is null && (c is null || c.Lexique.Count == 0) && h is not null && h.Vocabulaire.Count(m => !m.Signe) >= 5)
+        {
+            var parles = Sons.DeLaLangue(h.Vocabulaire, alea);
+            if (c is not null) c.Sons = parles;
+            return parles;
+        }
         if (c is null) return Sons.Tirer(alea);
         return c.Sons ??= c.Lexique.Count > 0 ? Sons.Depuis(c.Lexique.Values, alea) : Sons.Tirer(alea);
     }
@@ -392,6 +538,7 @@ public sealed partial class VieSociale
         }
         var meres = new HashSet<int>();
         foreach (var h in humains) if (h.EstVivant && h.MereId > 0 && h.EstBebe(maintenant)) meres.Add(h.MereId);
+        var enfantsDe = Generation >= 3 ? humains.Vivants().Where(h => h.EstVivant && h.MereId > 0).ToLookup(h => h.MereId) : null;
         var voisins = new List<Humain>();
         foreach (var s in humains.Vivants())
         {
@@ -410,7 +557,7 @@ public sealed partial class VieSociale
             var cs = CommunauteDe(s, communautes);
             var p = s.Personnalite;
             var fois = 1 + (alea.Reel() < p.Extraversion ? 1 : 0) + (alea.Reel() < 0.5 * p.Extraversion ? 1 : 0);
-            var sujets = Idees.Sujets(s, humains, carte, maintenant, meres);
+            var sujets = Idees.Sujets(s, humains, carte, maintenant, meres, Generation, enfantsDe);
             for (var i = 0; i < fois; i++)
             {
                 var l = voisins[alea.Entier(voisins.Count)];
@@ -439,7 +586,7 @@ public sealed partial class VieSociale
             // Avant tout mot, l'idée même qu'un son puisse dire une chose est très rare ; ensuite, on en invente pour ce qui manque.
             var p = (s.Vocabulaire.Count == 0 ? 0.00002 : 0.0015) * (0.3 + aptitude) * (0.5 + s.Personnalite.Extraversion);
             if (alea.Reel() >= p) return;
-            var sons = SonsDe(cs);
+            var sons = SonsDe(cs, s);
             var chasse = idee is "gibier" or "predateur" or "chasser" or "fuir" || idee == Idees.Savoir(Effet.Chasse);
             var signe = alea.Reel() < Math.Min(0.9, sons.Signes * (chasse ? 2 : 1));
             // On évite, sans toujours y parvenir, de reprendre une forme qui dit déjà autre chose.
@@ -476,7 +623,7 @@ public sealed partial class VieSociale
         // Un enfant qui apprend un mot le dit parfois un peu autrement : la langue dérive au fil des générations.
         if (Age(l, maintenant) < 10 && alea.Reel() < 0.03)
         {
-            var deforme = Langues.Deformer(forme, m.Signe, SonsDe(CommunauteDe(l, communautes) ?? cs), alea);
+            var deforme = Langues.Deformer(forme, m.Signe, SonsDe(CommunauteDe(l, communautes) ?? cs, l), alea);
             if (deforme != forme) (forme, auteur) = (deforme, l.Id);
         }
         if (j >= 0)
@@ -605,13 +752,15 @@ public sealed partial class VieSociale
                 if (h.Vocabulaire.Count > 0) h.Vocabulaire.Clear();
                 continue;
             }
+            var adulte = Generation >= 3 && h.AgeEnAnnees(maintenant) >= AgeDeLaLangue;
             for (var i = h.Vocabulaire.Count - 1; i >= 0; i--)
             {
                 var m = h.Vocabulaire[i];
                 // Les mots des noms de groupes ne s'oublient pas : on les entend chaque fois qu'on dit qui l'on est.
                 if (Idees.NomsSeuls.Contains(m.Idee)) continue;
-                if (m.Force <= 0.02) h.Vocabulaire.RemoveAt(i);
-                else h.Vocabulaire[i] = m with { Force = m.Force - 0.02 };
+                var oubli = 0.02 * (adulte ? Oubli(h, m) : 1);
+                if (m.Force <= oubli) h.Vocabulaire.RemoveAt(i);
+                else h.Vocabulaire[i] = m with { Force = m.Force - oubli };
             }
         }
         var membres = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId > 0 && Age(h, maintenant) >= 3).ToLookup(h => h.CommunauteId);
@@ -620,7 +769,7 @@ public sealed partial class VieSociale
             if (!c.Active) continue;
             var groupe = membres[c.Id].ToList();
             if (groupe.Count == 0) continue;
-            SonsDe(c);
+            SonsDe(c, LangageAvance ? groupe.MaxBy(h => h.Vocabulaire.Count) : null);
             var langue = Langues.LangueDe(c);
             // Les mots appris avant d'avoir un groupe deviennent ceux de sa langue.
             foreach (var h in groupe)
@@ -637,6 +786,21 @@ public sealed partial class VieSociale
             Comprehension[(actives[a].Id, actives[b].Id)] = Communs(actives[a], actives[b]);
         Bilingues(humains, actives, maintenant);
     }
+
+    /// <summary>
+    /// Âge (en années) avant lequel la langue n'est pas encore installée : l'enfant qui cesse d'entendre sa langue la perd vite,
+    /// l'adulte la garde (génération 3).
+    /// </summary>
+    private const double AgeDeLaLangue = 12;
+
+    /// <summary>
+    /// Part de l'oubli d'un mot chez un adulte (génération 3). Un adulte oublie très peu sa langue maternelle, même sans la parler
+    /// des années ; l'enfant, lui, peut la perdre presque entièrement s'il n'en entend plus (Schmid, 2011 ; Bylund, 2009). Un mot
+    /// appris dans l'enfance s'efface donc vingt fois plus lentement chez l'adulte ; un mot appris adulte, deux fois plus lentement
+    /// qu'un mot d'enfant, et d'autant moins qu'il est ancré. Ce sont des estimations.
+    /// </summary>
+    private static double Oubli(Humain h, Mot m) =>
+        (m.Le - h.Naissance) / (double)Calendrier.SecondesParAn < AgeDeLaLangue ? 0.05 : 0.5 * (1.2 - m.Force);
 
     /// <summary>
     /// Qui connaît, en plus de la sienne, au moins la moitié des mots d'une autre langue la parle aussi : un captif, un exilé, un enfant
@@ -744,6 +908,7 @@ public sealed partial class VieSociale
         }
         var seuil = Math.Max(2, (int)Math.Ceiling(0.25 * groupe.Count));
         var courantsAvant = c.HistoireLangue.Count(x => x.Type == ChangementMot.Adopte && x.AuteurId > 0);
+        var herites = new List<HistoireMot>();
         foreach (var idee in parIdee.Keys.Concat(c.Lexique.Keys).Concat(c.Signes.Keys).Distinct().ToList())
         {
             (string Forme, bool Signe)? actuel = c.Lexique.TryGetValue(idee, out var fl) ? (fl, false) : c.Signes.TryGetValue(idee, out var fs) ? (fs, true) : null;
@@ -771,6 +936,14 @@ public sealed partial class VieSociale
             if (actuel is { } b2 && b2.Forme == forme && b2.Signe == signe) continue;
             var type = ChangementMot.Adopte;
             var source = 0;
+            if (actuel is null && LangageAvance && meilleur.Value.Auteur == 0 && !c.HistoireLangue.Exists(x => x.Idee == idee))
+            {
+                // Un mot de la langue des fondateurs : personne ne l'a inventé ; il entre dans l'histoire sans ligne au journal
+                // (une seule ligne dit, plus bas, que le groupe parle la langue héritée).
+                (signe ? c.Signes : c.Lexique)[idee] = forme;
+                herites.Add(new HistoireMot(idee, forme, null, signe, maintenant, 0, ChangementMot.Herite, 0, 0));
+                continue;
+            }
             if (actuel is { } prec)
             {
                 if (prec.Signe == signe && Langues.Parentes(prec.Forme, forme, signe)) type = ChangementMot.Deforme;
@@ -784,6 +957,15 @@ public sealed partial class VieSociale
         }
         var apres = c.Lexique.Count + c.Signes.Count;
         var cible = groupe.Find(h => h.Id == c.FigureId) ?? groupe[0];
+        if (herites.Count > 0)
+        {
+            var id = Noter(maintenant, TypeEvenement.Mots, cible, null, new Recit("lang.herite.communaute", ("c", c), ("n", herites.Count)),
+                communaute: c.Id);
+            c.HistoireLangue.AddRange(herites.Select(x => x with { EvenementId = id }));
+            // On parlait avant d'avoir un groupe : le premier mot n'est pas une invention du groupe, ni celle du monde.
+            if (c.ParoleLe == 0) c.ParoleLe = maintenant;
+            c.PalierMots = Math.Max(c.PalierMots, new[] { 10, 25, 50, 100, 200 }.LastOrDefault(x => x <= apres));
+        }
         if (c.ParoleLe == 0 && c.HistoireLangue.Exists(x => x.Type == ChangementMot.Adopte && x.AuteurId > 0))
         {
             c.ParoleLe = maintenant;
@@ -844,13 +1026,13 @@ public sealed partial class VieSociale
         if (stade >= 2 && c.CombinaisonLe == 0)
         {
             c.CombinaisonLe = maintenant;
-            Noter(maintenant, TypeEvenement.Langage, cible, null, new Recit("lang.combinaison", ("c", c)),
+            if (!LangageAvance) Noter(maintenant, TypeEvenement.Langage, cible, null, new Recit("lang.combinaison", ("c", c)),
                 communaute: c.Id);
         }
         if (stade >= 3 && c.OrdreLe == 0)
         {
             c.OrdreLe = maintenant;
-            Noter(maintenant, TypeEvenement.Langage, cible, null,
+            if (!LangageAvance) Noter(maintenant, TypeEvenement.Langage, cible, null,
                 new Recit("lang.ordre", ("c", c), ("o", Recits.Recit.Seul($"ordreMots.{ordre}"))), communaute: c.Id);
         }
         c.Stade = (byte)stade;

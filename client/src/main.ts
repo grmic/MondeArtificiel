@@ -433,7 +433,8 @@ async function demarrer(): Promise<void> {
   const charger = async (reglages?: Reglages): Promise<string | null> => {
     infos.textContent = t("carte.generation");
     try {
-      const carte = await chargerCarte(reglages ? { ...reglages } : undefined);
+      // Le langage avancé ne change rien à la carte : il ne part pas avec la demande.
+      const carte = await chargerCarte(reglages ? (({ langageAvance: _langage, ...r }) => r)(reglages) : undefined);
       vue.afficher(carte, reglages !== undefined);
       if (!reglages) void calques.recharger();
       if (!reglages) humainsDeDepart = carte.emplacements.length * 2;

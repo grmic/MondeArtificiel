@@ -211,7 +211,10 @@ public sealed partial class MondeSimule
         _communautes = (etat.Communautes ?? []).Select(c => c.Copier()).OrderBy(c => c.Id).ToList();
         _numeros.Prochain = Math.Max(1, etat.ProchainIdJournal);
         _premieres = new RegistrePremieres(etat.Premieres);
-        _social = new VieSociale(_alea) { Communautes = _communautes, Numeros = _numeros, Carte = carte, Generation = configuration.Generation };
+        _social = new VieSociale(_alea)
+        {
+            Communautes = _communautes, Numeros = _numeros, Carte = carte, Generation = configuration.Generation, LangageAvance = configuration.LangageAvance,
+        };
         _social.ChargerGuerres(etat.Guerres ?? []);
         _social.ChargerMandats(etat.Mandats ?? []);
         _social.ChargerRelations(etat.Relations ?? []);
@@ -247,6 +250,9 @@ public sealed partial class MondeSimule
         _effetsConnus = EffetsConnus();
         _progres.AddRange(etat.Progres ?? []);
         foreach (var e in etat.JournalNonEnregistre ?? []) Ajouter(e);
+        // « Langage avancé » : les fondateurs d'un monde neuf arrivent avec la langue mère de leur terre.
+        if (etat.Humains is not { Count: > 0 } && configuration.LangageAvance)
+            foreach (var e in LangueHeritee.Donner(_humains, carte, configuration, etat.Secondes, _numeros)) Ajouter(e);
         _archivesNonEnregistrees.AddRange(etat.ArchivesNonEnregistrees ?? []);
 
         for (var i = 0; i < _humains.Count; i++)

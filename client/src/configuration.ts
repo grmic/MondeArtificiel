@@ -40,6 +40,8 @@ interface Configuration {
   /** Option « humains de fond simulés en groupe » (0.36.0) et le nombre de vivants à partir duquel elle joue (0 : toujours). */
   fond: boolean;
   fondSeuil: number;
+  /** Les fondateurs sont arrivés avec une langue complète (0.37.0). */
+  langageAvance: boolean;
 }
 
 /** Réglages d'un nouveau monde (graine null : au hasard). */
@@ -51,6 +53,8 @@ export interface Reglages {
   continents: number;
   placement: number;
   ecart: number;
+  /** Langage avancé : les fondateurs arrivent avec une langue complète. */
+  langageAvance: boolean;
 }
 
 /** Une sauvegarde restaurable (possible : faux si elle vient d'une version plus récente ou est illisible). */
@@ -109,6 +113,15 @@ export class PanneauConfiguration {
     }
     ligne.append(el("span", "libelle", t("config.ecart")), choix, el("span", "aide", t("config.ecartAide")));
     return { ligne, choix };
+  })();
+  /** Langage avancé : choisi à la création du monde seulement. */
+  private readonly langage = (() => {
+    const caseLangage = el("input");
+    caseLangage.type = "checkbox";
+    caseLangage.id = "configLangageAvance";
+    const ligne = el("label", "reglage");
+    ligne.append(el("span", "libelle", t("config.langageAvance")), caseLangage, el("span", "aide", t("config.langageAvanceAide")));
+    return { ligne, caseLangage };
   })();
   private readonly actuel = el("p");
   private readonly apropos = el("p", "discret apropos");
@@ -214,7 +227,7 @@ export class PanneauConfiguration {
     boutons.append(apercu, revenir, creer);
     this.continents.entree.addEventListener("input", () => this.remplirPlacement(Number(this.placement.choix.value)));
     formulaire.append(this.graine.ligne, this.couples.ligne, this.largeur.ligne, this.hauteur.ligne, this.continents.ligne, this.placement.ligne, this.ecart.ligne,
-      boutons, this.message);
+      this.langage.ligne, boutons, this.message);
     formulaire.addEventListener("submit", (ev) => {
       ev.preventDefault();
       void this.apercu();
@@ -345,6 +358,7 @@ export class PanneauConfiguration {
     this.continents.entree.value = String(c.continents);
     this.remplirPlacement(c.placement);
     this.ecart.choix.value = String(c.ecart);
+    this.langage.caseLangage.checked = c.langageAvance;
     this.message.textContent = "";
     await this.lireSauvegardes();
     if (section) (section === "sauvegardes" ? this.titreSauvegardes : this.titreNouveau).scrollIntoView({ block: "start" });
@@ -645,7 +659,7 @@ export class PanneauConfiguration {
     const cases = (km: number) => Math.min(c.tailleMax, Math.max(c.tailleMin, Math.round(km / c.kilometresParCase)));
     const placement = Number(this.placement.choix.value);
     return { graine, couples, largeur: cases(largeur), hauteur: cases(hauteur), continents, placement: placement <= continents ? placement : 1,
-      ecart: Number(this.ecart.choix.value) };
+      ecart: Number(this.ecart.choix.value), langageAvance: this.langage.caseLangage.checked };
   }
 
   private async apercu(): Promise<boolean> {

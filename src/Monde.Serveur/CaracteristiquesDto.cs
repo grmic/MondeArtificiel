@@ -64,6 +64,7 @@ public sealed record CaracteristiquesDto(string Nom, uint Graine, string Date, d
                 new(T("depart"), Lib.Placement(monde.Configuration)),
                 .. monde.Configuration.Continents > 1 ? [new MesureDto(T("merEntre"), T($"merEntre.{monde.Configuration.Ecart}"))] : Array.Empty<MesureDto>(),
                 new(T("generation"), T($"generation.{monde.Configuration.Generation}"), T("generation.aide")),
+                new(T("langage"), T(monde.Configuration.LangageAvance ? "langage.avance" : "langage.invente"), T("langage.aide")),
                 new(T("graine"), monde.Graine.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     T(monde.Configuration.EstOrigine ? "graine.origine" : "graine.choisie")),
             ]),

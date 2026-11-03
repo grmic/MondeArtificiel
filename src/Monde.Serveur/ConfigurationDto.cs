@@ -8,8 +8,9 @@ namespace Monde.Serveur;
 /// les continents, 0 proches, 1 éloignés, 2 mélangés). Un monde neuf a toujours la carte de la dernière génération.
 /// </summary>
 /// <param name="GarderAncien">À la création d'un monde : garder une copie de l'ancien (vrai par défaut).</param>
+/// <param name="LangageAvance">Les fondateurs arrivent avec une langue complète (0.37.0).</param>
 public sealed record DemandeConfiguration(long? Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement = 1, int Ecart = 0,
-    bool GarderAncien = true)
+    bool GarderAncien = true, bool LangageAvance = false)
 {
     /// <summary>Réglages validés ; la graine absente est tirée au hasard.</summary>
     /// <exception cref="ArgumentException">Graine ou réglages hors limites (message lisible).</exception>
@@ -18,7 +19,7 @@ public sealed record DemandeConfiguration(long? Graine, int Couples, int Largeur
         if (Graine is < 0 or > uint.MaxValue) throw new ArgumentException(L.T("erreur.graine"));
         var graine = Graine is { } g ? (uint)g : (uint)Random.Shared.NextInt64(0, (long)uint.MaxValue + 1);
         var configuration = new ConfigurationMonde(graine, Couples, Largeur, Hauteur, Continents, Placement,
-            ConfigurationMonde.GenerationActuelle, (EcartContinents)Ecart);
+            ConfigurationMonde.GenerationActuelle, (EcartContinents)Ecart, LangageAvance);
         return Lib.Erreur(configuration) is { } erreur ? throw new ArgumentException(erreur) : configuration;
     }
 }
@@ -28,7 +29,7 @@ public sealed record ConfigurationDto(
     uint Graine, int Couples, int Largeur, int Hauteur, int Continents, int Placement, int Ecart, int Generation, bool Origine, double KilometresParCase,
     int CouplesMin, int CouplesMax, int TailleMin, int TailleMax, int ContinentsMin, int ContinentsMax, string Resume,
     string Version, string Auteur, bool JournalQuotidien, int Coeurs, int CoeursMachine, int Clemence,
-    int EspritsFertiles, bool Fond, int FondSeuil)
+    int EspritsFertiles, bool Fond, int FondSeuil, bool LangageAvance)
 {
     private static readonly System.Reflection.Assembly Application = typeof(ConfigurationDto).Assembly;
 
@@ -48,7 +49,7 @@ public sealed record ConfigurationDto(
             Echelle.KilometresParCase, ConfigurationMonde.CouplesMin, ConfigurationMonde.CouplesMax,
             ConfigurationMonde.TailleMin, ConfigurationMonde.TailleMax, ConfigurationMonde.ContinentsMin, ConfigurationMonde.ContinentsMax,
             Resumer(c, monde.Carte), VersionApplication, AuteurApplication, service.JournalQuotidien,
-            service.Coeurs, ServiceMonde.CoeursMachine, service.Clemence, service.EspritsFertiles, service.Fond.Actif, service.Fond.Seuil);
+            service.Coeurs, ServiceMonde.CoeursMachine, service.Clemence, service.EspritsFertiles, service.Fond.Actif, service.Fond.Seuil, c.LangageAvance);
     }
 
     /// <summary>Résumé d'une carte : dimensions, continents et îles, en mots.</summary>

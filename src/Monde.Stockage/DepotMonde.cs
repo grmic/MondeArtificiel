@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 55;
+    public const int VersionSchema = 56;
 
     private readonly string _connexion;
 
@@ -633,6 +633,9 @@ public sealed partial class DepotMonde
                 ALTER TABLE etat ADD COLUMN ecart INTEGER NOT NULL DEFAULT 0;
                 """);
         }
+        // Version 56 : réglage « Langage avancé » (0 pour tous les mondes plus anciens).
+        if (actuelle < 56 && !Colonnes(connexion, transaction, "etat").Contains("langage"))
+            Executer(connexion, transaction, "ALTER TABLE etat ADD COLUMN langage INTEGER NOT NULL DEFAULT 0;");
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -642,7 +645,7 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = "SELECT graine, secondes, pas, vitesse, alea0, alea1, alea2, alea3, couples, largeur, hauteur, continents, placement, generation, ecart FROM etat WHERE id = 1;";
+        commande.CommandText = "SELECT graine, secondes, pas, vitesse, alea0, alea1, alea2, alea3, couples, largeur, hauteur, continents, placement, generation, ecart, langage FROM etat WHERE id = 1;";
         EtatMonde etat;
         using (var lecteur = commande.ExecuteReader())
         {
@@ -658,7 +661,7 @@ public sealed partial class DepotMonde
             if (!lecteur.IsDBNull(8))
             {
                 var configuration = new ConfigurationMonde(etat.Graine, lecteur.GetInt32(8), lecteur.GetInt32(9), lecteur.GetInt32(10), lecteur.GetInt32(11),
-                    lecteur.GetInt32(12), lecteur.GetInt32(13), (EcartContinents)lecteur.GetInt32(14));
+                    lecteur.GetInt32(12), lecteur.GetInt32(13), (EcartContinents)lecteur.GetInt32(14), lecteur.GetInt32(15) != 0);
                 if (configuration.Erreur() is { } erreur) throw new InvalidDataException($"Réglages du monde invalides dans {CheminFichier} : {erreur}");
                 etat = etat with { Configuration = configuration };
             }
@@ -1101,16 +1104,16 @@ public sealed partial class DepotMonde
             commande.Transaction = transaction;
             commande.CommandText = """
                 INSERT INTO etat (id, graine, secondes, pas, vitesse, modifie_le, alea0, alea1, alea2, alea3,
-                                  couples, largeur, hauteur, continents, placement, generation, ecart)
+                                  couples, largeur, hauteur, continents, placement, generation, ecart, langage)
                 VALUES (1, $graine, $secondes, $pas, $vitesse, $modifie, $a0, $a1, $a2, $a3,
-                        $couples, $largeur, $hauteur, $continents, $placement, $generation, $ecart)
+                        $couples, $largeur, $hauteur, $continents, $placement, $generation, $ecart, $langage)
                 ON CONFLICT (id) DO UPDATE SET
                     graine = excluded.graine, secondes = excluded.secondes, pas = excluded.pas,
                     vitesse = excluded.vitesse, modifie_le = excluded.modifie_le,
                     alea0 = excluded.alea0, alea1 = excluded.alea1, alea2 = excluded.alea2, alea3 = excluded.alea3,
                     couples = excluded.couples, largeur = excluded.largeur, hauteur = excluded.hauteur,
                     continents = excluded.continents, placement = excluded.placement,
-                    generation = excluded.generation, ecart = excluded.ecart;
+                    generation = excluded.generation, ecart = excluded.ecart, langage = excluded.langage;
                 """;
             commande.Parameters.AddWithValue("$graine", unchecked((long)etat.Graine));
             commande.Parameters.AddWithValue("$secondes", etat.Secondes);
@@ -1129,6 +1132,7 @@ public sealed partial class DepotMonde
             commande.Parameters.AddWithValue("$placement", c?.Placement ?? 1);
             commande.Parameters.AddWithValue("$generation", c?.Generation ?? 0);
             commande.Parameters.AddWithValue("$ecart", (int)(c?.Ecart ?? EcartContinents.Proches));
+            commande.Parameters.AddWithValue("$langage", c?.LangageAvance == true ? 1 : 0);
             commande.ExecuteNonQuery();
         }
 
