@@ -40,7 +40,7 @@ public sealed record DialogueEntite(long Id, int Humain, int Mode, int Priere, l
 /// <param name="JournalPremier">Premier numéro du journal écrit par les règles (0 : aucun).</param>
 /// <param name="JournalDernier">Dernier numéro (−1 : aucun).</param>
 public sealed record RepliqueEntite(long Id, long Dialogue, int Rang, long Le, string Entite, string Traduction, string Regles, string Mots, string Pensee,
-    string Libre, string Juge, string Lu, string Reponse, long DureeMs, long JournalPremier, long JournalDernier, string? Erreur);
+    string Libre, string Juge, string Lu, string Reponse, long DureeMs, long JournalPremier, long JournalDernier, string? Erreur, string Sens = "");
 
 /// <summary>Dialogues de l'Entité avec les humains (tables <c>dialogues</c> et <c>dialogue_repliques</c>).</summary>
 public sealed partial class DepotMonde
@@ -48,7 +48,7 @@ public sealed partial class DepotMonde
     private const string ColonnesDialogues = "id, humain, mode, priere, debut, fin, quand, modele, statut, fin_raison, repliques, croit, comprise, journal_fin";
 
     private const string ColonnesRepliques =
-        "id, dialogue, rang, le, entite, traduction, regles, mots, pensee, libre, juge, lu, reponse, duree_ms, journal_premier, journal_dernier, erreur";
+        "id, dialogue, rang, le, entite, traduction, regles, mots, pensee, libre, juge, lu, reponse, duree_ms, journal_premier, journal_dernier, erreur, sens";
 
     /// <summary>Migration vers la version 54 : dialogues avec les humains.</summary>
     private static void MigrerVersion54(SqliteConnection connexion, SqliteTransaction transaction)
@@ -88,10 +88,18 @@ public sealed partial class DepotMonde
                 duree_ms        INTEGER NOT NULL,
                 journal_premier INTEGER NOT NULL,
                 journal_dernier INTEGER NOT NULL,
-                erreur          TEXT
+                erreur          TEXT,
+                sens            TEXT    NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS dialogue_repliques_dialogue ON dialogue_repliques (dialogue, rang);
             """);
+    }
+
+    /// <summary>Migration vers la version 55 : ce que l'humain veut dire, traduit (il parle sa langue).</summary>
+    private static void MigrerVersion55(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        if (!Colonnes(connexion, transaction, "dialogue_repliques").Contains("sens"))
+            Executer(connexion, transaction, "ALTER TABLE dialogue_repliques ADD COLUMN sens TEXT NOT NULL DEFAULT '';");
     }
 
     /// <summary>Enregistre un nouveau dialogue ; rend son numéro.</summary>
@@ -179,7 +187,7 @@ public sealed partial class DepotMonde
         using var c = connexion.CreateCommand();
         c.CommandText = $"""
             INSERT INTO dialogue_repliques ({ColonnesRepliques[4..]})
-            VALUES ($d, $rang, $le, $e, $t, $re, $m, $p, $li, $j, $lu, $rep, $duree, $jp, $jd, $err) RETURNING id;
+            VALUES ($d, $rang, $le, $e, $t, $re, $m, $p, $li, $j, $lu, $rep, $duree, $jp, $jd, $err, $sens) RETURNING id;
             """;
         c.Parameters.AddWithValue("$d", r.Dialogue);
         c.Parameters.AddWithValue("$rang", r.Rang);
@@ -197,6 +205,7 @@ public sealed partial class DepotMonde
         c.Parameters.AddWithValue("$jp", r.JournalPremier);
         c.Parameters.AddWithValue("$jd", r.JournalDernier);
         c.Parameters.AddWithValue("$err", (object?)r.Erreur ?? DBNull.Value);
+        c.Parameters.AddWithValue("$sens", r.Sens);
         return Convert.ToInt64(c.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
     }
 
@@ -212,7 +221,7 @@ public sealed partial class DepotMonde
         while (l.Read())
             liste.Add(new RepliqueEntite(l.GetInt64(0), l.GetInt64(1), l.GetInt32(2), l.GetInt64(3), l.GetString(4), l.GetString(5), l.GetString(6), l.GetString(7),
                 l.GetString(8), l.GetString(9), l.GetString(10), avecLu ? DecompresserTexte((byte[])l[11]) : "", l.GetString(12), l.GetInt64(13), l.GetInt64(14),
-                l.GetInt64(15), l.IsDBNull(16) ? null : l.GetString(16)));
+                l.GetInt64(15), l.IsDBNull(16) ? null : l.GetString(16), l.IsDBNull(17) ? "" : l.GetString(17)));
         return liste;
     }
 

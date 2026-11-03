@@ -5,7 +5,7 @@ import { vignette } from "./visage";
 
 interface Replique {
   rang: number; date: string; entite: string; traduction: string[]; regles: string[]; mots: string; pensee: string; libre: string[];
-  juge: string | null; erreur: string | null; secondes: number; journalPremier: number;
+  juge: string | null; erreur: string | null; secondes: number; journalPremier: number; sens: string;
 }
 interface Dialogue {
   id: number; humain: number; nom: string; mode: string; voie: string; priere: number; textePriere: string | null; debut: string; fin: string | null;
@@ -278,6 +278,8 @@ export class FenetreDialogue {
     if (r.mots) humain.append(el("b", undefined, `${d.nom} : `), `« ${r.mots} »`);
     else humain.append(el("span", "discret", t("dlgc.silence", { nom: d.nom })));
     bloc.append(humain);
+    // Il parle sa langue : ce qu'il veut dire, traduit.
+    if (r.mots && r.sens) bloc.append(el("p", "dialogue-sens", t("dlgc.sens", { texte: r.sens })));
     if (r.pensee) bloc.append(el("p", "dialogue-pensee", t("dlgc.pensee", { texte: r.pensee })));
     if (r.erreur) bloc.append(el("p", "dialogue-erreur", r.erreur));
     return bloc;

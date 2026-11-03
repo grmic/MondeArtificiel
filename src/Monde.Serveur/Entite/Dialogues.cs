@@ -13,7 +13,7 @@ namespace Monde.Serveur.Entite;
 
 /// <summary>Une réplique pour le navigateur : les mots de l'Entité, leur traduction, ce qu'en ont fait les règles, la réponse de l'humain.</summary>
 public sealed record RepliqueDto(int Rang, string Date, string Entite, IReadOnlyList<string> Traduction, IReadOnlyList<string> Regles, string Mots,
-    string Pensee, IReadOnlyList<string> Libre, string? Juge, string? Erreur, double Secondes, long JournalPremier);
+    string Pensee, IReadOnlyList<string> Libre, string? Juge, string? Erreur, double Secondes, long JournalPremier, string Sens = "");
 
 /// <summary>
 /// Un dialogue pour le navigateur. <paramref name="Attend"/> : les mots de l'Entité en cours de traitement (null : rien en cours) ;
@@ -305,7 +305,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         service.Sauvegarder();
 
         // 3. L'humain parle (sauf s'il n'est plus là pour répondre).
-        string mots = "", pensee = "", juge = "", lu = "";
+        string mots = "", pensee = "", sens = "", juge = "", lu = "";
         string? erreur = null;
         var libreTextes = new List<string>();
         string libreJson = "";
@@ -314,6 +314,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         if (regle.Fin != FinDialogue.Absent && h.EstVivant)
         {
             var libre = reglages.Libre;
+            var permis = Permis(h, humains);
             var consigne = Consigne(h, c, libre);
             var demande = Demande(c, h, texte, precedentes, issues, regle);
             lu = consigne + "\n\n----\n\n" + demande;
@@ -326,14 +327,26 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     delai.CancelAfter(DelaiReponse);
                     var reponse = await client.Demander(connexion, consigne, messages, Schema(libre), delai.Token);
                     brut.AppendLine($"---- {L.T("dlg.trace.humain")} ({essai + 1}) ----").AppendLine(reponse);
-                    if (!Lire(reponse, out var m, out var pe, out var acte, out var faute))
+                    if (!Lire(reponse, out var m, out var pe, out var se, out var acte, out var faute))
                     {
                         erreur = faute;
                         messages.Add(("assistant", reponse));
                         messages.Add(("user", L.T("llm.d.corriger", ("erreurs", faute))));
                         continue;
                     }
-                    (mots, pensee) = (m, pe);
+                    // Il parle sa langue : seulement ses mots, des noms qu'il connaît, des gestes et des cris (0.36.5).
+                    var inconnus = Inconnus(m, permis);
+                    var sansSens = se.Length == 0 && Normaliser(SansGestes(m)).Length > 0;
+                    if ((inconnus.Count > 0 || sansSens) && essai == 0)
+                    {
+                        messages.Add(("assistant", reponse));
+                        messages.Add(("user", inconnus.Count > 0
+                            ? L.T("dlg.erreur.motsInconnus", ("liste", string.Join(", ", inconnus.Take(20))), ("langue", L.Courante.Nom))
+                            : L.T("dlg.erreur.sensVide", ("langue", L.Courante.Nom))));
+                        continue;
+                    }
+                    if (inconnus.Count > 0) m = Effacer(m, permis);
+                    (mots, pensee, sens) = (m, pe, se);
                     if (acte is not null && !libre) acte = null;
                     string? fauteLibre = null;
                     if (acte is not null) acte = Completer(acte, c.Humain);
@@ -429,7 +442,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         if (dernier >= premier && premier > 0) MarquesLlm.Ajouter(premier, dernier);
         c.Depot.AjouterReplique(new RepliqueEntite(0, c.Id, rang, monde.Secondes, texte, JsonSerializer.Serialize(paroles, Actes.Json),
             JsonSerializer.Serialize(regles, Actes.Json), mots, pensee, JsonSerializer.Serialize(new { acte = libreJson, resultats = libreTextes }, Actes.Json), juge, lu,
-            brut.ToString(), chrono.ElapsedMilliseconds, premier, dernier, erreur));
+            brut.ToString(), chrono.ElapsedMilliseconds, premier, dernier, erreur, sens));
         var d0 = c.Depot.Dialogue(c.Id);
         if (d0 is not null)
             c.Depot.MettreAJourDialogue(d0 with { Repliques = rang, Croit = c.Croit is { } b ? b ? 1 : 0 : -1, Comprise = c.Comprise });
@@ -518,7 +531,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         foreach (var r in precedentes.TakeLast(4))
         {
             d.AppendLine($"{L.T("dlg.t.entite")} : « {ClientLlm.Couper(r.Entite, 300)} »");
-            if (r.Mots.Length > 0) d.AppendLine($"{h.Nom} : « {ClientLlm.Couper(r.Mots, 300)} »");
+            if (r.Mots.Length > 0) d.AppendLine($"{h.Nom} : « {ClientLlm.Couper(r.Sens.Length > 0 ? r.Sens : r.Mots, 300)} »");
         }
         d.AppendLine();
         d.AppendLine(L.T("dlg.t.dit", ("texte", texte)));
@@ -653,13 +666,16 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
     // ───────────── Faire parler l'humain ─────────────
 
-    private const string FormeHumain = """{"pensee":"…","mots":"…"}""";
+    private const string FormeHumain = """{"pensee":"…","mots":"…","sens":"…"}""";
 
-    private const string FormeHumainLibre = """{"pensee":"…","mots":"…","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
+    private const string FormeHumainLibre = """{"pensee":"…","mots":"…","sens":"…","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
 
     private static JsonObject Schema(bool libre)
     {
-        var proprietes = new JsonObject { ["pensee"] = new JsonObject { ["type"] = "string" }, ["mots"] = new JsonObject { ["type"] = "string" } };
+        var proprietes = new JsonObject
+        {
+            ["pensee"] = new JsonObject { ["type"] = "string" }, ["mots"] = new JsonObject { ["type"] = "string" }, ["sens"] = new JsonObject { ["type"] = "string" },
+        };
         // La forme complète de chaque changement, sortes en liste fermée (0.36.3) : sans elle, le LLM devinait les champs (« autre »).
         if (libre)
             proprietes["changements"] = new JsonObject
@@ -681,7 +697,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     ["required"] = new JsonArray("quoi"),
                 },
             };
-        return new JsonObject { ["type"] = "object", ["properties"] = proprietes, ["required"] = new JsonArray("pensee", "mots") };
+        return new JsonObject { ["type"] = "object", ["properties"] = proprietes, ["required"] = new JsonArray("pensee", "mots", "sens") };
     }
 
     private string Consigne(Humain h, EnCours c, bool libre)
@@ -706,9 +722,11 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         d.AppendLine(L.T("llm.d.date", ("date", L.Date(maintenant))));
         d.AppendLine(L.T("dlg.d.toi", ("nom", h.Nom), ("id", h.Id)));
         Contexte.Humain(d, service, h.Id);
-        var langage = LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore);
-        if (langage.Mots.Count > 0)
-            d.AppendLine(L.T("dlg.d.mots", ("liste", string.Join(", ", langage.Mots.Take(30).Select(m => $"{m.Forme} = {m.Sens}")))));
+        // Ses mots, tous (les plus sûrs d'abord) : ce sont les seuls qu'il peut dire.
+        var vocabulaire = h.Vocabulaire.Where(m => !m.Signe).OrderByDescending(m => m.Force).Take(200)
+            .Select(m => $"{m.Forme} = {Lib.Idee(m.Idee, monde.Flore)}").ToList();
+        d.AppendLine(vocabulaire.Count > 0 ? L.T("dlg.d.mots", ("liste", string.Join(", ", vocabulaire))) : L.T("dlg.d.aucunMot"));
+        d.AppendLine(L.T("dlg.d.noms", ("liste", string.Join(", ", Noms(h, humains)))));
         if (c.Priere != 0 && Religions.Prieres(service, enAttente: false).FirstOrDefault(p => p.Id == c.Priere) is { } pr)
             d.AppendLine(L.T("dlg.d.priere", ("texte", pr.Texte)));
         // Ses dialogues passés avec l'Entité (les trois derniers, en quelques mots).
@@ -724,7 +742,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         foreach (var r in precedentes.TakeLast(8))
         {
             d.AppendLine($"{L.T("dlg.t.entite")} : « {r.Entite} »");
-            d.AppendLine($"{L.T("dlg.d.toiCourt")} : « {r.Mots} »");
+            d.AppendLine($"{L.T("dlg.d.toiCourt")} : « {r.Mots} »{(r.Sens.Length > 0 ? $" ({r.Sens})" : "")}");
         }
         d.AppendLine($"{L.T("dlg.t.entite")} : « {texte} »");
         d.AppendLine();
@@ -738,10 +756,53 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         return d.ToString();
     }
 
-    /// <summary>Lit la réponse de l'humain ; avec l'Entité libre, ses changements deviennent un acte libre (null : aucun).</summary>
-    public static bool Lire(string reponse, out string mots, out string pensee, out ActeLlm? acte, out string faute)
+    /// <summary>Les noms qu'il peut dire : le sien (et son nom dans sa langue), ceux de ses proches.</summary>
+    private static List<string> Noms(Humain h, IReadOnlyList<Humain> humains)
     {
-        (mots, pensee, acte, faute) = ("", "", null, "");
+        var noms = new List<string> { h.Nom };
+        if (!string.IsNullOrWhiteSpace(h.NomLangue)) noms.Add(h.NomLangue!);
+        noms.AddRange(h.Liens.Where(l => l.Id >= 1 && l.Id <= humains.Count).OrderByDescending(l => Math.Abs(l.Affection)).Take(40)
+            .Select(l => humains[l.Id - 1].Nom));
+        return noms.Distinct().ToList();
+    }
+
+    /// <summary>Ce qu'il peut dire, mot à mot (normalisé) : les formes de ses mots parlés, les noms qu'il connaît.</summary>
+    public static HashSet<string> Permis(Humain h, IReadOnlyList<Humain> humains)
+    {
+        var permis = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var x in h.Vocabulaire.Where(m => !m.Signe).Select(m => m.Forme).Concat(Noms(h, humains)))
+            foreach (var t in Normaliser(x).Split(' ', StringSplitOptions.RemoveEmptyEntries)) permis.Add(t);
+        return permis;
+    }
+
+    /// <summary>Ses mots sans les gestes et cris décrits entre astérisques.</summary>
+    private static string SansGestes(string mots) => System.Text.RegularExpressions.Regex.Replace(mots, @"\*[^*]*\*", " ");
+
+    /// <summary>Les mots qu'il a dits hors de sa langue (ni ses mots, ni des noms connus, hors gestes entre astérisques).</summary>
+    public static List<string> Inconnus(string mots, HashSet<string> permis) =>
+        Normaliser(SansGestes(mots)).Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(t => !permis.Contains(t)).Distinct().ToList();
+
+    /// <summary>Au second essai encore fautif : les mots hors de sa langue deviennent « … » (il bute, ne trouve pas le mot).</summary>
+    private static string Effacer(string mots, HashSet<string> permis)
+    {
+        var morceaux = System.Text.RegularExpressions.Regex.Split(mots, @"(\*[^*]*\*)");
+        for (var i = 0; i < morceaux.Length; i++)
+        {
+            if (morceaux[i].StartsWith('*')) continue;
+            morceaux[i] = System.Text.RegularExpressions.Regex.Replace(morceaux[i], @"[\p{L}\p{M}\p{Nd}'’-]+",
+                x => Normaliser(x.Value).Split(' ', StringSplitOptions.RemoveEmptyEntries).All(permis.Contains) ? x.Value : "…");
+        }
+        return string.Concat(morceaux);
+    }
+
+    /// <summary>Lit la réponse de l'humain ; avec l'Entité libre, ses changements deviennent un acte libre (null : aucun).</summary>
+    public static bool Lire(string reponse, out string mots, out string pensee, out ActeLlm? acte, out string faute) =>
+        Lire(reponse, out mots, out pensee, out _, out acte, out faute);
+
+    /// <summary>Lit la réponse de l'humain, avec <paramref name="sens"/> : ce que veulent dire ses mots, dans la langue du joueur.</summary>
+    public static bool Lire(string reponse, out string mots, out string pensee, out string sens, out ActeLlm? acte, out string faute)
+    {
+        (mots, pensee, sens, acte, faute) = ("", "", "", null, "");
         JsonObject? o;
         try
         {
@@ -758,7 +819,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             return false;
         }
         string Texte(string cle) => o[cle] is JsonValue v && v.TryGetValue<string>(out var s) ? ClientLlm.Resserrer(s, 1500) : "";
-        (mots, pensee) = (Texte("mots"), Texte("pensee"));
+        (mots, pensee, sens) = (Texte("mots"), Texte("pensee"), Texte("sens"));
         if (o["changements"] is JsonArray ch && ch.Count > 0)
         {
             try
@@ -895,7 +956,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             (regles, paroles) = ([], []);
         }
         return new RepliqueDto(r.Rang, L.Date(r.Le), r.Entite, paroles.Select(Libelle).ToList(), regles, r.Mots, r.Pensee, libre,
-            r.Juge.Length > 0 ? r.Juge : null, r.Erreur, Math.Round(r.DureeMs / 1000.0, 1), r.JournalPremier);
+            r.Juge.Length > 0 ? r.Juge : null, r.Erreur, Math.Round(r.DureeMs / 1000.0, 1), r.JournalPremier, r.Sens);
     }
 
     public List<DialogueResumeDto> Liste(int humain)

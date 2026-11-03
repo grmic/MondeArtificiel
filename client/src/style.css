@@ -432,6 +432,7 @@ p.bilan-prieres { font-size: 0.9em; }
 .dialogue-entite { align-self: flex-end; max-width: 88%; padding: 5px 9px; border-radius: 10px 10px 2px 10px; background: rgba(138, 108, 192, 0.25); color: #e7dcff; }
 .dialogue-humain { align-self: flex-start; max-width: 92%; padding: 5px 9px; border-radius: 10px 10px 10px 2px; background: rgba(91, 155, 213, 0.18); }
 .dialogue-pensee { margin: 0 0 0 30px; font-style: italic; color: var(--discret); font-size: 0.8rem; }
+.dialogue-sens { margin: 2px 0 2px 30px; font-size: 0.85rem; }
 .dialogue-regles { align-self: flex-end; max-width: 88%; font-size: 0.76rem; color: var(--discret); }
 .dialogue-regles summary { cursor: pointer; }
 .dialogue-regles .libre { color: #ffd479; }

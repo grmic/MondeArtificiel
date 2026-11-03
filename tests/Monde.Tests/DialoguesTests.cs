@@ -164,6 +164,20 @@ public sealed class DialoguesTests
         Assert.Equal("Le feu, le feu", ClientLlm.Resserrer("Le feu, le feu, le feu, le feu,", 2000));
     }
 
+    [Fact]
+    public void LHumainParleSaLangue_SansMotInvente()
+    {
+        var config = ConfigurationMonde.Nouvelle(5);
+        var humains = new MondeSimule(GenerateurContinent.Generer(config), MondeSimule.Nouveau(config)).InstantaneHumains().Humains;
+        var h = humains[0];
+        var permis = Dialogues.Permis(h, humains);
+        // Son nom et les gestes entre astérisques sont toujours permis ; un mot inventé ou du français ne l'est pas.
+        Assert.Empty(Dialogues.Inconnus($"{h.Nom} ! *montre le feu*", permis));
+        Assert.Equal(["shiadiavo", "feu"], Dialogues.Inconnus("shiadiavo feu *gémit*", permis));
+        Assert.True(Dialogues.Lire("""{"pensee":"…","mots":"*gémit*","sens":"J'ai peur."}""", out var mots, out _, out var sens, out _, out _));
+        Assert.Equal(("*gémit*", "J'ai peur."), (mots, sens));
+    }
+
     private sealed record ConnexionLue(string Modele);
     private sealed record EtatLu(ConnexionLue Connexion);
     private sealed record RepliqueLue(int Rang, string Entite, List<string> Traduction, List<string> Regles, string Mots, string Pensee, string? Erreur);
@@ -175,10 +189,10 @@ public sealed class DialoguesTests
         using var usine = new UsineTest();
         using var llm = new FauxLlm(
             """{"paroles":[{"parole":"NAiePasPeur","mots":"N'aie pas peur"}]}""",
-            """{"pensee":"Cette voix me connaît.","mots":"Qui es-tu ? *regarde autour*"}""",
+            """{"pensee":"Cette voix me connaît.","mots":"*regarde autour* *tremble*","sens":"Qui es-tu ?"}""",
             """{"coherent":true,"raison":""}""",
             """{"paroles":[]}""",
-            """{"pensee":"Je veux rentrer.","mots":"Laisse-moi."}""",
+            """{"pensee":"Je veux rentrer.","mots":"*recule*","sens":"Laisse-moi."}""",
             """{"coherent":true,"raison":""}""");
         var c = usine.CreerConnexion();
         await using var _ = c;
@@ -198,7 +212,7 @@ public sealed class DialoguesTests
         d = await Attendre(c, d.Id, x => x.Attend is null && x.Repliques >= 1);
         var r = Assert.Single(d.Liste);
         Assert.Null(r.Erreur);
-        Assert.Equal("Qui es-tu ? *regarde autour*", r.Mots);
+        Assert.Equal("*regarde autour* *tremble*", r.Mots);
         Assert.Single(r.Traduction);
         Assert.True(r.Regles.Count >= 2, string.Join(" | ", r.Regles));
         // La parole codée est passée par les règles des paroles et notée au registre.
