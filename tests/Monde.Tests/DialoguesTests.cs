@@ -79,6 +79,16 @@ public sealed class DialoguesTests
         Assert.Equal(2, Dialogues.Extrait("Qui aimes-tu ?", "qui aimes tu"));
         Assert.Equal(1, Dialogues.Extrait("Qui aimes-tu ?", "Tu n'es pas seul"));
         Assert.Equal(0, Dialogues.Extrait("Qui aimes-tu ? Tu n'es pas seul.", "tu n’es pas seul"));
+        // Celui qu'un ordre désigne doit être nommé : sinon le numéro est deviné.
+        var autre = humains.First(h => h.Id != 1 && h.EstVivant && h.AgeEnAnnees(monde.Secondes) >= 18);
+        fautes.Clear();
+        var json = $$"""{"paroles":[{"parole":"UnisToi","mots":"Unis-toi","cible":{{autre.Id}}}]}""";
+        Assert.Empty(Dialogues.LireTraduction(json, "Unis-toi à lui.", 1, ModeParole.Voix, humains, fautes, monde));
+        Assert.Contains(autre.Nom, Assert.Single(fautes));
+        fautes.Clear();
+        Assert.Single(Dialogues.LireTraduction(json, $"Unis-toi à {autre.Nom}.", 1, ModeParole.Voix, humains, fautes, monde));
+        // Une direction manquante pour « Pars vers » est une faute, pas le nord par défaut.
+        Assert.Empty(Dialogues.LireTraduction("""{"paroles":[{"parole":"PartsVers","mots":"Pars"}]}""", "Pars !", 1, ModeParole.Voix, humains, fautes, monde));
         // Au plus deux paroles.
         Assert.Equal(Dialogues.ParolesMax, Dialogues.LireTraduction(
             """{"paroles":[{"parole":"NAiePasPeur","mots":"pas peur"},{"parole":"TuNEsPasSeul","mots":"pas seul"},{"parole":"TaPeinePassera","mots":"passera"}]}""",
@@ -100,6 +110,11 @@ public sealed class DialoguesTests
         // Un lien sans l'autre humain est refusé avant d'arriver aux règles ; un changement sans numéro est le sien.
         Assert.NotNull(Dialogues.VerifierLibre(acte! with { Changements = [new ChangementLibre("lien", 4) { Valeur = 30 }] }, 4, humains));
         Assert.Null(Dialogues.VerifierLibre(acte! with { Changements = [new ChangementLibre("lien", 4) { Autre = 6, Valeur = 30 }] }, 4, humains));
+        // Sa réaction libre ne contredit pas les règles : s'il n'y croit pas, sa croyance ne monte pas.
+        var h4 = humains[3];
+        var monte = acte! with { Changements = [new ChangementLibre("croyance", 4) { Valeur = Math.Min(100, h4.Croyance + 30) }] };
+        if (h4.Croyance < 100) Assert.NotNull(Dialogues.Contredit(monte, h4, croit: false));
+        Assert.Null(Dialogues.Contredit(monte, h4, croit: true));
         var complete = Dialogues.Completer(acte! with { Changements = [new ChangementLibre("peur", 0) { Valeur = 10 }] }, 4);
         Assert.Equal(4, complete.Changements![0].Humain);
         Assert.False(Dialogues.Lire("pas du JSON", out _, out _, out _, out _));

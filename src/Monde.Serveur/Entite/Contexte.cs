@@ -58,7 +58,7 @@ public static class Contexte
 
     private const string FormeParlerCommunaute = """{"type":"parler_communaute","communaute":n°,"parole":"…","mode":"…","cibles":[n°],"direction":0-7}""";
 
-    private const string FormeParler = """{"type":"parler","humains":[n°],"parole":"…","mode":"…","cible":n°,"param":n}""";
+    private const string FormeParler = """{"type":"parler","humains":[n°],"parole":"…","mode":"…","cible":n°,"direction":0-7,"param":n}""";
 
     /// <summary>La consigne : le rôle de l'Entité, la forme de la réponse et le catalogue des actes permis.</summary>
     public static string Consigne(MondeSimule monde, FamillesLlm permises, string caractere = "", string caractereLlm = "", bool libre = false, bool combinaisons = true)

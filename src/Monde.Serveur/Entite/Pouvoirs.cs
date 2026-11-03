@@ -73,8 +73,8 @@ public static class Pouvoirs
     /// <summary>Une parole à des humains ou aux membres de communautés ; rend ce que chacun en a fait.</summary>
     public static List<(int Humain, Recit Resultat)> Parler(MondeSimule monde, DemandeParole demande)
     {
-        if (!Enum.TryParse<Parole>(demande.Parole, out var parole) || !Enum.IsDefined(parole) || parole == Parole.Penchant
-            || !Enum.TryParse<ModeParole>(demande.Mode, out var mode) || !Enum.IsDefined(mode) || mode == ModeParole.Penchant)
+        if (!Enum.TryParse<Parole>(demande.Parole, true, out var parole) || !Enum.IsDefined(parole) || parole == Parole.Penchant
+            || !Enum.TryParse<ModeParole>(demande.Mode, true, out var mode) || !Enum.IsDefined(mode) || mode == ModeParole.Penchant)
             throw new ArgumentException(L.T("erreur.parole"));
         var (humainsIds, communautes) = Destinataires(demande.Humains, demande.Communautes);
         var (maintenant, humains) = monde.InstantaneHumains();
@@ -97,8 +97,8 @@ public static class Pouvoirs
     /// <summary>Une parole à toute une communauté ; rend ce que chaque adulte en a fait et, par communauté visée, ce que le groupe en fera.</summary>
     public static (List<(int Humain, Recit Resultat)> Membres, List<string> Groupe) ParlerACommunaute(MondeSimule monde, DemandeParoleCommunaute demande)
     {
-        if (!Enum.TryParse<Parole>(demande.Parole, out var parole) || !Enum.IsDefined(parole) || !Paroles.Collective(parole)
-            || !Enum.TryParse<ModeParole>(demande.Mode, out var mode) || !Enum.IsDefined(mode) || mode == ModeParole.Penchant)
+        if (!Enum.TryParse<Parole>(demande.Parole, true, out var parole) || !Enum.IsDefined(parole) || !Paroles.Collective(parole)
+            || !Enum.TryParse<ModeParole>(demande.Mode, true, out var mode) || !Enum.IsDefined(mode) || mode == ModeParole.Penchant)
             throw new ArgumentException(L.T("erreur.parole"));
         var communautes = monde.Communautes();
         if (demande.Communaute < 1 || demande.Communaute > communautes.Count || !communautes[demande.Communaute - 1].Active)

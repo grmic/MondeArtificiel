@@ -106,6 +106,8 @@ public static class Actes
     {
         static JsonObject T(string type) => new() { ["type"] = type };
         static JsonObject Entiers() => new() { ["type"] = "array", ["items"] = T("integer") };
+        // Les clés en listes fermées (0.36.3) : le LLM ne peut plus écrire « guerir » pour « Guerir » ni inventer un nom.
+        static JsonObject Liste(IEnumerable<string> cles) => new() { ["type"] = "string", ["enum"] = new JsonArray([.. cles.Select(c => (JsonNode)c)]) };
         var acte = new JsonObject
         {
             ["type"] = "object",
@@ -113,9 +115,12 @@ public static class Actes
             {
                 ["type"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. TypesPermis(libre).Select(t => (JsonNode)t)]) },
                 ["humain"] = T("integer"), ["humains"] = Entiers(), ["communaute"] = T("integer"), ["communautes"] = Entiers(),
-                ["cible"] = T("integer"), ["cibles"] = Entiers(), ["parole"] = T("string"), ["mode"] = T("string"), ["param"] = T("integer"),
-                ["direction"] = T("integer"), ["geste"] = T("string"), ["maniere"] = T("string"), ["calamite"] = T("string"), ["force"] = T("number"),
-                ["jours"] = T("number"), ["priere"] = T("integer"), ["signe"] = T("boolean"), ["catastrophe"] = T("string"), ["x"] = T("integer"),
+                ["cible"] = T("integer"), ["cibles"] = Entiers(), ["parole"] = Liste(Enum.GetNames<Parole>().Where(p => p != nameof(Parole.Penchant))),
+                ["mode"] = Liste(Enum.GetNames<ModeParole>().Where(m => m != nameof(ModeParole.Penchant))), ["param"] = T("integer"),
+                ["direction"] = new JsonObject { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 7 },
+                ["geste"] = Liste(Enum.GetNames<GesteEntite>().Concat(Enum.GetNames<Simulation.Humains.Geste>()).Distinct()),
+                ["maniere"] = Liste(Enum.GetNames<ManiereGeste>()), ["calamite"] = Liste(Provoquables.Select(p => p.Cle)), ["force"] = T("number"),
+                ["jours"] = T("number"), ["priere"] = T("integer"), ["signe"] = T("boolean"), ["catastrophe"] = Liste(Provoquables.Select(p => p.Cle)), ["x"] = T("integer"),
                 ["y"] = T("integer"), ["intensite"] = T("number"), ["operation"] = T("string"), ["a"] = T("string"), ["b"] = T("string"),
                 ["lien"] = T("integer"), ["espece"] = T("integer"), ["mutuel"] = T("boolean"), ["passion"] = T("boolean"),
             },
@@ -204,7 +209,7 @@ public static class Actes
             {
                 try
                 {
-                    if (n?.Deserialize<ActeLlm>(Json) is { } x && !string.IsNullOrWhiteSpace(x.Type)) actes.Add(x);
+                    if (n?.Deserialize<ActeLlm>(Json) is { } x && !string.IsNullOrWhiteSpace(x.Type)) actes.Add(Canonique(x));
                 }
                 catch (JsonException e)
                 {
@@ -215,6 +220,24 @@ public static class Actes
         return new DecisionLlm(Texte(o["pensee"]), Texte(o["mots"]), actes, Texte(o["caractere"]));
     }
 
+    /// <summary>
+    /// Les noms écrits à la place des clés (« guerir », « reve », « TYPE » en majuscules) remis sous leur forme exacte (0.36.3) : la
+    /// suite (règles, registre, textes) ne voit que des clés connues.
+    /// </summary>
+    public static ActeLlm Canonique(ActeLlm a)
+    {
+        static string? Cle<T>(string? s) where T : struct, Enum =>
+            s is { Length: > 0 } && Enum.TryParse<T>(s.Trim(), true, out var v) && Enum.IsDefined(v) && !int.TryParse(s, out _) ? v.ToString() : s;
+        var geste = a.Type.Trim().ToLowerInvariant() == SoufflerGeste ? Cle<Simulation.Humains.Geste>(a.Geste) : Cle<GesteEntite>(a.Geste);
+        return a with
+        {
+            Type = a.Type.Trim().ToLowerInvariant(), Parole = Cle<Parole>(a.Parole), Mode = Cle<ModeParole>(a.Mode), Geste = geste,
+            Maniere = Cle<ManiereGeste>(a.Maniere), Catastrophe = a.Catastrophe?.Trim().ToLowerInvariant(), Calamite = a.Calamite?.Trim().ToLowerInvariant(),
+            // Une direction donnée dans « direction » vaut pour « Pars vers » comme pour « Partez vers ».
+            Param = a.Direction is { } d && Enum.TryParse<Parole>(a.Parole, true, out var p) && p is Parole.PartsVers or Parole.PartezVers ? d : a.Param,
+        };
+    }
+
     private static string Texte(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? ClientLlm.Couper(s.Trim(), 2000) : "";
 
     /// <summary>La famille d'un acte (pour les cases du joueur), ou Aucune pour « rien » et un type inconnu.</summary>
@@ -222,7 +245,7 @@ public static class Actes
     {
         Parler or ParlerCommunaute or Penchant or Refuser => FamillesLlm.Paroles,
         Exaucer => FamillesLlm.Bienfaits,
-        Geste => Enum.TryParse<GesteEntite>(a.Geste, out var g) && Enum.IsDefined(g) && Gestes.EstBienfait(g) ? FamillesLlm.Bienfaits : FamillesLlm.Chatiments,
+        Geste => Enum.TryParse<GesteEntite>(a.Geste, true, out var g) && Enum.IsDefined(g) && Gestes.EstBienfait(g) ? FamillesLlm.Bienfaits : FamillesLlm.Chatiments,
         Catastrophe => FamillesLlm.Catastrophes,
         SoufflerGeste or SoufflerCombinaison => FamillesLlm.Souffles,
         _ => FamillesLlm.Aucune,
@@ -240,10 +263,10 @@ public static class Actes
         if (a.Type == Libre && (a.Changements?.Count ?? 0) + (a.Decrets?.Count ?? 0) == 0) throw new ArgumentException(L.T("libre.erreur.vide"));
         var f = Famille(a);
         if (f != FamillesLlm.Aucune && (permises & f) == 0) throw new ArgumentException(L.T("llm.erreur.famille", ("type", a.Type)));
-        if (a.Type == Parler && Enum.TryParse<Parole>(a.Parole, out var p) && Paroles.Collective(p))
+        if (a.Type == Parler && Enum.TryParse<Parole>(a.Parole, true, out var p) && Enum.IsDefined(p) && Paroles.Collective(p))
             throw new ArgumentException(L.T("llm.erreur.paroleCollective", ("parole", a.Parole)));
         // Une parole à un humain envoyée à toute une communauté : on le dit avant d'appliquer, pour que le LLM corrige au second essai.
-        if (a.Type == ParlerCommunaute && Enum.TryParse<Parole>(a.Parole, out var q) && Enum.IsDefined(q) && !Paroles.Collective(q))
+        if (a.Type == ParlerCommunaute && Enum.TryParse<Parole>(a.Parole, true, out var q) && Enum.IsDefined(q) && !Paroles.Collective(q))
             throw new ArgumentException(L.T("llm.erreur.paroleIndividuelle", ("parole", a.Parole),
                 ("liste", string.Join(", ", Enum.GetValues<Parole>().Where(Paroles.Collective)))));
         // Une combinaison faite de pièces « P1, P2… » qu'il n'a pas reçues (son regard sur le monde ne les donne pas) : on le
@@ -261,20 +284,8 @@ public static class Actes
                 || !Physique.Convient(g, m1, m2))
                 throw new ArgumentException(L.T("llm.erreur.gesteMatieres", ("geste", g), ("forme", Forme(forme))));
         }
-        // Un geste de l'Entité sur un numéro qui n'est pas un humain vivant (ou une communauté, selon le geste) : on le dit
-        // avant d'appliquer, pour qu'il corrige au second essai.
-        if (a.Type == Geste && monde is not null && Enum.TryParse<GesteEntite>(a.Geste, out var ge) && Enum.IsDefined(ge))
-        {
-            var cible = a.Cible ?? a.Humain ?? a.Communaute ?? 0;
-            if (Gestes.SurHumain(ge))
-            {
-                var (_, humains) = monde.InstantaneHumains();
-                if (cible < 1 || cible > humains.Count || !humains[cible - 1].EstVivant)
-                    throw new ArgumentException(L.T("llm.erreur.cibleHumain", ("geste", ge), ("cible", cible)));
-            }
-            else if (cible < 1 || monde.Communautes().FirstOrDefault(c => c.Id == cible) is not { Active: true })
-                throw new ArgumentException(L.T("llm.erreur.cibleCommunaute", ("geste", ge), ("cible", cible)));
-        }
+        // Puis l'essai contre le monde : tout ce que les pouvoirs vérifieraient en l'appliquant (0.36.3).
+        if (monde is not null) Essais.Essayer(monde, a, pieces);
     }
 
     /// <summary>Un geste et ses matières, en clés : Frapper(Galet|Silex, Galet|Silex).</summary>

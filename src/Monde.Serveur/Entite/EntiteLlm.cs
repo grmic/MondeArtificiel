@@ -312,6 +312,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
 
         if (string.IsNullOrEmpty(Connexion.Modele)) return;
         if (mode != ModeEntite.Joueur && reglages.Regard) Regarder(monde, reglages);
+        // Pendant un dialogue, elle attend : elle ne touche pas à celui à qui l'on parle, et laisse le LLM au dialogue (0.36.3).
+        if (monde.EnDialogue) return;
         Demande? d;
         lock (_verrou)
         {
@@ -345,6 +347,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             priere = monde.Prieres().FirstOrDefault(p => p.Id == d.Priere);
             // Déjà close (exaucée par le joueur, arrivée d'elle-même, expirée) : rien à demander.
             if (priere is null || priere.Issue != IssuePriere.EnAttente || priere.Refus != RefusPriere.Aucun) return;
+            // Le joueur lui a répondu par un dialogue : c'est sa réponse.
+            if (service.Depot.PriereEnDialogue(d.Priere)) return;
         }
         var connexion = Connexion;
         var permises = reglages.Familles;
@@ -496,7 +500,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var monde = service.Monde;
         // Une prière déjà close : l'échange arrive trop tard.
         if (e.Priere != 0 && actes.All(a => a.Type is Actes.Exaucer or Actes.Refuser or Actes.Rien)
-            && monde.Prieres().FirstOrDefault(p => p.Id == e.Priere) is not { Issue: IssuePriere.EnAttente })
+            && (monde.Prieres().FirstOrDefault(p => p.Id == e.Priere) is not { Issue: IssuePriere.EnAttente } || service.Depot.PriereEnDialogue(e.Priere)))
         {
             service.Depot.MettreAJourEchange(e with { Statut = 4, Resultats = JsonSerializer.Serialize(new[] { L.T("llm.resultat.tropTard") }, Actes.Json) });
             await hub.Clients.Diffuser("EntiteLlm", () => Etat());

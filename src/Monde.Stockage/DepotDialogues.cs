@@ -161,6 +161,17 @@ public sealed partial class DepotMonde
         return liste;
     }
 
+    /// <summary>Vrai si l'Entité a répondu à cette prière par un dialogue (0.36.3) : l'Entité-LLM n'y répond plus.</summary>
+    public bool PriereEnDialogue(int priere)
+    {
+        if (priere == 0) return false;
+        using var connexion = Ouvrir();
+        using var c = connexion.CreateCommand();
+        c.CommandText = "SELECT EXISTS(SELECT 1 FROM dialogues WHERE priere = $p);";
+        c.Parameters.AddWithValue("$p", priere);
+        return Convert.ToInt64(c.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture) != 0;
+    }
+
     /// <summary>Enregistre une réplique ; rend son numéro.</summary>
     public long AjouterReplique(RepliqueEntite r)
     {

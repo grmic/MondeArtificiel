@@ -216,7 +216,7 @@ Choisissez le modèle selon la mémoire de votre machine. Avec 16 Go ou plus, un
 dotnet test
 ```
 
-La suite complète (614 tests) prend une dizaine de minutes, car des tests simulent plusieurs années entières.
+La suite complète (616 tests) prend une dizaine de minutes, car des tests simulent plusieurs années entières.
 
 ## Modifier le client web
 
@@ -243,6 +243,7 @@ Le serveur n'écoute que sur `localhost:5080` (voir `src/Monde.Serveur/appsettin
 
 Les versions, de la plus récente à la plus ancienne. Le détail de chaque nouveauté est dans le guide ci-dessus.
 
+- **0.36.3** (3 nov. 2026) : le LLM se trompe moins et se corrige. Chacun de ses actes est essayé contre le monde avant d'agir (humain vivant, communauté encore là, prière encore ouverte, direction, plante, lieu, bornes d'un acte libre) : une faute lui est renvoyée avec la raison pour un second essai, au lieu d'un « refusé par les règles ». Les noms (paroles, voies, gestes, manières, catastrophes, sortes libres) lui sont donnés en listes fermées et lus sans tenir compte des majuscules ; « direction » vaut partout. Dans un dialogue : la cible d'un ordre doit être nommée dans vos mots, la réaction libre de l'humain ne peut pas contredire ce que les règles ont décidé (croire ou douter), l'Entité-LLM attend la fin du dialogue et ne répond plus à une prière à laquelle vous avez répondu en lui parlant, et un dialogue coupé par un arrêt du serveur est clos au redémarrage. La simulation sans LLM est identique.
 - **0.36.2** (3 nov. 2026) : parler directement avec un humain joué par le LLM local (rêve, voix ou apparition) ; les règles décident de ce qu'il comprend, croit et fait ; « X t'appelle » sur une prière forte. Correctif du 3 nov. : une question n'est plus traduite en ordres (chaque parole doit citer les mots qui la disent), et un lien changé librement doit nommer l'autre humain.
 - **0.36.1** (2 nov. 2026) : un visage dessiné pour chaque humain, hérité de ses parents, sur sa fiche et en vignette devant les noms.
 - **0.36.0** (2 nov. 2026) : option « Vitesse : humains de fond simulés en groupe » (seuil en nombre de vivants), case « Garder en individu » sur les fiches.

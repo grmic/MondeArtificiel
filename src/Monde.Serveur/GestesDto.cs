@@ -53,8 +53,8 @@ public static class GestesEntite
     /// </summary>
     public static (GesteEntite Geste, ManiereGeste Maniere, int Param) Lire(DemandeGeste d, IReadOnlyCollection<int> pathogenes)
     {
-        if (!Enum.TryParse<GesteEntite>(d.Geste, out var geste) || !Enum.IsDefined(geste)
-            || !Enum.TryParse<ManiereGeste>(d.Maniere, out var maniere) || !Enum.IsDefined(maniere))
+        if (!Enum.TryParse<GesteEntite>(d.Geste, true, out var geste) || !Enum.IsDefined(geste)
+            || !Enum.TryParse<ManiereGeste>(d.Maniere, true, out var maniere) || !Enum.IsDefined(maniere))
             throw new ArgumentException(L.T("erreur.gesteManiere"));
         if (!double.IsFinite(d.Force) || !double.IsFinite(d.Jours)) throw new ArgumentException(L.T("erreur.forceDuree"));
         var param = geste switch

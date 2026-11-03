@@ -171,15 +171,7 @@ public sealed partial class MondeSimule
     {
         lock (_verrou)
         {
-            if (acte.Changements.Count == 0 && acte.Decrets.Count == 0) throw Faute("vide");
-            if (acte.Changements.Count > Simulation.Libre.ChangementsMax) throw Faute("tropDeChangements");
-            if (acte.Decrets.Count > Simulation.Libre.DecretsMax) throw Faute("tropDeDecrets");
-            foreach (var c in acte.Changements) Verifier(c);
-            foreach (var d in acte.Decrets)
-            {
-                VerifierDecret(d);
-                if (d.Communaute != 0 && !CommunauteDe(d.Communaute, "decret").Active) throw Faute($"dispersee|decret|{d.Communaute}");
-            }
+            VerifierLibreSansVerrou(acte);
 
             var maintenant = _secondes;
             var touches = acte.Changements.Select(c => c.Humain).Where(id => id >= 1 && id <= _humains.Count).Distinct().Select(id => _humains[id - 1]).ToList();
@@ -220,6 +212,28 @@ public sealed partial class MondeSimule
             _effetsConnus = EffetsConnus();
             VerserJournal();
             return new ResultatLibre(lignes, faits, decrets, savent, annonce);
+        }
+    }
+
+    /// <summary>
+    /// Vérifie un acte libre sans rien changer au monde (0.36.3) : les mêmes vérifications qu'avant de l'appliquer. Lève
+    /// <see cref="ArgumentException"/> (code « libre.erreur.… ») à la première faute.
+    /// </summary>
+    public void VerifierLibre(ActeLibre acte)
+    {
+        lock (_verrou) VerifierLibreSansVerrou(acte);
+    }
+
+    private void VerifierLibreSansVerrou(ActeLibre acte)
+    {
+        if (acte.Changements.Count == 0 && acte.Decrets.Count == 0) throw Faute("vide");
+        if (acte.Changements.Count > Simulation.Libre.ChangementsMax) throw Faute("tropDeChangements");
+        if (acte.Decrets.Count > Simulation.Libre.DecretsMax) throw Faute("tropDeDecrets");
+        foreach (var c in acte.Changements) Verifier(c);
+        foreach (var d in acte.Decrets)
+        {
+            VerifierDecret(d);
+            if (d.Communaute != 0 && !CommunauteDe(d.Communaute, "decret").Active) throw Faute($"dispersee|decret|{d.Communaute}");
         }
     }
 

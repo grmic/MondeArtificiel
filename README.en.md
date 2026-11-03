@@ -216,7 +216,7 @@ Choose the model according to your machine's memory. With 16 GB or more, a 12-bi
 dotnet test
 ```
 
-The full suite (614 tests) takes about ten minutes, because some tests simulate several entire years.
+The full suite (616 tests) takes about ten minutes, because some tests simulate several entire years.
 
 ## Modifying the web client
 
@@ -243,6 +243,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.36.3** (3 Nov 2026): the LLM makes fewer mistakes and corrects itself. Each of its acts is tried against the world before acting (living human, community still there, prayer still open, direction, plant, place, bounds of a free act): a mistake is sent back to it with the reason for a second try, instead of a “refused by the rules”. Names (sayings, ways, gestures, manners, catastrophes, free changes) are given to it as closed lists and read regardless of capitals; “direction” works everywhere. In a dialogue: the target of an order must be named in your words, the human's free reaction cannot contradict what the rules decided (believing or doubting), the LLM Entity waits for the dialogue to end and no longer answers a prayer you answered by speaking to them, and a dialogue cut off by a server stop is closed at restart. The simulation without an LLM is identical.
 - **0.36.2** (3 Nov 2026): speak directly with a human played by the local LLM (dream, voice or appearance); the rules decide what they understand, believe and do; "X is calling you" on a strong prayer. Fix of 3 Nov: a question is no longer translated into orders (each saying must quote the words that say it), and a freely changed bond must name the other human.
 - **0.36.1** (2 Nov 2026): a drawn face for every human, inherited from their parents, on their sheet and as a thumbnail before names.
 - **0.36.0** (2 Nov 2026): "Speed: background humans simulated as a group" option (threshold in number of living humans), "Keep as an individual" box on sheets.

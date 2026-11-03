@@ -51,7 +51,7 @@ public static class Registre
         {
             case Actes.Geste:
             {
-                var surHumain = Enum.TryParse<GesteEntite>(a.Geste, out var g) && Enum.IsDefined(g) && Gestes.SurHumain(g);
+                var surHumain = Enum.TryParse<GesteEntite>(a.Geste, true, out var g) && Enum.IsDefined(g) && Gestes.SurHumain(g);
                 var cible = a.Cible ?? a.Humain ?? a.Communaute ?? 0;
                 var communaute = 0;
                 if (surHumain)

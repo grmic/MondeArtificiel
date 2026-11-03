@@ -69,6 +69,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         public string? Attend;
         public string? Erreur;
         public required MondeSimule Monde;
+        /// <summary>La base de son monde : si l'on change de monde, le dialogue se clôt dans la sienne, pas dans celle du nouveau.</summary>
+        public required DepotMonde Depot;
     }
 
     private readonly Lock _verrou = new();
@@ -98,7 +100,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             if (priere != 0 && monde.Prieres().FirstOrDefault(p => p.Id == priere)?.HumainId != humain) priere = 0;
             var id = service.Depot.AjouterDialogue(new DialogueEntite(0, humain, (int)voie, priere, maintenant, 0, DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture),
                 entite.Connexion.Libelle, 0, 0, 0, -1, false, 0));
-            _courant = new EnCours { Id = id, Humain = humain, Mode = voie, Priere = priere, Monde = monde };
+            _courant = new EnCours { Id = id, Humain = humain, Mode = voie, Priere = priere, Monde = monde, Depot = service.Depot };
             monde.EnDialogue = true;
         }
         _ = Diffuser();
@@ -174,7 +176,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     /// <summary>Clôt le dialogue (sous le verrou) : la fin passe par les règles, l'horloge repart.</summary>
     private void Finir(EnCours c, FinDialogue fin)
     {
-        var d = service.Depot.Dialogue(c.Id);
+        var d = c.Depot.Dialogue(c.Id);
         long ligne = 0;
         if (ReferenceEquals(c.Monde, service.Monde))
         {
@@ -188,7 +190,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             service.Sauvegarder();
         }
         if (d is not null)
-            service.Depot.MettreAJourDialogue(d with { Fin = c.Monde.Secondes, Statut = 1, FinRaison = (int)fin, Repliques = c.Rang, Croit = c.Croit is { } b ? b ? 1 : 0 : -1,
+            c.Depot.MettreAJourDialogue(d with { Fin = c.Monde.Secondes, Statut = 1, FinRaison = (int)fin, Repliques = c.Rang, Croit = c.Croit is { } b ? b ? 1 : 0 : -1,
                 Comprise = c.Comprise, JournalFin = ligne });
         c.Monde.EnDialogue = false;
         if (ReferenceEquals(_courant, c)) _courant = null;
@@ -202,7 +204,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         var connexion = entite.Connexion;
         var reglages = entite.Reglages;
         var chrono = Stopwatch.StartNew();
-        var precedentes = service.Depot.Repliques(c.Id);
+        var precedentes = c.Depot.Repliques(c.Id);
         var brut = new StringBuilder();
 
         // 1. Traduire ses mots en paroles codées.
@@ -290,7 +292,19 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     if (acte is not null && !libre) acte = null;
                     string? fauteLibre = null;
                     if (acte is not null) acte = Completer(acte, c.Humain);
-                    if (acte is not null) fauteLibre = VerifierLibre(acte, c.Humain, humains);
+                    if (acte is not null) fauteLibre = VerifierLibre(acte, c.Humain, humains) ?? Contredit(acte, h, regle.Croit);
+                    // Puis les règles des actes libres, sans rien changer : une faute donne un second essai, pas un refus.
+                    if (acte is not null && fauteLibre is null)
+                    {
+                        try
+                        {
+                            Libres.Verifier(monde, acte);
+                        }
+                        catch (ArgumentException e)
+                        {
+                            fauteLibre = e.Message;
+                        }
+                    }
                     // Le juge relit ses mots (et sa réaction libre) au regard de sa fiche et de ce que les règles ont décidé.
                     if (fauteLibre is null && reglages.Juge)
                     {
@@ -345,12 +359,12 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             }
         }
         if (dernier >= premier && premier > 0) MarquesLlm.Ajouter(premier, dernier);
-        service.Depot.AjouterReplique(new RepliqueEntite(0, c.Id, rang, monde.Secondes, texte, JsonSerializer.Serialize(paroles, Actes.Json),
+        c.Depot.AjouterReplique(new RepliqueEntite(0, c.Id, rang, monde.Secondes, texte, JsonSerializer.Serialize(paroles, Actes.Json),
             JsonSerializer.Serialize(regles, Actes.Json), mots, pensee, JsonSerializer.Serialize(new { acte = libreJson, resultats = libreTextes }, Actes.Json), juge, lu,
             brut.ToString(), chrono.ElapsedMilliseconds, premier, dernier, erreur));
-        var d0 = service.Depot.Dialogue(c.Id);
+        var d0 = c.Depot.Dialogue(c.Id);
         if (d0 is not null)
-            service.Depot.MettreAJourDialogue(d0 with { Repliques = rang, Croit = c.Croit is { } b ? b ? 1 : 0 : -1, Comprise = c.Comprise });
+            c.Depot.MettreAJourDialogue(d0 with { Repliques = rang, Croit = c.Croit is { } b ? b ? 1 : 0 : -1, Comprise = c.Comprise });
         c.Erreur = erreur;
         if (regle.Fin != FinDialogue.Aucune)
             lock (_verrou)
@@ -386,6 +400,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                         ["parole"] = new JsonObject { ["type"] = "string" },
                         ["mots"] = new JsonObject { ["type"] = "string" },
                         ["cible"] = new JsonObject { ["type"] = "integer" },
+                        ["direction"] = new JsonObject { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 7 },
                         ["param"] = new JsonObject { ["type"] = "integer" },
                     },
                     ["required"] = new JsonArray("parole", "mots"),
@@ -448,7 +463,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             var reponse = await client.Demander(connexion, consigne, messages, SchemaTraduction(), delai.Token);
             brut.AppendLine($"---- {L.T("dlg.trace.traduction")} ({essai + 1}) ----").AppendLine(reponse);
             var fautes = new List<string>();
-            valides = LireTraduction(reponse, texte, c.Humain, c.Mode, humains, fautes);
+            valides = LireTraduction(reponse, texte, c.Humain, c.Mode, humains, fautes, monde);
             if (fautes.Count == 0 || essai == 1) break;
             messages.Add(("assistant", reponse));
             messages.Add(("user", L.T("llm.d.corriger", ("erreurs", string.Join(" ", fautes)))));
@@ -457,7 +472,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     }
 
     /// <summary>Lit la traduction : les paroles valides (au plus <see cref="ParolesMax"/>), les autres dans <paramref name="fautes"/>.</summary>
-    public static List<ActeLlm> LireTraduction(string reponse, string texte, int humain, ModeParole mode, IReadOnlyList<Humain> humains, List<string> fautes)
+    public static List<ActeLlm> LireTraduction(string reponse, string texte, int humain, ModeParole mode, IReadOnlyList<Humain> humains, List<string> fautes,
+        MondeSimule? monde = null)
     {
         var valides = new List<ActeLlm>();
         JsonObject? o = null;
@@ -499,13 +515,20 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                 fautes.Add(L.T("dlg.erreur.cible", ("parole", p)));
                 continue;
             }
+            // Celui qu'elle désigne doit être nommé dans ses mots : sinon le LLM a deviné un numéro parmi ses proches.
+            if (Paroles.VeutCible(p) && !(" " + Normaliser(texte) + " ").Contains(" " + Normaliser(humains[cible - 1].Nom) + " ", StringComparison.Ordinal))
+            {
+                fautes.Add(L.T("dlg.erreur.cibleNom", ("parole", p), ("nom", humains[cible - 1].Nom)));
+                continue;
+            }
             var a = new ActeLlm
             {
-                Type = Actes.Parler, Humains = [humain], Parole = p.ToString(), Mode = mode.ToString(), Cible = Paroles.VeutCible(p) ? cible : 0, Param = Entier("param") ?? 0,
+                Type = Actes.Parler, Humains = [humain], Parole = p.ToString(), Mode = mode.ToString(), Cible = Paroles.VeutCible(p) ? cible : 0,
+                Param = (p == Parole.PartsVers ? Entier("direction") ?? Entier("param") : Entier("param") ?? Entier("direction")),
             };
             try
             {
-                Actes.Verifier(a, FamillesLlm.Paroles);
+                Actes.Verifier(a, FamillesLlm.Paroles, monde: monde);
                 if (!valides.Any(y => y.Parole == a.Parole)) valides.Add(a);
             }
             catch (ArgumentException e)
@@ -569,7 +592,27 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     private static JsonObject Schema(bool libre)
     {
         var proprietes = new JsonObject { ["pensee"] = new JsonObject { ["type"] = "string" }, ["mots"] = new JsonObject { ["type"] = "string" } };
-        if (libre) proprietes["changements"] = new JsonObject { ["type"] = "array", ["items"] = new JsonObject { ["type"] = "object" } };
+        // La forme complète de chaque changement, sortes en liste fermée (0.36.3) : sans elle, le LLM devinait les champs (« autre »).
+        if (libre)
+            proprietes["changements"] = new JsonObject
+            {
+                ["type"] = "array",
+                ["items"] = new JsonObject
+                {
+                    ["type"] = "object",
+                    ["properties"] = new JsonObject
+                    {
+                        ["quoi"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. SortesLibres.Select(x => (JsonNode)x)]) },
+                        ["humain"] = new JsonObject { ["type"] = "integer" },
+                        ["autre"] = new JsonObject { ["type"] = "integer" },
+                        ["communaute"] = new JsonObject { ["type"] = "integer" },
+                        ["valeur"] = new JsonObject { ["type"] = "number" },
+                        ["texte"] = new JsonObject { ["type"] = "string" },
+                        ["genre"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<TypeIntime>().Select(x => (JsonNode)x)]) },
+                    },
+                    ["required"] = new JsonArray("quoi"),
+                },
+            };
         return new JsonObject { ["type"] = "object", ["properties"] = proprietes, ["required"] = new JsonArray("pensee", "mots") };
     }
 
@@ -685,6 +728,26 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         return null;
     }
 
+    /// <summary>
+    /// Sa réaction libre ne peut pas aller contre ce que les règles ont décidé dans cette réplique (0.36.3) : s'il n'y croit pas, sa
+    /// croyance et sa ferveur ne montent pas ; s'il y croit, sa croyance ne baisse pas. Rend la faute, ou null.
+    /// </summary>
+    public static string? Contredit(ActeLlm acte, Humain h, bool croit)
+    {
+        foreach (var c in acte.Changements ?? [])
+        {
+            if (c.Valeur is not { } v) continue;
+            var contraire = c.Quoi switch
+            {
+                "croyance" => croit ? v < h.Croyance : v > h.Croyance,
+                "ferveur" => !croit && v > h.Ferveur,
+                _ => false,
+            };
+            if (contraire) return L.T(croit ? "dlg.erreur.contraireCroit" : "dlg.erreur.contraireDoute", ("quoi", c.Quoi), ("nom", h.Nom));
+        }
+        return null;
+    }
+
     // ───────────── Pour le navigateur ─────────────
 
     private string CroitTexte(int croit, bool comprise) => L.T(croit == 1 ? "dlg.croit.oui" : comprise ? "dlg.croit.doute" : "dlg.croit.incompris");
@@ -747,6 +810,33 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         }
     }
 
+    /// <summary>
+    /// Les dialogues restés ouverts quand le serveur s'est arrêté (0.36.3) : ils se closent comme un silence, avec leur ligne au journal
+    /// et le souvenir de l'humain.
+    /// </summary>
+    private void Orphelins(MondeSimule monde)
+    {
+        long? courant;
+        lock (_verrou) courant = _courant?.Id;
+        var depot = service.Depot;
+        var clos = false;
+        foreach (var d in depot.Dialogues(statut: 0))
+        {
+            if (d.Id == courant) continue;
+            long ligne = 0;
+            try
+            {
+                ligne = monde.FinirDialogue(d.Humain, (ModeParole)d.Mode, d.Repliques, d.Croit == 1, d.Comprise, FinDialogue.Silence, 0);
+            }
+            catch (ArgumentException)
+            {
+            }
+            depot.MettreAJourDialogue(d with { Fin = monde.Secondes, Statut = 1, FinRaison = (int)FinDialogue.Silence, JournalFin = ligne });
+            clos = true;
+        }
+        if (clos && ReferenceEquals(monde, service.Monde)) service.Sauvegarder();
+    }
+
     // ───────────── Veille : silence, changement de monde, appels ─────────────
 
     protected override async Task ExecuteAsync(CancellationToken arret)
@@ -789,6 +879,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         var prieres = monde.Prieres();
         if (!ReferenceEquals(monde, _monde))
         {
+            Orphelins(monde);
             _monde = monde;
             _dernierePriere = prieres.Select(p => p.Id).DefaultIfEmpty(0).Max();
             return;

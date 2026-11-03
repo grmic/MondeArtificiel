@@ -33,7 +33,7 @@ public static class Libres
     /// <summary>Applique un acte libre ; lève <see cref="ArgumentException"/> (en mots) si un changement est impossible : rien n'est fait.</summary>
     public static FaitEntite Appliquer(MondeSimule monde, ActeLlm a)
     {
-        var acte = new ActeLibre(a.Recit ?? "", a.Visible ?? false, a.Bienfait ?? true, a.Temoins ?? [], a.Changements ?? [], a.Decrets ?? []);
+        var acte = Lire(a);
         ResultatLibre r;
         try
         {
@@ -47,6 +47,22 @@ public static class Libres
         if (r.Savent > 0) lignes.Add(L.T("libre.resultat.savent", ("n", r.Savent)));
         var defaire = JsonSerializer.Serialize(new DefaireLibre([.. r.Faits], [.. r.Decrets.Select(d => d.Id)]), Actes.Json);
         return new FaitEntite(lignes, 1, Math.Max(1, r.Faits.Select(f => f.Humain).Where(h => h > 0).Distinct().Count()), defaire);
+    }
+
+    private static ActeLibre Lire(ActeLlm a) =>
+        new(a.Recit ?? "", a.Visible ?? false, a.Bienfait ?? true, a.Temoins ?? [], a.Changements ?? [], a.Decrets ?? []);
+
+    /// <summary>Vérifie un acte libre par les règles du monde, sans rien changer (0.36.3) ; lève <see cref="ArgumentException"/> avec la raison en mots.</summary>
+    public static void Verifier(MondeSimule monde, ActeLlm a)
+    {
+        try
+        {
+            monde.VerifierLibre(Lire(a));
+        }
+        catch (ArgumentException e)
+        {
+            throw new ArgumentException(Message(e.Message), e);
+        }
     }
 
     /// <summary>Défait un acte libre noté au registre ; rend ce qui a été défait, en mots.</summary>
