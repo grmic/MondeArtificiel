@@ -61,19 +61,28 @@ public sealed class DialoguesTests
         var monde = new MondeSimule(GenerateurContinent.Generer(config), MondeSimule.Nouveau(config));
         var (_, humains) = monde.InstantaneHumains();
         var fautes = new List<string>();
-        var r = Dialogues.LireTraduction("""{"paroles":[{"parole":"naiepaspeur"},{"parole":"FaitesLaGuerre"},{"parole":"UnisToi","cible":999999},{"parole":"Inventee"}]}""",
-            1, ModeParole.Voix, humains, fautes);
+        const string texte = "N'aie pas peur, je suis là. Fais la guerre ! Unis-toi à lui.";
+        var r = Dialogues.LireTraduction("""{"paroles":[{"parole":"naiepaspeur","mots":"N'aie pas peur"},{"parole":"FaitesLaGuerre","mots":"Fais la guerre"},{"parole":"UnisToi","mots":"Unis-toi","cible":999999},{"parole":"Inventee","mots":"je suis là"}]}""",
+            texte, 1, ModeParole.Voix, humains, fautes);
         var a = Assert.Single(r);
         Assert.Equal((Actes.Parler, nameof(Parole.NAiePasPeur), nameof(ModeParole.Voix)), (a.Type, a.Parole, a.Mode));
         Assert.Equal([1], a.Humains!);
         Assert.Equal(3, fautes.Count);
         // Une simple conversation : rien à traduire, aucune faute.
         fautes.Clear();
-        Assert.Empty(Dialogues.LireTraduction("""{"paroles":[]}""", 1, ModeParole.Reve, humains, fautes));
+        Assert.Empty(Dialogues.LireTraduction("""{"paroles":[]}""", "Qui aimes-tu ?", 1, ModeParole.Reve, humains, fautes));
         Assert.Empty(fautes);
+        // Une question n'est pas un ordre, et une parole doit venir de ses mots.
+        Assert.Empty(Dialogues.LireTraduction("""{"paroles":[{"parole":"TuNEsPasSeul","mots":"Qui aimes-tu"},{"parole":"NAiePasPeur","mots":"Tu n'es pas seul"}]}""",
+            "Qui aimes-tu ?", 1, ModeParole.Reve, humains, fautes));
+        Assert.Equal(2, fautes.Count);
+        Assert.Equal(2, Dialogues.Extrait("Qui aimes-tu ?", "qui aimes tu"));
+        Assert.Equal(1, Dialogues.Extrait("Qui aimes-tu ?", "Tu n'es pas seul"));
+        Assert.Equal(0, Dialogues.Extrait("Qui aimes-tu ? Tu n'es pas seul.", "tu n’es pas seul"));
         // Au plus deux paroles.
         Assert.Equal(Dialogues.ParolesMax, Dialogues.LireTraduction(
-            """{"paroles":[{"parole":"NAiePasPeur"},{"parole":"TuNEsPasSeul"},{"parole":"TaPeinePassera"}]}""", 1, ModeParole.Reve, humains, fautes).Count);
+            """{"paroles":[{"parole":"NAiePasPeur","mots":"pas peur"},{"parole":"TuNEsPasSeul","mots":"pas seul"},{"parole":"TaPeinePassera","mots":"passera"}]}""",
+            "N'aie pas peur. Tu n'es pas seul. Ta peine passera.", 1, ModeParole.Reve, humains, fautes).Count);
     }
 
     [Fact]
@@ -83,9 +92,16 @@ public sealed class DialoguesTests
             out var mots, out var pensee, out var acte, out _));
         Assert.Equal(("Qui es-tu ?", "Je tremble."), (mots, pensee));
         Assert.NotNull(acte);
-        Assert.Null(Dialogues.VerifierLibre(acte!, 4));
-        Assert.NotNull(Dialogues.VerifierLibre(acte!, 5));
-        Assert.NotNull(Dialogues.VerifierLibre(acte! with { Changements = [new ChangementLibre("mourir", 4)] }, 4));
+        var config = ConfigurationMonde.Nouvelle(5);
+        var humains = new MondeSimule(GenerateurContinent.Generer(config), MondeSimule.Nouveau(config)).InstantaneHumains().Humains;
+        Assert.Null(Dialogues.VerifierLibre(acte!, 4, humains));
+        Assert.NotNull(Dialogues.VerifierLibre(acte!, 5, humains));
+        Assert.NotNull(Dialogues.VerifierLibre(acte! with { Changements = [new ChangementLibre("mourir", 4)] }, 4, humains));
+        // Un lien sans l'autre humain est refusé avant d'arriver aux règles ; un changement sans numéro est le sien.
+        Assert.NotNull(Dialogues.VerifierLibre(acte! with { Changements = [new ChangementLibre("lien", 4) { Valeur = 30 }] }, 4, humains));
+        Assert.Null(Dialogues.VerifierLibre(acte! with { Changements = [new ChangementLibre("lien", 4) { Autre = 6, Valeur = 30 }] }, 4, humains));
+        var complete = Dialogues.Completer(acte! with { Changements = [new ChangementLibre("peur", 0) { Valeur = 10 }] }, 4);
+        Assert.Equal(4, complete.Changements![0].Humain);
         Assert.False(Dialogues.Lire("pas du JSON", out _, out _, out _, out _));
     }
 
@@ -99,7 +115,7 @@ public sealed class DialoguesTests
     {
         using var usine = new UsineTest();
         using var llm = new FauxLlm(
-            """{"paroles":[{"parole":"NAiePasPeur"}]}""",
+            """{"paroles":[{"parole":"NAiePasPeur","mots":"N'aie pas peur"}]}""",
             """{"pensee":"Cette voix me connaît.","mots":"Qui es-tu ? *regarde autour*"}""",
             """{"coherent":true,"raison":""}""",
             """{"paroles":[]}""",

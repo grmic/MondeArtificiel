@@ -243,7 +243,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
-- **0.36.2** (3 Nov 2026): speak directly with a human played by the local LLM (dream, voice or appearance); the rules decide what they understand, believe and do; "X is calling you" on a strong prayer.
+- **0.36.2** (3 Nov 2026): speak directly with a human played by the local LLM (dream, voice or appearance); the rules decide what they understand, believe and do; "X is calling you" on a strong prayer. Fix of 3 Nov: a question is no longer translated into orders (each saying must quote the words that say it), and a freely changed bond must name the other human.
 - **0.36.1** (2 Nov 2026): a drawn face for every human, inherited from their parents, on their sheet and as a thumbnail before names.
 - **0.36.0** (2 Nov 2026): "Speed: background humans simulated as a group" option (threshold in number of living humans), "Keep as an individual" box on sheets.
 - **0.35.3, fix 4** (2 Nov 2026): an LLM gesture on a number that is not a living human (or a community, depending on the gesture) is refused before the act, with the reason.

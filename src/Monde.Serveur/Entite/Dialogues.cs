@@ -289,7 +289,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     (mots, pensee) = (m, pe);
                     if (acte is not null && !libre) acte = null;
                     string? fauteLibre = null;
-                    if (acte is not null) fauteLibre = VerifierLibre(acte, c.Humain);
+                    if (acte is not null) acte = Completer(acte, c.Humain);
+                    if (acte is not null) fauteLibre = VerifierLibre(acte, c.Humain, humains);
                     // Le juge relit ses mots (et sa réaction libre) au regard de sa fiche et de ce que les règles ont décidé.
                     if (fauteLibre is null && reglages.Juge)
                     {
@@ -321,6 +322,14 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                             Plage(p, d);
                             libreTextes.AddRange(Libres.Decrire(acte));
                             libreTextes.AddRange(fait.Resultats);
+                        }
+                        catch (ArgumentException e) when (essai == 0)
+                        {
+                            // Refusé par les règles : il a un second essai, avec la raison.
+                            libreJson = "";
+                            messages.Add(("assistant", reponse));
+                            messages.Add(("user", L.T("dlg.corriger", ("raison", e.Message))));
+                            continue;
                         }
                         catch (ArgumentException e)
                         {
@@ -375,10 +384,11 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     ["properties"] = new JsonObject
                     {
                         ["parole"] = new JsonObject { ["type"] = "string" },
+                        ["mots"] = new JsonObject { ["type"] = "string" },
                         ["cible"] = new JsonObject { ["type"] = "integer" },
                         ["param"] = new JsonObject { ["type"] = "integer" },
                     },
-                    ["required"] = new JsonArray("parole"),
+                    ["required"] = new JsonArray("parole", "mots"),
                 },
             },
         },
@@ -438,7 +448,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             var reponse = await client.Demander(connexion, consigne, messages, SchemaTraduction(), delai.Token);
             brut.AppendLine($"---- {L.T("dlg.trace.traduction")} ({essai + 1}) ----").AppendLine(reponse);
             var fautes = new List<string>();
-            valides = LireTraduction(reponse, c.Humain, c.Mode, humains, fautes);
+            valides = LireTraduction(reponse, texte, c.Humain, c.Mode, humains, fautes);
             if (fautes.Count == 0 || essai == 1) break;
             messages.Add(("assistant", reponse));
             messages.Add(("user", L.T("llm.d.corriger", ("erreurs", string.Join(" ", fautes)))));
@@ -447,7 +457,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     }
 
     /// <summary>Lit la traduction : les paroles valides (au plus <see cref="ParolesMax"/>), les autres dans <paramref name="fautes"/>.</summary>
-    public static List<ActeLlm> LireTraduction(string reponse, int humain, ModeParole mode, IReadOnlyList<Humain> humains, List<string> fautes)
+    public static List<ActeLlm> LireTraduction(string reponse, string texte, int humain, ModeParole mode, IReadOnlyList<Humain> humains, List<string> fautes)
     {
         var valides = new List<ActeLlm>();
         JsonObject? o = null;
@@ -472,6 +482,17 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     fautes.Add(L.T("dlg.erreur.paroleInconnue", ("parole", nom)));
                 continue;
             }
+            // L'extrait de ses mots qui porte la parole : il doit s'y trouver tel quel, et ne pas être une question.
+            var extrait = x["mots"] is JsonValue ve && ve.TryGetValue<string>(out var se) ? se.Trim() : "";
+            switch (Extrait(texte, extrait))
+            {
+                case 1:
+                    fautes.Add(L.T("dlg.erreur.extrait", ("parole", p)));
+                    continue;
+                case 2:
+                    fautes.Add(L.T("dlg.erreur.question", ("parole", p), ("mots", extrait)));
+                    continue;
+            }
             var cible = Entier("cible") ?? 0;
             if (Paroles.VeutCible(p) && (cible < 1 || cible > humains.Count || cible == humain || !humains[cible - 1].EstVivant))
             {
@@ -495,11 +516,55 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         return valides;
     }
 
+    /// <summary>Pour comparer des mots : minuscules, sans accents, sans ponctuation, espaces simples.</summary>
+    private static string Normaliser(string s)
+    {
+        var d = s.Normalize(System.Text.NormalizationForm.FormD);
+        var b = new StringBuilder(d.Length);
+        var espace = true;
+        foreach (var ch in d)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(ch) == UnicodeCategory.NonSpacingMark) continue;
+            if (char.IsLetterOrDigit(ch))
+            {
+                b.Append(char.ToLowerInvariant(ch));
+                espace = false;
+            }
+            else if (!espace)
+            {
+                b.Append(' ');
+                espace = true;
+            }
+        }
+        return b.ToString().Trim();
+    }
+
+    /// <summary>
+    /// 0 : l'extrait est bien dans ses mots ; 1 : il n'y est pas (ou il est vide) ; 2 : il est dans une question (une phrase qui finit par
+    /// « ? ») : on ne traduit pas une question en ordre.
+    /// </summary>
+    public static int Extrait(string texte, string extrait)
+    {
+        var e = Normaliser(extrait);
+        if (e.Length == 0) return 1;
+        // Les phrases de ses mots, chacune avec son point final.
+        var phrases = System.Text.RegularExpressions.Regex.Matches(texte, @"[^.!?…]+[.!?…]*").Select(m => m.Value).ToList();
+        var trouve = false;
+        foreach (var ph in phrases)
+        {
+            if (!(" " + Normaliser(ph) + " ").Contains(" " + e + " ", StringComparison.Ordinal)) continue;
+            trouve = true;
+            if (!ph.TrimEnd().EndsWith('?')) return 0;
+        }
+        if (!trouve && (" " + Normaliser(texte) + " ").Contains(" " + e + " ", StringComparison.Ordinal)) return 0;
+        return trouve ? 2 : 1;
+    }
+
     // ───────────── Faire parler l'humain ─────────────
 
     private const string FormeHumain = """{"pensee":"…","mots":"…"}""";
 
-    private const string FormeHumainLibre = """{"pensee":"…","mots":"…","changements":[{"quoi":"…","humain":n°,"valeur":x}]}""";
+    private const string FormeHumainLibre = """{"pensee":"…","mots":"…","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
 
     private static JsonObject Schema(bool libre)
     {
@@ -599,13 +664,23 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         return true;
     }
 
-    /// <summary>Sa réaction libre ne touche que lui (ses liens vers d'autres compris), et seulement son cœur, sa croyance, ses liens, ses projets.</summary>
-    public static string? VerifierLibre(ActeLlm acte, int humain)
+    /// <summary>Un changement sans numéro d'humain est le sien : c'est de lui-même qu'il change.</summary>
+    public static ActeLlm Completer(ActeLlm acte, int humain) =>
+        acte with { Changements = [.. (acte.Changements ?? []).Select(c => c.Humain == 0 ? c with { Humain = humain } : c)] };
+
+    /// <summary>
+    /// Sa réaction libre ne touche que lui (ses liens vers d'autres compris), et seulement son cœur, sa croyance, ses liens, ses projets.
+    /// Un lien désigne un autre humain vivant ; une pensée a un texte.
+    /// </summary>
+    public static string? VerifierLibre(ActeLlm acte, int humain, IReadOnlyList<Humain> humains)
     {
         foreach (var c in acte.Changements ?? [])
         {
             if (Array.IndexOf(SortesLibres, c.Quoi) < 0) return L.T("dlg.erreur.libreSorte", ("quoi", c.Quoi), ("liste", string.Join(", ", SortesLibres)));
             if (c.Humain != humain) return L.T("dlg.erreur.libreHumain", ("id", humain));
+            if (c.Quoi == "lien" && (c.Autre < 1 || c.Autre > humains.Count || c.Autre == humain || !humains[c.Autre - 1].EstVivant || c.Valeur is null))
+                return L.T("dlg.erreur.libreLien", ("id", humain));
+            if (c.Quoi == "pensee" && string.IsNullOrWhiteSpace(c.Texte)) return L.T("dlg.erreur.librePensee");
         }
         return null;
     }

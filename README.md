@@ -243,7 +243,7 @@ Le serveur n'écoute que sur `localhost:5080` (voir `src/Monde.Serveur/appsettin
 
 Les versions, de la plus récente à la plus ancienne. Le détail de chaque nouveauté est dans le guide ci-dessus.
 
-- **0.36.2** (3 nov. 2026) : parler directement avec un humain joué par le LLM local (rêve, voix ou apparition) ; les règles décident de ce qu'il comprend, croit et fait ; « X t'appelle » sur une prière forte.
+- **0.36.2** (3 nov. 2026) : parler directement avec un humain joué par le LLM local (rêve, voix ou apparition) ; les règles décident de ce qu'il comprend, croit et fait ; « X t'appelle » sur une prière forte. Correctif du 3 nov. : une question n'est plus traduite en ordres (chaque parole doit citer les mots qui la disent), et un lien changé librement doit nommer l'autre humain.
 - **0.36.1** (2 nov. 2026) : un visage dessiné pour chaque humain, hérité de ses parents, sur sa fiche et en vignette devant les noms.
 - **0.36.0** (2 nov. 2026) : option « Vitesse : humains de fond simulés en groupe » (seuil en nombre de vivants), case « Garder en individu » sur les fiches.
 - **0.35.3, correctif 4** (2 nov. 2026) : un geste du LLM sur un numéro qui n'est pas un humain vivant (ou une communauté, selon le geste) est refusé avant l'acte, avec la raison.
