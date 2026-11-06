@@ -66,6 +66,8 @@ public static class Registre
                 return (a.Humain ?? Seul(a.Humains), Seul(a.Communautes), a.Parole ?? "");
             case Actes.ParlerCommunaute:
                 return (0, a.Communaute ?? 0, a.Parole ?? "");
+            case Actes.ParlerMonde:
+                return (a.Cible ?? 0, a.Communaute ?? 0, a.Parole ?? "");
             case Actes.Catastrophe:
                 return (0, 0, a.Catastrophe ?? "");
             case Actes.Libre:
@@ -117,6 +119,11 @@ public static class Registre
     public static ActeLlm Depuis(DemandeParoleCommunaute d) => new()
     {
         Type = Actes.ParlerCommunaute, Communaute = d.Communaute, Parole = d.Parole, Mode = d.Mode, Cibles = d.Cibles, Direction = d.Direction,
+    };
+
+    public static ActeLlm Depuis(DemandeParoleMonde d) => new()
+    {
+        Type = Actes.ParlerMonde, Parole = d.Parole, Mode = d.Mode, Terre = d.Terre, Cible = d.Cible, Communaute = d.Communaute, Param = d.Param,
     };
 
     public static ActeLlm Depuis(DemandePenchant d) => new()

@@ -118,7 +118,7 @@ function ligne(libelle: string, ...champs: (HTMLElement | string)[]): HTMLLabelE
  * Désigner quelqu'un : une recherche par le nom, filtrée (même communauté, seuls, adultes, tout près), puis une liste.
  * La recherche se fait au serveur (40 résultats au plus).
  */
-class Designer {
+export class Designer {
   readonly bloc = el("div");
   private readonly texte = el("input");
   private readonly liste = el("select");

@@ -89,8 +89,8 @@ public static partial class Lib
     {
         Parole.NAiePasPeur or Parole.TuNEsPasSeul or Parole.TaPeinePassera => "rubriqueParole.rassurer",
         Parole.UnisToi or Parole.ResteAvec or Parole.Quitte => "rubriqueParole.unir",
-        Parole.PrendsSoin or Parole.Partage or Parole.Console => "rubriqueParole.soin",
-        Parole.Pardonne or Parole.NeTeVengePas or Parole.NeVaPasALaGuerre => "rubriqueParole.apaiser",
+        Parole.PrendsSoin or Parole.Partage or Parole.Console or Parole.PartagezTous or Parole.PrenezSoinDesFaibles => "rubriqueParole.soin",
+        Parole.Pardonne or Parole.NeTeVengePas or Parole.NeVaPasALaGuerre or Parole.NeTuezPas => "rubriqueParole.apaiser",
         Parole.PartsVers or Parole.ResteIci or Parole.DefendsLesTiens => "rubriqueParole.agir",
         Parole.CatastropheArrive or Parole.PlanteDangereuse => "rubriqueParole.avertir",
         Parole.TuGuideras or Parole.Ecoute or Parole.PorteMaParole => "rubriqueParole.designer",

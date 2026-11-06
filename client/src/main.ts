@@ -18,6 +18,7 @@ import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
 import { OutilMesure, PanneauMonde } from "./monde";
 import { PanneauTerritoires } from "./territoires";
+import { PanneauParlerMonde } from "./parlermonde";
 import { placerSousLaBarre } from "./placement";
 import { nombre, t } from "./langue";
 import "./style.css";
@@ -352,6 +353,23 @@ async function demarrer(): Promise<void> {
   for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
     if (b.id !== "boutonActesEntite") b.addEventListener("click", () => actesEntite.fermer());
   }
+  // Parler au Monde (0.37.1).
+  const parlerMonde = new PanneauParlerMonde(element("#parlerMonde"), (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id);
+  });
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
+    if (b.id !== "boutonParlerMonde") b.addEventListener("click", () => parlerMonde.fermer());
+  }
+  element("#boutonParlerMonde").addEventListener("click", () => {
+    fermerAutres();
+    prieres.fermer();
+    religions.fermer();
+    suivis.fermer();
+    entiteLlm.fermer();
+    actesEntite.fermer();
+    parlerMonde.basculer();
+  });
   element("#boutonActesEntite").addEventListener("click", () => {
     fermerAutres();
     prieres.fermer();

@@ -35,7 +35,7 @@ public static class ActesEntite
     /// <summary>Sortes proposées au filtre (codes de la table, plus les gestes par ce qu'ils font).</summary>
     public static readonly string[] Sortes =
     [
-        "parler", "parler_communaute", "penchant", "geste.bienfait", "geste.chatiment", "catastrophe", "exaucer", "refuser", "exaucer_toutes", "refuser_toutes",
+        "parler", "parler_communaute", "parler_monde", "penchant", "geste.bienfait", "geste.chatiment", "catastrophe", "exaucer", "refuser", "exaucer_toutes", "refuser_toutes",
         "souffler_geste", "souffler_combinaison", "reglage", "libre", "lever_decret",
     ];
 
@@ -114,6 +114,11 @@ public static class ActesEntite
             case Actes.Geste when a.Genre.Length > 0:
                 precisions.Add(Nom($"gesteEntite.{a.Genre}", a.Genre));
                 if (x?.Maniere is { } m && m != "Cachee") precisions.Add(Nom($"maniere.{m}", m));
+                break;
+            case Actes.ParlerMonde when a.Genre.Length > 0:
+                precisions.Add($"« {Nom($"paroleMonde.{a.Genre}", a.Genre)} »");
+                if (x?.Mode is { } modeMonde) precisions.Add(Nom($"llm.mode.{modeMonde}", modeMonde));
+                if (x?.Terre is { } terre && terre != 0) precisions.Add(L.T("actes.uneTerre"));
                 break;
             case Actes.Parler or Actes.ParlerCommunaute when a.Genre.Length > 0:
                 precisions.Add($"« {Nom($"parole.{a.Genre}", a.Genre)} »");

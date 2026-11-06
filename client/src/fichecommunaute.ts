@@ -7,6 +7,7 @@ import { blocLangue, courbe, type Communaute, type Taille } from "./communautes"
 import { ligneBilan, lignePriere, type BilanPrieres, type Priere } from "./cultes";
 import { FormulaireEntite } from "./entite";
 import { FormulaireGeste } from "./gestes";
+import { ligneParoleMonde, type ParoleMonde } from "./parlermonde";
 import { vignette } from "./visage";
 import { boutonCause, el, ligneEvenement, replierCauses, signe, type Evenement } from "./fiche";
 import { langue, nombre as ecrireNombre, t } from "./langue";
@@ -74,6 +75,7 @@ interface FicheCommunaute {
   membres: Membre[];
   autorite: Autorite | null;
   paroles: Mandat[] | null;
+  parolesMonde: ParoleMonde[] | null;
 }
 
 const ACTUALISATION_MS = 10000;
@@ -751,6 +753,12 @@ export class PanneauFicheCommunaute {
         ul.append(li);
       }
       s.append(el("h4", undefined, t("fc.parolesGroupe")), ul);
+    }
+    const auMonde = f.parolesMonde ?? [];
+    if (auMonde.length > 0) {
+      const ul = el("ul", "liste");
+      for (const x of auMonde) ul.append(ligneParoleMonde(x));
+      s.append(el("h4", undefined, t("fc.parolesMonde")), ul);
     }
     s.append(el("h4", undefined, t("fc.gestesGroupe")));
     if (f.entite.length === 0) s.append(el("p", "discret", t("fc.aucunGeste")));

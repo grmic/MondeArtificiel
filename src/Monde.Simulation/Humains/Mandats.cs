@@ -213,6 +213,15 @@ public sealed partial class VieSociale
                 return (Math.Clamp(0.3 * f.Loyaute + 0.6 * Math.Max(0, -aff) + 0.4 * rancune, 0, 1), 0.4 * Math.Max(0, aff) + 0.2 * petits + (a.Disette ? 0.2 : 0) - 0.1,
                     new Recit("mandat.refus.nous", ("h", h)));
             }
+            case Parole.AccueillezLes:
+            {
+                // Accueillir chez soi : nourrir des étrangers coûte au groupe qui a faim ; la méfiance envers l'inconnu retient,
+                // la compassion et le goût des autres poussent, d'autant plus que les autres ont faim.
+                var faim = a.Disette ? 0.4 : 0;
+                return (Math.Clamp(faim + 0.5 * Math.Max(0, -aff) + 0.4 * rancune + 0.2 * p.Nevrosisme * (1 - p.Ouverture), 0, 1),
+                    0.3 * m.Compassion + 0.2 * p.Agreabilite + 0.2 * p.Extraversion + 0.3 * Math.Max(0, aff) + (b!.Disette ? 0.2 * m.Compassion : 0) - 0.1,
+                    a.Disette ? new Recit("mandat.refus.faim", ("h", h)) : new Recit("mandat.refus.etrangers", ("h", h)));
+            }
             case Parole.PartezVers:
             {
                 var lies = h.Memoire.Lieux.Count(l => l.Type == TypeLieu.Nourriture);
@@ -231,8 +240,9 @@ public sealed partial class VieSociale
     /// débattra (de quelques jours à quelques semaines, comme pour un projet de guerre ; plus tôt après une apparition).
     /// Un mandat par communauté visée.
     /// </summary>
+    /// <param name="cause">La parole au Monde dont celle-ci est la part reçue par le groupe (0.37.1) ; 0 : aucune.</param>
     public List<Mandat> Recevoir(Communaute a, Parole parole, ModeParole mode, IReadOnlyList<Communaute> cibles, int direction,
-        IReadOnlyList<Humain> humains, long maintenant)
+        IReadOnlyList<Humain> humains, long maintenant, long cause = 0)
     {
         var adultes = AdultesDe(a, humains, maintenant);
         var figure = humains[a.FigureId - 1];
@@ -266,9 +276,9 @@ public sealed partial class VieSociale
             m.Jusqua = maintenant + (long)((60 + 340 * foi * croyants / Math.Max(1, adultes.Count)) * (0.7 + 0.6 * alea.Reel()) * Calendrier.SecondesParJour);
             object cible = m.CibleId > 0 ? Communautes[m.CibleId - 1] : Recit.Seul($"direction.{m.Direction}");
             m.EvenementId = Noter(maintenant, TypeEvenement.Parole, figure, null,
-                new Recit("mandat.recu", ("c", a), ("m", Recit.Seul($"modeParole.{mode}")), ("ph", Paroles.Phrase(parole, null, cible)),
+                new Recit("mandat.recu", ("c", a), ("m", Recit.Seul($"modeParole.{mode}")), ("ph", Paroles.Phrase(parole, null, cible, monde: cause != 0)),
                     ("v", m.Veulent), ("hes", m.Hesitent), ("r", m.Refusent), ("i", m.Incredules + m.Incompris)),
-                communaute: a.Id, autreCommunaute: m.CibleId, significatif: true);
+                cause, communaute: a.Id, autreCommunaute: m.CibleId, significatif: true);
             _mandats.Add(m);
             nouveaux.Add(m);
         }
@@ -323,6 +333,9 @@ public sealed partial class VieSociale
             {
                 case EtatMandat.Debat when maintenant >= m.DebatLe:
                     Deliberer(m, a, b, humains, maintenant);
+                    break;
+                case EtatMandat.EnRoute when m.Parole == Parole.AccueillezLes:
+                    Venir(m, a, b!, humains, maintenant);
                     break;
                 case EtatMandat.EnRoute:
                     Approcher(m, a, b!, humains, maintenant);
@@ -482,9 +495,11 @@ public sealed partial class VieSociale
             case Parole.FaitesLaPaix when relation is not (EtatRelation.Hostiles or EtatRelation.EnGuerre or EtatRelation.Rivales):
                 return new Recit("mandat.pourquoi.paix", ("c", b));
             case Parole.AlliezVous when relation == EtatRelation.EnGuerre:
-            case Parole.EnseignezVosSavoirs or Parole.PortezMaParoleA or Parole.AllezALaRencontre when relation == EtatRelation.EnGuerre:
+            case Parole.EnseignezVosSavoirs or Parole.PortezMaParoleA or Parole.AllezALaRencontre or Parole.AccueillezLes when relation == EtatRelation.EnGuerre:
                 return new Recit("mandat.pourquoi.guerre", ("c", b));
             case Parole.EnseignezVosSavoirs or Parole.PortezMaParoleA or Parole.PartagezAvec when mer:
+                return new Recit("mandat.pourquoi.mer", ("c", b));
+            case Parole.AccueillezLes when mer && !SaitNaviguer(AdultesDe(b, humains, maintenant)):
                 return new Recit("mandat.pourquoi.mer", ("c", b));
             case Parole.PartagezAvec when Ecart(a, b) > 2 * DistanceVisiteMax:
                 return new Recit("mandat.pourquoi.loin", ("c", b));
@@ -581,6 +596,9 @@ public sealed partial class VieSociale
             case Parole.PartagezAvec:
                 Partager(m, a, b!, acteurs, humains, maintenant);
                 break;
+            case Parole.AccueillezLes:
+                AccueillirLes(m, a, b!, acteurs, humains, maintenant);
+                break;
             case Parole.UnissezVous:
                 Unir(m, a, b!, acteurs, humains, maintenant);
                 break;
@@ -638,6 +656,9 @@ public sealed partial class VieSociale
                 // Un groupe qui a faim prend ; un fier, en querelle, refuse ce qui vient de l'ennemi.
                 Parole.PartagezAvec => 0.5 + (b.Disette ? 0.4 : 0) - querelle * (1.2 - p.Agreabilite),
                 Parole.UnissezVous => 0.1 + 0.5 * aff + (b.Disette ? 0.2 : 0) - 0.3 * p.Moral.Fondements.Loyaute - querelle - 0.4 * rancune,
+                // Être invités chez les autres : le sociable y va, celui qui a faim aussi ; il faut marcher, et l'on se méfie.
+                Parole.AccueillezLes => 0.3 + 0.3 * p.Extraversion + 0.2 * p.Agreabilite + 0.3 * aff + (b.Disette ? 0.3 : 0) - 0.1 * p.Nevrosisme
+                                        - querelle - 0.4 * rancune,
                 _ => 0.5,
             };
             // « L'Entité nous envoie » : ceux qui croient en l'invisible l'entendent.
@@ -1000,6 +1021,68 @@ public sealed partial class VieSociale
             ("d", Lieux.DistanceR(a.CentreX, a.CentreY, x, y))), maintenant);
     }
 
+    /// <summary>
+    /// Accueillir (0.37.1) : on invite l'autre groupe à venir camper chez soi. S'il accepte, il vient (s'il est loin, il marche
+    /// jusqu'à portée), et l'on campe ensemble quelques jours ou semaines : on se connaît, on se lie, et certains restent. À
+    /// moitié : des gestes d'amitié envers ceux qu'on croise ; les fidèles seuls font de même.
+    /// </summary>
+    private void AccueillirLes(Mandat m, Communaute a, Communaute b, List<Humain> acteurs, List<Humain> humains, long maintenant)
+    {
+        if (m.Moitie || m.Fideles)
+        {
+            Rapprocher(m.Fideles ? acteurs : AdultesDe(a, humains, maintenant), b, 6, humains, maintenant);
+            Clore(m, EtatMandat.Accompli, a, humains, new Recit(m.Fideles ? "mandat.accueil.fideles" : "mandat.accueil.moitie", ("c", a), ("b", b),
+                ("n", acteurs.Count)), maintenant);
+            return;
+        }
+        if (!Proposer(m, a, b, acteurs, humains, maintenant)) return;
+        if (RelationEntre(a.Id, b.Id) is EtatRelation.Hostiles or EtatRelation.Rivales) _relations.Remove(Paire(a.Id, b.Id));
+        if (Ecart(a, b) > DistanceRassemblementMax)
+        {
+            VersLAutre(b, a, DistanceRassemblementMax, humains);
+            Passer(m, EtatMandat.EnRoute, a, humains, new Recit("mandat.accueil.viennent", ("c", a), ("b", b),
+                ("d", Lieux.DistanceR(b.CentreX, b.CentreY, a.CentreX, a.CentreY))), maintenant);
+            return;
+        }
+        Ouvrir(m, a, b, humains, maintenant);
+    }
+
+    /// <summary>Chaque jour, l'autre groupe en route vers ceux qui l'accueillent : arrivé à portée, on campe ensemble ; le temps passé, on renonce.</summary>
+    private void Venir(Mandat m, Communaute a, Communaute b, List<Humain> humains, long maintenant)
+    {
+        if (Ecart(a, b) <= DistanceRassemblementMax)
+        {
+            b.DestinationX = b.DestinationY = -1;
+            Ouvrir(m, a, b, humains, maintenant);
+            return;
+        }
+        if (maintenant >= m.Jusqua)
+        {
+            b.DestinationX = b.DestinationY = -1;
+            Clore(m, EtatMandat.Caduc, a, humains, new Recit("mandat.caduc.route", ("c", b), ("b", a)), maintenant);
+            return;
+        }
+        VersLAutre(b, a, DistanceRassemblementMax, humains);
+    }
+
+    /// <summary>Le camp commun chez ceux qui accueillent : tous ceux des deux groupes qui le veulent y viennent.</summary>
+    private void Ouvrir(Mandat m, Communaute a, Communaute b, List<Humain> humains, long maintenant)
+    {
+        var avant = Rassemblements.Count;
+        var tous = humains.Vivants().Where(h => h.EstVivant && (h.CommunauteId == a.Id || h.CommunauteId == b.Id)).ToList();
+        Commencer(a, b, tous, humains, Math.Clamp((a.Abondance - 0.5) / 0.4, 0.3, 1), maintenant);
+        if (Rassemblements.Count == avant)
+        {
+            Clore(m, EtatMandat.Caduc, a, humains, new Recit("mandat.caduc.personne", ("c", a)), maintenant);
+            return;
+        }
+        var r = Rassemblements[^1];
+        m.RassemblementId = r.Id;
+        m.Etat = EtatMandat.EnCours;
+        m.EtatLe = maintenant;
+        m.EtatEvenementId = r.EvenementId;
+    }
+
     // ───────────── Ce qui dure ─────────────
 
     /// <summary>Chaque jour, ce qui est en cours : la guerre continue, la délégation rentre, le serment tient, l'union se fait, on arrive.</summary>
@@ -1046,7 +1129,7 @@ public sealed partial class VieSociale
                 else if (maintenant >= m.Jusqua)
                     Clore(m, EtatMandat.Accompli, a, humains, new Recit("mandat.serment.fin", ("a", a), ("b", b)), maintenant);
                 break;
-            case Parole.AllezALaRencontre or Parole.EnseignezVosSavoirs or Parole.PortezMaParoleA:
+            case Parole.AllezALaRencontre or Parole.EnseignezVosSavoirs or Parole.PortezMaParoleA or Parole.AccueillezLes:
             {
                 if (m.RassemblementId < 1 || m.RassemblementId > Rassemblements.Count || Rassemblements[m.RassemblementId - 1] is not { } r)
                 {
@@ -1060,7 +1143,8 @@ public sealed partial class VieSociale
                     Parole.PortezMaParoleA => new Recit("mandat.bilan.convertis", ("n", (int)m.Bilan)),
                     _ => new Recit("mandat.bilan.rencontre", ("n", r.Participants), ("cadeaux", r.Cadeaux), ("couples", r.Couples)),
                 };
-                Clore(m, EtatMandat.Accompli, a, humains, new Recit("mandat.retour", ("c", a), ("b", b!), ("bilan", bilan)), maintenant);
+                Clore(m, EtatMandat.Accompli, a, humains, new Recit(m.Parole == Parole.AccueillezLes ? "mandat.accueil.fin" : "mandat.retour", ("c", a), ("b", b!),
+                    ("bilan", bilan)), maintenant);
                 break;
             }
             case Parole.UnissezVous:
@@ -1101,6 +1185,8 @@ public sealed partial class VieSociale
         if (_mandats.Count == 0) return false;
         foreach (var m in _mandats)
             if (m is { Parole: Parole.FaitesLaPaix, Etat: EtatMandat.EnCours } && m.CommunauteId == a && m.CibleId == b) return true;
+            // On ne frappe pas ceux qu'on accueille, ni ceux qui viennent.
+            else if (m is { Parole: Parole.AccueillezLes, Etat: EtatMandat.EnRoute or EtatMandat.EnCours } && (m.CommunauteId == a && m.CibleId == b || m.CommunauteId == b && m.CibleId == a)) return true;
         return false;
     }
 

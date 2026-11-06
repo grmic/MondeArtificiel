@@ -301,7 +301,7 @@ public sealed partial class DepotMonde
                 coalesce(sum(CASE WHEN sorte = 'geste' AND genre = 'FrapperDeMort' AND issue = 1 THEN 1 ELSE 0 END), 0),
                 coalesce(sum(CASE WHEN sorte = 'geste' AND genre IN ({bienfaits}) AND issue = 1 THEN 1 ELSE 0 END), 0),
                 coalesce(sum(CASE WHEN sorte = 'geste' AND genre NOT IN ({bienfaits}) AND issue = 1 THEN 1 ELSE 0 END), 0),
-                coalesce(sum(sorte IN ('parler', 'parler_communaute', 'penchant')), 0),
+                coalesce(sum(sorte IN ('parler', 'parler_communaute', 'parler_monde', 'penchant')), 0),
                 coalesce(sum(sorte IN ('souffler_geste', 'souffler_combinaison')), 0),
                 coalesce(sum(sorte IN ('souffler_geste', 'souffler_combinaison') AND issue = 1), 0),
                 coalesce(sum(sorte = 'catastrophe' AND issue >= 0), 0)

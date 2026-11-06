@@ -56,12 +56,14 @@ public static class Contexte
 
     private const string FormePenchant = """{"type":"penchant","humains":[n°],"cible":n° ou 0,"mutuel":true|false,"passion":true|false}""";
 
+    private const string FormeParlerMonde = """{"type":"parler_monde","parole":"…","mode":"…","terre":0,"cible":n°,"communaute":n°,"param":n}""";
     private const string FormeParlerCommunaute = """{"type":"parler_communaute","communaute":n°,"parole":"…","mode":"…","cibles":[n°],"direction":0-7}""";
 
     private const string FormeParler = """{"type":"parler","humains":[n°],"parole":"…","mode":"…","cible":n°,"direction":0-7,"param":n}""";
 
     /// <summary>La consigne : le rôle de l'Entité, la forme de la réponse et le catalogue des actes permis.</summary>
-    public static string Consigne(MondeSimule monde, FamillesLlm permises, string caractere = "", string caractereLlm = "", bool libre = false, bool combinaisons = true)
+    public static string Consigne(MondeSimule monde, FamillesLlm permises, string caractere = "", string caractereLlm = "", bool libre = false, bool combinaisons = true,
+        bool auMonde = false)
     {
         var c = new StringBuilder();
         c.AppendLine(L.T("llm.consigne", ("langue", L.Courante.Nom), ("forme", FormeReponse)));
@@ -92,6 +94,15 @@ public static class Contexte
             c.AppendLine($"- {L.T("llm.cat.parlerCommunaute")} : {FormeParlerCommunaute}");
             foreach (var p in Enum.GetValues<Parole>().Where(Paroles.Collective))
                 c.AppendLine($"  - {p} : {L.T($"parole.{p}")}{(Paroles.VeutCommunaute(p) ? " " + L.T("llm.cat.veutCibles") : p == Parole.PartezVers ? " " + L.T("llm.cat.veutDirection") : "")}");
+            if (auMonde)
+            {
+                // Parler au Monde (0.37.1) : seulement si le joueur l'a permis.
+                c.AppendLine($"- {L.T("llm.cat.parlerMonde")} : {FormeParlerMonde}");
+                foreach (var p in Enum.GetValues<Parole>().Where(Paroles.AuMonde))
+                    c.AppendLine($"  - {p} : {L.T($"paroleMonde.{p}")}{(p == Parole.Ecoute ? " " + L.T("llm.cat.veutCible") : Paroles.Collective(p) ? " " + L.T("llm.cat.veutCommunauteMonde") : p == Parole.PlanteDangereuse ? " " + L.T("llm.cat.paramPlante") : "")}");
+                c.AppendLine(L.T("llm.cat.terres", ("terres", string.Join(", ", monde.TerresHabitees()
+                    .Select(t => $"{t.Masse} = {Serveur.ParolesMonde.Terre(t.Rang)} ({t.Vivants})").Prepend($"0 = {L.T("monde.portee.tout")}")))));
+            }
             c.AppendLine($"- {L.T("llm.cat.penchant")} : {FormePenchant}");
             c.AppendLine($"- {L.T("llm.cat.refuser")} : {FormeRefuser}");
         }
@@ -147,7 +158,7 @@ public static class Contexte
 
     /// <summary>La demande : l'occasion, l'humain et sa communauté (ou la communauté seule), les autres communautés, la mémoire de l'Entité.</summary>
     public static LectureLlm Lire(ServiceMonde service, FamillesLlm permises, OccasionLlm occasion, int humainId, int communauteId, Priere? priere,
-        IReadOnlyList<EchangeEntite> memoire, string caractere = "", string caractereLlm = "", bool libre = false)
+        IReadOnlyList<EchangeEntite> memoire, string caractere = "", string caractereLlm = "", bool libre = false, bool auMonde = false)
     {
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
@@ -196,7 +207,7 @@ public static class Contexte
         Memoire(d, memoire, humains, communautes);
         d.AppendLine();
         d.AppendLine(L.T("llm.d.fin"));
-        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm, libre, pieces.Count > 0), d.ToString(), pieces, jardin);
+        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm, libre, pieces.Count > 0, auMonde), d.ToString(), pieces, jardin);
     }
 
     private static void Memoire(StringBuilder d, IReadOnlyList<EchangeEntite> memoire, IReadOnlyList<Humain> humains, IReadOnlyList<Communaute> communautes)
@@ -225,7 +236,7 @@ public static class Contexte
     /// fois), les communautés, les figures religieuses et les prières qui attendent.
     /// </summary>
     public static LectureLlm LireRegard(ServiceMonde service, FamillesLlm permises, long depuis, IReadOnlyList<EchangeEntite> memoire, string caractere = "",
-        string caractereLlm = "", bool libre = false)
+        string caractereLlm = "", bool libre = false, bool auMonde = false)
     {
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
@@ -310,7 +321,7 @@ public static class Contexte
             d.AppendLine();
             Libres.SavoirsDuMonde(d, monde);
         }
-        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm, libre, false), d.ToString(), []);
+        return new LectureLlm(Consigne(monde, permises, caractere, caractereLlm, libre, false, auMonde), d.ToString(), []);
     }
 
     /// <summary>Une ligne du journal pour le LLM : date, texte, et les numéros des humains et communautés en cause.</summary>

@@ -463,6 +463,8 @@ public sealed partial class VieSociale
             if (h.Impulsions.Count == 0) return 0;
             var v = 0.0;
             if (h.Consigne(Parole.NeVaPasALaGuerre, maintenant) is { } non && (non.Param == 0 || non.Param == b.Id)) v -= 1.5 * non.Force;
+            // « Ne tuez pas » (0.37.1) retient aussi d'aller frapper les autres, un peu moins qu'un ordre de ne pas faire la guerre.
+            if (h.Consigne(Parole.NeTuezPas, maintenant) is { } tuer) v -= 0.8 * tuer.Force;
             if (h.Consigne(Parole.DefendsLesTiens, maintenant) is { } oui) v += (RelationEntre(a.Id, b.Id) == EtatRelation.EnGuerre ? 0.4 : 0.1) * oui.Force;
             return v;
         }

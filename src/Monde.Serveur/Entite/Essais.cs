@@ -152,6 +152,16 @@ public static class Essais
             case Actes.Libre:
                 Libres.Verifier(monde, a);
                 return;
+            case Actes.ParlerMonde:
+            {
+                if (!Enum.TryParse<Parole>(a.Parole, true, out var p) || !Enum.IsDefined(p) || !Paroles.AuMonde(p))
+                    throw Faute("ess.parole", ("parole", a.Parole ?? ""), ("liste", string.Join(", ", Enum.GetValues<Parole>().Where(Paroles.AuMonde))));
+                Mode(a.Mode);
+                if (p == Simulation.Humains.Parole.Ecoute) Vivant(a.Cible ?? a.Humain ?? 0, "cible");
+                if (Paroles.Collective(p)) Active(a.Communaute ?? a.Cibles?.FirstOrDefault() ?? 0, "communaute");
+                if ((a.Terre ?? 0) != 0 && !monde.TerresHabitees().Any(t => t.Masse == a.Terre)) throw Faute("ess.terre", ("id", a.Terre ?? 0));
+                return;
+            }
         }
     }
 

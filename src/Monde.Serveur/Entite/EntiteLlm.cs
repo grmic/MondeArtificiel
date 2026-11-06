@@ -29,8 +29,10 @@ public enum ModeEntite
 /// <param name="Caractere">Son caractère, écrit par le joueur (vide : elle se fait le sien).</param>
 /// <param name="Libre">Entité libre : elle peut changer l'état du monde et décréter, hors des règles (0.35.2).</param>
 /// <param name="Juge">Juge de cohérence : un second appel relit chaque acte libre.</param>
+/// <param name="Monde">« Permettre au LLM de parler au Monde » (0.37.1), décoché par défaut : une erreur toucherait tout le monde à la fois.</param>
 public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdinaires, bool Attendre, bool Paroles, bool Bienfaits, bool Chatiments,
-    bool Catastrophes, bool Souffles, bool Regard = true, int RegardJours = EntiteLlm.RegardParDefaut, string Caractere = "", bool Libre = false, bool Juge = true)
+    bool Catastrophes, bool Souffles, bool Regard = true, int RegardJours = EntiteLlm.RegardParDefaut, string Caractere = "", bool Libre = false, bool Juge = true,
+    bool Monde = false)
 {
     public ModeEntite ModeLu => Enum.TryParse<ModeEntite>(Mode, out var m) && Enum.IsDefined(m) ? m : ModeEntite.Joueur;
 
@@ -95,7 +97,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
 {
     private const string CleMode = "llm_mode", ClePrieres = "llm_prieres", ClePart = "llm_part", CleAttendre = "llm_attendre", CleFamilles = "llm_familles",
         CleLangue = "llm_langue", CleRegard = "llm_regard", CleRegardJours = "llm_regard_jours", CleDernierRegard = "llm_dernier_regard",
-        CleCaractere = "llm_caractere", CleCaractereLlm = "llm_caractere_llm", CleLibre = "llm_libre", CleJuge = "llm_juge";
+        CleCaractere = "llm_caractere", CleCaractereLlm = "llm_caractere_llm", CleLibre = "llm_libre", CleJuge = "llm_juge", CleMonde = "llm_monde";
 
     /// <summary>Jours entre deux regards, par défaut : une saison.</summary>
     public const int RegardParDefaut = (int)Calendrier.JoursParSaison;
@@ -164,7 +166,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                 d.LireReglage(ClePrieres) != "non", part, d.LireReglage(CleAttendre) == "oui",
                 familles.HasFlag(FamillesLlm.Paroles), familles.HasFlag(FamillesLlm.Bienfaits), familles.HasFlag(FamillesLlm.Chatiments),
                 familles.HasFlag(FamillesLlm.Catastrophes), familles.HasFlag(FamillesLlm.Souffles), d.LireReglage(CleRegard) != "non", jours,
-                d.LireReglage(CleCaractere) ?? "", d.LireReglage(CleLibre) == "oui", d.LireReglage(CleJuge) != "non");
+                d.LireReglage(CleCaractere) ?? "", d.LireReglage(CleLibre) == "oui", d.LireReglage(CleJuge) != "non", d.LireReglage(CleMonde) == "oui");
         }
     }
 
@@ -189,6 +191,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         d.EcrireReglage(CleCaractere, (r.Caractere ?? "").Trim());
         d.EcrireReglage(CleLibre, r.Libre ? "oui" : "non");
         d.EcrireReglage(CleJuge, r.Juge ? "oui" : "non");
+        d.EcrireReglage(CleMonde, r.Monde ? "oui" : "non");
         if (L.Toutes.ContainsKey(langue)) d.EcrireReglage(CleLangue, langue);
         if (mode == ModeEntite.Joueur)
             lock (_verrou) _file.RemoveAll(x => x.Occasion is not (OccasionLlm.DemandeHumain or OccasionLlm.DemandeCommunaute));
@@ -355,10 +358,11 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var memoire = service.Depot.Echanges(limite: 8).Where(e => e.Statut is 0 or 1).Reverse().ToList();
         var caractereLlm = service.Depot.LireReglage(CleCaractereLlm) ?? "";
         var libre = reglages.Libre;
+        var auMonde = reglages.Monde && permises.HasFlag(FamillesLlm.Paroles);
         var lecture = d.Occasion == OccasionLlm.Regard
-            ? Contexte.LireRegard(service, permises, d.Depuis, memoire, reglages.Caractere, caractereLlm, libre)
-            : Contexte.Lire(service, permises, d.Occasion, d.Humain, d.Communaute, priere, memoire, reglages.Caractere, caractereLlm, libre);
-        var schema = Actes.Schema(libre);
+            ? Contexte.LireRegard(service, permises, d.Depuis, memoire, reglages.Caractere, caractereLlm, libre, auMonde)
+            : Contexte.Lire(service, permises, d.Occasion, d.Humain, d.Communaute, priere, memoire, reglages.Caractere, caractereLlm, libre, auMonde);
+        var schema = Actes.Schema(libre, auMonde);
         var traceJuge = new System.Text.StringBuilder();
         var (maintenant, humains) = monde.InstantaneHumains();
         _enCours = d.Occasion == OccasionLlm.Regard ? L.T("llm.etat.regard")
@@ -386,7 +390,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                     {
                         try
                         {
-                            Actes.Verifier(a, permises, libre, lecture.Pieces, monde);
+                            Actes.Verifier(a, permises, libre, lecture.Pieces, monde, auMonde);
                         }
                         catch (ArgumentException e)
                         {
@@ -498,6 +502,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         if (e.Statut is not (1 or 5)) throw new ArgumentException(L.T("llm.erreur.dejaTraite"));
         var familles = permises ?? Reglages.Familles;
         var libre = Reglages.Libre;
+        var auMonde = Reglages.Monde;
         var actes = JsonSerializer.Deserialize<List<ActeLlm>>(e.Actes, Actes.Json) ?? [];
         var monde = service.Monde;
         // Une prière déjà close : l'échange arrive trop tard.
@@ -540,7 +545,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             }
             try
             {
-                var (fait, p, d) = monde.Executer(m => Actes.Appliquer(m, a, familles, [], libre));
+                var (fait, p, d) = monde.Executer(m => Actes.Appliquer(m, a, familles, [], libre, auMonde));
                 Registre.Noter(service, Registre.Llm, a, fait, p, d, e.Id);
                 resultats.Add(string.Join(" ", fait.Resultats));
                 if (d >= p)

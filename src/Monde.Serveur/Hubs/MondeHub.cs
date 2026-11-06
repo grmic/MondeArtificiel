@@ -496,6 +496,28 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
         return new ResultatParoleCommunauteDto(Resultats(resultats), groupe);
     }
 
+    /// <summary>Paroles qu'on peut dire au Monde, manières, plantes, communautés et terres habitées (0.37.1).</summary>
+    public ChoixParolesMondeDto ChoixParolesMonde() => ParolesMonde.Choix(service);
+
+    /// <summary>Paroles de l'Entité au Monde, de la plus récente à la plus ancienne.</summary>
+    public List<ParoleMondeDto> ParolesAuMonde() => ParolesMonde.Liste(service);
+
+    /// <summary>
+    /// L'Entité parle au Monde entier, ou à toute une terre : chacun l'entend, la comprend, y croit ou non et la suit ou non ; une
+    /// parole qui vise une communauté est débattue par chacune des autres. Renvoie le bilan par communauté.
+    /// </summary>
+    public async Task<ResultatParoleMondeDto> ParlerAuMonde(DemandeParoleMonde demande)
+    {
+        var monde = service.Monde;
+        var (parole, resultats) = Appeler(() => Entite.Registre.Faire(service, Entite.Registre.Joueur, Entite.Registre.Depuis(demande),
+            m => ParolesMonde.Parler(m, demande, Entite.Registre.Joueur), r => new Entite.FaitEntite(
+                [.. r.Parole.Bilans.Select(b => ParolesMonde.Bilan(b, monde.Communautes()))], r.Resultats.Count > 0 ? 1 : 0, r.Resultats.Count)));
+        service.Sauvegarder();
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
+        return ParolesMonde.Resultat(monde, parole, resultats);
+
+    }
+
     /// <summary>L'Entité inspire un penchant amoureux (ou une passion) à des humains, pour quelqu'un ou pour qui le monde choisit.</summary>
     public async Task<List<ResultatParoleDto>> Inspirer(DemandePenchant demande)
     {

@@ -100,7 +100,7 @@ public static class ParolesEntite
             L.T(p switch
             {
                 Parole.FaitesLaGuerre or Parole.ChassezDeLeursTerres or Parole.Exterminez => "rubriqueParole.groupe.guerre",
-                Parole.FaitesLaPaix or Parole.AlliezVous or Parole.UnissezVous => "rubriqueParole.groupe.paix",
+                Parole.FaitesLaPaix or Parole.AlliezVous or Parole.UnissezVous or Parole.AccueillezLes => "rubriqueParole.groupe.paix",
                 Parole.PartezVers => "rubriqueParole.groupe.partir",
                 _ => "rubriqueParole.groupe.donner",
             }), false, p == Parole.PartezVers ? "direction" : "communautes", L.T($"phrase.{p}", ("extra", "{extra}")), Paroles.NuitAuxAutres(p))).ToList();

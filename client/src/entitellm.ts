@@ -6,7 +6,7 @@ interface ConnexionLlm { fournisseur: string; adresse: string; modele: string; c
 interface Reglages {
   mode: string; prieres: boolean; partOrdinaires: number; attendre: boolean;
   paroles: boolean; bienfaits: boolean; chatiments: boolean; catastrophes: boolean; souffles: boolean;
-  regard: boolean; regardJours: number; caractere: string; libre: boolean; juge: boolean;
+  regard: boolean; regardJours: number; caractere: string; libre: boolean; juge: boolean; monde: boolean;
 }
 interface Etat {
   connexion: ConnexionLlm; reglages: Reglages; enFile: number; enCours: string | null; derniereErreur: string | null; propositions: number;
@@ -110,6 +110,7 @@ export class PanneauEntiteLlm {
   private readonly attendre: HTMLInputElement;
   private readonly regard: HTMLInputElement;
   private readonly libre: HTMLInputElement;
+  private readonly monde: HTMLInputElement;
   private readonly juge: HTMLInputElement;
   private readonly regardJours = el("input");
   private readonly caractere = el("textarea");
@@ -161,6 +162,9 @@ export class PanneauEntiteLlm {
     [l, this.libre] = caseACocher(t("ellm.libre"), t("ellm.libreAide"));
     [lj, this.juge] = caseACocher(t("ellm.juge"), t("ellm.jugeAide"));
     reglagesBloc.append(el("h4", undefined, t("ellm.libreTitre")), l, el("br"), lj, el("p", "discret", t("ellm.libreDetail")));
+    // Parler au Monde (0.37.1) : une case à part, décochée par défaut.
+    [l, this.monde] = caseACocher(t("ellm.monde"), t("ellm.mondeAide"));
+    reglagesBloc.append(el("h4", undefined, t("ellm.mondeTitre")), l, el("br"));
     [l, this.prieres] = caseACocher(t("ellm.prieres"), t("ellm.prieresAide"));
     reglagesBloc.append(el("h4", undefined, t("ellm.occasions")), l, el("br"));
     this.part.type = "number";
@@ -238,6 +242,7 @@ export class PanneauEntiteLlm {
     this.caractere.value = e.reglages.caractere ?? "";
     this.libre.checked = e.reglages.libre;
     this.juge.checked = e.reglages.juge;
+    this.monde.checked = e.reglages.monde ?? false;
     for (const [f, i] of this.familles) i.checked = Boolean(e.reglages[f]);
     this.montrerEtat(e);
   }
@@ -293,6 +298,7 @@ export class PanneauEntiteLlm {
       paroles: false, bienfaits: false, chatiments: false, catastrophes: false, souffles: false,
       regard: this.regard.checked, regardJours: Math.max(1, Math.min(3650, Math.round(Number(this.regardJours.value) || 91))),
       caractere: this.caractere.value.trim().slice(0, 2000), libre: this.libre.checked, juge: this.juge.checked,
+      monde: this.monde.checked,
     };
     for (const [f, i] of this.familles) (r as unknown as Record<string, boolean>)[f] = i.checked;
     try {

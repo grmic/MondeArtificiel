@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 56;
+    public const int VersionSchema = 57;
 
     private readonly string _connexion;
 
@@ -636,6 +636,8 @@ public sealed partial class DepotMonde
         // Version 56 : réglage « Langage avancé » (0 pour tous les mondes plus anciens).
         if (actuelle < 56 && !Colonnes(connexion, transaction, "etat").Contains("langage"))
             Executer(connexion, transaction, "ALTER TABLE etat ADD COLUMN langage INTEGER NOT NULL DEFAULT 0;");
+        // Version 57 : paroles de l'Entité au Monde (0.37.1).
+        if (actuelle < 57) MigrerVersion57(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -866,6 +868,8 @@ public sealed partial class DepotMonde
         if (outremer.Count > 0) etat = etat with { Outremer = outremer };
         var mandats = LireMandats(commande);
         if (mandats.Count > 0) etat = etat with { Mandats = mandats };
+        var parolesMonde = LireParolesMonde(commande);
+        if (parolesMonde.Count > 0) etat = etat with { ParolesMonde = parolesMonde };
         var decrets = LireDecrets(commande);
         if (decrets.Count > 0) etat = etat with { Decrets = decrets };
         var inventions = LireInventions(commande);
@@ -1281,6 +1285,7 @@ public sealed partial class DepotMonde
         if (etat.Rassemblements is not null) EnregistrerRassemblements(connexion, transaction, etat.Rassemblements);
         if (etat.Outremer is not null) EnregistrerOutremer(connexion, transaction, etat.Outremer);
         if (etat.Mandats is not null) EnregistrerMandats(connexion, transaction, etat.Mandats);
+        EnregistrerParolesMonde(connexion, transaction, etat.ParolesMonde ?? []);
         EnregistrerDecrets(connexion, transaction, etat.Decrets ?? []);
         EnregistrerInventions(connexion, transaction, etat.Inventions ?? []);
         if (etat.Humains is not null) EnregistrerChamps(connexion, transaction, etat);

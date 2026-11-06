@@ -42,6 +42,8 @@ public sealed record ActeLlm
     public int? Espece { get; init; }
     public bool? Mutuel { get; init; }
     public bool? Passion { get; init; }
+    /// <summary>Parole au Monde (0.37.1) : la terre visée (0 : le Monde entier).</summary>
+    public int? Terre { get; init; }
 
     // Entité libre (type « libre ») : son récit, s'il se voit et de qui, s'il fait du bien, les changements et les décrets.
     public string? Recit { get; init; }
@@ -74,6 +76,7 @@ public static class Actes
 {
     public const string Parler = "parler";
     public const string ParlerCommunaute = "parler_communaute";
+    public const string ParlerMonde = "parler_monde";
     public const string Geste = "geste";
     public const string Catastrophe = "catastrophe";
     public const string Exaucer = "exaucer";
@@ -86,7 +89,9 @@ public static class Actes
     public static readonly string[] Types = [Parler, ParlerCommunaute, Geste, Catastrophe, Exaucer, Refuser, SoufflerGeste, SoufflerCombinaison, Penchant, Rien];
 
     /// <summary>Types permis, avec l'acte libre quand la case « Entité libre » est cochée.</summary>
-    public static string[] TypesPermis(bool libre) => libre ? [.. Types, Libre] : Types;
+    /// <param name="auMonde">Case « Permettre au LLM de parler au Monde » (0.37.1).</param>
+    public static string[] TypesPermis(bool libre, bool auMonde = false) =>
+        [.. Types, .. auMonde ? new[] { ParlerMonde } : [], .. libre ? new[] { Libre } : []];
 
     /// <summary>Plus d'actes par réponse : au-delà, ils sont ignorés.</summary>
     public const int ParReponse = 4;
@@ -103,7 +108,7 @@ public static class Actes
     };
 
     /// <summary>Schéma JSON imposé à la réponse (format structuré d'Ollama, response_format des API compatibles OpenAI).</summary>
-    public static JsonObject Schema(bool libre = false)
+    public static JsonObject Schema(bool libre = false, bool auMonde = false)
     {
         static JsonObject T(string type) => new() { ["type"] = type };
         static JsonObject Entiers() => new() { ["type"] = "array", ["items"] = T("integer") };
@@ -114,7 +119,7 @@ public static class Actes
             ["type"] = "object",
             ["properties"] = new JsonObject
             {
-                ["type"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. TypesPermis(libre).Select(t => (JsonNode)t)]) },
+                ["type"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. TypesPermis(libre, auMonde).Select(t => (JsonNode)t)]) },
                 ["humain"] = T("integer"), ["humains"] = Entiers(), ["communaute"] = T("integer"), ["communautes"] = Entiers(),
                 ["cible"] = T("integer"), ["cibles"] = Entiers(), ["parole"] = Liste(Enum.GetNames<Parole>().Where(p => p != nameof(Parole.Penchant))),
                 ["mode"] = Liste(Enum.GetNames<ModeParole>().Where(m => m != nameof(ModeParole.Penchant))), ["param"] = T("integer"),
@@ -124,6 +129,7 @@ public static class Actes
                 ["jours"] = T("number"), ["priere"] = T("integer"), ["signe"] = T("boolean"), ["catastrophe"] = Liste(Provoquables.Select(p => p.Cle)), ["x"] = T("integer"),
                 ["y"] = T("integer"), ["intensite"] = T("number"), ["operation"] = T("string"), ["a"] = T("string"), ["b"] = T("string"),
                 ["lien"] = T("integer"), ["espece"] = T("integer"), ["mutuel"] = T("boolean"), ["passion"] = T("boolean"),
+                ["terre"] = T("integer"),
             },
             ["required"] = new JsonArray("type"),
         };
@@ -245,7 +251,7 @@ public static class Actes
     /// <summary>La famille d'un acte (pour les cases du joueur), ou Aucune pour « rien » et un type inconnu.</summary>
     public static FamillesLlm Famille(ActeLlm a) => a.Type switch
     {
-        Parler or ParlerCommunaute or Penchant or Refuser => FamillesLlm.Paroles,
+        Parler or ParlerCommunaute or ParlerMonde or Penchant or Refuser => FamillesLlm.Paroles,
         Exaucer => FamillesLlm.Bienfaits,
         Geste => Enum.TryParse<GesteEntite>(a.Geste, true, out var g) && Enum.IsDefined(g) && Gestes.EstBienfait(g) ? FamillesLlm.Bienfaits : FamillesLlm.Chatiments,
         Catastrophe => FamillesLlm.Catastrophes,
@@ -259,9 +265,13 @@ public static class Actes
     /// </summary>
     /// <paramref name="pieces"/> : les pièces numérotées montrées au LLM (P1, P2…) ; null quand on ne les connaît pas ici.
     /// <paramref name="monde"/> : pour vérifier la cible d'un geste (null : pas vérifiée ici).
-    public static void Verifier(ActeLlm a, FamillesLlm permises, bool libre = false, IReadOnlyList<string>? pieces = null, MondeSimule? monde = null)
+    public static void Verifier(ActeLlm a, FamillesLlm permises, bool libre = false, IReadOnlyList<string>? pieces = null, MondeSimule? monde = null,
+        bool auMonde = false)
     {
-        if (Array.IndexOf(TypesPermis(libre), a.Type) < 0) throw new ArgumentException(L.T(a.Type == Libre ? "llm.erreur.pasLibre" : "llm.erreur.type", ("type", a.Type)));
+        if (Array.IndexOf(TypesPermis(libre, auMonde), a.Type) < 0)
+            throw new ArgumentException(L.T(a.Type == Libre ? "llm.erreur.pasLibre" : a.Type == ParlerMonde ? "llm.erreur.pasMonde" : "llm.erreur.type", ("type", a.Type)));
+        if (a.Type == ParlerMonde && (!Enum.TryParse<Parole>(a.Parole, true, out var pm) || !Enum.IsDefined(pm) || !Paroles.AuMonde(pm)))
+            throw new ArgumentException(L.T("erreur.paroleMonde", ("liste", string.Join(", ", Enum.GetValues<Parole>().Where(Paroles.AuMonde)))));
         if (a.Type == Libre && (a.Changements?.Count ?? 0) + (a.Decrets?.Count ?? 0) == 0) throw new ArgumentException(L.T("libre.erreur.vide"));
         var f = Famille(a);
         if (f != FamillesLlm.Aucune && (permises & f) == 0) throw new ArgumentException(L.T("llm.erreur.famille", ("type", a.Type)));
@@ -308,9 +318,10 @@ public static class Actes
     /// <see cref="ArgumentException"/> si la demande est invalide (rien n'a changé). <paramref name="pieces"/> : les pièces
     /// numérotées montrées au LLM pour les combinaisons (P1, P2…).
     /// </summary>
-    public static FaitEntite Appliquer(MondeSimule monde, ActeLlm a, FamillesLlm permises, IReadOnlyList<string> pieces, bool libre = false)
+    public static FaitEntite Appliquer(MondeSimule monde, ActeLlm a, FamillesLlm permises, IReadOnlyList<string> pieces, bool libre = false,
+        bool auMonde = false)
     {
-        Verifier(a, permises, libre);
+        Verifier(a, permises, libre, auMonde: auMonde);
         switch (a.Type)
         {
             case Libre:
@@ -322,6 +333,13 @@ public static class Actes
                 var (membres, groupe) = Pouvoirs.ParlerACommunaute(monde,
                     new DemandeParoleCommunaute(a.Communaute ?? 0, a.Parole ?? "", a.Mode ?? "", a.Cibles ?? (a.Cible is { } c ? [c] : null), a.Direction ?? a.Param ?? 0));
                 return new FaitEntite([string.Join(" ", groupe.Prepend(L.T("llm.resultat.membres", ("n", membres.Count))))], membres.Count > 0 ? 1 : 0, membres.Count);
+            }
+            case ParlerMonde:
+            {
+                var (p, r) = ParolesMonde.Parler(monde, new DemandeParoleMonde(a.Parole ?? "", a.Mode ?? "", a.Terre ?? 0, a.Cible ?? a.Humain ?? 0,
+                    a.Communaute ?? a.Cibles?.FirstOrDefault() ?? 0, a.Param ?? 0), Registre.Llm);
+                var communautes = monde.Communautes();
+                return new FaitEntite([.. p.Bilans.Select(b => ParolesMonde.Bilan(b, communautes))], r.Count > 0 ? 1 : 0, r.Count);
             }
             case Geste:
                 return Registre.Texte(Pouvoirs.Agir(monde, new DemandeGeste(a.Geste ?? "", a.Cible ?? a.Humain ?? a.Communaute ?? 0, a.Maniere ?? nameof(ManiereGeste.Cachee),

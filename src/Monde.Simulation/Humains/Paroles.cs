@@ -56,6 +56,12 @@ public enum Parole : byte
     PartezVers = 32,
     ChassezDeLeursTerres = 33,
     Exterminez = 34,
+    // Au Monde entier (0.37.1) : des commandements qui durent chez ceux qui les acceptent, et l'accueil d'une communauté.
+    NeTuezPas = 35,
+    PartagezTous = 36,
+    PrenezSoinDesFaibles = 37,
+    /// <summary>« Accueillez… » : une communauté invite l'autre à camper chez elle et ne la frappe pas tant qu'elle l'accueille.</summary>
+    AccueillezLes = 38,
 }
 
 /// <summary>Comment l'Entité se fait entendre.</summary>
@@ -137,7 +143,19 @@ public static class Paroles
     public static bool Nuit(Parole p) => p is Parole.Frappe or Parole.Tue;
 
     /// <summary>Paroles adressées à une communauté entière, que le groupe débat avant d'agir.</summary>
-    public static bool Collective(Parole p) => p >= Parole.FaitesLaGuerre && p <= Parole.Exterminez;
+    public static bool Collective(Parole p) => p >= Parole.FaitesLaGuerre && p <= Parole.Exterminez || p == Parole.AccueillezLes;
+
+    /// <summary>
+    /// Paroles que l'Entité peut dire au Monde entier (ou à toute une terre, 0.37.1) : se révéler, avertir, rassurer, commander,
+    /// désigner, et dresser tous les groupes contre une communauté, leur faire faire la paix avec elle ou l'accueillir.
+    /// </summary>
+    public static bool AuMonde(Parole p) => p is Parole.JeSuisCelleQuiVousAFaits or Parole.CatastropheArrive or Parole.PlanteDangereuse
+        or Parole.NAiePasPeur or Parole.TuNEsPasSeul or Parole.NeTuezPas or Parole.NeTeVengePas or Parole.PartagezTous
+        or Parole.NeVaPasALaGuerre or Parole.PrenezSoinDesFaibles or Parole.Ecoute or Parole.FaitesLaGuerre or Parole.FaitesLaPaix
+        or Parole.AccueillezLes;
+
+    /// <summary>Commandements au Monde : une règle qui dure chez ceux qui l'acceptent, transmise aux enfants par ceux qui la racontent.</summary>
+    public static bool Commandement(Parole p) => p is Parole.NeTuezPas or Parole.PartagezTous or Parole.PrenezSoinDesFaibles;
 
     /// <summary>Paroles collectives qui visent une autre communauté (toutes sauf « Partez vers… »).</summary>
     public static bool VeutCommunaute(Parole p) => Collective(p) && p != Parole.PartezVers;
@@ -160,8 +178,11 @@ public static class Paroles
     /// La phrase telle que l'humain la reçoit (clé <c>phrase.*</c>). <paramref name="cible"/> est la personne désignée (ou null),
     /// <paramref name="extra"/> la direction, la plante ou la communauté ; <paramref name="feminin"/> : on s'adresse à une femme.
     /// </summary>
-    public static Recit Phrase(Parole p, Humain? cible, object? extra, bool feminin = false) => p switch
+    /// <param name="monde">Dite au Monde entier : la phrase s'adresse à tous (« N'ayez pas peur », « Tous, faites la guerre à… »).</param>
+    public static Recit Phrase(Parole p, Humain? cible, object? extra, bool feminin = false, bool monde = false) => p switch
     {
+        _ when monde && Collective(p) => new Recit($"phrase.monde.{p}", ("c", extra)),
+        _ when monde => new Recit($"phrase.monde.{p}", ("cible", cible), ("extra", extra)),
         Parole.NeVaPasALaGuerre when extra is not null => new Recit("phrase.NeVaPasALaGuerre.c", ("c", extra)),
         _ when Collective(p) => new Recit($"phrase.{p}.c", ("c", extra)),
         _ => new Recit($"phrase.{p}", ("cible", cible), ("extra", extra), ("g", feminin ? "f" : "m")),

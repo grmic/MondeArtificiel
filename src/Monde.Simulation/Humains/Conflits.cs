@@ -122,6 +122,10 @@ public sealed partial class Comportement
         var (vainqueur, vaincu) = gagne ? (h, cible) : (cible, h);
         var grave = alea.Reel() < RisqueBlessureGrave;
         var degats = grave ? 50 + 50 * alea.Reel() : 5 + 20 * alea.Reel();
+        // « Ne tuez pas » (0.37.1) : le vainqueur qui y croit retient le coup qui tuerait, plus ou moins.
+        var epargne = vaincu.Sante - degats <= 0 && vainqueur.Impulsions.Count > 0 && vainqueur.Consigne(Parole.NeTuezPas, maintenant) is { } nt
+            && alea.Reel() < nt.Force ? nt : null;
+        if (epargne is not null) degats = Math.Max(0, vaincu.Sante - 5);
         var blesse = new Recit(grave ? "j.blesseGrave" : "j.blesse", ("v", vaincu));
         var id = Noter(maintenant, TypeEvenement.Conflit, h, cible, gagne
             ? new Recit("j.frappe", ("h", h), ("c", cible), ("motif", motif), ("blesse", blesse))
@@ -136,6 +140,8 @@ public sealed partial class Comportement
         // Une jalousie qui tourne aux coups rend le groupe plus sévère envers l'infidélité.
         if (grief.Motif is MotifGrief.Infidelite or MotifGrief.Rival) social.Durcir(h, grave ? 0.1 : 0.03, id);
 
+        if (epargne is not null)
+            Noter(maintenant, TypeEvenement.Conflit, vainqueur, vaincu, new Recit("j.epargne", ("h", vainqueur), ("c", vaincu)), epargne.EvenementId);
         if (vaincu.Sante <= 0)
         {
             // Tuer celui qui vous attaque pèse bien moins que tuer celui que l'on attaque.

@@ -98,7 +98,7 @@ public sealed record SouvenirDto(string Date, string Texte, bool Bienfait, int F
 public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Vivants, int Adultes, PopulationDto Population, SexesDto Sexes,
     IntelligenceDto Intelligence, CaractereDto Caractere, SavoirsCommunauteDto Savoirs, VieCommunauteDto Vie, FoiCommunauteDto Foi,
     IReadOnlyList<EvenementDto> Marquants, IReadOnlyList<EvenementDto> Entite, IReadOnlyList<MembreFicheDto> Membres,
-    AutoriteDto? Autorite = null, IReadOnlyList<MandatDto>? Paroles = null)
+    AutoriteDto? Autorite = null, IReadOnlyList<MandatDto>? Paroles = null, IReadOnlyList<ParoleMondeDto>? ParolesMonde = null)
 {
     private static System.Globalization.NumberFormatInfo Fr => L.Courante.Nombres;
 
@@ -137,7 +137,7 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             membres.OrderBy(h => h.Naissance).Select(h => new MembreFicheDto(h.Id, h.Nom, h.Sexe == Sexe.Femme ? "femme" : "homme",
                 (int)h.AgeEnAnnees(maintenant), (int)Math.Round(h.Personnalite.Intelligence.Generale), Math.Round(h.Karma, 1), (int)Math.Round(h.Croyance),
                 h.EstBebe(maintenant) ? "bébé" : h.EstEnfant(maintenant) ? "enfant" : "adulte", Role(h))).ToList(),
-            ParolesEntite.Autorite(service, id), ParolesEntite.Mandats(service, id));
+            ParolesEntite.Autorite(service, id), ParolesEntite.Mandats(service, id), Serveur.ParolesMonde.Liste(service, id));
     }
 
     private static string? Role(Humain h) => h.Role switch

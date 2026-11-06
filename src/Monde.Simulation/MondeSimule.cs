@@ -110,6 +110,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Paroles de l'Entité adressées à des communautés, et ce qu'elles en ont fait (null : aucune).</summary>
     public IReadOnlyList<Mandat>? Mandats { get; init; }
 
+    /// <summary>Paroles de l'Entité au Monde entier ou à une terre, et leurs bilans (null : aucune ; 0.37.1).</summary>
+    public IReadOnlyList<ParoleMonde>? ParolesMonde { get; init; }
+
     /// <summary>Parcelles semées, lignées cultivées et ce que chaque communauté pense des champs (null : aucun).</summary>
     public IReadOnlyList<Parcelle>? Parcelles { get; init; }
     public IReadOnlyList<Lignee>? Lignees { get; init; }
@@ -217,6 +220,7 @@ public sealed partial class MondeSimule
         };
         _social.ChargerGuerres(etat.Guerres ?? []);
         _social.ChargerMandats(etat.Mandats ?? []);
+        _parolesMonde.AddRange(etat.ParolesMonde ?? []);
         _social.ChargerRelations(etat.Relations ?? []);
         _social.ChargerRassemblements(etat.Rassemblements ?? []);
         _social.ChargerOffenses(etat.Offenses ?? []);
@@ -343,6 +347,7 @@ public sealed partial class MondeSimule
                     ProchainePriere = _cultes.ProchainePriere,
                     Outremer = _comportement.Outremer.Liste.ToList(),
                     Mandats = _social.Mandats.Select(m => m.Copier()).ToList(),
+                    ParolesMonde = _parolesMonde.Count == 0 ? null : [.. _parolesMonde],
                     Parcelles = _champs.Parcelles.Count == 0 ? null : _champs.Parcelles.ToList(),
                     Lignees = _champs.Lignees.Count == 0 ? null : _champs.Lignees.ToList(),
                     IdeesChamps = _champs.Idees.Count == 0 ? null : _champs.Idees.OrderBy(x => x.Key).Select(x => (x.Key, x.Value.Copier())).ToList(),
@@ -890,6 +895,7 @@ public sealed partial class MondeSimule
             _comportement.Regarder(_humains, _secondes);
             _comportement.EffetsDuJour(_secondes);
             _comportement.Religions(_humains, _secondes);
+            _comportement.VivreLesCommandements(_humains, _secondes);
             _comportement.Soins(_humains, _secondes);
             _comportement.Arts(_humains, _secondes);
             _catastrophes.BrulisProtecteurs(_communautes, _humains, _secondes);

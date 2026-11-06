@@ -251,6 +251,25 @@ public sealed class MandatsTests
     }
 
     [Fact]
+    public void Accueillir_LAutreGroupeVientCamperChezCeluiQuiAccueille()
+    {
+        var accueillis = 0;
+        for (var graine = 1; graine <= 8; graine++)
+        {
+            var s = DeuxGroupes(60, graine);
+            var m = Parler(s, Parole.AccueillezLes, Reponse.Acceptee);
+            Jours(s, Maintenant, () => m.Etat is not (EtatMandat.Debat or EtatMandat.EnRoute));
+            if (m.Etat != EtatMandat.EnCours) continue;
+            accueillis++;
+            var r = Assert.Single(s.Social.Rassemblements, x => x.Id == m.RassemblementId);
+            // Le rassemblement se tient chez celui qui accueille.
+            Assert.Equal(s.A.Id, r.HoteId);
+            Assert.Equal(s.B.Id, r.InviteeId);
+        }
+        Assert.True(accueillis > 0);
+    }
+
+    [Fact]
     public void Partager_LesReservesPassentALAutreGroupe()
     {
         var faits = 0;
@@ -355,7 +374,7 @@ public sealed class MandatsTests
             Assert.True(v39.Mandats is null or { Count: 0 });
             new DepotMonde(fichier).Enregistrer(v39, remplacer: true);
             Assert.Equal(DepotMonde.VersionSchema, DepotMonde.Decrire(fichier)!.Version);
-            Assert.Equal(56, DepotMonde.VersionSchema);
+            Assert.Equal(57, DepotMonde.VersionSchema);
         }
         finally
         {

@@ -32,16 +32,18 @@ public sealed partial class Comportement
     /// n'est pas une nouvelle manifestation (ni témoins, ni harcèlement), et s'il croit déjà (ou non) lui parler,
     /// <paramref name="croyait"/> le dit : la foi n'est pas tirée de nouveau. Il ne la raconte qu'à la fin du dialogue.
     /// </para>
+    /// <param name="cause">La parole au Monde dont celle-ci est la part reçue par <paramref name="h"/> (0.37.1) ; 0 : aucune.</param>
+    /// <param name="monde">Dite au Monde entier : la phrase s'adresse à tous.</param>
     public Recit Parler(Humain h, Parole parole, ModeParole mode, Humain? cible, int param, IReadOnlyList<Humain> tous, long maintenant,
-        bool ensemble = false, long dialogue = 0, bool? croyait = null)
+        bool ensemble = false, long dialogue = 0, bool? croyait = null, long cause = 0, bool monde = false)
     {
         _maintenant = maintenant;
         if (!h.EstVivant) return new Recit("ent.r.mort", ("h", h));
         if (h.EstBebe(maintenant)) return new Recit("ent.r.bebe", ("h", h));
         var p = h.Personnalite;
         var extra = Extra(parole, param);
-        var phrase = Paroles.Phrase(parole, cible, extra, h.Sexe == Sexe.Femme);
-        var reception = dialogue > 0 ? dialogue : Recevoir(h, mode, phrase, tous, maintenant, ensemble);
+        var phrase = Paroles.Phrase(parole, cible, extra, h.Sexe == Sexe.Femme, monde);
+        var reception = dialogue > 0 ? dialogue : Recevoir(h, mode, phrase, tous, maintenant, ensemble, cause: cause);
         if (dialogue == 0) croyait = null;
 
         // Comprendre.
@@ -153,7 +155,8 @@ public sealed partial class Comportement
     // ───────────── Recevoir, comprendre, croire ─────────────
 
     /// <summary>Note la manifestation au journal (★) ; une apparition adressée à un seul est vue de ceux qui sont là.</summary>
-    private long Recevoir(Humain h, ModeParole mode, Recit phrase, IReadOnlyList<Humain> tous, long maintenant, bool ensemble, bool significatif = true)
+    private long Recevoir(Humain h, ModeParole mode, Recit phrase, IReadOnlyList<Humain> tous, long maintenant, bool ensemble, bool significatif = true,
+        long cause = 0)
     {
         var signe = ((h.Id + maintenant / 600) % 4) switch
         {
@@ -169,7 +172,8 @@ public sealed partial class Comportement
             ModeParole.Signe => new Recit("ent.recoit.signe", ("h", h), ("s", signe), ("ph", phrase)),
             _ => new Recit("ent.recoit.apparition", ("h", h), ("ph", phrase)),
         };
-        var id = NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, 0, significatif: significatif);
+        // Une parole au Monde : chaque réception en est une suite, et seule la parole elle-même est marquante.
+        var id = NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, cause, significatif: significatif && cause == 0);
         if (mode == ModeParole.Apparition) NouveauLieu(h.X, h.Y, new Recit("lieuSacre.presence", ("h", h)).Encoder(), id, maintenant);
         // Quand tout un groupe la voit à la fois, chacun la reçoit pour lui-même : pas de témoins à part.
         if (mode != ModeParole.Apparition || ensemble) return id;
@@ -322,6 +326,22 @@ public sealed partial class Comportement
             case Parole.NeVaPasALaGuerre:
                 return (Math.Clamp(0.2 + 0.3 * f.Loyaute * (1 - p.Agreabilite), 0, 1), 0.3 * p.Prudence + 0.2 * p.Agreabilite - 0.2,
                     new Recit("ent.refus.guerre", ("h", h)), false);
+            // Les commandements au Monde (0.37.1). Ne pas tuer : presque rien ne coûte à qui n'en a pas l'envie ; celui qui porte
+            // un grief de sang (un des siens tué) ou le psychopathe y tiennent moins. La règle rejoint la douceur.
+            case Parole.NeTuezPas:
+            {
+                var sang = h.Griefs.Where(g => g.Motif == MotifGrief.Meurtre).Select(g => g.Intensite / 100).DefaultIfEmpty(0).Max();
+                return (Math.Clamp(0.05 + 0.5 * sang * (1 - 0.5 * p.Agreabilite) + (psychopathe ? 0.4 : 0), 0, 1), 0.3 * douceur - 0.05,
+                    sang > 0.2 ? new Recit("ent.refus.justice", ("h", h)) : new Recit("ent.refus.tuerCmd", ("h", h)), false);
+            }
+            // Partager avec tous : la faim et l'égoïsme retiennent, la compassion pousse (Fehr et Fischbacher, 2003, sur la
+            // coopération envers des inconnus).
+            case Parole.PartagezTous:
+                return (Math.Clamp(0.2 + 0.3 * Math.Max(0, h.Faim - 40) / 60 + 0.3 * (1 - p.Agreabilite) * (1 - m.Compassion) + (psychopathe ? 0.4 : 0), 0, 1),
+                    0.3 * m.Compassion + 0.2 * f.Equite - 0.1, new Recit("ent.refus.egoiste", ("h", h)), true);
+            case Parole.PrenezSoinDesFaibles:
+                return (Math.Clamp(0.15 + 0.3 * (1 - p.Agreabilite) * (1 - m.Compassion) + (psychopathe ? 0.5 : 0), 0, 1),
+                    0.3 * m.Compassion + 0.3 * f.Soin - 0.1, new Recit("ent.refus.egoiste", ("h", h)), true);
             case Parole.PartsVers:
                 return (Math.Clamp(0.25 + 0.3 * f.Loyaute + (compagnon is not null ? 0.2 : 0) + 0.2 * p.Prudence - 0.3 * p.Ouverture, 0, 1),
                     0.3 * p.Ouverture - 0.1, new Recit("ent.refus.siens", ("h", h)), false);
@@ -450,7 +470,8 @@ public sealed partial class Comportement
 
     /// <summary>Paroles qui agissent dans la durée (plutôt qu'un acte à faire).</summary>
     private static bool Durable(Parole p) => p is Parole.ResteAvec or Parole.NeTeVengePas or Parole.NeVaPasALaGuerre or Parole.ResteIci
-        or Parole.DefendsLesTiens or Parole.TuGuideras or Parole.Ecoute or Parole.PorteMaParole;
+        or Parole.DefendsLesTiens or Parole.TuGuideras or Parole.Ecoute or Parole.PorteMaParole or Parole.NeTuezPas or Parole.PartagezTous
+        or Parole.PrenezSoinDesFaibles;
 
     /// <summary>« N'aie pas peur », « Tu n'es pas seul », « Ta peine passera » : la peur, la solitude ou le chagrin reculent.</summary>
     private void Rassurer(Humain h, Parole parole, double force, long reception, long maintenant)
@@ -513,6 +534,9 @@ public sealed partial class Comportement
                 break;
             case Parole.DefendsLesTiens:
                 h.Peur *= 1 - 0.5 * i.Force;
+                break;
+            case Parole.NeTuezPas:
+                h.Colere *= 1 - 0.3 * i.Force;
                 break;
             case Parole.PorteMaParole:
                 DevenirProphete(h, SourceProphete.Entite, i.EvenementId, tous, maintenant);

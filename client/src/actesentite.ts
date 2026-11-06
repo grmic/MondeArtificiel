@@ -20,7 +20,7 @@ interface Page { comptes: Comptes; actes: Acte[]; plus: boolean; libreDepuis: st
 interface Ligne { id: number; date: string; texte: string }
 interface Echange { mots: string; pensee: string; occasion: string; statut: string }
 
-const SORTES = ["parler", "parler_communaute", "penchant", "geste.bienfait", "geste.chatiment", "catastrophe", "exaucer", "refuser", "exaucer_toutes",
+const SORTES = ["parler", "parler_communaute", "parler_monde", "penchant", "geste.bienfait", "geste.chatiment", "catastrophe", "exaucer", "refuser", "exaucer_toutes",
   "refuser_toutes", "souffler_geste", "souffler_combinaison", "reglage", "libre", "lever_decret"];
 
 const SVG = "http://www.w3.org/2000/svg";
