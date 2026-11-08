@@ -385,7 +385,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             {
                 using var delai = CancellationTokenSource.CreateLinkedTokenSource(arret);
                 delai.CancelAfter(DelaiReponse);
-                reponse = await client.Demander(connexion, lecture.Consigne, messages, schema, delai.Token);
+                reponse = await client.Demander(connexion, lecture.Consigne, messages, schema, delai.Token, reprise: essai > 0);
                 try
                 {
                     var lu = Actes.Lire(reponse);
@@ -453,7 +453,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                     erreur = e.Message;
                     if (essai == 0)
                     {
-                        messages.Add(("assistant", reponse));
+                        messages.Add(("assistant", ClientLlm.Couper(reponse, 800)));
                         messages.Add(("user", L.T("llm.d.corriger", ("erreurs", e.Message))));
                     }
                 }

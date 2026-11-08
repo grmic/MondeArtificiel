@@ -325,12 +325,13 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                 {
                     using var delai = CancellationTokenSource.CreateLinkedTokenSource(arret);
                     delai.CancelAfter(DelaiReponse);
-                    var reponse = await client.Demander(connexion, consigne, messages, Schema(libre), delai.Token);
+                    var reponse = await client.Demander(connexion, consigne, messages, Schema(libre), delai.Token, reprise: essai > 0);
                     brut.AppendLine($"---- {L.T("dlg.trace.humain")} ({essai + 1}) ----").AppendLine(reponse);
                     if (!Lire(reponse, out var m, out var pe, out var se, out var acte, out var faute))
                     {
                         erreur = faute;
-                        messages.Add(("assistant", reponse));
+                        // Une réponse coupée en pleine boucle n'est pas renvoyée en entier : le modèle y repartirait.
+                        messages.Add(("assistant", ClientLlm.Couper(reponse, 800)));
                         messages.Add(("user", L.T("llm.d.corriger", ("erreurs", faute))));
                         continue;
                     }
@@ -672,12 +673,18 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
     private const string FormeHumainLibre = """{"pensee":"…","mots":"…","sens":"…","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
 
+    /// <summary>Longueur maximale (caractères) des mots d'une réplique dans le schéma imposé au LLM.</summary>
+    public const int MotsMax = 600;
+
     private static JsonObject Schema(bool libre)
     {
         var proprietes = new JsonObject
         {
-            ["pensee"] = new JsonObject { ["type"] = "string" }, ["mots"] = new JsonObject { ["type"] = "string" }, ["sens"] = new JsonObject { ["type"] = "string" },
+            ["pensee"] = Chaine(MotsMax * 2), ["mots"] = Chaine(MotsMax), ["sens"] = Chaine(MotsMax),
         };
+        // Longueur bornée dans la grammaire imposée (0.37.6) : vu le 8/11, gemma3:4b répétait « shuhei, » dans « mots » jusqu'à la limite
+        // de jetons, deux essais de suite ; bornée, la chaîne se ferme et la réponse reste lisible (les répétitions sont resserrées après).
+        static JsonObject Chaine(int max) => new() { ["type"] = "string", ["maxLength"] = max };
         // La forme complète de chaque changement, sortes en liste fermée (0.36.3) : sans elle, le LLM devinait les champs (« autre »).
         if (libre)
             proprietes["changements"] = new JsonObject

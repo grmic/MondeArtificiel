@@ -9,7 +9,7 @@ namespace Monde.Serveur;
 /// Détient le monde courant et sa sauvegarde. Au démarrage, le monde reprend à la date enregistrée,
 /// en pause par défaut, ou à sa dernière vitesse si ce réglage est choisi.
 /// </summary>
-public sealed class ServiceMonde
+public sealed class ServiceMonde : IDisposable
 {
     private readonly Lock _verrou = new();
 
@@ -45,6 +45,10 @@ public sealed class ServiceMonde
     private volatile int _espritsFertiles = 1;
     private double _facteurAtteint;
 
+    private readonly FileStream _verrouDossier;
+
+    public void Dispose() => _verrouDossier.Dispose();
+
     public ServiceMonde(IConfiguration configuration, ILogger<ServiceMonde> journal)
     {
         _journal = journal;
@@ -55,6 +59,18 @@ public sealed class ServiceMonde
             dossier = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData, Environment.SpecialFolderOption.Create),
                 "MondeArtificiel");
+        }
+
+        // Un seul serveur par dossier de mondes (0.37.5) : un second, lancé par erreur, lirait le même monde puis l'enregistrerait
+        // en s'arrêtant par-dessus celui qui tourne. Le verrou tombe de lui-même quand le processus s'arrête, même brutalement.
+        Directory.CreateDirectory(dossier);
+        try
+        {
+            _verrouDossier = new FileStream(Path.Combine(dossier, "serveur.verrou"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException)
+        {
+            throw new InvalidOperationException(L.T("serveur.dejaLance", ("dossier", dossier)));
         }
 
         Depot = new DepotMonde(Path.Combine(dossier, "mondes", "monde.db"));

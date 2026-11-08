@@ -65,8 +65,14 @@ public sealed partial class ClientLlm(HttpClient http)
     /// </summary>
     public const int ReponseMax = 2048;
 
+    /// <summary>
+    /// Au second essai (0.37.6), le modèle est retenu de se répéter : pénalité de répétition sur les 256 derniers jetons et température
+    /// plus basse, car un petit modèle qui a bouclé une fois repart souvent dans la même boucle.
+    /// </summary>
+    public const double PenaliteReprise = 1.15, TemperatureReprise = 0.6, Temperature = 0.8;
+
     public async Task<string> Demander(ConnexionLlm c, string consigne, IReadOnlyList<(string Role, string Texte)> messages, JsonObject schema,
-        CancellationToken arret)
+        CancellationToken arret, bool reprise = false)
     {
         var baseUri = c.Adresse.TrimEnd('/');
         var liste = new JsonArray { new JsonObject { ["role"] = "system", ["content"] = consigne } };
@@ -79,21 +85,28 @@ public sealed partial class ClientLlm(HttpClient http)
             corps = new JsonObject
             {
                 ["model"] = c.Modele, ["messages"] = liste, ["stream"] = false, ["format"] = schema.DeepClone(),
-                ["options"] = new JsonObject { ["num_ctx"] = c.Contexte, ["temperature"] = 0.8, ["num_predict"] = ReponseMax },
+                ["options"] = new JsonObject { ["num_ctx"] = c.Contexte, ["temperature"] = reprise ? TemperatureReprise : Temperature, ["num_predict"] = ReponseMax },
             };
+            if (reprise)
+            {
+                corps["options"]!["repeat_penalty"] = PenaliteReprise;
+                corps["options"]!["repeat_last_n"] = 256;
+            }
         }
         else
         {
             url = $"{baseUri}/v1/chat/completions";
             corps = new JsonObject
             {
-                ["model"] = c.Modele, ["messages"] = liste, ["stream"] = false, ["temperature"] = 0.8, ["max_tokens"] = ReponseMax,
+                ["model"] = c.Modele, ["messages"] = liste, ["stream"] = false, ["temperature"] = reprise ? TemperatureReprise : Temperature, ["max_tokens"] = ReponseMax,
                 ["response_format"] = new JsonObject
                 {
                     ["type"] = "json_schema",
                     ["json_schema"] = new JsonObject { ["name"] = "decision", ["strict"] = false, ["schema"] = schema.DeepClone() },
                 },
             };
+            // Style OpenAI : la pénalité de fréquence (0 à 2) tient le rôle de repeat_penalty.
+            if (reprise) corps["frequency_penalty"] = 0.4;
         }
         using var reponse = await http.PostAsJsonAsync(url, corps, arret);
         var texte = await reponse.Content.ReadAsStringAsync(arret);

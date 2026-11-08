@@ -6125,5 +6125,6 @@
   "fiche.erreur": "The sheet of human no. {id} could not be made: {erreur}",
   "ellm.contexte": "Context",
   "ellm.jetons": "tokens",
-  "ellm.contexteAide": "What the LLM can read at once. A longer request is shortened (the view of a large world often exceeds 16,384). Larger needs more memory: 32,768 suits a 4 to 12 billion parameter model on 24 GB. Save the connection after changing it."
+  "ellm.contexteAide": "What the LLM can read at once. A longer request is shortened (the view of a large world often exceeds 16,384). Larger needs more memory: 32,768 suits a 4 to 12 billion parameter model on 24 GB. Save the connection after changing it.",
+  "serveur.dejaLance": "Another Monde artificiel server is already using the worlds in {dossier}: stop it first (Ctrl-C in its Terminal, or “lsof -nP -iTCP:5080 -sTCP:LISTEN” to find it)."
 }

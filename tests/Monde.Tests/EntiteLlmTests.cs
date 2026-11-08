@@ -244,6 +244,10 @@ public sealed class EntiteLlmTests
         Assert.Contains("(n°1)", demande);
         Assert.Contains("FrapperDeMort", recu["messages"]![0]!["content"]!.GetValue<string>());
         Assert.Equal(4, llm.Recus[1]["messages"]!.AsArray().Count); // consigne, demande, réponse fautive, correction
+        // Au second essai, le modèle est retenu de se répéter ; jamais au premier.
+        Assert.Null(recu["options"]!["repeat_penalty"]);
+        Assert.Equal(ClientLlm.PenaliteReprise, llm.Recus[1]["options"]!["repeat_penalty"]!.GetValue<double>());
+        Assert.Equal(ClientLlm.TemperatureReprise, llm.Recus[1]["options"]!["temperature"]!.GetValue<double>());
 
         var complet = await c.InvokeAsync<EchangeLu>("EchangeLlm", e.Id);
         Assert.Contains("(n°1)", complet.Lu);
