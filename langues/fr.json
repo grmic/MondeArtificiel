@@ -5487,7 +5487,7 @@
   "llm.erreur.piecesAbsentes": "Pour souffler une combinaison, il faut les pièces numérotées d'un humain (P1, P2…), qui ne te sont données que sur sa fiche (« Ce qu'on peut lui souffler ») ; ici, souffle plutôt un geste (souffler_geste).",
   "llm.erreur.pieceInconnue": "Pièce inconnue : choisis a et b parmi les pièces P1 à P{n} de « Ce qu'on peut lui souffler ».",
   "llm.erreur.gesteInconnu": "Geste inconnu « {geste} » : utilise une de ces clés exactes : {liste}.",
-  "llm.erreur.gesteMatieres": "Matières qui ne vont pas avec {geste} : a et b doivent être des clés de cette liste : {forme}.",
+  "llm.erreur.gesteMatieres": "Matières qui ne vont pas avec {geste} (tu as donné a = « {a} », b = « {b} ») : a et b doivent être des clés de cette liste : {forme}.",
   "llm.cat.gestesTous": "  Gestes et matières qu'on peut souffler (clés exactes ; a | b) : {liste}",
   "llm.erreur.cibleHumain": "« {geste} » vise un humain : « cible » doit être le n° d'un humain vivant cité dans ce que tu as lu ; {cible} n'en est pas un. Pour toute une communauté, choisis un geste qui vise une communauté (par exemple Fecondite au lieu de RendreFecond).",
   "llm.erreur.cibleCommunaute": "« {geste} » vise une communauté : « cible » doit être le n° d'une communauté qui existe ; {cible} n'en est pas une.",

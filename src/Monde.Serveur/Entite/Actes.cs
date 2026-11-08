@@ -294,7 +294,8 @@ public static class Actes
             if (!Enum.TryParse<Matiere>(a.A, true, out var m1) || !Enum.IsDefined(m1)
                 || !Enum.TryParse<Matiere>(string.IsNullOrWhiteSpace(a.B) ? nameof(Matiere.Aucune) : a.B, true, out var m2) || !Enum.IsDefined(m2)
                 || !Physique.Convient(g, m1, m2))
-                throw new ArgumentException(L.T("llm.erreur.gesteMatieres", ("geste", g), ("forme", Forme(forme))));
+                throw new ArgumentException(L.T("llm.erreur.gesteMatieres", ("geste", g), ("forme", Forme(forme)),
+                    ("a", a.A ?? ""), ("b", string.IsNullOrWhiteSpace(a.B) ? "—" : a.B)));
         }
         // Puis l'essai contre le monde : tout ce que les pouvoirs vérifieraient en l'appliquant (0.36.3).
         if (monde is not null) Essais.Essayer(monde, a, pieces);

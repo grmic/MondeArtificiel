@@ -5487,7 +5487,7 @@
   "llm.erreur.piecesAbsentes": "To whisper a combination you need a human's numbered pieces (P1, P2…), which you are only given on their sheet (“What can be whispered to them”); here, whisper a gesture instead (souffler_geste).",
   "llm.erreur.pieceInconnue": "Unknown piece: choose a and b among pieces P1 to P{n} of “What can be whispered to them”.",
   "llm.erreur.gesteInconnu": "Unknown gesture “{geste}”: use one of these exact keys: {liste}.",
-  "llm.erreur.gesteMatieres": "Materials that do not go with {geste}: a and b must be keys from this list: {forme}.",
+  "llm.erreur.gesteMatieres": "Materials that do not go with {geste} (you gave a = “{a}”, b = “{b}”): a and b must be keys from this list: {forme}.",
   "llm.cat.gestesTous": "  Gestures and materials that can be whispered (exact keys; a | b): {liste}",
   "llm.erreur.cibleHumain": "“{geste}” targets a human: “cible” must be the number of a living human mentioned in what you read; {cible} is not one. For a whole community, choose a gesture that targets a community (for example Fecondite instead of RendreFecond).",
   "llm.erreur.cibleCommunaute": "“{geste}” targets a community: “cible” must be the number of an existing community; {cible} is not one.",

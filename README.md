@@ -4,7 +4,7 @@
 
 Simulation d'une communauté humaine née d'un mythe fondateur. Application client-serveur : un serveur .NET 10 avec serveur HTTP intégré (Kestrel), et un client web ouvert dans le navigateur.
 
-Version 0.37.6 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine, voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
+Version 0.37.7 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine, voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
 
 ![Un monde à l'an 108 : 5 198 humains répartis en communautés sur quatre îles, avec la fenêtre du temps et la courbe de démographie](docs/capture-an108.png)
 
@@ -247,6 +247,7 @@ Le serveur n'écoute que sur `localhost:5080` (voir `src/Monde.Serveur/appsettin
 
 Les versions, de la plus récente à la plus ancienne. Le détail de chaque nouveauté est dans le guide ci-dessus.
 
+- **0.37.7** (8 nov. 2026) : quand le LLM souffle un geste avec des matières qui ne vont pas, la correction lui rappelle ce qu'il a donné, pour qu'il corrige mieux au second essai.
 - **0.37.6** (8 nov. 2026) : un second serveur lancé sur le même dossier de mondes refuse de démarrer (verrou `serveur.verrou`) au lieu de lire le monde puis de l'enregistrer en s'arrêtant. Quand le LLM a rendu une réponse illisible, il est repris avec une pénalité de répétition et une température plus basse, sans relire en entier la réponse qui bouclait.
 - **0.37.5** (8 nov. 2026) : une réponse du LLM est bornée à 2 048 jetons : un petit modèle qui s'emballait pouvait écrire jusqu'à remplir tout le contexte (6 min 30 pendant un dialogue) et bloquer les demandes suivantes ; coupée, la réponse est reprise.
 - **0.37.4** (8 nov. 2026) : champ **Contexte** dans « Connexion au LLM » (8 192 à 131 072 jetons ; avant, l'interface remettait toujours 16 384).
