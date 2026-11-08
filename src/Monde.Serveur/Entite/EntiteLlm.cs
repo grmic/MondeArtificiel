@@ -46,12 +46,14 @@ public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdina
 /// <param name="ProchainRegard">Date du monde de son prochain regard (null : pas de regard prévu).</param>
 /// <param name="LibreDepuis">Date du premier acte libre : depuis, le monde n'est plus le fruit des seules règles (null : aucun).</param>
 public sealed record EtatEntiteLlmDto(ConnexionLlm Connexion, ReglagesEntiteLlm Reglages, int EnFile, string? EnCours, string? DerniereErreur, int Propositions,
-    string CaractereLlm = "", string? ProchainRegard = null, string? LibreDepuis = null, string TraceChemin = "");
+    string CaractereLlm = "", string? ProchainRegard = null, string? LibreDepuis = null, string TraceChemin = "", ConnexionLlm? Juge = null,
+    DepensesDto? Depenses = null, IReadOnlyDictionary<string, string>? Cles = null, IReadOnlyList<PrixModele>? Prix = null);
 
 /// <summary>Un échange, pour la liste : date, occasion, destinataire, mots, résultat.</summary>
 public sealed record EchangeDto(long Id, string Date, string Quand, string Occasion, int Humain, string? NomHumain, int Communaute, string? NomCommunaute,
     int Priere, string Modele, double Secondes, string Mots, string Pensee, IReadOnlyList<string> Actes, IReadOnlyList<string> Resultats, string Statut,
-    string StatutCode, string? Erreur, long JournalPremier, string? Lu = null, string? Reponse = null);
+    string StatutCode, string? Erreur, long JournalPremier, string? Lu = null, string? Reponse = null, long JetonsLus = 0, long JetonsEcrits = 0,
+    string? Cout = null);
 
 /// <summary>Les lignes du journal écrites par les actes du LLM (pour les marquer « LLM »). Rechargées à chaque changement de monde.</summary>
 public static class MarquesLlm
@@ -93,7 +95,8 @@ public static class MarquesLlm
 /// fond. Chaque réponse est vérifiée, appliquée par les mêmes pouvoirs que le joueur (ou proposée au joueur), et gardée dans la
 /// trace <c>entite_echanges</c>. En mode « Joueur seul », rien n'est appelé et le monde est exactement celui d'avant.
 /// </summary>
-public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContext<MondeHub> hub, ILogger<EntiteLlm> journal, TraceLlm trace) : BackgroundService
+public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContext<MondeHub> hub, ILogger<EntiteLlm> journal, TraceLlm trace,
+    ClesLlm cles, DepensesLlm depenses) : BackgroundService
 {
     private const string CleMode = "llm_mode", ClePrieres = "llm_prieres", ClePart = "llm_part", CleAttendre = "llm_attendre", CleFamilles = "llm_familles",
         CleLangue = "llm_langue", CleRegard = "llm_regard", CleRegardJours = "llm_regard_jours", CleDernierRegard = "llm_dernier_regard",
@@ -124,8 +127,67 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
     private volatile string? _derniereErreur;
     private readonly Random _hasard = new();
     private ConnexionLlm? _connexion;
+    private ConnexionLlm? _juge;
+    private bool _jugeLu;
 
-    private string CheminConnexion => Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(service.Depot.CheminFichier)!)!, "entite-llm.json");
+    private string Dossier => Path.GetDirectoryName(Path.GetDirectoryName(service.Depot.CheminFichier)!)!;
+    private string CheminConnexion => Path.Combine(Dossier, "entite-llm.json");
+
+    /// <summary>Le LLM du juge de cohérence et des traductions des dialogues, s'il est à part (0.38.0, G2).</summary>
+    private string CheminJuge => Path.Combine(Dossier, "entite-llm-juge.json");
+
+    /// <summary>
+    /// Une connexion prête à être gardée : adresse imposée remise, prix du modèle repris de ceux qu'on connaît s'il manque. Un service
+    /// du cloud payant (OpenAI, Anthropic, Mistral, Infomaniak) doit avoir un prix : sans lui, la dépense et le plafond ne compteraient rien.
+    /// </summary>
+    public static ConnexionLlm Preparer(ConnexionLlm c)
+    {
+        c = c.Normalisee();
+        if (c.Erreur() is { } erreur) throw new ArgumentException(erreur);
+        if (c.EstCloud && !c.PrixConnu && DepensesLlm.Prix(c.Fournisseur, c.Modele) is { } p) c = c with { PrixLu = p.Lu, PrixEcrit = p.Ecrit };
+        if (c.EstCloud && c.Fournisseur != ConnexionLlm.Autre && c.Modele.Length > 0 && !c.PrixConnu) throw new ArgumentException(L.T("llm.erreur.sansPrix"));
+        return c;
+    }
+
+    /// <summary>Le LLM du juge et des traductions (null : le même que celui de l'Entité).</summary>
+    public ConnexionLlm? ConnexionJuge
+    {
+        get
+        {
+            if (_jugeLu) return _juge;
+            try
+            {
+                if (File.Exists(CheminJuge) && JsonSerializer.Deserialize<ConnexionLlm>(File.ReadAllText(CheminJuge), Actes.Json) is { } lu && lu.Erreur() is null)
+                    _juge = lu;
+            }
+            catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException)
+            {
+                journal.LogWarning(e, "Réglage du LLM du juge illisible : {Fichier}", CheminJuge);
+            }
+            _jugeLu = true;
+            return _juge;
+        }
+        set
+        {
+            if (value is null)
+            {
+                if (File.Exists(CheminJuge)) File.Delete(CheminJuge);
+            }
+            else
+            {
+                value = Preparer(value);
+                File.WriteAllText(CheminJuge, JsonSerializer.Serialize(value, Actes.Json));
+            }
+            _juge = value;
+            _jugeLu = true;
+        }
+    }
+
+    /// <summary>Le LLM à qui demander un avis de juge ou une traduction : le sien s'il en a un, sinon celui de l'Entité.</summary>
+    public ConnexionLlm ConnexionPourJuge => ConnexionJuge is { Modele.Length: > 0 } j ? j : Connexion;
+
+    /// <summary>Vrai si l'un des deux LLM réglés est un service du cloud dont le plafond du mois est atteint.</summary>
+    public bool Suspendu(ConnexionLlm c) => c.EstCloud && depenses.Atteint;
 
     /// <summary>Réglage de la connexion (fichier de l'installation ; par défaut Ollama sur cette machine, sans modèle choisi).</summary>
     public ConnexionLlm Connexion
@@ -146,7 +208,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         }
         set
         {
-            if (value.Erreur() is { } erreur) throw new ArgumentException(erreur);
+            value = Preparer(value);
             Directory.CreateDirectory(Path.GetDirectoryName(CheminConnexion)!);
             File.WriteAllText(CheminConnexion, JsonSerializer.Serialize(value, Actes.Json));
             _connexion = value;
@@ -209,7 +271,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             prochain = L.Date((DernierRegard ?? service.Monde.Secondes) + r.RegardJours * Calendrier.SecondesParJour);
         var libre = service.Depot.PremierActeLibre();
         return new EtatEntiteLlmDto(Connexion, r, n, _enCours, _derniereErreur, service.Depot.Echanges(statut: 1, limite: 1000).Count,
-            service.Depot.LireReglage(CleCaractereLlm) ?? "", prochain, libre is { } l ? L.Date(l) : null, trace.Chemin);
+            service.Depot.LireReglage(CleCaractereLlm) ?? "", prochain, libre is { } l ? L.Date(l) : null, trace.Chemin, ConnexionJuge, depenses.Etat(),
+            cles.Resume(), DepensesLlm.Connus);
     }
 
     /// <summary>Date du monde de son dernier regard (null : jamais).</summary>
@@ -316,6 +379,17 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         else _dernierePriere = Math.Max(_dernierePriere, monde.Prieres().Select(p => p.Id).DefaultIfEmpty(0).Max());
 
         if (string.IsNullOrEmpty(Connexion.Modele)) return;
+        // Plafond du mois atteint (0.38.0) : rien ne part ; les demandes attendent le mois prochain ou un plafond relevé.
+        if (Suspendu(Connexion))
+        {
+            var message = depenses.MessagePlafond();
+            if (_derniereErreur != message)
+            {
+                _derniereErreur = message;
+                _ = hub.Clients.Diffuser("EntiteLlm", () => Etat());
+            }
+            return;
+        }
         if (mode != ModeEntite.Joueur && reglages.Regard) Regarder(monde, reglages);
         // Pendant un dialogue, elle attend : elle ne touche pas à celui à qui l'on parle, et laisse le LLM au dialogue (0.36.3).
         if (monde.EnDialogue) return;
@@ -356,6 +430,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             if (service.Depot.PriereEnDialogue(d.Priere)) return;
         }
         var connexion = Connexion;
+        var mesure = DepensesLlm.Mesurer();
         var permises = reglages.Familles;
         var memoire = service.Depot.Echanges(limite: 8).Where(e => e.Statut is 0 or 1).Reverse().ToList();
         var caractereLlm = service.Depot.LireReglage(CleCaractereLlm) ?? "";
@@ -410,7 +485,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                     {
                         using var delaiJuge = CancellationTokenSource.CreateLinkedTokenSource(arret);
                         delaiJuge.CancelAfter(DelaiReponse);
-                        var brut = await client.Demander(connexion, L.T("libre.juge.consigne", ("langue", L.Courante.Nom)), [("user", Libres.DemandeJuge(lecture, reponse))],
+                        var brut = await client.Demander(ConnexionPourJuge, L.T("libre.juge.consigne", ("langue", L.Courante.Nom)), [("user", Libres.DemandeJuge(lecture, reponse))],
                             Libres.SchemaJuge(), delaiJuge.Token);
                         var verdict = Libres.LireVerdict(brut);
                         traceJuge.AppendLine($"---- {L.T("libre.juge.nom")} ({essai + 1}) ----").AppendLine(brut);
@@ -464,7 +539,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             _derniereErreur = e is TaskCanceledException ? L.T("llm.erreur.delai") : L.T("llm.erreur.connexion", ("detail", e.Message));
             journal.LogWarning("Entité-LLM : {Erreur}", _derniereErreur);
             Enregistrer(new EchangeEntite(0, maintenant, Maintenant(), (int)d.Occasion, d.Humain, d.Communaute, d.Priere, connexion.Libelle, chrono.ElapsedMilliseconds,
-                Lu(lecture), reponse, "", "", "[]", "[]", 3, 0, -1, _derniereErreur, 0));
+                Lu(lecture), reponse, "", "", "[]", "[]", 3, 0, -1, _derniereErreur, 0, mesure.JetonsLus, mesure.JetonsEcrits, mesure.Dollars));
             _enCours = null;
             monde.Retenu = false;
             await Task.Delay(ReposApresPanne, arret);
@@ -480,7 +555,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         if (decision is null)
         {
             Enregistrer(new EchangeEntite(0, maintenant, Maintenant(), (int)d.Occasion, d.Humain, d.Communaute, d.Priere, connexion.Libelle, duree,
-                Lu(lecture), Trace(reponse, traceJuge), "", "", "[]", "[]", 3, 0, -1, Joindre(avertissement, erreur), 0));
+                Lu(lecture), Trace(reponse, traceJuge), "", "", "[]", "[]", 3, 0, -1, Joindre(avertissement, erreur), 0, mesure.JetonsLus, mesure.JetonsEcrits,
+                mesure.Dollars));
             return;
         }
         // Sans caractère écrit par le joueur, elle garde celui qu'elle s'est donné la première fois.
@@ -490,7 +566,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var actes = decision.Actes.Select(a => a.Type == Actes.SoufflerCombinaison ? a with { A = Actes.Piece(a.A, lecture.Pieces), B = Actes.Piece(a.B, lecture.Pieces) }
             : Libres.Resoudre(a, lecture.Jardin)).ToList();
         var echange = new EchangeEntite(0, maintenant, Maintenant(), (int)d.Occasion, d.Humain, d.Communaute, d.Priere, connexion.Libelle, duree,
-            Lu(lecture), Trace(reponse, traceJuge), decision.Mots, decision.Pensee, JsonSerializer.Serialize(actes, Actes.Json), "[]", 1, 0, -1, Joindre(avertissement, erreur), 0);
+            Lu(lecture), Trace(reponse, traceJuge), decision.Mots, decision.Pensee, JsonSerializer.Serialize(actes, Actes.Json), "[]", 1, 0, -1, Joindre(avertissement, erreur), 0,
+            mesure.JetonsLus, mesure.JetonsEcrits, mesure.Dollars);
         var proposer = reglages.ModeLu != ModeEntite.Agit;
         if (actes.All(a => a.Type == Actes.Rien)) echange = echange with { Statut = 5 };
         var id = Enregistrer(echange);
@@ -637,7 +714,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             e.Humain >= 1 && e.Humain <= humains.Count ? humains[e.Humain - 1].Nom : null, e.Communaute,
             e.Communaute >= 1 && e.Communaute <= communautes.Count ? L.Communaute(communautes[e.Communaute - 1].Nom) : null,
             e.Priere, e.Modele, Math.Round(e.DureeMs / 1000.0, 1), e.Mots, e.Pensee, Decrire(actes).ToList(), resultats,
-            L.T($"llm.statut.{code}"), code, e.Erreur, e.JournalPremier, complet ? e.Lu : null, complet ? e.Reponse : null);
+            L.T($"llm.statut.{code}"), code, e.Erreur, e.JournalPremier, complet ? e.Lu : null, complet ? e.Reponse : null, e.JetonsLus, e.JetonsEcrits,
+            e.JetonsLus + e.JetonsEcrits > 0 ? DepensesLlm.Dollars(e.Cout) : null);
     }
 
     private static IEnumerable<string> Decrire(IEnumerable<ActeLlm> actes)

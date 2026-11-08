@@ -1,8 +1,8 @@
 import { connexion } from "./connexion";
 import { el } from "./fiche";
 import { nombre, t } from "./langue";
+import { BlocDepenses, type ConnexionLlm, type Depenses, estCloud, FormulaireConnexion, type InfosCloud, message, type PrixModele } from "./llmcloud";
 
-interface ConnexionLlm { fournisseur: string; adresse: string; modele: string; contexte: number }
 interface Reglages {
   mode: string; prieres: boolean; partOrdinaires: number; attendre: boolean;
   paroles: boolean; bienfaits: boolean; chatiments: boolean; catastrophes: boolean; souffles: boolean;
@@ -11,15 +11,14 @@ interface Reglages {
 interface Etat {
   connexion: ConnexionLlm; reglages: Reglages; enFile: number; enCours: string | null; derniereErreur: string | null; propositions: number;
   caractereLlm: string; prochainRegard: string | null; libreDepuis: string | null; traceChemin?: string;
+  juge?: ConnexionLlm | null; depenses?: Depenses | null; cles?: Record<string, string> | null; prix?: PrixModele[] | null;
 }
 interface Echange {
   id: number; date: string; quand: string; occasion: string; humain: number; nomHumain: string | null; communaute: number; nomCommunaute: string | null;
   priere: number; modele: string; secondes: number; mots: string; pensee: string; actes: string[]; resultats: string[]; statut: string; statutCode: string;
-  erreur: string | null; journalPremier: number; lu?: string | null; reponse?: string | null;
+  erreur: string | null; journalPremier: number; lu?: string | null; reponse?: string | null; cout?: string | null;
 }
 
-const FOURNISSEURS: [string, string][] = [["ollama", "Ollama"], ["lmstudio", "LM Studio"], ["llamacpp", "llama.cpp"]];
-const ADRESSES: Record<string, string> = { ollama: "http://localhost:11434", lmstudio: "http://localhost:1234", llamacpp: "http://localhost:8080" };
 const MODES = ["Joueur", "Agit", "Propose"];
 const FAMILLES: (keyof Reglages)[] = ["paroles", "bienfaits", "chatiments", "catastrophes", "souffles"];
 
@@ -59,7 +58,7 @@ export function echangeEnTexte(e: Echange): string {
   for (const a of e.actes) lignes.push(`- ${t("ellm.acte")} : ${a}`);
   for (const r of e.resultats) lignes.push(`- ${t("ellm.resultat")} : ${r}`);
   if (e.erreur) lignes.push(`${t("ellm.erreur")} : ${e.erreur}`);
-  lignes.push(`(${e.modele}, ${e.secondes} s)`);
+  lignes.push(`(${e.modele}, ${e.secondes} s${e.cout ? ", " + e.cout : ""})`);
   if (e.lu) lignes.push("", "### " + t("ellm.lu"), e.lu);
   if (e.reponse) lignes.push("", "### " + t("ellm.reponse"), e.reponse);
   return lignes.join("\n");
@@ -99,11 +98,13 @@ export function blocQueFerait(humain: () => number, communaute: () => number): H
  * Fenêtre « Entité LLM » : connexion au LLM local, qui joue l'Entité, propositions en attente et trace des conversations.
  */
 export class PanneauEntiteLlm {
-  private readonly fournisseur = el("select");
-  private readonly adresse = el("input");
-  private readonly modele = el("input");
-  private readonly modeles = el("datalist");
-  private readonly retourConnexion = el("p", "discret");
+  private readonly formulaire: FormulaireConnexion;
+  private readonly formulaireJuge: FormulaireConnexion;
+  private readonly memeJuge: HTMLInputElement;
+  private readonly blocJuge = el("div");
+  private readonly retourJuge = el("p", "discret");
+  private readonly depenses: BlocDepenses;
+  private local = true;
   private readonly modes: HTMLInputElement[] = [];
   private readonly prieres: HTMLInputElement;
   private readonly part = el("input");
@@ -123,31 +124,39 @@ export class PanneauEntiteLlm {
   private readonly propositions = el("ul", "liste echanges");
   private readonly echanges = el("ul", "liste echanges");
   private readonly retourCopie = el("span", "discret");
-  private readonly contexte = el("select");
   private dernieres: Echange[] = [];
 
   constructor(private readonly racine: HTMLElement, private readonly ouvrirHumain: (id: number) => void,
     private readonly ouvrirCommunaute: (id: number) => void) {
-    for (const [cle, nom] of FOURNISSEURS) this.fournisseur.append(Object.assign(el("option", undefined, nom), { value: cle }));
-    this.fournisseur.addEventListener("change", () => { this.adresse.value = ADRESSES[this.fournisseur.value] ?? ""; });
-    this.adresse.type = "url";
-    this.adresse.size = 28;
-    this.modeles.id = "listeModelesLlm";
-    this.modele.setAttribute("list", this.modeles.id);
-    this.modele.size = 28;
-    this.modele.placeholder = t("ellm.modeleExemple");
-    // Taille du contexte (jetons) : une demande plus longue est raccourcie ; plus grand demande plus de mémoire (0.37.4).
-    for (const n of [8192, 16384, 32768, 65536, 131072]) this.contexte.append(Object.assign(el("option", undefined, nombre(n)), { value: String(n) }));
+    // Le LLM de l'Entité et des dialogues, puis (0.38.0, G2) celui du juge et des traductions.
+    const rafraichir = async () => { this.remplir(await connexion.invoke<Etat>("EtatEntiteLlm"), false); };
+    this.formulaire = new FormulaireConnexion("entite", async (c) => {
+      const e = await connexion.invoke<Etat>("ReglerConnexionLlm", c);
+      this.remplir(e, false);
+      this.formulaire.remplir(e.connexion, this.infos(e));
+    }, rafraichir);
+    this.formulaireJuge = new FormulaireConnexion("juge", async (c) => {
+      const e = await connexion.invoke<Etat>("ReglerConnexionJugeLlm", c);
+      this.remplir(e, false);
+      this.formulaireJuge.remplir(e.juge ?? e.connexion, this.infos(e));
+    }, rafraichir);
+    this.depenses = new BlocDepenses(rafraichir);
     const ligne = (libelle: string, ...champs: (HTMLElement | string)[]) => {
       const l = el("label", "ligne");
       l.append(el("span", undefined, libelle), " ", ...champs);
       return l;
     };
     const connexionBloc = el("section", "bloc-llm");
-    connexionBloc.append(el("h3", undefined, t("ellm.connexion")), el("p", "discret", t("ellm.connexionAide")),
-      ligne(t("ellm.fournisseur"), this.fournisseur), ligne(t("ellm.adresse"), this.adresse), ligne(t("ellm.modele"), this.modele, this.modeles),
-      ligne(t("ellm.contexte"), this.contexte, " " + t("ellm.jetons")), el("p", "discret", t("ellm.contexteAide")),
-      bouton(t("ellm.tester"), () => void this.tester()), " ", bouton(t("ellm.enregistrer"), () => void this.enregistrerConnexion()), this.retourConnexion);
+    connexionBloc.append(el("h3", undefined, t("ellm.connexion")), el("p", "discret", t("ellm.connexionAide")), this.formulaire.racine);
+    const jugeBloc = el("section", "bloc-llm");
+    let lm: HTMLLabelElement;
+    [lm, this.memeJuge] = caseACocher(t("ellm.juge2.meme"));
+    this.memeJuge.addEventListener("change", () => {
+      this.blocJuge.hidden = this.memeJuge.checked;
+      if (this.memeJuge.checked) void this.jugeCommeEntite();
+    });
+    this.blocJuge.append(this.formulaireJuge.racine);
+    jugeBloc.append(el("h3", undefined, t("ellm.juge2.titre")), el("p", "discret", t("ellm.juge2.aide")), lm, this.retourJuge, this.blocJuge);
 
     const reglagesBloc = el("section", "bloc-llm");
     reglagesBloc.append(el("h3", undefined, t("ellm.quiJoue")));
@@ -204,7 +213,7 @@ export class PanneauEntiteLlm {
     reglagesBloc.append(bouton(t("ellm.enregistrer"), () => void this.enregistrerReglages()), this.retourReglages);
 
     const corps = el("div", "corps");
-    corps.append(el("p", "discret", t("ellm.aide")), this.etat, connexionBloc, reglagesBloc,
+    corps.append(el("p", "discret", t("ellm.aide")), this.etat, connexionBloc, jugeBloc, this.depenses.racine, reglagesBloc,
       el("h3", undefined, t("ellm.propositions")), this.propositions,
       el("h3", undefined, t("ellm.conversations")),
       el("p", "discret", t("ellm.conversationsAide")),
@@ -229,8 +238,9 @@ export class PanneauEntiteLlm {
 
   async ouvrir(): Promise<void> {
     this.racine.hidden = false;
-    const e = await connexion.invoke<Etat>("EtatEntiteLlm");
-    this.remplir(e);
+    const [e, local] = await Promise.all([connexion.invoke<Etat>("EtatEntiteLlm"), connexion.invoke<boolean>("ServeurLocalLlm")]);
+    this.local = local;
+    this.remplir(e, true, true);
     await this.chargerEchanges();
   }
 
@@ -238,13 +248,24 @@ export class PanneauEntiteLlm {
     this.racine.hidden = true;
   }
 
-  private remplir(e: Etat): void {
-    this.fournisseur.value = e.connexion.fournisseur;
-    this.adresse.value = e.connexion.adresse;
-    this.modele.value = e.connexion.modele;
-    const ctx = String(e.connexion.contexte || 16384);
-    if (![...this.contexte.options].some((o) => o.value === ctx)) this.contexte.append(Object.assign(el("option", undefined, nombre(Number(ctx))), { value: ctx }));
-    this.contexte.value = ctx;
+  private infos(e: Etat): InfosCloud {
+    return { cles: e.cles ?? {}, prix: e.prix ?? [], depenses: e.depenses ?? null, local: this.local };
+  }
+
+  /** Remplit la fenêtre ; <connexions> : remet aussi les deux formulaires de LLM (sinon, seulement les clés et la dépense). */
+  private remplir(e: Etat, connexions = true, reglages = false): void {
+    const infos = this.infos(e);
+    if (connexions) {
+      this.formulaire.remplir(e.connexion, infos);
+      this.memeJuge.checked = !e.juge;
+      this.blocJuge.hidden = !e.juge;
+      this.formulaireJuge.remplir(e.juge ?? e.connexion, infos);
+    } else {
+      this.formulaire.majInfos(infos);
+      this.formulaireJuge.majInfos(infos);
+    }
+    this.montrerEtat(e);
+    if (!reglages) return;
     for (const i of this.modes) i.checked = i.value === e.reglages.mode;
     this.prieres.checked = e.reglages.prieres;
     this.part.value = String(e.reglages.partOrdinaires);
@@ -262,6 +283,8 @@ export class PanneauEntiteLlm {
   }
 
   private montrerEtat(e: Etat): void {
+    const cloud = estCloud(e.connexion.fournisseur) || (e.juge ? estCloud(e.juge.fournisseur) : false);
+    this.depenses.montrer(e.depenses ?? null, this.local, cloud || (e.depenses?.appels ?? 0) > 0);
     const parts = [e.connexion.modele ? t("ellm.etat.modele", { modele: e.connexion.modele }) : t("ellm.etat.sansModele"),
       t(`ellm.mode.${e.reglages.mode}`), t("ellm.etat.file", { n: e.enFile })];
     if (e.enCours) parts.push(t("ellm.etat.enCours", { nom: e.enCours }));
@@ -278,30 +301,22 @@ export class PanneauEntiteLlm {
       } else this.caractereLlm.append(t("ellm.caractereAucun"));
     }
     if (e.derniereErreur) this.etat.append(el("br"), el("span", "erreur", e.derniereErreur));
-  }
-
-  private lireConnexion(): ConnexionLlm {
-    return { fournisseur: this.fournisseur.value, adresse: this.adresse.value.trim(), modele: this.modele.value.trim(), contexte: Number(this.contexte.value) || 16384 };
-  }
-
-  private async tester(): Promise<void> {
-    this.retourConnexion.textContent = t("ellm.test.enCours");
-    try {
-      const liste = await connexion.invoke<string[]>("ModelesLlm", this.lireConnexion());
-      this.modeles.replaceChildren(...liste.map((m) => Object.assign(el("option"), { value: m })));
-      this.retourConnexion.textContent = liste.length > 0 ? t("ellm.test.ok", { n: liste.length, liste: liste.join(", ") }) : t("ellm.test.aucun");
-      if (!this.modele.value && liste.length > 0) this.modele.value = liste[0];
-    } catch (e) {
-      this.retourConnexion.textContent = message(e);
+    // Avertissement sur les coûts (0.38.0) : rappelé en tête de la fenêtre tant qu'un LLM du cloud est réglé.
+    if (cloud && e.depenses) {
+      const d = e.depenses;
+      this.etat.append(el("br"), el("span", d.atteint || d.alerte ? "erreur" : "discret",
+        t("ellm.dep.enTete", { depense: dollarsCourts(d.dollars), plafond: d.plafond > 0 ? dollarsCourts(d.plafond) : t("ellm.cloud.sansPlafond") })));
     }
   }
 
-  private async enregistrerConnexion(): Promise<void> {
+  private async jugeCommeEntite(): Promise<void> {
     try {
-      this.montrerEtat(await connexion.invoke<Etat>("ReglerConnexionLlm", this.lireConnexion()));
-      this.retourConnexion.textContent = t("ellm.enregistre");
-    } catch (e) {
-      this.retourConnexion.textContent = message(e);
+      this.remplir(await connexion.invoke<Etat>("ReglerConnexionJugeLlm", null), false);
+      this.retourJuge.textContent = t("ellm.enregistre");
+    } catch (x) {
+      this.retourJuge.textContent = message(x);
+      this.memeJuge.checked = false;
+      this.blocJuge.hidden = false;
     }
   }
 
@@ -362,7 +377,7 @@ export class PanneauEntiteLlm {
       li.append(ul);
     } else if (e.resultats.length > 0) li.append(el("br"), e.resultats.join(" "));
     if (e.erreur) li.append(el("br"), el("span", "erreur", e.erreur));
-    li.append(el("br"), el("span", "discret", `${e.modele} · ${e.secondes} s `));
+    li.append(el("br"), el("span", "discret", `${e.modele} · ${e.secondes} s${e.cout ? " · " + e.cout : ""} `));
     const details = el("pre", "lu-llm");
     details.hidden = true;
     li.append(bouton(t("ellm.voirLu"), () => void this.voirLu(e, details), "lien"), " ",
@@ -416,6 +431,6 @@ export class PanneauEntiteLlm {
   }
 }
 
-function message(e: unknown): string {
-  return e instanceof Error ? e.message.replace(/^.*HubException: /, "") : String(e);
+function dollarsCourts(d: number): string {
+  return (d < 0.1 ? nombre(d, 3) : nombre(d, 2)) + " $";
 }

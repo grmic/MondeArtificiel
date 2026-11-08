@@ -20,9 +20,14 @@ builder.Services.AddSingleton<ServiceMonde>();
 builder.Services.AddSingleton<ServiceCarte>();
 builder.Services.AddHostedService<MoteurSimulation>();
 builder.Services.AddHostedService<EntretienJournal>();
-// L'Entité jouée par un LLM local : appels sans proxy (le LLM tourne sur cette machine ou le réseau local), sans limite de durée
-// côté client (chaque demande a son propre délai).
-builder.Services.AddSingleton(new Monde.Serveur.Entite.ClientLlm(new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan }));
+// L'Entité jouée par un LLM : un LLM local est appelé sans proxy (il tourne sur cette machine ou le réseau local) ; un LLM du cloud
+// (0.38.0) suit le proxy du système. Pas de limite de durée côté client : chaque demande a son propre délai.
+builder.Services.AddSingleton<Monde.Serveur.Entite.ClesLlm>();
+builder.Services.AddSingleton<Monde.Serveur.Entite.DepensesLlm>();
+builder.Services.AddSingleton(sp => new Monde.Serveur.Entite.ClientLlm(
+    new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan },
+    new HttpClient(new SocketsHttpHandler()) { Timeout = Timeout.InfiniteTimeSpan },
+    sp.GetRequiredService<Monde.Serveur.Entite.ClesLlm>(), sp.GetRequiredService<Monde.Serveur.Entite.DepensesLlm>()));
 builder.Services.AddSingleton<Monde.Serveur.Entite.TraceLlm>();
 builder.Services.AddSingleton<Monde.Serveur.Entite.EntiteLlm>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Monde.Serveur.Entite.EntiteLlm>());

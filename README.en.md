@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.37.7 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.38.0 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -185,7 +185,7 @@ The **Entity acts** on a human or a community (`Humains/Gestes.cs`, "✦ The Ent
 
 ## Tutorial: having an LLM play the Entity
 
-An LLM (large language model) installed on your machine can play the Entity in your place, or alongside you. Nothing leaves your machine. Allow ten minutes the first time.
+An LLM (large language model) can play the Entity in your place, or alongside you. Installed on your machine, it is free and nothing leaves it. Since 0.38.0, it can also be a paid cloud service (see **Using a cloud LLM** below). Allow ten minutes the first time.
 
 **1. Install a local LLM.** The simplest option is [Ollama](https://ollama.com) (Mac, Windows, Linux). Once installed, download a model in a terminal:
 
@@ -212,6 +212,14 @@ Choose the model according to your machine's memory. With 16 GB or more, a 12-bi
 
 **8. Follow what she does.** In the log, her acts are marked **(LLM)**, or **(free LLM)** for free acts. **Conversations**, in the LLM Entity window, shows each exchange: what she read, why she acted, her words, what the rules made of them. **Acts of the Entity**, in the bar, gives the timeline of everything the Entity has done (by you or by the LLM), the decrees in force (**Lift**) and an **Undo** button on each free act. **In a Terminal** (0.37.2): tick **Write the exchanges to a text file** (section “Follow the exchanges in a terminal”); each exchange (view of the world, prayer, request, line of a dialogue) is then appended in plain text to the file `entite-echanges.log` in the application folder (on Mac: `~/Library/Application Support/MondeArtificiel/`), with what she read, her raw answer, her words, her thought, her acts and what the rules made of them, and a short line is written to the server console. To watch them arrive: `tail -f ~/Library/Application\ Support/MondeArtificiel/entite-echanges.log` (the window shows the exact command). The file grows fast: several thousand words per exchange.
 
+**Using a cloud LLM** (0.38.0). Instead of a local LLM, choose a cloud service in "Provider": **OpenAI** (ChatGPT), **Anthropic** (Claude), **Mistral**, **Infomaniak** (Euria, "AI Tools" offer, hosted in Switzerland; enter your product number) or **Other OpenAI-compatible service** (OpenRouter, Groq, a server on the network...). A cheap model is pre-filled (`gpt-5.4-mini`, `claude-haiku-5-5`, `mistral-large-latest`, `mistralai/Mistral-Small-4-119B-2603`), with its price in dollars per million tokens read and written (as of 8/11/2026, check with the provider). Create an API key with the provider (`platform.openai.com/api-keys`, `platform.claude.com/settings/keys`, `console.mistral.ai/api-keys`, `manager.infomaniak.com`), paste it into **API key**, then **Save key**, **Test and list models** and **Save**. The first time, a box says what is sent to the provider and what it costs; you must tick "I understand what is sent to the provider and what it costs."
+
+- **What is sent over the Internet**: everything the Entity reads (sheets, secret garden, log extracts, the character you wrote, your sentences in dialogues). According to their published terms, OpenAI, Anthropic and Mistral do not train their models on API calls but keep them for up to about 30 days; Infomaniak says it stores nothing. Mistral and Infomaniak stay in Europe.
+- **What it costs**: one exchange of the Entity reads about 8,000 tokens and writes 800; the judge and retries add to that. For 100 exchanges, expect about $0.10 with a small model (Claude Haiku, Mistral Small), $1 with GPT-5.4 mini, $5 and more with the largest (Claude Opus, GPT-5.5). The window shows the estimated cost of each exchange in **Conversations**, and **This month's spending (cloud)** (tokens actually billed, returned by the provider, all worlds combined). A **Monthly cap** ($5 by default, 0 = no cap) stops calls when it is reached, until the next month; an alert appears at 80%. The provider's invoice is what counts.
+- **The key** is never in the world database, nor in `entite-llm.json`, nor sent back to the browser (only its last 4 characters are shown). It is kept encrypted in `cles-llm.dat`, next to the worlds folder (the encryption keys are in `cles-protection/`: protected by Windows, or readable by your account alone on macOS and Linux). It is sent only to the provider's address. On a server without a screen, an environment variable replaces it: `MONDE_CLE_OPENAI`, `MONDE_CLE_ANTHROPIC`, `MONDE_CLE_MISTRAL`, `MONDE_CLE_INFOMANIAK`, or `MONDE_CLE_AUTRE` with `MONDE_CLE_AUTRE_HOTE`.
+- **From another device** on the network, you can play normally, but the keys, the cap and the choice of a cloud LLM can only be set from the server machine.
+- **LLM for the judge and translations**: the coherence judge and the translation of your words in dialogues can go through another LLM (untick "Same LLM as the Entity"), for example a free local model while the Entity speaks through the cloud.
+
 **If nothing happens.** Check that Ollama is running (its icon in the menu bar, or `ollama list` in a terminal) and that **Test and list models** responds. A first call may take about ten seconds, while the model loads. Errors are displayed at the top of the LLM Entity window and in Conversations.
 
 ## Testing
@@ -220,7 +228,7 @@ Choose the model according to your machine's memory. With 16 GB or more, a 12-bi
 dotnet test
 ```
 
-The full suite (619 tests) takes about ten minutes, because some tests simulate several entire years.
+The full suite (648 tests) takes about ten minutes, because some tests simulate several entire years.
 
 ## Modifying the web client
 
@@ -247,6 +255,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.38.0** (8 Nov 2026): the Entity can be played by a cloud LLM: OpenAI (ChatGPT), Anthropic (Claude), Mistral, Infomaniak (Euria) or another OpenAI-compatible service. API key encrypted outside the database, settable from the server machine only; warning about data and costs; cost of each exchange, monthly spending and monthly cap ($5 by default); separate LLM possible for the judge and translations. Schema 58. The simulation does not change.
 - **0.37.7** (8 Nov 2026): when the LLM suggests a gesture with materials that do not fit, the correction reminds it of what it gave, so that it corrects better on the second try.
 - **0.37.6** (8 Nov 2026): a second server started on the same worlds folder refuses to start (lock `serveur.verrou`) instead of reading the world and then saving it as it stops. When the LLM has returned an unreadable answer, it is asked again with a repetition penalty and a lower temperature, without rereading the whole looping answer.
 - **0.37.5** (8 Nov 2026): an LLM answer is capped at 2,048 tokens: a small model running away could write until the whole context was full (6 min 30 during a dialogue) and block the following requests; a cut answer is retried.

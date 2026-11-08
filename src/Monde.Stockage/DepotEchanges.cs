@@ -28,15 +28,27 @@ namespace Monde.Stockage;
 /// <param name="JournalDernier">Dernier numéro du journal écrit par ses actes (−1 : aucun).</param>
 /// <param name="Erreur">Ce qui n'a pas marché (null : rien).</param>
 /// <param name="AppliqueLe">Date du monde où les actes ont été appliqués (0 : jamais).</param>
+/// <param name="JetonsLus">Jetons lus facturés par un LLM du cloud (0.38.0 ; 0 pour un LLM local), essais et juge compris.</param>
+/// <param name="JetonsEcrits">Jetons écrits facturés (réflexion comprise).</param>
+/// <param name="Cout">Coût estimé en dollars (selon le prix réglé pour le modèle).</param>
 public sealed record EchangeEntite(long Id, long Le, string Quand, int Occasion, int Humain, int Communaute, int Priere, string Modele, long DureeMs,
     string Lu, string Reponse, string Mots, string Pensee, string Actes, string Resultats, int Statut, long JournalPremier, long JournalDernier,
-    string? Erreur, long AppliqueLe);
+    string? Erreur, long AppliqueLe, long JetonsLus = 0, long JetonsEcrits = 0, double Cout = 0);
 
 /// <summary>Trace des conversations entre les humains et l'Entité jouée par un LLM (table <c>entite_echanges</c>).</summary>
 public sealed partial class DepotMonde
 {
     private const string ColonnesEchanges =
-        "id, le, quand, occasion, humain, communaute, priere, modele, duree_ms, lu, reponse, mots, pensee, actes, resultats, statut, journal_premier, journal_dernier, erreur, applique_le";
+        "id, le, quand, occasion, humain, communaute, priere, modele, duree_ms, lu, reponse, mots, pensee, actes, resultats, statut, journal_premier, journal_dernier, erreur, applique_le, jetons_lus, jetons_ecrits, cout";
+
+    /// <summary>Migration vers la version 58 (0.38.0) : jetons et coût de chaque échange avec un LLM du cloud.</summary>
+    private static void MigrerVersion58(SqliteConnection connexion, SqliteTransaction transaction)
+    {
+        var colonnes = Colonnes(connexion, transaction, "entite_echanges");
+        if (!colonnes.Contains("jetons_lus")) Executer(connexion, transaction, "ALTER TABLE entite_echanges ADD COLUMN jetons_lus INTEGER NOT NULL DEFAULT 0;");
+        if (!colonnes.Contains("jetons_ecrits")) Executer(connexion, transaction, "ALTER TABLE entite_echanges ADD COLUMN jetons_ecrits INTEGER NOT NULL DEFAULT 0;");
+        if (!colonnes.Contains("cout")) Executer(connexion, transaction, "ALTER TABLE entite_echanges ADD COLUMN cout REAL NOT NULL DEFAULT 0;");
+    }
 
     /// <summary>Migration vers la version 50 : trace des échanges avec l'Entité jouée par un LLM.</summary>
     private static void MigrerVersion50(SqliteConnection connexion, SqliteTransaction transaction)
@@ -91,7 +103,7 @@ public sealed partial class DepotMonde
     {
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
-        commande.CommandText = $"INSERT INTO entite_echanges ({ColonnesEchanges[4..]}) VALUES ($le, $quand, $occasion, $humain, $communaute, $priere, $modele, $duree, $lu, $reponse, $mots, $pensee, $actes, $resultats, $statut, $jp, $jd, $erreur, $applique) RETURNING id;";
+        commande.CommandText = $"INSERT INTO entite_echanges ({ColonnesEchanges[4..]}) VALUES ($le, $quand, $occasion, $humain, $communaute, $priere, $modele, $duree, $lu, $reponse, $mots, $pensee, $actes, $resultats, $statut, $jp, $jd, $erreur, $applique, $jl, $je, $cout) RETURNING id;";
         Parametres(commande, e);
         return Convert.ToInt64(commande.ExecuteScalar(), System.Globalization.CultureInfo.InvariantCulture);
     }
@@ -136,12 +148,15 @@ public sealed partial class DepotMonde
         c.Parameters.AddWithValue("$jd", e.JournalDernier);
         c.Parameters.AddWithValue("$erreur", (object?)e.Erreur ?? DBNull.Value);
         c.Parameters.AddWithValue("$applique", e.AppliqueLe);
+        c.Parameters.AddWithValue("$jl", e.JetonsLus);
+        c.Parameters.AddWithValue("$je", e.JetonsEcrits);
+        c.Parameters.AddWithValue("$cout", e.Cout);
     }
 
     private static EchangeEntite LireEchange(SqliteDataReader l, bool avecLu) => new(
         l.GetInt64(0), l.GetInt64(1), l.GetString(2), l.GetInt32(3), l.GetInt32(4), l.GetInt32(5), l.GetInt32(6), l.GetString(7), l.GetInt64(8),
         avecLu ? DecompresserTexte((byte[])l[9]) : "", l.GetString(10), l.GetString(11), l.GetString(12), l.GetString(13), l.GetString(14), l.GetInt32(15),
-        l.GetInt64(16), l.GetInt64(17), l.IsDBNull(18) ? null : l.GetString(18), l.GetInt64(19));
+        l.GetInt64(16), l.GetInt64(17), l.IsDBNull(18) ? null : l.GetString(18), l.GetInt64(19), l.GetInt64(20), l.GetInt64(21), l.GetDouble(22));
 
     /// <summary>
     /// Échanges, du plus récent au plus ancien : tous, ou ceux d'un humain, d'une communauté, d'un statut. Sans ce qu'a lu le LLM

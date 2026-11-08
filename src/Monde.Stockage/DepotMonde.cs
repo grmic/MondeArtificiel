@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 57;
+    public const int VersionSchema = 58;
 
     private readonly string _connexion;
 
@@ -638,6 +638,8 @@ public sealed partial class DepotMonde
             Executer(connexion, transaction, "ALTER TABLE etat ADD COLUMN langage INTEGER NOT NULL DEFAULT 0;");
         // Version 57 : paroles de l'Entité au Monde (0.37.1).
         if (actuelle < 57) MigrerVersion57(connexion, transaction);
+        // Version 58 : jetons et coût des échanges avec un LLM du cloud (0.38.0).
+        if (actuelle < 58) MigrerVersion58(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }

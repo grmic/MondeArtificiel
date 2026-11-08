@@ -9,7 +9,8 @@ namespace Monde.Serveur.Hubs;
 /// Canal temps réel entre le serveur et les navigateurs.
 /// Le serveur diffuse le message « Horloge » plusieurs fois par seconde.
 /// </summary>
-public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.EntiteLlm entite, Entite.Dialogues dialogues) : Hub
+public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.EntiteLlm entite, Entite.Dialogues dialogues, Entite.ClesLlm cles,
+    Entite.DepensesLlm depenses) : Hub
 {
     public const string Route = "/hub/monde";
 
@@ -535,18 +536,104 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Change la connexion au LLM (gardée pour l'installation).</summary>
     public Entite.EtatEntiteLlmDto ReglerConnexionLlm(Entite.ConnexionLlm connexion)
     {
-        Appeler(() => entite.Connexion = connexion ?? throw new ArgumentException(L.T("erreur.demandeVide")));
+        Appeler(() =>
+        {
+            if (connexion is null) throw new ArgumentException(L.T("erreur.demandeVide"));
+            ControlerCloud(connexion, entite.Connexion);
+            return entite.Connexion = connexion;
+        });
+        return entite.Etat();
+    }
+
+    /// <summary>
+    /// Change le LLM du juge de cohérence et des traductions des dialogues (0.38.0) ; null : le même que celui de l'Entité.
+    /// </summary>
+    public Entite.EtatEntiteLlmDto ReglerConnexionJugeLlm(Entite.ConnexionLlm? connexion)
+    {
+        Appeler(() =>
+        {
+            ControlerCloud(connexion, entite.ConnexionJuge);
+            entite.ConnexionJuge = connexion;
+            return 0;
+        });
+        return entite.Etat();
+    }
+
+    /// <summary>
+    /// Un LLM du cloud ne se règle que depuis la machine du serveur (0.38.0, D1) : le serveur écoute tout le réseau, et un autre
+    /// appareil pourrait sinon dépenser ou détourner la clé. Le joueur doit aussi avoir lu l'avertissement (E1).
+    /// </summary>
+    private void ControlerCloud(Entite.ConnexionLlm? nouvelle, Entite.ConnexionLlm? ancienne)
+    {
+        if ((nouvelle?.EstCloud == true || ancienne?.EstCloud == true) && !EstLocal()) throw new ArgumentException(L.T("llm.erreur.distant"));
+        if (nouvelle?.EstCloud == true && !depenses.Etat().Compris) throw new ArgumentException(L.T("llm.erreur.pasCompris"));
+    }
+
+    /// <summary>
+    /// Vrai si ce navigateur tourne sur la machine du serveur (adresse de bouclage). Sans adresse (serveur de test, socket Unix), il
+    /// n'y a pas de réseau entre les deux.
+    /// </summary>
+    private bool EstLocal()
+    {
+        var ip = Context.GetHttpContext()?.Connection.RemoteIpAddress;
+        if (ip is null) return true;
+        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+        return System.Net.IPAddress.IsLoopback(ip);
+    }
+
+    /// <summary>Vrai si ce navigateur est sur la machine du serveur : lui seul règle les clés, le plafond et les LLM du cloud.</summary>
+    public bool ServeurLocalLlm() => EstLocal();
+
+    /// <summary>Le joueur a lu l'avertissement sur ce qui part dans le cloud et ce que ça coûte.</summary>
+    public Entite.EtatEntiteLlmDto ComprendreCloudLlm()
+    {
+        if (!EstLocal()) throw new HubException(L.T("llm.erreur.distant"));
+        depenses.Comprendre();
+        return entite.Etat();
+    }
+
+    /// <summary>Enregistre la clé d'API d'un fournisseur du cloud (chiffrée, jamais renvoyée) ; depuis la machine du serveur seulement.</summary>
+    public Entite.EtatEntiteLlmDto EnregistrerCleLlm(string fournisseur, string cle, string adresse)
+    {
+        if (!EstLocal()) throw new HubException(L.T("llm.erreur.distant"));
+        Appeler(() =>
+        {
+            cles.Enregistrer(fournisseur ?? "", cle ?? "", adresse ?? "");
+            return 0;
+        });
+        return entite.Etat();
+    }
+
+    /// <summary>Oublie la clé d'API d'un fournisseur ; depuis la machine du serveur seulement.</summary>
+    public Entite.EtatEntiteLlmDto EffacerCleLlm(string fournisseur)
+    {
+        if (!EstLocal()) throw new HubException(L.T("llm.erreur.distant"));
+        cles.Effacer(fournisseur ?? "");
+        return entite.Etat();
+    }
+
+    /// <summary>Change le plafond de dépense mensuel (dollars, 0 : sans plafond) ; depuis la machine du serveur seulement.</summary>
+    public Entite.EtatEntiteLlmDto ReglerPlafondLlm(double plafond)
+    {
+        if (!EstLocal()) throw new HubException(L.T("llm.erreur.distant"));
+        Appeler(() =>
+        {
+            depenses.Regler(plafond);
+            return 0;
+        });
         return entite.Etat();
     }
 
     /// <summary>Teste une connexion : rend les modèles installés (erreur lisible si le LLM ne répond pas).</summary>
     public async Task<List<string>> ModelesLlm(Entite.ConnexionLlm connexion)
     {
-        if (connexion?.Erreur() is { } erreur) throw new HubException(erreur);
+        if (connexion is null) throw new HubException(L.T("erreur.demandeVide"));
+        connexion = connexion.Normalisee();
+        if (connexion.Erreur() is { } erreur) throw new HubException(erreur);
         try
         {
             using var delai = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            return await entite.Modeles(connexion!, delai.Token);
+            return await entite.Modeles(connexion, delai.Token);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException or InvalidOperationException)
         {

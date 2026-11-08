@@ -4,7 +4,7 @@
 
 Simulation d'une communauté humaine née d'un mythe fondateur. Application client-serveur : un serveur .NET 10 avec serveur HTTP intégré (Kestrel), et un client web ouvert dans le navigateur.
 
-Version 0.37.7 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine, voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
+Version 0.38.0 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine ou dans le cloud (ChatGPT, Claude, Mistral, Euria), voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
 
 ![Un monde à l'an 108 : 5 198 humains répartis en communautés sur quatre îles, avec la fenêtre du temps et la courbe de démographie](docs/capture-an108.png)
 
@@ -185,7 +185,7 @@ L'**Entité agit** sur un humain ou une communauté (`Humains/Gestes.cs`, « ✦
 
 ## Tutoriel : faire jouer l'Entité par un LLM
 
-Un LLM (modèle de langage) installé sur votre machine peut jouer l'Entité à votre place, ou à côté de vous. Rien ne sort de votre machine. Comptez dix minutes la première fois.
+Un LLM (modèle de langage) peut jouer l'Entité à votre place, ou à côté de vous. Installé sur votre machine, il est gratuit et rien n'en sort. Depuis la 0.38.0, il peut aussi être un service du cloud, payant (voir **Utiliser un LLM dans le cloud** plus bas). Comptez dix minutes la première fois.
 
 **1. Installer un LLM local.** Le plus simple est [Ollama](https://ollama.com) (Mac, Windows, Linux). Une fois installé, téléchargez un modèle dans un terminal :
 
@@ -212,6 +212,14 @@ Choisissez le modèle selon la mémoire de votre machine. Avec 16 Go ou plus, un
 
 **8. Suivre ce qu'elle fait.** Au journal, ses actes sont marqués **(LLM)**, ou **(LLM libre)** pour les actes libres. **Conversations**, dans la fenêtre Entité LLM, montre chaque échange : ce qu'elle a lu, pourquoi elle a agi, ses mots, ce que les règles en ont fait. **Actes de l'Entité**, dans la barre, donne la chronologie de tout ce que l'Entité a fait (par vous ou par le LLM), les décrets en vigueur (**Lever**) et un bouton **Défaire** sur chaque acte libre. **Dans un Terminal** (0.37.2) : cochez **Écrire les échanges dans un fichier texte** (section « Suivre les échanges dans un terminal ») ; chaque échange (regard, prière, demande, réplique d'un dialogue) est alors ajouté en clair au fichier `entite-echanges.log` du dossier de l'application (sur Mac : `~/Library/Application Support/MondeArtificiel/`), avec ce qu'elle a lu, sa réponse brute, ses mots, sa pensée, ses actes et ce que les règles en ont fait, et une ligne courte s'écrit dans la console du serveur. Pour les voir arriver : `tail -f ~/Library/Application\ Support/MondeArtificiel/entite-echanges.log` (la fenêtre affiche la commande exacte). Le fichier grandit vite : plusieurs milliers de mots par échange.
 
+**Utiliser un LLM dans le cloud** (0.38.0). Au lieu d'un LLM local, choisissez dans « Fournisseur » un service du cloud : **OpenAI** (ChatGPT), **Anthropic** (Claude), **Mistral**, **Infomaniak** (Euria, offre « AI Tools », hébergée en Suisse ; indiquez votre numéro de produit) ou **Autre, compatible OpenAI** (OpenRouter, Groq, un serveur du réseau…). Un modèle bon marché est pré-rempli (`gpt-5.4-mini`, `claude-haiku-5-5`, `mistral-large-latest`, `mistralai/Mistral-Small-4-119B-2603`), avec son prix en dollars par million de jetons lus et écrits (relevé le 8/11/2026, à vérifier chez le fournisseur). Créez une clé d'API chez le fournisseur (`platform.openai.com/api-keys`, `platform.claude.com/settings/keys`, `console.mistral.ai/api-keys`, `manager.infomaniak.com`), collez-la dans **Clé d'API**, puis **Enregistrer la clé**, **Tester et lister les modèles** et **Enregistrer**. La première fois, un encadré dit ce qui part chez le fournisseur et ce que ça coûte ; il faut cocher « J'ai compris ».
+
+- **Ce qui part sur Internet** : tout ce que l'Entité lit (fiches, jardin secret, extraits du journal, le caractère que vous avez écrit, vos phrases dans les dialogues). Selon leurs conditions publiées, OpenAI, Anthropic et Mistral n'entraînent pas leurs modèles sur les appels d'API mais les gardent jusqu'à environ 30 jours ; Infomaniak annonce ne rien stocker. Mistral et Infomaniak restent en Europe.
+- **Ce que ça coûte** : un échange de l'Entité lit environ 8 000 jetons et en écrit 800 ; le juge et les essais en ajoutent. Pour 100 échanges, comptez environ 0,10 $ avec un petit modèle (Claude Haiku, Mistral Small), 1 $ avec GPT-5.4 mini, 5 $ et plus avec les plus gros (Claude Opus, GPT-5.5). La fenêtre affiche le coût estimé de chaque échange dans **Conversations**, et la **dépense du mois** (jetons réellement facturés, renvoyés par le fournisseur, tous mondes confondus). Un **plafond mensuel** (5 $ par défaut, 0 = sans plafond) arrête les appels quand il est atteint, jusqu'au mois suivant ; une alerte s'affiche à 80 %. La facture du fournisseur fait foi.
+- **La clé** n'est jamais dans la base du monde, ni dans `entite-llm.json`, ni renvoyée au navigateur (on n'en voit que les 4 derniers caractères). Elle est gardée chiffrée dans `cles-llm.dat`, à côté du dossier des mondes (les clés de chiffrement sont dans `cles-protection/` : protégées par Windows, ou lisibles par votre seul compte sous macOS et Linux). Elle ne part que vers l'adresse du fournisseur. Sur un serveur sans écran, une variable d'environnement la remplace : `MONDE_CLE_OPENAI`, `MONDE_CLE_ANTHROPIC`, `MONDE_CLE_MISTRAL`, `MONDE_CLE_INFOMANIAK`, ou `MONDE_CLE_AUTRE` avec `MONDE_CLE_AUTRE_HOTE`.
+- **Depuis un autre appareil** du réseau, on joue normalement, mais les clés, le plafond et le choix d'un LLM du cloud ne se règlent que depuis la machine du serveur.
+- **LLM du juge et des traductions** : le juge de cohérence et la traduction de vos paroles dans les dialogues peuvent passer par un autre LLM (décochez « Le même LLM que l'Entité »), par exemple un modèle local gratuit pendant que l'Entité parle par le cloud.
+
 **Si rien ne se passe.** Vérifiez qu'Ollama tourne (son icône dans la barre des menus, ou `ollama list` dans un terminal) et que **Tester et lister les modèles** répond. Un premier appel peut prendre une dizaine de secondes, le temps de charger le modèle. Les erreurs s'affichent en haut de la fenêtre Entité LLM et dans Conversations.
 
 ## Tester
@@ -220,7 +228,7 @@ Choisissez le modèle selon la mémoire de votre machine. Avec 16 Go ou plus, un
 dotnet test
 ```
 
-La suite complète (619 tests) prend une dizaine de minutes, car des tests simulent plusieurs années entières.
+La suite complète (648 tests) prend une dizaine de minutes, car des tests simulent plusieurs années entières.
 
 ## Modifier le client web
 
@@ -247,6 +255,7 @@ Le serveur n'écoute que sur `localhost:5080` (voir `src/Monde.Serveur/appsettin
 
 Les versions, de la plus récente à la plus ancienne. Le détail de chaque nouveauté est dans le guide ci-dessus.
 
+- **0.38.0** (8 nov. 2026) : l'Entité peut être jouée par un LLM dans le cloud : OpenAI (ChatGPT), Anthropic (Claude), Mistral, Infomaniak (Euria) ou un autre service compatible OpenAI. Clé d'API chiffrée hors de la base, réglable depuis la machine du serveur seulement ; avertissement sur les données et les coûts ; coût de chaque échange, dépense du mois et plafond mensuel (5 $ par défaut) ; LLM à part possible pour le juge et les traductions. Schéma 58. La simulation ne change pas.
 - **0.37.7** (8 nov. 2026) : quand le LLM souffle un geste avec des matières qui ne vont pas, la correction lui rappelle ce qu'il a donné, pour qu'il corrige mieux au second essai.
 - **0.37.6** (8 nov. 2026) : un second serveur lancé sur le même dossier de mondes refuse de démarrer (verrou `serveur.verrou`) au lieu de lire le monde puis de l'enregistrer en s'arrêtant. Quand le LLM a rendu une réponse illisible, il est repris avec une pénalité de répétition et une température plus basse, sans relire en entier la réponse qui bouclait.
 - **0.37.5** (8 nov. 2026) : une réponse du LLM est bornée à 2 048 jetons : un petit modèle qui s'emballait pouvait écrire jusqu'à remplir tout le contexte (6 min 30 pendant un dialogue) et bloquer les demandes suivantes ; coupée, la réponse est reprise.

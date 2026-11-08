@@ -38,7 +38,8 @@ public sealed record AppelDto(int Priere, int Humain, string Nom, string Texte);
 /// lui-même son état (émotions, croyance, liens, projets), dans les limites de la 0.35.2. L'horloge du monde est arrêtée pendant le
 /// dialogue. Un seul dialogue à la fois.
 /// </summary>
-public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm entite, IHubContext<MondeHub> hub, ILogger<Dialogues> journal, TraceLlm trace) : BackgroundService
+public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm entite, IHubContext<MondeHub> hub, ILogger<Dialogues> journal, TraceLlm trace,
+    DepensesLlm depenses) : BackgroundService
 {
     /// <summary>Voies possibles : le signe ne se prête pas à une conversation.</summary>
     public static readonly ModeParole[] Voies = [ModeParole.Reve, ModeParole.Voix, ModeParole.Apparition];
@@ -91,6 +92,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     public DialogueDto? Ouvrir(int humain, string mode, int priere, bool attendre = false)
     {
         if (string.IsNullOrEmpty(entite.Connexion.Modele)) throw new ArgumentException(L.T("llm.erreur.pasDeModele"));
+        // Plafond de dépense du mois atteint (0.38.0) : pas de dialogue avec un LLM du cloud.
+        if (entite.Suspendu(entite.Connexion) || entite.Suspendu(entite.ConnexionPourJuge)) throw new ArgumentException(depenses.MessagePlafond());
         if (!Enum.TryParse<ModeParole>(mode, out var voie) || Array.IndexOf(Voies, voie) < 0) throw new ArgumentException(L.T("dlg.erreur.voie"));
         var monde = service.Monde;
         var (maintenant, humains) = monde.InstantaneHumains();
@@ -244,7 +247,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         List<ActeLlm> paroles;
         try
         {
-            paroles = await Traduire(c, texte, precedentes, connexion, brut, arret);
+            paroles = await Traduire(c, texte, precedentes, entite.ConnexionPourJuge, brut, arret);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
@@ -371,7 +374,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     {
                         using var delaiJuge = CancellationTokenSource.CreateLinkedTokenSource(arret);
                         delaiJuge.CancelAfter(DelaiReponse);
-                        var avis = await client.Demander(connexion, L.T("dlg.juge.consigne", ("langue", L.Courante.Nom)),
+                        var avis = await client.Demander(entite.ConnexionPourJuge, L.T("dlg.juge.consigne", ("langue", L.Courante.Nom)),
                             [("user", L.T("dlg.juge.demande", ("contexte", demande), ("decision", reponse)))], Libres.SchemaJuge(), delaiJuge.Token);
                         brut.AppendLine($"---- {L.T("libre.juge.nom")} ({essai + 1}) ----").AppendLine(avis);
                         var verdict = Libres.LireVerdict(avis);
