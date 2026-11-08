@@ -238,6 +238,7 @@ public sealed class EntiteLlmTests
         var recu = llm.Recus[0];
         Assert.Equal("faux:1b", recu["model"]!.GetValue<string>());
         Assert.Equal(8192, recu["options"]!["num_ctx"]!.GetValue<int>());
+        Assert.Equal(ClientLlm.ReponseMax, recu["options"]!["num_predict"]!.GetValue<int>());
         Assert.NotNull(recu["format"]);
         var demande = recu["messages"]![1]!["content"]!.GetValue<string>();
         Assert.Contains("(n°1)", demande);

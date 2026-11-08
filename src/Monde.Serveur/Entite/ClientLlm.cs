@@ -58,6 +58,13 @@ public sealed partial class ClientLlm(HttpClient http)
     /// Une conversation (consigne, puis messages utilisateur et assistant alternés) ; rend le texte de la réponse, débarrassé
     /// d'une éventuelle réflexion (&lt;think&gt;…&lt;/think&gt;) et des balises de code autour du JSON.
     /// </summary>
+    /// <summary>
+    /// Longueur maximale d'une réponse (jetons, 0.37.5). Une réponse normale en fait 200 à 1 500 ; sans borne, un petit modèle qui
+    /// s'emballe écrit jusqu'à remplir tout le contexte (vu le 8/11 : 28 700 jetons en 6 min 30 avec gemma3:4b, et Ollama continue
+    /// même après l'abandon du serveur, ce qui bloque les demandes suivantes). Coupée, la réponse est illisible et le LLM est repris.
+    /// </summary>
+    public const int ReponseMax = 2048;
+
     public async Task<string> Demander(ConnexionLlm c, string consigne, IReadOnlyList<(string Role, string Texte)> messages, JsonObject schema,
         CancellationToken arret)
     {
@@ -72,7 +79,7 @@ public sealed partial class ClientLlm(HttpClient http)
             corps = new JsonObject
             {
                 ["model"] = c.Modele, ["messages"] = liste, ["stream"] = false, ["format"] = schema.DeepClone(),
-                ["options"] = new JsonObject { ["num_ctx"] = c.Contexte, ["temperature"] = 0.8 },
+                ["options"] = new JsonObject { ["num_ctx"] = c.Contexte, ["temperature"] = 0.8, ["num_predict"] = ReponseMax },
             };
         }
         else
@@ -80,7 +87,7 @@ public sealed partial class ClientLlm(HttpClient http)
             url = $"{baseUri}/v1/chat/completions";
             corps = new JsonObject
             {
-                ["model"] = c.Modele, ["messages"] = liste, ["stream"] = false, ["temperature"] = 0.8,
+                ["model"] = c.Modele, ["messages"] = liste, ["stream"] = false, ["temperature"] = 0.8, ["max_tokens"] = ReponseMax,
                 ["response_format"] = new JsonObject
                 {
                     ["type"] = "json_schema",
