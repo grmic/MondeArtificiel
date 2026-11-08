@@ -260,6 +260,22 @@ public sealed class EntiteLlmTests
     }
 
     [Fact]
+    public void Budget_RaccourcitLesListes_PourTenirDansLeContexte()
+    {
+        var demande = "Ce qui s'est passé :\n" + string.Join("\n", Enumerable.Range(1, 200).Select(i => "- fait " + i + " " + new string('x', 500)))
+            + "\nQue fais-tu ?";
+        var (court, raccourcie, jetons) = BudgetLlm.Ajuster("consigne", demande, 100, 8192);
+        Assert.True(raccourcie);
+        Assert.True(jetons > 8192);
+        Assert.True(court.Length + 108 <= 0.7 * 8192 * BudgetLlm.CaracteresParJeton);
+        Assert.StartsWith("Ce qui s'est passé :\n- fait 1 ", court);
+        Assert.EndsWith("Que fais-tu ?", court);
+        Assert.Contains("- …", court);
+        // Assez court : rien ne change.
+        Assert.Equal(("abc", false), (BudgetLlm.Ajuster("c", "abc", 10, 8192).Demande, BudgetLlm.Ajuster("c", "abc", 10, 8192).Raccourcie));
+    }
+
+    [Fact]
     public async Task Trace_EcritChaqueEchangeEnClair_DansLeFichier()
     {
         using var usine = new UsineTest();
@@ -301,13 +317,14 @@ public sealed class EntiteLlmTests
         {
             mode = "Agit", prieres = false, partOrdinaires = 0, attendre = true, paroles = true, bienfaits = true, chatiments = false, catastrophes = false, souffles = false,
         });
-        // Châtiments interdits : la réponse est refusée deux fois, puis notée en erreur ; l'humain 1 vit toujours.
+        // Châtiments interdits : la réponse est refusée deux fois ; au second essai l'acte fautif est écarté (rien à faire) et noté
+        // en erreur ; l'humain 1 vit toujours.
         await c.InvokeAsync<int>("QueFeraitLEntite", 1, 0);
         var liste = await Attendre(c, l => l.Count > 0 && l[0].StatutCode != "propose");
         var e = Assert.Single(liste);
-        Assert.Equal("applique", e.StatutCode);
-        Assert.Contains("FrapperDeMort", e.Actes[0]);
-        Assert.Contains(e.Resultats, r => r.Contains("geste", StringComparison.OrdinalIgnoreCase) || r.Length > 0);
+        Assert.Equal("rien", e.StatutCode);
+        Assert.Empty(e.Actes);
+        Assert.StartsWith(L.T("llm.erreur.secondEssai", ("erreurs", "")).TrimEnd(), e.Erreur);
         var service = usine.Services.GetRequiredService<ServiceMonde>();
         Assert.True(service.Monde.InstantaneHumains().Humains[0].EstVivant);
         Assert.False(service.Monde.Retenu);

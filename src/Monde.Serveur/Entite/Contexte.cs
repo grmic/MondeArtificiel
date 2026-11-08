@@ -25,6 +25,58 @@ public enum OccasionLlm
 
 /// <summary>Ce que le LLM lit : la consigne (qui il est, ce qu'il peut faire) et la demande (l'occasion, l'humain, sa communauté…).</summary>
 /// <param name="Jardin">Pour l'Entité libre : les choses du jardin secret montrées (J1, J2…), en références « secondes|clé ».</param>
+/// <summary>
+/// Budget de la demande (0.37.3) : Ollama coupe en silence le début d'une demande plus longue que son contexte, et le LLM perd
+/// alors sa consigne. On estime les jetons (environ 3 caractères par jeton en français, compté large) et on raccourcit d'abord les
+/// lignes de liste trop longues, puis les plus longues listes par la fin, jusqu'à tenir dans 70 % du contexte (le reste pour la
+/// réponse et un second essai).
+/// </summary>
+public static class BudgetLlm
+{
+    public const double CaracteresParJeton = 3.0;
+    private const double Part = 0.7;
+
+    public static int Jetons(int caracteres) => (int)Math.Ceiling(caracteres / CaracteresParJeton);
+
+    /// <summary>La demande, raccourcie s'il le faut ; <c>Jetons</c> : l'estimation d'avant (consigne et schéma compris).</summary>
+    public static (string Demande, bool Raccourcie, int Jetons) Ajuster(string consigne, string demande, int schema, int contexte)
+    {
+        var fixe = consigne.Length + schema;
+        var budget = (int)(Part * contexte * CaracteresParJeton) - fixe;
+        var avant = Jetons(fixe + demande.Length);
+        if (demande.Length <= budget) return (demande, false, avant);
+        var lignes = demande.Split('\n').ToList();
+        int Taille() => lignes.Sum(l => l.Length + 1);
+        foreach (var max in new[] { 300, 200, 140 })
+        {
+            for (var k = 0; k < lignes.Count; k++)
+                if (lignes[k].StartsWith("- ", StringComparison.Ordinal) && lignes[k].Length > max) lignes[k] = lignes[k][..(max - 1)] + "…";
+            if (Taille() <= budget) return (string.Join('\n', lignes), true, avant);
+        }
+        // Puis la liste la plus longue perd ses dernières lignes, une à une (au moins trois gardées par liste).
+        while (Taille() > budget)
+        {
+            int debut = -1, longueur = 0, meilleurDebut = -1, meilleure = 0;
+            for (var k = 0; k <= lignes.Count; k++)
+            {
+                var item = k < lignes.Count && lignes[k].StartsWith("- ", StringComparison.Ordinal) && lignes[k] != "- …";
+                if (item) { if (debut < 0) debut = k; longueur++; }
+                else
+                {
+                    if (longueur > meilleure) (meilleurDebut, meilleure) = (debut, longueur);
+                    (debut, longueur) = (-1, 0);
+                }
+            }
+            if (meilleure <= 3) break;
+            var fin = meilleurDebut + meilleure - 1;
+            lignes.RemoveAt(fin);
+            if (fin >= lignes.Count || lignes[fin] != "- …") lignes.Insert(fin, "- …");
+        }
+        var texte = string.Join('\n', lignes);
+        return (texte.Length <= budget ? texte : texte[..Math.Max(0, budget)], true, avant);
+    }
+}
+
 public sealed record LectureLlm(string Consigne, string Demande, IReadOnlyList<string> Pieces, IReadOnlyList<string>? JardinMontre = null)
 {
     public IReadOnlyList<string> Jardin => JardinMontre ?? [];
@@ -283,7 +335,7 @@ public static class Contexte
             var membres = vivants.Where(h => h.CommunauteId == c.Id).ToList();
             var details = new List<string> { L.T("llm.r.membres", ("n", c.Membres.Count)), $"({c.X}, {c.Y})" };
             if (c.Figure > 0) details.Add(L.T("llm.r.figure", ("nom", c.NomFigure), ("id", c.Figure)));
-            if (c.Disette) details.Add(L.T("llm.c.disette"));
+            if (c.Disette) details.Add(L.T("llm.c.disette").TrimEnd('.'));
             if (membres.Count > 0)
                 details.Add(L.T("llm.r.regard", ("croyance", N(membres.Average(h => h.Croyance))), ("amour", N(membres.Average(h => h.Amour))),
                     ("crainte", N(membres.Average(h => h.Crainte))), ("revolte", N(membres.Average(h => h.Revolte)))));

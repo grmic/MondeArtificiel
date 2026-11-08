@@ -249,8 +249,9 @@ public sealed class EntiteLibreTests
         });
         await c.InvokeAsync<int>("QueFeraitLEntite", 1, 0);
         var e = Assert.Single(await Attendre(c, l => l.Count > 0 && l[0].StatutCode != "propose"));
-        Assert.Equal("applique", e.StatutCode);
-        Assert.Contains(e.Resultats, r => r.Contains("Entité libre", StringComparison.Ordinal));
+        // Refusé aux deux essais : l'acte est écarté et la raison notée en erreur.
+        Assert.Equal("rien", e.StatutCode);
+        Assert.Contains("Entité libre", e.Erreur);
         Assert.DoesNotContain("ENTITÉ LIBRE", llm.Recus[0]["messages"]![0]!["content"]!.GetValue<string>());
         var service = usine.Services.GetRequiredService<ServiceMonde>();
         Assert.NotEqual(90, service.Monde.InstantaneHumains().Humains[0].Sante);

@@ -370,10 +370,14 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         _enCours = d.Occasion == OccasionLlm.Regard ? L.T("llm.etat.regard")
             : d.Humain >= 1 && d.Humain <= humains.Count ? humains[d.Humain - 1].Nom : L.T("llm.etat.communaute");
         var chrono = Stopwatch.StartNew();
+        // Une demande plus longue que le contexte serait coupée en silence par Ollama, consigne comprise : on la raccourcit.
+        var (demande, raccourcie, jetons) = BudgetLlm.Ajuster(lecture.Consigne, lecture.Demande, schema.ToJsonString().Length, connexion.Contexte);
+        if (raccourcie) lecture = lecture with { Demande = demande };
         var messages = new List<(string, string)> { ("user", lecture.Demande) };
         string reponse = "";
         DecisionLlm? decision = null;
         string? erreur = null;
+        var avertissement = raccourcie ? L.T("llm.erreur.raccourcie", ("jetons", jetons), ("contexte", connexion.Contexte)) : null;
         if (reglages.Attendre) monde.Retenu = true;
         try
         {
@@ -388,6 +392,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                     var fautes = new List<string>();
                     // Plus d'actes que permis : au premier essai, il choisit lui-même ceux qui comptent (0.36.4).
                     if (lu.Ignores > 0 && essai == 0) fautes.Add(L.T("llm.erreur.tropDActes", ("max", Actes.ParReponse), ("n", Actes.ParReponse + lu.Ignores)));
+                    var fautifs = new HashSet<ActeLlm>(ReferenceEqualityComparer.Instance);
                     foreach (var a in lu.Actes)
                     {
                         try
@@ -397,6 +402,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                         catch (ArgumentException e)
                         {
                             fautes.Add(e.Message);
+                            fautifs.Add(a);
                         }
                     }
                     // Le juge de cohérence relit un acte libre : incohérent, la décision revient une fois à l'Entité avec la raison.
@@ -423,7 +429,18 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                             continue;
                         }
                     }
-                    if (fautes.Count == 0 || essai == 1) decision = lu;
+                    if (fautes.Count == 0)
+                    {
+                        // Corrigé au second essai : l'erreur notée est celle du premier, dite comme telle.
+                        if (essai == 1 && erreur is not null) erreur = L.T("llm.erreur.premierEssai", ("erreurs", erreur));
+                        decision = lu;
+                    }
+                    else if (essai == 1)
+                    {
+                        // Encore fautif au second essai : seuls les actes valides sont gardés (proposés ou appliqués), les autres notés.
+                        erreur = L.T("llm.erreur.secondEssai", ("erreurs", string.Join(" ", fautes)));
+                        decision = lu with { Actes = [.. lu.Actes.Where(a => !fautifs.Contains(a))] };
+                    }
                     else
                     {
                         erreur = string.Join(" ", fautes);
@@ -463,7 +480,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         if (decision is null)
         {
             Enregistrer(new EchangeEntite(0, maintenant, Maintenant(), (int)d.Occasion, d.Humain, d.Communaute, d.Priere, connexion.Libelle, duree,
-                Lu(lecture), Trace(reponse, traceJuge), "", "", "[]", "[]", 3, 0, -1, erreur, 0));
+                Lu(lecture), Trace(reponse, traceJuge), "", "", "[]", "[]", 3, 0, -1, Joindre(avertissement, erreur), 0));
             return;
         }
         // Sans caractère écrit par le joueur, elle garde celui qu'elle s'est donné la première fois.
@@ -473,12 +490,14 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var actes = decision.Actes.Select(a => a.Type == Actes.SoufflerCombinaison ? a with { A = Actes.Piece(a.A, lecture.Pieces), B = Actes.Piece(a.B, lecture.Pieces) }
             : Libres.Resoudre(a, lecture.Jardin)).ToList();
         var echange = new EchangeEntite(0, maintenant, Maintenant(), (int)d.Occasion, d.Humain, d.Communaute, d.Priere, connexion.Libelle, duree,
-            Lu(lecture), Trace(reponse, traceJuge), decision.Mots, decision.Pensee, JsonSerializer.Serialize(actes, Actes.Json), "[]", 1, 0, -1, erreur, 0);
+            Lu(lecture), Trace(reponse, traceJuge), decision.Mots, decision.Pensee, JsonSerializer.Serialize(actes, Actes.Json), "[]", 1, 0, -1, Joindre(avertissement, erreur), 0);
         var proposer = reglages.ModeLu != ModeEntite.Agit;
         if (actes.All(a => a.Type == Actes.Rien)) echange = echange with { Statut = 5 };
         var id = Enregistrer(echange);
         if (!proposer && echange.Statut != 5) await Appliquer(id, permises);
     }
+
+    private static string? Joindre(string? a, string? b) => a is null ? b : b is null ? a : a + " " + b;
 
     private static string Lu(LectureLlm l) => l.Consigne + "\n\n----\n\n" + l.Demande;
 

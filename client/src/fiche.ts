@@ -267,6 +267,9 @@ export class PanneauFiche {
     private readonly ouvrirCommunaute: (id: number) => void = () => {},
   ) {}
 
+  /** L'humain dont la fiche est dessinée (0 : aucune). */
+  private dessinee = 0;
+
   get courant(): number {
     return this.id;
   }
@@ -294,6 +297,7 @@ export class PanneauFiche {
   fermer(): void {
     window.clearInterval(this.minuteur);
     this.id = 0;
+    this.dessinee = 0;
     this.retour = null;
     this.racine.hidden = true;
     this.surChoix(0);
@@ -302,8 +306,21 @@ export class PanneauFiche {
   private async rafraichir(): Promise<void> {
     if (!this.id) return;
     const id = this.id;
-    const fiche = await connexion.invoke<Fiche | null>("Fiche", id).catch(() => null);
-    if (!fiche || id !== this.id) return;
+    let erreur = "";
+    const fiche = await connexion.invoke<Fiche | null>("Fiche", id).catch((e: unknown) => {
+      erreur = e instanceof Error ? e.message : String(e);
+      return null;
+    });
+    if (id !== this.id) return;
+    // Une fiche que le serveur ne sait pas faire : on le dit, au lieu d'attendre sans fin (0.37.3).
+    if (!fiche) {
+      if (erreur && this.dessinee !== id) {
+        this.racine.replaceChildren(el("p", "discret", t("fiche.erreur", { id, erreur: erreur.split("HubException: ").pop() ?? erreur })));
+        this.racine.hidden = false;
+      }
+      return;
+    }
+    this.dessinee = id;
     // Redessiner pendant que l'on choisit dans le formulaire de l'Entité fermerait les menus déroulants.
     if (this.saisieEnCours()) return;
     this.dessiner(fiche);

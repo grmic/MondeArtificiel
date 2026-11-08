@@ -4,7 +4,7 @@
 
 Simulation d'une communauté humaine née d'un mythe fondateur. Application client-serveur : un serveur .NET 10 avec serveur HTTP intégré (Kestrel), et un client web ouvert dans le navigateur.
 
-Version 0.37.2 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine, voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
+Version 0.37.3 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine, voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
 
 ![Un monde à l'an 108 : 5 198 humains répartis en communautés sur quatre îles, avec la fenêtre du temps et la courbe de démographie](docs/capture-an108.png)
 
@@ -247,6 +247,7 @@ Le serveur n'écoute que sur `localhost:5080` (voir `src/Monde.Serveur/appsettin
 
 Les versions, de la plus récente à la plus ancienne. Le détail de chaque nouveauté est dans le guide ci-dessus.
 
+- **0.37.3** (8 nov. 2026) : corrigé : la fiche des humains qui parlent une langue héritée ne s'ouvrait pas (mots appris avant le premier jour) ; une fiche impossible le dit au lieu d'attendre. Entité-LLM : une demande trop longue pour le contexte est raccourcie au lieu d'être coupée en silence par Ollama (avec un avertissement) ; un acte encore fautif au second essai est écarté au lieu d'être proposé ; l'erreur du premier essai est dite comme telle ; « mots » ne doit plus contenir les noms codés des paroles. Petites fautes de texte (« si elle essayait », « 1 l d'eau »).
 - **0.37.2** (8 nov. 2026) : case « Écrire les échanges dans un fichier texte » (fenêtre Entité LLM) pour suivre les échanges avec le LLM dans un Terminal (`tail -f`), et une ligne par échange dans la console du serveur. La simulation ne change pas.
 - **0.37.1** (5 nov. 2026) : l'Entité parle au Monde entier ou à une seule terre (quatorze paroles, dont trois qui visent une communauté et sont débattues par toutes les autres), avec une ligne au journal par humain et un bilan par communauté ; commandements qui durent et se racontent aux enfants (ne tuez pas, partagez, prenez soin des faibles) ; parole « Accueillez… » ; case à part pour le LLM, décochée par défaut. Schéma 57. Les mondes où l'Entité ne parle pas au Monde sont identiques.
 - **0.37.0** (3 nov. 2026) : case « Langage avancé » à la création d'un monde : une langue mère par terre de départ, connue de chacun selon son aisance, et un nom dans cette langue pour chaque fondateur. Génération 3 des mondes neufs : 61 idées nouvelles (corps, parenté, temps, nombres, morale, invisible, lieux, nourriture), et un adulte n'oublie presque plus sa langue maternelle. Schéma 56. Les mondes plus anciens sont identiques.

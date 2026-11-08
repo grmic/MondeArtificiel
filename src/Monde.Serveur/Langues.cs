@@ -120,7 +120,8 @@ public static class L
     }
 
     /// <summary>Date du monde : « An 12, jour 30 du printemps, 08:15 ».</summary>
-    public static string Date(long secondes) => Date(Calendrier.Decomposer(secondes));
+    /// <summary>Une date du monde ; avant le premier jour (un mot de la langue des fondateurs, appris dans leur enfance) : dit tel quel.</summary>
+    public static string Date(long secondes) => secondes < 0 ? T("date.avant") : Date(Calendrier.Decomposer(secondes));
 
     public static string Date(DateMonde d) => T("date.complete", ("an", d.Annee.ToString(CultureInfo.InvariantCulture)),
         ("jour", d.JourDeSaison.ToString(CultureInfo.InvariantCulture)), ("saisonDe", T($"saison.de.{d.Saison}")),

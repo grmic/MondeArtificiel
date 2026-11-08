@@ -5157,7 +5157,7 @@
   "fac.gj.Enduire": "étaler {b} sur {a}",
   "fac.gj.Coudre": "coudre {a} avec {b}",
   "fac.gj.Ligne": "pendre {a} au bout de {b}",
-  "fac.idee.question": "{h} se demande ce qui arriverait s'{h:il|elle} essayait de {geste}.",
+  "fac.idee.question": "{h} se demande ce qui arriverait {h:s'il|si elle} essayait de {geste}.",
   "fac.idee.souffle": "L'Entité souffle une idée à {h}. {question}",
   "fac.idee.pasDeQuoi": "{question} Mais {h:il|elle} n'a pas de quoi l'essayer ici.",
   "fac.idee.rate": "{question} {h:Il|Elle} essaie, mais {raison}.",
@@ -5167,7 +5167,7 @@
   "fac.usage.lancer": "la hampe part à {v} m/s et porte à {portee} m",
   "fac.usage.Chasser": "cela atteint et perce mieux le gibier",
   "fac.usage.Couper": "cela tranche mieux",
-  "fac.usage.Contenir": "cela emporte {l} litres d'eau",
+  "fac.usage.Contenir": "cela emporte {l} l d'eau",
   "fac.usage.Pecher": "cela prend le poisson",
   "fac.jardin.rate": "J'ai cru qu'on pouvait {geste}. Peut-être pas.",
   "fac.souffle.rien": "Rien n'en est sorti (le journal dit ce qu'il en a fait).",
@@ -5352,7 +5352,7 @@
   "ellm.queFerait": "Que ferait l'Entité ?",
   "ellm.queFeraitAide": "Demande au LLM ce que ferait l'Entité ; en mode « Le LLM agit », il agit, sinon sa décision vous est proposée (fenêtre « Entité LLM »).",
   "ellm.enFile": "Demande envoyée (place {n} dans la file) ; la réponse arrivera dans « Entité LLM ».",
-  "llm.consigne": "Tu es l'Entité. Venue d'ailleurs, tu as créé la vie sur ce monde, qui ressemble à la Terre au temps des dinosaures. Tu es une puissance féminine (« celle qui vous a faits »). Les humains sont libres : ils ont faim, froid, peur, s'aiment, se battent, croient en toi ou non. Ils ignorent ce que tu es. Au début, ils n'ont ni langue articulée, ni feu, ni science : ils te perçoivent en rêve, comme une voix, un signe dans la nature ou une apparition.\nTu ne touches jamais directement au monde : tu choisis des actes dans la liste ci-dessous, et les lois du monde décident de ce qui arrive. Chaque humain comprend, croit, obéit, hésite ou refuse selon son caractère. Tu peux faire le bien comme le mal, ou ne rien faire : le silence est aussi une réponse. Tu es omnisciente : tu vois leurs pensées et leur jardin secret.\nRéponds uniquement par un objet JSON de la forme {forme} : « pensee » dit pourquoi tu agis ainsi (une ou deux phrases) ; « mots » est ce que tu leur fais entendre ou comprendre, en mots simples (vide si tu ne dis rien) ; « actes » contient de zéro à quatre actes. Écris pensee et mots en {langue}. Les mots n'ont pas d'effet par eux-mêmes : seuls les actes en ont.\nN'utilise que les numéros donnés dans la demande (humains, communautés, prières, pièces) ; n'en invente aucun. Les noms des paroles, modes, gestes et manières s'écrivent exactement comme dans la liste.",
+  "llm.consigne": "Tu es l'Entité. Venue d'ailleurs, tu as créé la vie sur ce monde, qui ressemble à la Terre au temps des dinosaures. Tu es une puissance féminine (« celle qui vous a faits »). Les humains sont libres : ils ont faim, froid, peur, s'aiment, se battent, croient en toi ou non. Ils ignorent ce que tu es. Au début, ils n'ont ni langue articulée, ni feu, ni science : ils te perçoivent en rêve, comme une voix, un signe dans la nature ou une apparition.\nTu ne touches jamais directement au monde : tu choisis des actes dans la liste ci-dessous, et les lois du monde décident de ce qui arrive. Chaque humain comprend, croit, obéit, hésite ou refuse selon son caractère. Tu peux faire le bien comme le mal, ou ne rien faire : le silence est aussi une réponse. Tu es omnisciente : tu vois leurs pensées et leur jardin secret.\nRéponds uniquement par un objet JSON de la forme {forme} : « pensee » dit pourquoi tu agis ainsi (une ou deux phrases) ; « mots » est ce que tu leur fais entendre ou comprendre, en phrases simples (vide si tu ne dis rien), jamais les noms codés des paroles comme TuNEsPasSeul ; « actes » contient de zéro à quatre actes. Écris pensee et mots en {langue}. Les mots n'ont pas d'effet par eux-mêmes : seuls les actes en ont.\nN'utilise que les numéros donnés dans la demande (humains, communautés, prières, pièces) ; n'en invente aucun. Les noms des paroles, modes, gestes et manières s'écrivent exactement comme dans la liste.",
   "llm.cat.titre": "Actes possibles :",
   "llm.cat.parler": "Parler à un ou plusieurs humains (ou à tous les membres de communautés avec \"communautes\") ; \"cible\" : la personne désignée par la parole ; \"param\" : la précision demandée",
   "llm.cat.veutCible": "(cible : un humain)",
@@ -6117,5 +6117,10 @@
   "trace.entite": "L'Entité dit",
   "trace.humain": "{nom} répond",
   "trace.sens": "C'est-à-dire",
-  "trace.regles": "Ce que les règles en ont fait"
+  "trace.regles": "Ce que les règles en ont fait",
+  "llm.erreur.premierEssai": "Premier essai refusé, corrigé au second : {erreurs}",
+  "llm.erreur.secondEssai": "Encore fautif au second essai, ces actes sont écartés : {erreurs}",
+  "llm.erreur.raccourcie": "Demande raccourcie pour tenir dans le contexte du LLM (environ {jetons} jetons pour {contexte}) : agrandissez le contexte dans « Connexion au LLM » si votre machine le permet.",
+  "date.avant": "avant le premier jour",
+  "fiche.erreur": "La fiche de l'humain n°{id} n'a pas pu être faite : {erreur}"
 }

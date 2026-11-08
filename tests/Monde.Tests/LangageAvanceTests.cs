@@ -44,6 +44,19 @@ public sealed class LangageAvanceTests
     }
 
     [Fact]
+    public void LangageAvance_LesMotsAppris_AvantLePremierJour_SAffichentSurLaFiche()
+    {
+        // Les mots de la langue héritée ont été appris dans l'enfance des fondateurs, avant le premier jour du monde (date
+        // négative) : la fiche de l'humain les montre sans planter (0.37.3, bug « la fiche ne s'affiche pas »).
+        var monde = Creer(true);
+        var (_, humains) = monde.InstantaneHumains();
+        Assert.Contains(humains.SelectMany(h => h.Vocabulaire), m => m.Le < 0);
+        var h = humains.First(x => x.Vocabulaire.Any(m => m.Le < 0));
+        var dto = Monde.Serveur.LangageDto.Depuis(h, humains, monde.Communautes(), monde.Flore);
+        Assert.Contains(dto.Mots, m => m.Depuis == Monde.Serveur.L.T("date.avant"));
+    }
+
+    [Fact]
     public void SansLangageAvance_LesFondateursPartentDesCris()
     {
         var (_, humains) = Creer(false).InstantaneHumains();
