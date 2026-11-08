@@ -6,11 +6,11 @@ interface ConnexionLlm { fournisseur: string; adresse: string; modele: string; c
 interface Reglages {
   mode: string; prieres: boolean; partOrdinaires: number; attendre: boolean;
   paroles: boolean; bienfaits: boolean; chatiments: boolean; catastrophes: boolean; souffles: boolean;
-  regard: boolean; regardJours: number; caractere: string; libre: boolean; juge: boolean; monde: boolean;
+  regard: boolean; regardJours: number; caractere: string; libre: boolean; juge: boolean; monde: boolean; trace: boolean;
 }
 interface Etat {
   connexion: ConnexionLlm; reglages: Reglages; enFile: number; enCours: string | null; derniereErreur: string | null; propositions: number;
-  caractereLlm: string; prochainRegard: string | null; libreDepuis: string | null;
+  caractereLlm: string; prochainRegard: string | null; libreDepuis: string | null; traceChemin?: string;
 }
 interface Echange {
   id: number; date: string; quand: string; occasion: string; humain: number; nomHumain: string | null; communaute: number; nomCommunaute: string | null;
@@ -111,6 +111,8 @@ export class PanneauEntiteLlm {
   private readonly regard: HTMLInputElement;
   private readonly libre: HTMLInputElement;
   private readonly monde: HTMLInputElement;
+  private readonly trace: HTMLInputElement;
+  private readonly traceCommande = el("code");
   private readonly juge: HTMLInputElement;
   private readonly regardJours = el("input");
   private readonly caractere = el("textarea");
@@ -165,6 +167,9 @@ export class PanneauEntiteLlm {
     // Parler au Monde (0.37.1) : une case à part, décochée par défaut.
     [l, this.monde] = caseACocher(t("ellm.monde"), t("ellm.mondeAide"));
     reglagesBloc.append(el("h4", undefined, t("ellm.mondeTitre")), l, el("br"));
+    // Suivre les échanges dans un terminal (0.37.2) : un fichier texte en clair, et une ligne courte dans la console du serveur.
+    [l, this.trace] = caseACocher(t("ellm.trace"), t("ellm.traceAide"));
+    reglagesBloc.append(el("h4", undefined, t("ellm.traceTitre")), l, el("p", "discret", t("ellm.traceCommande")), this.traceCommande);
     [l, this.prieres] = caseACocher(t("ellm.prieres"), t("ellm.prieresAide"));
     reglagesBloc.append(el("h4", undefined, t("ellm.occasions")), l, el("br"));
     this.part.type = "number";
@@ -243,6 +248,8 @@ export class PanneauEntiteLlm {
     this.libre.checked = e.reglages.libre;
     this.juge.checked = e.reglages.juge;
     this.monde.checked = e.reglages.monde ?? false;
+    this.trace.checked = e.reglages.trace ?? false;
+    this.traceCommande.textContent = e.traceChemin ? `tail -f "${e.traceChemin}"` : "";
     for (const [f, i] of this.familles) i.checked = Boolean(e.reglages[f]);
     this.montrerEtat(e);
   }
@@ -298,7 +305,7 @@ export class PanneauEntiteLlm {
       paroles: false, bienfaits: false, chatiments: false, catastrophes: false, souffles: false,
       regard: this.regard.checked, regardJours: Math.max(1, Math.min(3650, Math.round(Number(this.regardJours.value) || 91))),
       caractere: this.caractere.value.trim().slice(0, 2000), libre: this.libre.checked, juge: this.juge.checked,
-      monde: this.monde.checked,
+      monde: this.monde.checked, trace: this.trace.checked,
     };
     for (const [f, i] of this.familles) (r as unknown as Record<string, boolean>)[f] = i.checked;
     try {

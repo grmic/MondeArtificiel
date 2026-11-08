@@ -23,6 +23,7 @@ builder.Services.AddHostedService<EntretienJournal>();
 // L'Entité jouée par un LLM local : appels sans proxy (le LLM tourne sur cette machine ou le réseau local), sans limite de durée
 // côté client (chaque demande a son propre délai).
 builder.Services.AddSingleton(new Monde.Serveur.Entite.ClientLlm(new HttpClient(new SocketsHttpHandler { UseProxy = false }) { Timeout = Timeout.InfiniteTimeSpan }));
+builder.Services.AddSingleton<Monde.Serveur.Entite.TraceLlm>();
 builder.Services.AddSingleton<Monde.Serveur.Entite.EntiteLlm>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Monde.Serveur.Entite.EntiteLlm>());
 builder.Services.AddSingleton<Monde.Serveur.Entite.Dialogues>();

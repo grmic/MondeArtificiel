@@ -32,7 +32,7 @@ public enum ModeEntite
 /// <param name="Monde">« Permettre au LLM de parler au Monde » (0.37.1), décoché par défaut : une erreur toucherait tout le monde à la fois.</param>
 public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdinaires, bool Attendre, bool Paroles, bool Bienfaits, bool Chatiments,
     bool Catastrophes, bool Souffles, bool Regard = true, int RegardJours = EntiteLlm.RegardParDefaut, string Caractere = "", bool Libre = false, bool Juge = true,
-    bool Monde = false)
+    bool Monde = false, bool Trace = false)
 {
     public ModeEntite ModeLu => Enum.TryParse<ModeEntite>(Mode, out var m) && Enum.IsDefined(m) ? m : ModeEntite.Joueur;
 
@@ -46,7 +46,7 @@ public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdina
 /// <param name="ProchainRegard">Date du monde de son prochain regard (null : pas de regard prévu).</param>
 /// <param name="LibreDepuis">Date du premier acte libre : depuis, le monde n'est plus le fruit des seules règles (null : aucun).</param>
 public sealed record EtatEntiteLlmDto(ConnexionLlm Connexion, ReglagesEntiteLlm Reglages, int EnFile, string? EnCours, string? DerniereErreur, int Propositions,
-    string CaractereLlm = "", string? ProchainRegard = null, string? LibreDepuis = null);
+    string CaractereLlm = "", string? ProchainRegard = null, string? LibreDepuis = null, string TraceChemin = "");
 
 /// <summary>Un échange, pour la liste : date, occasion, destinataire, mots, résultat.</summary>
 public sealed record EchangeDto(long Id, string Date, string Quand, string Occasion, int Humain, string? NomHumain, int Communaute, string? NomCommunaute,
@@ -93,7 +93,7 @@ public static class MarquesLlm
 /// fond. Chaque réponse est vérifiée, appliquée par les mêmes pouvoirs que le joueur (ou proposée au joueur), et gardée dans la
 /// trace <c>entite_echanges</c>. En mode « Joueur seul », rien n'est appelé et le monde est exactement celui d'avant.
 /// </summary>
-public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContext<MondeHub> hub, ILogger<EntiteLlm> journal) : BackgroundService
+public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContext<MondeHub> hub, ILogger<EntiteLlm> journal, TraceLlm trace) : BackgroundService
 {
     private const string CleMode = "llm_mode", ClePrieres = "llm_prieres", ClePart = "llm_part", CleAttendre = "llm_attendre", CleFamilles = "llm_familles",
         CleLangue = "llm_langue", CleRegard = "llm_regard", CleRegardJours = "llm_regard_jours", CleDernierRegard = "llm_dernier_regard",
@@ -166,7 +166,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                 d.LireReglage(ClePrieres) != "non", part, d.LireReglage(CleAttendre) == "oui",
                 familles.HasFlag(FamillesLlm.Paroles), familles.HasFlag(FamillesLlm.Bienfaits), familles.HasFlag(FamillesLlm.Chatiments),
                 familles.HasFlag(FamillesLlm.Catastrophes), familles.HasFlag(FamillesLlm.Souffles), d.LireReglage(CleRegard) != "non", jours,
-                d.LireReglage(CleCaractere) ?? "", d.LireReglage(CleLibre) == "oui", d.LireReglage(CleJuge) != "non", d.LireReglage(CleMonde) == "oui");
+                d.LireReglage(CleCaractere) ?? "", d.LireReglage(CleLibre) == "oui", d.LireReglage(CleJuge) != "non", d.LireReglage(CleMonde) == "oui",
+                d.LireReglage(TraceLlm.Cle) == "oui");
         }
     }
 
@@ -192,6 +193,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         d.EcrireReglage(CleLibre, r.Libre ? "oui" : "non");
         d.EcrireReglage(CleJuge, r.Juge ? "oui" : "non");
         d.EcrireReglage(CleMonde, r.Monde ? "oui" : "non");
+        d.EcrireReglage(TraceLlm.Cle, r.Trace ? "oui" : "non");
         if (L.Toutes.ContainsKey(langue)) d.EcrireReglage(CleLangue, langue);
         if (mode == ModeEntite.Joueur)
             lock (_verrou) _file.RemoveAll(x => x.Occasion is not (OccasionLlm.DemandeHumain or OccasionLlm.DemandeCommunaute));
@@ -207,7 +209,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             prochain = L.Date((DernierRegard ?? service.Monde.Secondes) + r.RegardJours * Calendrier.SecondesParJour);
         var libre = service.Depot.PremierActeLibre();
         return new EtatEntiteLlmDto(Connexion, r, n, _enCours, _derniereErreur, service.Depot.Echanges(statut: 1, limite: 1000).Count,
-            service.Depot.LireReglage(CleCaractereLlm) ?? "", prochain, libre is { } l ? L.Date(l) : null);
+            service.Depot.LireReglage(CleCaractereLlm) ?? "", prochain, libre is { } l ? L.Date(l) : null, trace.Chemin);
     }
 
     /// <summary>Date du monde de son dernier regard (null : jamais).</summary>
@@ -489,6 +491,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
     {
         var id = service.Depot.AjouterEchange(e);
         _ = hub.Clients.Diffuser("EntiteLlm", () => Etat());
+        Tracer(id, complet: true);
         return id;
     }
 
@@ -510,6 +513,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             && (monde.Prieres().FirstOrDefault(p => p.Id == e.Priere) is not { Issue: IssuePriere.EnAttente } || service.Depot.PriereEnDialogue(e.Priere)))
         {
             service.Depot.MettreAJourEchange(e with { Statut = 4, Resultats = JsonSerializer.Serialize(new[] { L.T("llm.resultat.tropTard") }, Actes.Json) });
+            Tracer(e.Id, complet: false);
             await hub.Clients.Diffuser("EntiteLlm", () => Etat());
             return [L.T("llm.resultat.tropTard")];
         }
@@ -567,6 +571,8 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             Statut = 0, Resultats = JsonSerializer.Serialize(resultats, Actes.Json), JournalPremier = dernier >= premier ? premier : 0,
             JournalDernier = dernier >= premier ? dernier : -1, AppliqueLe = monde.Secondes,
         });
+        // Un échange appliqué aussitôt est tracé une seconde fois, court : ce que les règles en ont fait.
+        Tracer(e.Id, complet: false);
         service.Sauvegarder();
         await hub.Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         await hub.Clients.Diffuser("EntiteLlm", () => Etat());
@@ -579,6 +585,14 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var e = service.Depot.Echange(id) ?? throw new ArgumentException(L.T("llm.erreur.echange"));
         if (e.Statut is not (1 or 5)) throw new ArgumentException(L.T("llm.erreur.dejaTraite"));
         service.Depot.MettreAJourEchange(e with { Statut = 2 });
+        Tracer(id, complet: false);
+    }
+
+    /// <summary>L'échange dans le fichier de trace et la console (seulement si la case est cochée).</summary>
+    private void Tracer(long id, bool complet)
+    {
+        if (!trace.Active || service.Depot.Echange(id) is not { } e) return;
+        trace.Echange(Dto(e, complet), complet);
     }
 
     private static readonly string[] Statuts = ["applique", "propose", "rejete", "erreur", "tropTard", "rien"];

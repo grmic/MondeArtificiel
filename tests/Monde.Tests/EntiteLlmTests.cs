@@ -255,6 +255,36 @@ public sealed class EntiteLlmTests
         Assert.True(applique.JournalPremier > 0);
         Assert.True(MarquesLlm.Contient(applique.JournalPremier));
         await Assert.ThrowsAsync<HubException>(() => c.InvokeAsync<List<string>>("AccepterProposition", e.Id));
+        // Sans la case « Écrire les échanges dans un fichier texte », rien n'est écrit.
+        Assert.False(File.Exists(usine.Services.GetRequiredService<TraceLlm>().Chemin));
+    }
+
+    [Fact]
+    public async Task Trace_EcritChaqueEchangeEnClair_DansLeFichier()
+    {
+        using var usine = new UsineTest();
+        using var llm = new FauxLlm(ParoleDeRassurance);
+        var c = usine.CreerConnexion();
+        await using var _ = c;
+        await c.StartAsync();
+        await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 8192 });
+        await c.InvokeAsync<EtatLu>("ReglerEntiteLlm", new
+        {
+            mode = "Joueur", prieres = false, partOrdinaires = 0, attendre = false, paroles = true, bienfaits = true, chatiments = false, catastrophes = false,
+            souffles = false, trace = true,
+        });
+        await c.InvokeAsync<int>("QueFeraitLEntite", 1, 0);
+        var e = Assert.Single(await Attendre(c, l => l.Count > 0));
+        await c.InvokeAsync<List<string>>("AccepterProposition", e.Id);
+        var chemin = usine.Services.GetRequiredService<TraceLlm>().Chemin;
+        Assert.Equal(TraceLlm.NomFichier, Path.GetFileName(chemin));
+        Assert.StartsWith(usine.Dossier, chemin);
+        var texte = File.ReadAllText(chemin);
+        // Le bloc complet (ce qu'il a lu, sa réponse, ses mots), puis le bloc court quand la proposition est appliquée.
+        Assert.Equal(2, texte.Split("════ ").Length - 1);
+        Assert.Contains("(n°1)", texte);
+        Assert.Contains("N'aie pas peur.", texte);
+        Assert.Contains(ParoleDeRassurance, texte);
     }
 
     [Fact]

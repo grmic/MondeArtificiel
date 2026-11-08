@@ -38,7 +38,7 @@ public sealed record AppelDto(int Priere, int Humain, string Nom, string Texte);
 /// lui-même son état (émotions, croyance, liens, projets), dans les limites de la 0.35.2. L'horloge du monde est arrêtée pendant le
 /// dialogue. Un seul dialogue à la fois.
 /// </summary>
-public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm entite, IHubContext<MondeHub> hub, ILogger<Dialogues> journal) : BackgroundService
+public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm entite, IHubContext<MondeHub> hub, ILogger<Dialogues> journal, TraceLlm trace) : BackgroundService
 {
     /// <summary>Voies possibles : le signe ne se prête pas à une conversation.</summary>
     public static readonly ModeParole[] Voies = [ModeParole.Reve, ModeParole.Voix, ModeParole.Apparition];
@@ -443,6 +443,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         c.Depot.AjouterReplique(new RepliqueEntite(0, c.Id, rang, monde.Secondes, texte, JsonSerializer.Serialize(paroles, Actes.Json),
             JsonSerializer.Serialize(regles, Actes.Json), mots, pensee, JsonSerializer.Serialize(new { acte = libreJson, resultats = libreTextes }, Actes.Json), juge, lu,
             brut.ToString(), chrono.ElapsedMilliseconds, premier, dernier, erreur, sens));
+        if (trace.Active)
+            trace.Replique(c.Id, rang, h.Nom, texte, mots, sens, pensee, regles.Concat(libreTextes), lu, brut.ToString(), chrono.ElapsedMilliseconds, erreur);
         var d0 = c.Depot.Dialogue(c.Id);
         if (d0 is not null)
             c.Depot.MettreAJourDialogue(d0 with { Repliques = rang, Croit = c.Croit is { } b ? b ? 1 : 0 : -1, Comprise = c.Comprise });

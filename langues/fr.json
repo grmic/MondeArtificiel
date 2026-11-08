@@ -6100,5 +6100,22 @@
   "monde.ligne": "{le}, {portee}, {mode} ({auteur}) : {phrase}",
   "ellm.mondeTitre": "Parler au Monde",
   "ellm.monde": "Permettre au LLM de parler au Monde",
-  "ellm.mondeAide": "Le LLM peut dire une parole au Monde entier ou à une terre (famille « Paroles » cochée). Une erreur toucherait tout le monde à la fois : décoché par défaut."
+  "ellm.mondeAide": "Le LLM peut dire une parole au Monde entier ou à une terre (famille « Paroles » cochée). Une erreur toucherait tout le monde à la fois : décoché par défaut.",
+  "ellm.traceTitre": "Suivre les échanges dans un terminal",
+  "ellm.trace": "Écrire les échanges dans un fichier texte",
+  "ellm.traceAide": "Chaque échange avec le LLM (regard, prière, demande, dialogue) est ajouté en clair au fichier entite-echanges.log, et une ligne courte s'écrit dans la console du serveur. Le fichier grandit vite : ce que lit le LLM fait plusieurs milliers de mots par échange.",
+  "ellm.traceCommande": "Pour les voir arriver, dans un Terminal :",
+  "trace.echange": "Entité-LLM, échange n°{id} · {occasion}{qui} · {modele} · {s} s · {statut}",
+  "trace.replique": "Dialogue n°{id}, réplique {rang} avec {nom} · {s} s",
+  "trace.lu": "Ce que le LLM a lu",
+  "trace.reponse": "Sa réponse brute",
+  "trace.mots": "Les mots de l'Entité",
+  "trace.pensee": "Sa pensée",
+  "trace.actes": "Ses actes",
+  "trace.resultats": "Ce que les règles en ont fait",
+  "trace.erreur": "Erreur",
+  "trace.entite": "L'Entité dit",
+  "trace.humain": "{nom} répond",
+  "trace.sens": "C'est-à-dire",
+  "trace.regles": "Ce que les règles en ont fait"
 }

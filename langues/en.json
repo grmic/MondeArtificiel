@@ -6100,5 +6100,22 @@
   "monde.ligne": "{le}, {portee}, {mode} ({auteur}): {phrase}",
   "ellm.mondeTitre": "Speak to the World",
   "ellm.monde": "Allow the LLM to speak to the World",
-  "ellm.mondeAide": "The LLM may speak a word to the whole World or to a single land (“Words” family ticked). A mistake would reach everyone at once: off by default."
+  "ellm.mondeAide": "The LLM may speak a word to the whole World or to a single land (“Words” family ticked). A mistake would reach everyone at once: off by default.",
+  "ellm.traceTitre": "Follow the exchanges in a terminal",
+  "ellm.trace": "Write the exchanges to a text file",
+  "ellm.traceAide": "Each exchange with the LLM (view of the world, prayer, request, dialogue) is appended in plain text to the file entite-echanges.log, and a short line is written to the server console. The file grows fast: what the LLM reads runs to several thousand words per exchange.",
+  "ellm.traceCommande": "To watch them arrive, in a Terminal:",
+  "trace.echange": "Entity-LLM, exchange no. {id} · {occasion}{qui} · {modele} · {s} s · {statut}",
+  "trace.replique": "Dialogue no. {id}, line {rang} with {nom} · {s} s",
+  "trace.lu": "What the LLM read",
+  "trace.reponse": "Its raw answer",
+  "trace.mots": "The Entity's words",
+  "trace.pensee": "Her thought",
+  "trace.actes": "Her acts",
+  "trace.resultats": "What the rules made of it",
+  "trace.erreur": "Error",
+  "trace.entite": "The Entity says",
+  "trace.humain": "{nom} answers",
+  "trace.sens": "That is",
+  "trace.regles": "What the rules made of it"
 }
