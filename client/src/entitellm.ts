@@ -1,6 +1,6 @@
 import { connexion } from "./connexion";
 import { el } from "./fiche";
-import { t } from "./langue";
+import { nombre, t } from "./langue";
 
 interface ConnexionLlm { fournisseur: string; adresse: string; modele: string; contexte: number }
 interface Reglages {
@@ -123,6 +123,7 @@ export class PanneauEntiteLlm {
   private readonly propositions = el("ul", "liste echanges");
   private readonly echanges = el("ul", "liste echanges");
   private readonly retourCopie = el("span", "discret");
+  private readonly contexte = el("select");
   private dernieres: Echange[] = [];
 
   constructor(private readonly racine: HTMLElement, private readonly ouvrirHumain: (id: number) => void,
@@ -135,6 +136,8 @@ export class PanneauEntiteLlm {
     this.modele.setAttribute("list", this.modeles.id);
     this.modele.size = 28;
     this.modele.placeholder = t("ellm.modeleExemple");
+    // Taille du contexte (jetons) : une demande plus longue est raccourcie ; plus grand demande plus de mémoire (0.37.4).
+    for (const n of [8192, 16384, 32768, 65536, 131072]) this.contexte.append(Object.assign(el("option", undefined, nombre(n)), { value: String(n) }));
     const ligne = (libelle: string, ...champs: (HTMLElement | string)[]) => {
       const l = el("label", "ligne");
       l.append(el("span", undefined, libelle), " ", ...champs);
@@ -143,6 +146,7 @@ export class PanneauEntiteLlm {
     const connexionBloc = el("section", "bloc-llm");
     connexionBloc.append(el("h3", undefined, t("ellm.connexion")), el("p", "discret", t("ellm.connexionAide")),
       ligne(t("ellm.fournisseur"), this.fournisseur), ligne(t("ellm.adresse"), this.adresse), ligne(t("ellm.modele"), this.modele, this.modeles),
+      ligne(t("ellm.contexte"), this.contexte, " " + t("ellm.jetons")), el("p", "discret", t("ellm.contexteAide")),
       bouton(t("ellm.tester"), () => void this.tester()), " ", bouton(t("ellm.enregistrer"), () => void this.enregistrerConnexion()), this.retourConnexion);
 
     const reglagesBloc = el("section", "bloc-llm");
@@ -238,6 +242,9 @@ export class PanneauEntiteLlm {
     this.fournisseur.value = e.connexion.fournisseur;
     this.adresse.value = e.connexion.adresse;
     this.modele.value = e.connexion.modele;
+    const ctx = String(e.connexion.contexte || 16384);
+    if (![...this.contexte.options].some((o) => o.value === ctx)) this.contexte.append(Object.assign(el("option", undefined, nombre(Number(ctx))), { value: ctx }));
+    this.contexte.value = ctx;
     for (const i of this.modes) i.checked = i.value === e.reglages.mode;
     this.prieres.checked = e.reglages.prieres;
     this.part.value = String(e.reglages.partOrdinaires);
@@ -274,7 +281,7 @@ export class PanneauEntiteLlm {
   }
 
   private lireConnexion(): ConnexionLlm {
-    return { fournisseur: this.fournisseur.value, adresse: this.adresse.value.trim(), modele: this.modele.value.trim(), contexte: 16384 };
+    return { fournisseur: this.fournisseur.value, adresse: this.adresse.value.trim(), modele: this.modele.value.trim(), contexte: Number(this.contexte.value) || 16384 };
   }
 
   private async tester(): Promise<void> {

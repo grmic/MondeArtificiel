@@ -1,0 +1,1 @@
+export{r as WebGLRenderer}from"./main-BEAn1dg3.js";

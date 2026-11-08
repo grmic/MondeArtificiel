@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.37.3 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.37.4 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -247,6 +247,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.37.4** (8 Nov 2026): **Context** field in “LLM connection” (8,192 to 131,072 tokens; the interface used to always reset it to 16,384).
 - **0.37.3** (8 Nov 2026): fixed: the sheet of humans who speak an inherited language would not open (words learned before the first day); a sheet that cannot be made now says so instead of waiting. Entity-LLM: a request too long for the context is shortened instead of being silently cut by Ollama (with a warning); an act still wrong on the second attempt is dropped instead of proposed; the first attempt's error is labelled as such; “mots” must no longer hold the coded names of words. Small text fixes.
 - **0.37.2** (8 Nov 2026): “Write the exchanges to a text file” box (Entity LLM window) to follow the exchanges with the LLM in a Terminal (`tail -f`), and one line per exchange in the server console. The simulation does not change.
 - **0.37.1** (5 Nov 2026): the Entity speaks to the whole World or to a single land (fourteen words, three of which target a community and are debated by all the others), with one log line per human and a summary per community; commandments that last and are told to children (do not kill, share, care for the weak); the word “Welcome…”; a separate box for the LLM, unchecked by default. Schema 57. Worlds where the Entity does not speak to the World are identical.

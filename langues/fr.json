@@ -6122,5 +6122,8 @@
   "llm.erreur.secondEssai": "Encore fautif au second essai, ces actes sont écartés : {erreurs}",
   "llm.erreur.raccourcie": "Demande raccourcie pour tenir dans le contexte du LLM (environ {jetons} jetons pour {contexte}) : agrandissez le contexte dans « Connexion au LLM » si votre machine le permet.",
   "date.avant": "avant le premier jour",
-  "fiche.erreur": "La fiche de l'humain n°{id} n'a pas pu être faite : {erreur}"
+  "fiche.erreur": "La fiche de l'humain n°{id} n'a pas pu être faite : {erreur}",
+  "ellm.contexte": "Contexte",
+  "ellm.jetons": "jetons",
+  "ellm.contexteAide": "Ce que le LLM peut lire d'un coup. Une demande plus longue est raccourcie (le regard sur un grand monde dépasse souvent 16 384). Plus grand, il faut plus de mémoire : 32 768 va bien pour un modèle de 4 à 12 milliards de paramètres sur 24 Go. Enregistrez la connexion après l'avoir changé."
 }

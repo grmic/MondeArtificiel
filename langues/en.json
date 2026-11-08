@@ -6122,5 +6122,8 @@
   "llm.erreur.secondEssai": "Still wrong on the second attempt, these acts are dropped: {erreurs}",
   "llm.erreur.raccourcie": "Request shortened to fit the LLM's context (about {jetons} tokens for {contexte}): enlarge the context in “LLM connection” if your machine allows it.",
   "date.avant": "before the first day",
-  "fiche.erreur": "The sheet of human no. {id} could not be made: {erreur}"
+  "fiche.erreur": "The sheet of human no. {id} could not be made: {erreur}",
+  "ellm.contexte": "Context",
+  "ellm.jetons": "tokens",
+  "ellm.contexteAide": "What the LLM can read at once. A longer request is shortened (the view of a large world often exceeds 16,384). Larger needs more memory: 32,768 suits a 4 to 12 billion parameter model on 24 GB. Save the connection after changing it."
 }
