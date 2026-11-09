@@ -11,7 +11,7 @@ interface Reglages {
 interface Etat {
   connexion: ConnexionLlm; reglages: Reglages; enFile: number; enCours: string | null; derniereErreur: string | null; propositions: number;
   caractereLlm: string; prochainRegard: string | null; libreDepuis: string | null; traceChemin?: string;
-  juge?: ConnexionLlm | null; depenses?: Depenses | null; cles?: Record<string, string> | null; prix?: PrixModele[] | null;
+  juge?: ConnexionLlm | null; depenses?: Depenses | null; cles?: Record<string, string> | null; prix?: PrixModele[] | null; usage?: string;
 }
 interface Echange {
   id: number; date: string; quand: string; occasion: string; humain: number; nomHumain: string | null; communaute: number; nomCommunaute: string | null;
@@ -20,6 +20,16 @@ interface Echange {
 }
 
 const MODES = ["Joueur", "Agit", "Propose"];
+const USAGES = ["Jamais", "Entite", "Conversations", "Tout"];
+
+/**
+ * « Utiliser le LLM » (0.38.1) : noté sur la page pour masquer « Que ferait l'Entité ? » quand le LLM ne joue pas l'Entité
+ * (et « X t'appelle » n'arrive plus quand il ne fait pas parler les humains).
+ */
+export function noterUsageLlm(usage: string | undefined): void {
+  const u = usage ?? "Tout";
+  document.body.dataset.llmEntite = u === "Entite" || u === "Tout" ? "oui" : "non";
+}
 const FAMILLES: (keyof Reglages)[] = ["paroles", "bienfaits", "chatiments", "catastrophes", "souffles"];
 
 function tete(titre: string, fermer: () => void): HTMLElement {
@@ -106,6 +116,8 @@ export class PanneauEntiteLlm {
   private readonly depenses: BlocDepenses;
   private local = true;
   private readonly modes: HTMLInputElement[] = [];
+  private readonly usages: HTMLInputElement[] = [];
+  private readonly retourUsage = el("p", "discret");
   private readonly prieres: HTMLInputElement;
   private readonly part = el("input");
   private readonly attendre: HTMLInputElement;
@@ -157,6 +169,32 @@ export class PanneauEntiteLlm {
     });
     this.blocJuge.append(this.formulaireJuge.racine);
     jugeBloc.append(el("h3", undefined, t("ellm.juge2.titre")), el("p", "discret", t("ellm.juge2.aide")), lm, this.retourJuge, this.blocJuge);
+
+    // « Utiliser le LLM » (0.38.1) : appliqué dès le clic, pour ce monde.
+    const usageBloc = el("section", "bloc-llm");
+    usageBloc.append(el("h3", undefined, t("ellm.usage")), el("p", "discret", t("ellm.usageAide")));
+    for (const u of USAGES) {
+      const i: HTMLInputElement = el("input");
+      i.type = "radio";
+      i.name = "usageLlm";
+      i.value = u;
+      i.addEventListener("change", () => {
+        if (!i.checked) return;
+        this.retourUsage.textContent = "";
+        connexion.invoke<Etat>("ReglerUsageLlm", u)
+          .then((e) => { this.remplir(e, false); this.retourUsage.textContent = t("ellm.enregistre"); })
+          .catch(async (err: unknown) => {
+            this.retourUsage.textContent = err instanceof Error ? err.message.replace(/^.*HubException: /, "") : String(err);
+            this.remplir(await connexion.invoke<Etat>("EtatEntiteLlm"), false);
+          });
+      });
+      const l = el("label", "case-config");
+      l.append(i, " " + t(`ellm.usage.${u}`));
+      l.title = t(`ellm.usage.${u}.aide`);
+      this.usages.push(i);
+      usageBloc.append(l, el("br"));
+    }
+    usageBloc.append(this.retourUsage);
 
     const reglagesBloc = el("section", "bloc-llm");
     reglagesBloc.append(el("h3", undefined, t("ellm.quiJoue")));
@@ -213,7 +251,7 @@ export class PanneauEntiteLlm {
     reglagesBloc.append(bouton(t("ellm.enregistrer"), () => void this.enregistrerReglages()), this.retourReglages);
 
     const corps = el("div", "corps");
-    corps.append(el("p", "discret", t("ellm.aide")), this.etat, connexionBloc, jugeBloc, this.depenses.racine, reglagesBloc,
+    corps.append(el("p", "discret", t("ellm.aide")), this.etat, usageBloc, connexionBloc, jugeBloc, this.depenses.racine, reglagesBloc,
       el("h3", undefined, t("ellm.propositions")), this.propositions,
       el("h3", undefined, t("ellm.conversations")),
       el("p", "discret", t("ellm.conversationsAide")),
@@ -221,7 +259,9 @@ export class PanneauEntiteLlm {
       this.echanges);
     racine.append(tete(t("ellm.titre"), () => this.fermer()), corps);
     connexion.on("EntiteLlm", (e: Etat) => {
+      noterUsageLlm(e.usage);
       if (!this.ouvert) return;
+      for (const i of this.usages) i.checked = i.value === (e.usage ?? "Tout");
       this.montrerEtat(e);
       void this.chargerEchanges();
     });
@@ -264,6 +304,8 @@ export class PanneauEntiteLlm {
       this.formulaire.majInfos(infos);
       this.formulaireJuge.majInfos(infos);
     }
+    noterUsageLlm(e.usage);
+    for (const i of this.usages) i.checked = i.value === (e.usage ?? "Tout");
     this.montrerEtat(e);
     if (!reglages) return;
     for (const i of this.modes) i.checked = i.value === e.reglages.mode;

@@ -91,6 +91,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     /// <summary>Ouvre un dialogue avec un humain vivant (ou rend celui qui est ouvert avec lui).</summary>
     public DialogueDto? Ouvrir(int humain, string mode, int priere, bool attendre = false)
     {
+        if (!entite.PourConversations) throw new ArgumentException(L.T("llm.erreur.usageConversations"));
         if (string.IsNullOrEmpty(entite.Connexion.Modele)) throw new ArgumentException(L.T("llm.erreur.pasDeModele"));
         // Plafond de dépense du mois atteint (0.38.0) : pas de dialogue avec un LLM du cloud.
         if (entite.Suspendu(entite.Connexion) || entite.Suspendu(entite.ConnexionPourJuge)) throw new ArgumentException(depenses.MessagePlafond());
@@ -1095,7 +1096,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         var nouvelles = prieres.Where(p => p.Id > _dernierePriere).OrderBy(p => p.Id).ToList();
         if (nouvelles.Count == 0) return;
         _dernierePriere = nouvelles[^1].Id;
-        if (string.IsNullOrEmpty(entite.Connexion.Modele)) return;
+        if (string.IsNullOrEmpty(entite.Connexion.Modele) || !entite.PourConversations) return;
         foreach (var p in nouvelles.Where(p => p.Forte && p.CommunauteId == 0 && p.Issue == IssuePriere.EnAttente && p.Sujet != SujetPriere.Remerciement).TakeLast(3))
         {
             var id = p.Id;

@@ -648,6 +648,23 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
         return entite.Etat();
     }
 
+    /// <summary>
+    /// « Utiliser le LLM » dans ce monde (0.38.1) : Jamais, Entite, Conversations ou Tout. S'en servir avec un LLM du cloud dépense :
+    /// seulement depuis la machine du serveur, comme le reste des réglages du cloud.
+    /// </summary>
+    public Entite.EtatEntiteLlmDto ReglerUsageLlm(string usage)
+    {
+        Appeler(() =>
+        {
+            if (usage != nameof(Entite.UsageLlm.Jamais)) ControlerCloud(entite.Connexion, null);
+            entite.ReglerUsage(usage ?? "");
+            return 0;
+        });
+        var etat = entite.Etat();
+        _ = Clients.Diffuser("EntiteLlm", () => etat);
+        return etat;
+    }
+
     /// <summary>« Que ferait l'Entité ? » pour un humain (ou une communauté si humain = 0) ; rend la place dans la file.</summary>
     public int QueFeraitLEntite(int humain, int communaute) => Appeler(() => entite.Demander(humain, communaute));
 

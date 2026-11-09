@@ -153,7 +153,8 @@ public sealed class ConfigurationTests
                 var actuelle = await connexion.InvokeAsync<ConfigurationDto>("Configuration");
                 Assert.Equal((42u, 33, 256, 256, 1, true), (actuelle.Graine, actuelle.Couples, actuelle.Largeur, actuelle.Hauteur, actuelle.Continents, actuelle.Origine));
                 Assert.Contains("1 continent", actuelle.Resume);
-                Assert.Equal(("0.37.7", "MicG"), (actuelle.Version, actuelle.Auteur));
+                Assert.Equal((ConfigurationDto.VersionApplication, "MicG"), (actuelle.Version, actuelle.Auteur));
+                Assert.Matches(@"^\d+\.\d+\.\d+$", actuelle.Version);
 
                 // Aperçu : possible ou non, avec la raison ; le monde courant ne change pas.
                 var apercu = await connexion.InvokeAsync<ApercuDto>("ApercuConfiguration", new DemandeConfiguration(5, 10, 300, 250, 2));

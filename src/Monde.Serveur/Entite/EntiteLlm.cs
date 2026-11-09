@@ -21,6 +21,19 @@ public enum ModeEntite
     Propose = 2,
 }
 
+/// <summary>
+/// À quoi le joueur permet de se servir du LLM dans ce monde (0.38.1) : jouer l'Entité (« Qui joue l'Entité », « Que ferait
+/// l'Entité ? », regard, prières), faire parler les humains (« X t'appelle », conversations, juge et traduction), les deux, ou rien.
+/// </summary>
+[Flags]
+public enum UsageLlm
+{
+    Jamais = 0,
+    Entite = 1,
+    Conversations = 2,
+    Tout = Entite | Conversations,
+}
+
 /// <summary>Réglages de l'Entité-LLM gardés avec le monde.</summary>
 /// <param name="PartOrdinaires">Part des prières ordinaires soumises au LLM (0 à 100 %).</param>
 /// <param name="Attendre">Arrêter l'horloge du monde pendant que le LLM réfléchit.</param>
@@ -47,7 +60,7 @@ public sealed record ReglagesEntiteLlm(string Mode, bool Prieres, int PartOrdina
 /// <param name="LibreDepuis">Date du premier acte libre : depuis, le monde n'est plus le fruit des seules règles (null : aucun).</param>
 public sealed record EtatEntiteLlmDto(ConnexionLlm Connexion, ReglagesEntiteLlm Reglages, int EnFile, string? EnCours, string? DerniereErreur, int Propositions,
     string CaractereLlm = "", string? ProchainRegard = null, string? LibreDepuis = null, string TraceChemin = "", ConnexionLlm? Juge = null,
-    DepensesDto? Depenses = null, IReadOnlyDictionary<string, string>? Cles = null, IReadOnlyList<PrixModele>? Prix = null);
+    DepensesDto? Depenses = null, IReadOnlyDictionary<string, string>? Cles = null, IReadOnlyList<PrixModele>? Prix = null, string Usage = nameof(UsageLlm.Tout));
 
 /// <summary>Un échange, pour la liste : date, occasion, destinataire, mots, résultat.</summary>
 public sealed record EchangeDto(long Id, string Date, string Quand, string Occasion, int Humain, string? NomHumain, int Communaute, string? NomCommunaute,
@@ -261,6 +274,39 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             lock (_verrou) _file.RemoveAll(x => x.Occasion is not (OccasionLlm.DemandeHumain or OccasionLlm.DemandeCommunaute));
     }
 
+    /// <summary>Clé du réglage « Utiliser le LLM » (0.38.1).</summary>
+    public const string CleUsage = "llm_usage";
+
+    /// <summary>
+    /// « Utiliser le LLM » dans ce monde. Un monde d'avant la 0.38.1 garde ce qu'il faisait : tout, si un modèle est réglé ; sinon
+    /// (et pour un monde neuf, voir <see cref="ServiceMonde.Reinitialiser(Monde.Simulation.Monde.ConfigurationMonde, bool)"/>) jamais.
+    /// </summary>
+    public UsageLlm Usage
+    {
+        get
+        {
+            var d = service.Depot;
+            if (Enum.TryParse<UsageLlm>(d.LireReglage(CleUsage), out var u) && Enum.IsDefined(u)) return u;
+            u = string.IsNullOrEmpty(Connexion.Modele) ? UsageLlm.Jamais : UsageLlm.Tout;
+            d.EcrireReglage(CleUsage, u.ToString());
+            return u;
+        }
+    }
+
+    /// <summary>Le LLM peut jouer l'Entité dans ce monde.</summary>
+    public bool PourEntite => Usage.HasFlag(UsageLlm.Entite);
+
+    /// <summary>Le LLM peut faire parler les humains dans ce monde.</summary>
+    public bool PourConversations => Usage.HasFlag(UsageLlm.Conversations);
+
+    /// <summary>Change « Utiliser le LLM » ; sans l'Entité, ce qui attend dans la file est oublié.</summary>
+    public void ReglerUsage(string usage)
+    {
+        if (!Enum.TryParse<UsageLlm>(usage, out var u) || !Enum.IsDefined(u) || int.TryParse(usage, out _)) throw new ArgumentException(L.T("llm.erreur.usage"));
+        service.Depot.EcrireReglage(CleUsage, u.ToString());
+        if (!u.HasFlag(UsageLlm.Entite)) lock (_verrou) _file.Clear();
+    }
+
     public EtatEntiteLlmDto Etat()
     {
         int n;
@@ -272,7 +318,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var libre = service.Depot.PremierActeLibre();
         return new EtatEntiteLlmDto(Connexion, r, n, _enCours, _derniereErreur, service.Depot.Echanges(statut: 1, limite: 1000).Count,
             service.Depot.LireReglage(CleCaractereLlm) ?? "", prochain, libre is { } l ? L.Date(l) : null, trace.Chemin, ConnexionJuge, depenses.Etat(),
-            cles.Resume(), DepensesLlm.Connus);
+            cles.Resume(), DepensesLlm.Connus, Usage.ToString());
     }
 
     /// <summary>Date du monde de son dernier regard (null : jamais).</summary>
@@ -305,6 +351,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
     /// <summary>Le joueur demande « Que ferait l'Entité ? » pour un humain ou une communauté ; rend la place dans la file.</summary>
     public int Demander(int humain, int communaute)
     {
+        if (!PourEntite) throw new ArgumentException(L.T("llm.erreur.usageEntite"));
         if (string.IsNullOrEmpty(Connexion.Modele)) throw new ArgumentException(L.T("llm.erreur.pasDeModele"));
         var (_, humains) = service.Monde.InstantaneHumains();
         var communautes = service.Monde.Communautes();
@@ -374,9 +421,16 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
             MarquesLibre.Remplacer(service.Depot.PlagesJournalLibre());
         }
         var reglages = Reglages;
-        var mode = reglages.ModeLu;
+        // « Utiliser le LLM » sans l'Entité (0.38.1) : elle ne joue pas, quel que soit « Qui joue l'Entité ».
+        var pourEntite = PourEntite;
+        var mode = pourEntite ? reglages.ModeLu : ModeEntite.Joueur;
         if (mode != ModeEntite.Joueur && reglages.Prieres) Recenser(monde, reglages);
         else _dernierePriere = Math.Max(_dernierePriere, monde.Prieres().Select(p => p.Id).DefaultIfEmpty(0).Max());
+        if (!pourEntite)
+        {
+            lock (_verrou) _file.Clear();
+            return;
+        }
 
         if (string.IsNullOrEmpty(Connexion.Modele)) return;
         // Plafond du mois atteint (0.38.0) : rien ne part ; les demandes attendent le mois prochain ou un plafond relevé.

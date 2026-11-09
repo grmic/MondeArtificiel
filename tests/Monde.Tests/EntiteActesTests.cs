@@ -97,6 +97,7 @@ public sealed class EntiteActesTests
         await c.StartAsync();
         var service = usine.Services.GetRequiredService<ServiceMonde>();
         await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 8192 });
+        await c.InvokeAsync<EtatLu>("ReglerUsageLlm", "Tout");
         var etat = await c.InvokeAsync<EtatLu>("ReglerEntiteLlm", new
         {
             mode = "Agit", prieres = false, partOrdinaires = 0, attendre = false, paroles = true, bienfaits = true, chatiments = true, catastrophes = true,

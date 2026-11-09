@@ -227,6 +227,7 @@ public sealed class EntiteLlmTests
         var connexion = new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 8192 };
         Assert.Equal(["autre:7b", "faux:1b"], await c.InvokeAsync<List<string>>("ModelesLlm", connexion));
         await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", connexion);
+        await c.InvokeAsync<EtatLu>("ReglerUsageLlm", "Tout");
         // Mode « Vous seul » : la demande du joueur devient une proposition.
         Assert.Equal(1, await c.InvokeAsync<int>("QueFeraitLEntite", 1, 0));
         var liste = await Attendre(c, l => l.Count > 0);
@@ -289,6 +290,7 @@ public sealed class EntiteLlmTests
         await using var _ = c;
         await c.StartAsync();
         await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 8192 });
+        await c.InvokeAsync<EtatLu>("ReglerUsageLlm", "Tout");
         await c.InvokeAsync<EtatLu>("ReglerEntiteLlm", new
         {
             mode = "Joueur", prieres = false, partOrdinaires = 0, attendre = false, paroles = true, bienfaits = true, chatiments = false, catastrophes = false,
@@ -318,6 +320,7 @@ public sealed class EntiteLlmTests
         await using var _ = c;
         await c.StartAsync();
         await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 16384 });
+        await c.InvokeAsync<EtatLu>("ReglerUsageLlm", "Tout");
         await c.InvokeAsync<EtatLu>("ReglerEntiteLlm", new
         {
             mode = "Agit", prieres = false, partOrdinaires = 0, attendre = true, paroles = true, bienfaits = true, chatiments = false, catastrophes = false, souffles = false,

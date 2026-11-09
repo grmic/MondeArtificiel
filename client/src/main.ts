@@ -1,4 +1,4 @@
-import { PanneauEntiteLlm } from "./entitellm";
+import { noterUsageLlm, PanneauEntiteLlm } from "./entitellm";
 import { BandeauAppels, FenetreDialogue } from "./dialogue";
 import { PanneauActesEntite } from "./actesentite";
 import { oublierSuivis, PanneauSuivis, signalerSuivis } from "./suivis";
@@ -441,6 +441,7 @@ async function demarrer(): Promise<void> {
 
   demarrerConnexion(element("#statut"), async () => {
     await horloge.synchroniser();
+    void connexion.invoke<{ usage?: string }>("EtatEntiteLlm").then((e) => noterUsageLlm(e.usage)).catch(() => undefined);
     montrerHumains(await connexion.invoke<HumainVue[]>("Humains"));
     void calques.recharger();
     void signalerSuivis();

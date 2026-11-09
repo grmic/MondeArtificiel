@@ -414,13 +414,20 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     /// <summary>Nombre de causes de mort (taille du tableau des dégâts) : suit l'énumération quand elle grandit.</summary>
     private static readonly int NombreDeCauses = Enum.GetValues<CauseDeMort>().Max(c => (int)c) + 1;
 
+    /// <summary>La cause notée quand la santé tombe : la plus forte du moment, sauf la soif qui achève un corps décharné par la faim.</summary>
+    internal static CauseDeMort CauseRetenue(CauseDeMort pire, bool affame, double reserves) =>
+        pire == CauseDeMort.Soif && affame && reserves < ReservesDecharne ? CauseDeMort.Faim : pire;
+
+    /// <summary>Réserves sous lesquelles le corps est décharné (environ 2 kg de graisse sur 10 ; voir <see cref="ReservesDeConfort"/>).</summary>
+    private const double ReservesDecharne = 15;
+
     /// <param name="sevre">Un tout-petit qui ne reçoit pas de lait maternel ce pas-ci (voir <see cref="Sevre"/>).</param>
     private void Souffrir(Humain h, long maintenant, double fragilite, bool sevre = false)
     {
         var p = h.Personnalite;
         Span<double> degats = stackalloc double[NombreDeCauses];
         if (h.Faim >= 85) degats[(int)CauseDeMort.Faim] = 0.06;
-        if (h.Soif >= 85) degats[(int)CauseDeMort.Soif] = 0.25;
+        if (h.Soif >= SoifDangereuse) degats[(int)CauseDeMort.Soif] = 0.25;
         if (h.Froid >= 70) degats[(int)CauseDeMort.Froid] = 0.05 + 0.15 * (h.Froid - 70) / 30;
         if (h.Fatigue >= 95) degats[(int)CauseDeMort.Epuisement] = 0.05;
         if (h.EstMalade(maintenant))
@@ -438,6 +445,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             total += degats[i] * fragilite;
             if (degats[i] > pire) (pire, cause) = (degats[i], (CauseDeMort)i);
         }
+        // Un corps décharné (réserves presque épuisées) qui meurt aussi assoiffé meurt d'abord de la faim qui l'a usé depuis des
+        // semaines : la soif ne fait qu'achever (0.38.1 ; avant, ces morts étaient toutes notées « de soif »).
+        cause = CauseRetenue(cause, degats[(int)CauseDeMort.Faim] > 0, h.Reserves);
 
         // Une plaie soignée se refait plus vite.
         if (total == 0 && h.Faim < 60 && h.Soif < 60)
@@ -598,6 +608,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // Le besoin le plus pressant (à égalité, le premier de la liste).
         var (valeur, besoin) = (Urgence(h.Soif) * 1.2, Activite.Boire);
         Plus(Urgence(h.Faim), Activite.Cueillir, ref valeur, ref besoin);
+        // Quand la soif devient dangereuse, l'eau passe devant la nourriture, même affamé : on meurt de soif en quelques jours,
+        // de faim en quelques semaines (0.38.1 ; avant, un affamé ne cherchait l'eau qu'au-delà de sa soif mortelle).
+        if (besoin == Activite.Cueillir && h.Soif >= SoifDangereuse) besoin = Activite.Boire;
         Plus(Urgence(h.Fatigue) * 0.9 + (date.EstJour ? 0 : 0.35), Activite.Dormir, ref valeur, ref besoin);
         Plus(Urgence(h.Froid) * (0.8 + p.Prudence * 0.4), Activite.SAbriter, ref valeur, ref besoin);
 
@@ -606,7 +619,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
         // Un petit enfant ne part pas seul chercher de l'eau, de quoi manger ou un abri : il reste près de celui qui
         // veille sur lui, qui le nourrit et l'abreuve, et ne prend que ce qui se trouve à ses pieds.
-        if (h.EstEnfant(maintenant) && h.EstPetitEnfant(maintenant) && partenaire is not null)
+        // Sauf s'il meurt de soif auprès d'un adulte qui dépérit lui-même loin de l'eau : un enfant qui marche va alors boire
+        // seul, là où il a vu les siens boire (0.38.1).
+        if (h.EstEnfant(maintenant) && h.EstPetitEnfant(maintenant) && partenaire is not null
+            && !(besoin == Activite.Boire && h.Soif >= SoifDangereuse && !h.EstBebe(maintenant) && EnDetresse(partenaire)
+                 && !EauDouceAPortee(partenaire.X, partenaire.Y)))
         {
             ResterPres(h, partenaire, valeur >= seuil ? besoin : null);
             return;
@@ -857,6 +874,12 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     {
         if (u.CompareTo(valeur) > 0) (valeur, besoin) = (u, a);
     }
+
+    /// <summary>Soif à partir de laquelle elle abîme la santé (voir <see cref="Souffrir"/>).</summary>
+    private const double SoifDangereuse = 85;
+
+    /// <summary>Un adulte qui ne peut plus abreuver un enfant : il a lui-même trop soif ou trop faim, ou il est à bout.</summary>
+    private static bool EnDetresse(Humain a) => a.Soif >= 75 || a.Faim >= 85 || a.Sante < 20;
 
     private static double Urgence(double besoin) => besoin / 100 + (besoin > 70 ? (besoin - 70) / 30 * 0.8 : 0);
 

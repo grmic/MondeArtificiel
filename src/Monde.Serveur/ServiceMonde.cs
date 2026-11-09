@@ -346,6 +346,8 @@ public sealed class ServiceMonde : IDisposable
                 Depot.RecommencerApresCopie(CheminCopieAvantReinitialisation, nouveau.Etat);
             }
             else Depot.Recommencer(nouveau.Etat);
+            // Un monde neuf ne se sert pas du LLM tant que le joueur ne l'a pas choisi (0.38.1).
+            Depot.EcrireReglage(Entite.EntiteLlm.CleUsage, nameof(Entite.UsageLlm.Jamais));
             _monde = nouveau;
             Fond = fond;
         }

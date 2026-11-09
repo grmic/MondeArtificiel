@@ -203,6 +203,8 @@ public sealed class DialoguesTests
         // Sans modèle, pas de dialogue (le LLM joue l'humain).
         await Assert.ThrowsAsync<HubException>(() => c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Voix", 0, false));
         await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 16384 });
+        // Un monde neuf ne se sert pas du LLM tant qu'on ne l'a pas choisi (0.38.1).
+        await c.InvokeAsync<EtatLu>("ReglerUsageLlm", "Tout");
         await Assert.ThrowsAsync<HubException>(() => c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Signe", 0, false));
 
         var d = await c.InvokeAsync<DialogueLu>("OuvrirDialogue", humain, "Voix", 0, false);

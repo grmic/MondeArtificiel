@@ -399,6 +399,7 @@ p.bilan-prieres { font-size: 0.9em; }
 .actes-llm code { font-size: 0.9em; }
 .lu-llm { white-space: pre-wrap; max-height: 24em; overflow: auto; font-size: 0.8em; background: rgba(127, 127, 127, 0.12); padding: 0.4em; }
 .que-ferait { margin: 0.5em 0; }
+body[data-llm-entite="non"] .que-ferait { display: none; }
 .entite.llm { font-weight: 600; }
 
 /* Caractère et actes de l'Entité (0.35.1) */

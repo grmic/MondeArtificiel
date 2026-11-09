@@ -202,6 +202,7 @@ public sealed class EntiteLibreTests
         await using var _ = c;
         await c.StartAsync();
         await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 16384 });
+        await c.InvokeAsync<EtatLu>("ReglerUsageLlm", "Tout");
         await c.InvokeAsync<EtatLu>("ReglerEntiteLlm", new
         {
             mode = "Agit", prieres = false, partOrdinaires = 0, attendre = true, paroles = true, bienfaits = true, chatiments = true, catastrophes = true,
@@ -242,6 +243,7 @@ public sealed class EntiteLibreTests
         await using var _ = c;
         await c.StartAsync();
         await c.InvokeAsync<EtatLu>("ReglerConnexionLlm", new { fournisseur = "ollama", adresse = llm.Adresse, modele = "faux:1b", contexte = 16384 });
+        await c.InvokeAsync<EtatLu>("ReglerUsageLlm", "Tout");
         await c.InvokeAsync<EtatLu>("ReglerEntiteLlm", new
         {
             mode = "Agit", prieres = false, partOrdinaires = 0, attendre = true, paroles = true, bienfaits = true, chatiments = true, catastrophes = true,
