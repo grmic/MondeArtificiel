@@ -92,6 +92,7 @@ public sealed partial class VieSociale
     /// </summary>
     public void Territoires(List<Humain> humains, List<Communaute> communautes, Ecosysteme nature, Carte carte, long maintenant)
     {
+        RecenserLesTerres(humains, carte, maintenant);
         var actives = communautes.Where(c => c.Active).ToList();
         var membres = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId != 0).GroupBy(h => h.CommunauteId)
             .ToDictionary(g => g.Key, g => g.ToList());
@@ -178,7 +179,7 @@ public sealed partial class VieSociale
 
         // Les membres mettent en commun ce dont ils se souviennent : le groupe part vers les terres connues
         // les plus riches, si elles valent nettement mieux que celles où il vit.
-        var meilleur = (X: -1, Y: -1, Abondance: c.Abondance + 0.15, Qui: (Humain?)null);
+        var meilleur = (X: -1, Y: -1, Abondance: 0.0, Qui: (Humain?)null);
         foreach (var h in groupe.Where(h => !h.EstEnfant(maintenant)).OrderBy(h => h.Id))
         {
             foreach (var l in h.Memoire.Lieux)
@@ -187,7 +188,10 @@ public sealed partial class VieSociale
                 var d = Math.Max(Math.Abs(l.X - c.CentreX), Math.Abs(l.Y - c.CentreY));
                 if (d <= c.Rayon + 2 || d > DistanceMigrationMax || Malheurs.Interdit(c.Id, l.X, l.Y, groupe) is not null) continue;
                 var abondance = nature.Abondance(l.X, l.Y, 4);
-                if (abondance > meilleur.Abondance) meilleur = (l.X, l.Y, abondance, h);
+                if (abondance <= c.Abondance + 0.15) continue;
+                // Une terre où d'autres campent déjà vaut moins (0.39.1) : on la partagerait.
+                var valeur = abondance / (1 + Math.Max(0, AdultesAutour(l.X, l.Y, carte)) / AdultesParTerre);
+                if (valeur > meilleur.Abondance) meilleur = (l.X, l.Y, valeur, h);
             }
         }
         if (meilleur.Qui is { } guide)

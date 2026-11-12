@@ -60,7 +60,43 @@ public static class GenerateurPopulation
                 h.Croyance = h.CroyanceNotee = Croyances.Initiale(id, h.Personnalite.Transcendance);
             }
         }
+        if (generation >= 5) LierLesBandes(humains, carte, new Alea(graine ^ 0x4C49454E53UL), maintenant);
         return humains;
+    }
+
+    /// <summary>
+    /// Génération 5 (0.39.1) : les couples d'une même bande se connaissent depuis longtemps. Chacun connaît bien tous les autres
+    /// adultes de sa bande ; l'affection varie, et chacun y a au moins un ami, si bien que la bande forme une communauté dès la première
+    /// semaine. La plupart des corésidents d'une bande ne sont pas apparentés (Hill et al., 2011) : ce sont des liens d'amitié,
+    /// pas de parenté.
+    /// </summary>
+    private static void LierLesBandes(List<Humain> humains, Carte carte, Alea alea, long maintenant)
+    {
+        var bandes = new Dictionary<int, List<Humain>>();
+        foreach (var h in humains)
+        {
+            var bande = carte.Emplacements[h.Emplacement - 1].Bande;
+            if (bande == 0) continue;
+            if (!bandes.TryGetValue(bande, out var l)) bandes[bande] = l = [];
+            l.Add(h);
+        }
+        foreach (var (_, membres) in bandes.OrderBy(b => b.Key))
+        {
+            for (var i = 0; i < membres.Count; i++)
+            {
+                for (var j = i + 1; j < membres.Count; j++)
+                {
+                    var (a, b) = (membres[i], membres[j]);
+                    if (a.PartenaireId == b.Id) continue;
+                    // Les couples voisins dans la bande sont amis (une chaîne qui relie toute la bande) ; les autres, connus et plus ou moins aimés.
+                    var voisins = Math.Abs(a.Emplacement - b.Emplacement) == 1;
+                    var familiarite = 50 + 30 * alea.Reel();
+                    var affection = voisins ? 42 + 15 * alea.Reel() : 10 + 30 * alea.Reel();
+                    a.Liens.Add(new Lien(b.Id, familiarite, affection, maintenant, affection >= 40));
+                    b.Liens.Add(new Lien(a.Id, familiarite, affection, maintenant, affection >= 40));
+                }
+            }
+        }
     }
 
     /// <summary>

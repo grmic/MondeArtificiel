@@ -94,7 +94,9 @@ public static class GenerateurContinent
         }
 
         // 4. Les emplacements de départ (un par couple), sur le continent choisi ou répartis sur tous.
-        var emplacements = PlacerEmplacements(alea, biomes, gibier, plantes, largeur, hauteur, couples, continents, placement);
+        var emplacements = generation >= 5
+            ? PlacerBandes(new Alea(graine ^ 0x42414E444553UL), alea, biomes, gibier, plantes, largeur, hauteur, couples, continents, placement)
+            : PlacerEmplacements(alea, biomes, gibier, plantes, largeur, hauteur, couples, continents, placement);
 
         return new Carte
         {
@@ -404,7 +406,7 @@ public static class GenerateurContinent
     };
 
     private static List<Emplacement> PlacerEmplacements(
-        Alea alea, byte[] biomes, byte[] gibier, byte[] plantes, int largeur, int hauteur, int couples, int continents, int placement)
+        Alea alea, byte[] biomes, byte[] gibier, byte[] plantes, int largeur, int hauteur, int couples, int continents, int placement, int ecartMin = 2)
     {
         var (composante, rangs) = Terres(biomes, largeur, hauteur);
         var distanceEau = DistanceEauDouce(biomes, largeur, hauteur);
@@ -433,7 +435,7 @@ public static class GenerateurContinent
         if (visees == 1)
         {
             var ecartInitial = (int)(Math.Max(largeur, hauteur) / 12.0 * Math.Sqrt((double)NombreEmplacements / couples / continents));
-            return Numeroter(Choisir(candidats, distanceEau, gibier, plantes, largeur, couples, ecartInitial)
+            return Numeroter(Choisir(candidats, distanceEau, gibier, plantes, largeur, couples, ecartInitial, ecartMin)
                 ?? throw TropPetit(couples), largeur);
         }
 
@@ -446,9 +448,76 @@ public static class GenerateurContinent
         {
             if (parts[r] == 0) continue;
             var ecart = (int)(Math.Max(largeur, hauteur) / 12.0 * Math.Sqrt((double)NombreEmplacements / parts[r] / continents));
-            tous.AddRange(Choisir(parTerre[r], distanceEau, gibier, plantes, largeur, parts[r], ecart) ?? throw TropPetit(couples));
+            tous.AddRange(Choisir(parTerre[r], distanceEau, gibier, plantes, largeur, parts[r], ecart, ecartMin) ?? throw TropPetit(couples));
         }
         return Numeroter(tous, largeur);
+    }
+
+    /// <summary>
+    /// Écart minimal entre deux camps de bandes (génération 5) : environ 5 km, pour que chacune ait de quoi vivre autour d'elle (le
+    /// territoire d'une bande de chasseurs-cueilleurs couvre des dizaines à des centaines de km² ; Kelly, 2013). Une carte trop petite
+    /// pour cela est refusée, comme elle l'était pour des couples trop serrés.
+    /// </summary>
+    private static readonly int EcartMinBandes = Nature.Echelle.Cases(5);
+
+    /// <summary>Taille d'une bande de fondateurs, en couples (génération 5).</summary>
+    public const int BandeMin = 5, BandeMax = 12;
+
+    /// <summary>
+    /// Génération 5 (0.39.1) : les couples arrivent en bandes de 5 à 12 couples (10 à 24 personnes, autour des 30 personnes d'une bande
+    /// de chasseurs-cueilleurs enfants compris ; Marlowe, 2005). Chaque bande campe sur quelques cases ; les bandes sont espacées comme
+    /// l'étaient les couples, en comptant une bande là où il y avait un couple. Le hasard des tailles a son propre flux.
+    /// </summary>
+    private static List<Emplacement> PlacerBandes(Alea aleaTailles, Alea alea, byte[] biomes, byte[] gibier, byte[] plantes, int largeur, int hauteur,
+        int couples, int continents, int placement)
+    {
+        var tailles = TaillesDesBandes(aleaTailles, couples);
+        List<Emplacement> camps;
+        try
+        {
+            camps = PlacerEmplacements(alea, biomes, gibier, plantes, largeur, hauteur, tailles.Count, continents, placement, EcartMinBandes);
+        }
+        catch (InvalidOperationException e) when (e is not ContinentsInsuffisants)
+        {
+            throw TropPetit(couples);
+        }
+        var liste = new List<Emplacement>(couples);
+        for (var b = 0; b < camps.Count; b++)
+        {
+            var camp = camps[b];
+            for (var k = 0; k < tailles[b]; k++)
+            {
+                // Les couples d'une bande se répartissent sur le camp et les cases voisines habitables.
+                var (dx, dy) = AutourDuCamp[k % AutourDuCamp.Length];
+                int x = camp.X + dx, y = camp.Y + dy;
+                if (x < 0 || y < 0 || x >= largeur || y >= hauteur || !Biomes.EstHabitable((Biome)biomes[y * largeur + x])) (x, y) = (camp.X, camp.Y);
+                liste.Add(new Emplacement(liste.Count + 1, x, y, b + 1));
+            }
+        }
+        return liste;
+    }
+
+    private static readonly (int Dx, int Dy)[] AutourDuCamp = [(0, 0), (1, 0), (0, 1), (-1, 0), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
+
+    /// <summary>Tailles des bandes (en couples), de <see cref="BandeMin"/> à <see cref="BandeMax"/>, qui font ensemble tous les couples.</summary>
+    internal static List<int> TaillesDesBandes(Alea alea, int couples)
+    {
+        var tailles = new List<int>();
+        if (couples <= BandeMax)
+        {
+            tailles.Add(couples);
+            return tailles;
+        }
+        var reste = couples;
+        while (reste > 0)
+        {
+            var t = BandeMin + alea.Entier(BandeMax - BandeMin + 1);
+            // Ce qui resterait ne ferait pas une bande : on le garde pour la dernière, ou on le répartit.
+            if (reste - t < BandeMin) t = reste <= BandeMax ? reste : reste - BandeMin;
+            tailles.Add(t);
+            reste -= t;
+        }
+        return tailles;
     }
 
     private static InvalidOperationException TropPetit(int couples) => new(
@@ -464,12 +533,12 @@ public static class GenerateurContinent
     /// Choisit <paramref name="nombre"/> cases parmi les candidats (dans leur ordre), d'abord près de l'eau douce et riches,
     /// en desserrant l'écart minimal jusqu'à ce qu'elles tiennent ; null si c'est impossible.
     /// </summary>
-    private static List<int>? Choisir(List<int> candidats, int[] distanceEau, byte[] gibier, byte[] plantes, int largeur, int nombre, int ecartInitial)
+    private static List<int>? Choisir(List<int> candidats, int[] distanceEau, byte[] gibier, byte[] plantes, int largeur, int nombre, int ecartInitial, int ecartMin = 2)
     {
         var avecEau = candidats.Where(i => distanceEau[i] <= DistanceMaxEauDouce && gibier[i] + plantes[i] >= 60).ToList();
         foreach (var liste in new[] { avecEau, candidats })
         {
-            for (var ecart = Math.Max(2, ecartInitial); ecart >= 2; ecart--)
+            for (var ecart = Math.Max(ecartMin, ecartInitial); ecart >= ecartMin; ecart--)
             {
                 var choisis = new List<int>();
                 foreach (var i in liste)

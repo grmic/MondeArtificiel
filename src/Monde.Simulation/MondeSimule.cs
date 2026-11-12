@@ -846,6 +846,7 @@ public sealed partial class MondeSimule
 
         _comportement.RecenserLesGisements(_humains);
         _comportement.RecenserLesDemandes(_humains);
+        _comportement.RecenserLesCamps(_humains);
         if (nouveauJour || !_fondAJour) ChoisirLeFond();
         if (Coeurs == 1) VivreChacunSonTour(nouveauJour);
         else VivreEnsemble(nouveauJour);

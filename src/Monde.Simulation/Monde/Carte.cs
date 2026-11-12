@@ -3,7 +3,8 @@ using System.Security.Cryptography;
 namespace Monde.Simulation.Monde;
 
 /// <summary>Lieu de départ d'un couple.</summary>
-public sealed record Emplacement(int Numero, int X, int Y);
+/// <param name="Bande">Bande de fondateurs à laquelle appartient ce couple (génération 5, 0.39.1) ; 0 : couple isolé.</param>
+public sealed record Emplacement(int Numero, int X, int Y, int Bande = 0);
 
 /// <summary>
 /// Carte du continent : une grille de tuiles stockée en tableaux à plat (indice = y * Largeur + x).

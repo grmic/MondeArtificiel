@@ -505,18 +505,40 @@ public sealed partial class Comportement
     private void RecevoirViande(Humain h, IReadOnlyList<Humain> tous)
     {
         if (h.Faim < 30 || h.EstBebe(_maintenant)) return;
+        // La viande d'une prise se partage au camp (0.39.1) : celui qui porte une carcasse en donne à qui campe près de lui, qu'il
+        // le connaisse bien ou non, sauf à qui il en veut (Kaplan et Hill, 1985 ; Hawkes, 1993). Avant, seulement aux proches à côté.
+        if (_campsPrets)
+        {
+            for (var y = Math.Max(0, h.Y - RayonDuCamp); y <= Math.Min(carte.Hauteur - 1, h.Y + RayonDuCamp); y++)
+            {
+                for (var x = Math.Max(0, h.X - RayonDuCamp); x <= Math.Min(carte.Largeur - 1, h.X + RayonDuCamp); x++)
+                {
+                    if (!_camps.TryGetValue(carte.Indice(x, y), out var ici)) continue;
+                    foreach (var id in ici)
+                    {
+                        if (id != h.Id && Prendre(tous[id - 1])) return;
+                    }
+                }
+            }
+            return;
+        }
         foreach (var l in h.Liens)
         {
             var d = tous[l.Id - 1];
-            if (!d.EstVivant || Distance(h.X, h.Y, d.X, d.Y) > 1) continue;
+            if (Distance(h.X, h.Y, d.X, d.Y) <= 1 && Prendre(d)) return;
+        }
+
+        bool Prendre(Humain d)
+        {
+            if (!d.EstVivant) return false;
             var viande = d.Objets.Find(o => o.Matiere == Matiere.Carcasse);
-            if (viande is null || d.AffectionPour(h.Id) < 0) continue;
+            if (viande is null || d.AffectionPour(h.Id) < 0) return false;
             var kg = Math.Min(100 * viande.Qualite, h.Faim / FaimParKg);
             h.Faim = Math.Max(0, h.Faim - kg * FaimParKg);
             Entamer(d, kg);
             VieSociale.Gratitude(h, d, 1);
             Social?.Partager(d, h);
-            return;
+            return true;
         }
     }
 

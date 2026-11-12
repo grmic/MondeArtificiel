@@ -247,35 +247,99 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     }
 
     /// <summary>
-    /// Un humain affamé reçoit un peu de nourriture d'un proche rassasié à côté de lui : d'autant plus que celui-ci
-    /// est bienveillant et l'aime, ou vit dans la même communauté. Le partage de nourriture hors de la famille est
-    /// universel chez les chasseurs-cueilleurs (Kaplan et Hill, 1985) et nourrit la reconnaissance.
+    /// Partage à la demande (0.39.1) : un affamé demande à manger à ceux qui campent près de lui (2 cases), même sans lien fort, et
+    /// reçoit du plus disposé à donner. Le donneur n'a pas besoin d'être rassasié, seulement nettement moins affamé que lui ; il donne
+    /// d'autant plus qu'il aime l'affamé, vit dans sa communauté, est compatissant et bienveillant, et qu'il est lui-même moins affamé.
+    /// Refuser à qui demande en face coûte : chez les chasseurs-cueilleurs, on partage surtout parce qu'on vous le demande
+    /// (« demand sharing » : Peterson, 1993 ; Blurton Jones, 1984), et le partage lisse les aléas de la cueillette (Winterhalder, 1986).
+    /// La réciprocité compte : on donne plus à qui vous a nourri (la gratitude rapproche), moins à celui qu'on connaît pour prendre
+    /// sans rendre (Gurven, 2004). Le partage hors de la famille nourrit la reconnaissance (Kaplan et Hill, 1985).
     /// </summary>
     private void PartagerAvecProches(Humain h, IReadOnlyList<Humain> tous)
     {
         if (h.Faim < 60 || h.EstBebe(_maintenant)) return;
-        foreach (var l in h.Liens)
+        Humain? choisi = null;
+        var meilleure = 0.05;
+        if (_campsPrets)
         {
-            var d = tous[l.Id - 1];
-            if (!d.EstVivant || d.Faim >= 40 || d.EstPetitEnfant(_maintenant) || d.EstDeprime) continue;
-            if (Distance(h.X, h.Y, d.X, d.Y) > 1) continue;
+            for (var y = Math.Max(0, h.Y - RayonDuCamp); y <= Math.Min(carte.Hauteur - 1, h.Y + RayonDuCamp); y++)
+            {
+                for (var x = Math.Max(0, h.X - RayonDuCamp); x <= Math.Min(carte.Largeur - 1, h.X + RayonDuCamp); x++)
+                {
+                    if (!_camps.TryGetValue(carte.Indice(x, y), out var ici)) continue;
+                    foreach (var id in ici) Evaluer(tous[id - 1]);
+                }
+            }
+        }
+        else
+        {
+            foreach (var l in h.Liens)
+            {
+                var d = tous[l.Id - 1];
+                if (Distance(h.X, h.Y, d.X, d.Y) <= RayonDuCamp) Evaluer(d);
+            }
+        }
+        if (choisi is null) return;
+        // Il donne de quoi soulager l'autre sans tomber aussi bas que lui.
+        var donne = Math.Min(Math.Min(h.Faim - 40, (h.Faim - choisi.Faim) / 2), 0.6 * meilleure);
+        if (donne <= 0) return;
+        // Ce qu'il donne, il ne le mange pas : rien ne se crée en passant de main en main.
+        h.Faim -= donne;
+        Tour.Changer(choisi, x => x.Faim = Math.Min(100, x.Faim + donne));
+        VieSociale.Gratitude(choisi, h, 0.05);
+        Social?.Partager(choisi, h);
+
+        void Evaluer(Humain d)
+        {
+            if (d.Id == h.Id || !d.EstVivant || d.EstPetitEnfant(_maintenant) || d.EstDeprime) return;
+            // Nettement moins affamé que celui qui demande, et pas lui-même au bord de la famine.
+            if (d.Faim >= 75 || d.Faim > h.Faim - 15) return;
             var lien = d.LienAvec(h.Id);
-            if (lien is null) continue;
+            // On ne donne rien à qui l'on déteste.
+            if (lien is { Affection: < -10 }) return;
             // La loyauté envers le groupe pousse à nourrir les siens ; la compassion, à nourrir quiconque a faim, même sans l'aimer.
             var dm = d.Personnalite.Moral;
             var communaute = d.CommunauteId != 0 && d.CommunauteId == h.CommunauteId ? 0.3 * (0.5 + dm.Fondements.Loyaute) : 0;
             var detresse = Math.Max(0, dm.Compassion - 0.5) * (h.Faim - 60) / 40;
+            // Celui qui demande en face : refuser coûte, d'autant plus au bienveillant.
+            var demande = 0.1 + 0.2 * d.Personnalite.Agreabilite;
+            // Le profiteur connu : peu honnête et peu bienveillant, et l'autre le connaît assez pour le savoir.
+            var profiteur = lien is null ? 0
+                : Math.Min(1, lien.Familiarite / 60) * Math.Max(0, 0.5 - 0.5 * (h.Personnalite.Moral.Honnetete + h.Personnalite.Agreabilite)) * 0.6;
             // Partager équitablement est le propre des honnêtes ; l'avide garde tout, le psychopathe ne donne que par calcul.
             var generosite = (0.5 * d.Personnalite.Agreabilite + 0.25 * dm.Compassion + 0.25 * dm.Honnetete) * (1 - 0.8 * Psyche.Froideur(d.Personnalite));
-            var envie = Math.Clamp(lien.Affection / 100 + communaute + detresse, 0, 1) * generosite;
-            if (envie <= 0.05) continue;
-            var donne = Math.Min(h.Faim - 40, 0.6 * envie);
-            h.Faim -= donne;
-            Tour.Changer(d, x => x.Faim = Math.Min(100, x.Faim + 0.6 * donne));
-            VieSociale.Gratitude(d, h, 0.05);
-            Social?.Partager(d, h);
-            return;
+            // Rassasié, il donne sans compter ; affamé lui-même, il garde davantage.
+            var reste = d.Faim < 40 ? 1 : Math.Clamp((75 - d.Faim) / 35, 0, 1);
+            var envie = Math.Clamp((lien?.Affection ?? 0) / 100 + communaute + detresse + demande - profiteur, 0, 1) * generosite * reste;
+            if (envie > meilleure || envie == meilleure && choisi is not null && d.Id < choisi.Id) (meilleure, choisi) = (envie, d);
         }
+    }
+
+    /// <summary>
+    /// Distance du camp (en cases, soit environ 1,6 km) : ceux qui dorment aussi près partagent le camp, on va leur demander à manger.
+    /// Les camps de chasseurs-cueilleurs tiennent dans quelques centaines de mètres (Marlowe, 2010) ; une case fait 800 m.
+    /// </summary>
+    internal const int RayonDuCamp = 2;
+
+    // Qui se trouve sur chaque case au début du pas (lu en parallèle pendant le pas, recalculé avant).
+    private readonly Dictionary<int, List<int>> _camps = [];
+    private readonly List<int> _campsOccupes = [];
+    private bool _campsPrets;
+
+    /// <summary>Avant chaque pas : qui campe sur chaque case, pour le partage à la demande et la viande partagée au camp.</summary>
+    internal void RecenserLesCamps(IReadOnlyList<Humain> tous)
+    {
+        foreach (var i in _campsOccupes) _camps[i].Clear();
+        _campsOccupes.Clear();
+        foreach (var o in tous.Vivants())
+        {
+            if (!o.EstVivant || o.Mer.EnMer) continue;
+            var i = carte.Indice(o.X, o.Y);
+            if (!_camps.TryGetValue(i, out var l)) _camps[i] = l = [];
+            if (l.Count == 0) _campsOccupes.Add(i);
+            l.Add(o.Id);
+        }
+        _campsPrets = true;
     }
 
     /// <summary>

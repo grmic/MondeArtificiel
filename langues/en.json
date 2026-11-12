@@ -6240,5 +6240,8 @@
   "ellm.contexte": "Context",
   "ellm.jetons": "tokens",
   "ellm.contexteAide": "What the LLM can read at once. A longer request is shortened (the view of a large world often exceeds 16,384). Larger needs more memory: 32,768 suits a 4 to 12 billion parameter model on 24 GB. Save the connection after changing it.",
-  "serveur.dejaLance": "Another Monde artificiel server is already using the worlds in {dossier}: stop it first (Ctrl-C in its Terminal, or “lsof -nP -iTCP:5080 -sTCP:LISTEN” to find it)."
+  "serveur.dejaLance": "Another Monde artificiel server is already using the worlds in {dossier}: stop it first (Ctrl-C in its Terminal, or “lsof -nP -iTCP:5080 -sTCP:LISTEN” to find it).",
+  "guerre.refuge.rallie": "Threatened by the far stronger {w}, {b} will no longer live under its raids: {f} leads {f:his|her} people to join {g}.",
+  "guerre.refuge.soumission": "Rather than suffer more raids from the far stronger {w}, {f} submits {b} to {o} and promises a share of what {f:his|her} people hunt and gather.",
+  "guerre.refuge.fuite": "Threatened by the far stronger {w}, {b} moves out of its reach: {f} leads {f:his|her} people towards {vers}, {d} away."
 }

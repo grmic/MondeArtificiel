@@ -225,6 +225,141 @@ public sealed partial class VieSociale
         return Math.Clamp(adultes.Average(h => 0.6 * (1 - h.Personnalite.Agreabilite) + 0.4 * h.Personnalite.Nevrosisme) - 0.2, 0, 1);
     }
 
+    /// <summary>
+    /// Ce que la faim peut convoiter chez <paramref name="b"/> (0.39.1) : des terres nettement plus riches que les siennes, ou des
+    /// réserves d'au moins une semaine pour chacun. Un groupe aussi affamé que soi n'a rien à prendre : la pénurie attise les conflits
+    /// pour les ressources qui restent (Ember et Ember, 1992 ; Allen, 2014), pas contre ceux qui manquent de tout.
+    /// </summary>
+    private bool VautLaPeine(Communaute a, Communaute b, int adultesB) =>
+        b.Abondance > a.Abondance + 0.1
+        || Installations is not null && Comportement.JoursDeVivres(Installations.Reserves, b.Id, Math.Max(1, adultesB)) >= 7;
+
+    /// <summary>
+    /// Le goût de la guerre s'apaise en paix (0.39.1) : après un an sans raid ni sang versé, le bellicisme du groupe revient lentement
+    /// vers le tempérament de ses adultes, d'autant plus vite que sa figure est conciliante (demi-vie de 2 à 8 ans). Les sociétés qui
+    /// cessent de combattre perdent en une génération ou deux leurs valeurs guerrières (Ember et Ember, 1994 ; Kelly, 2000).
+    /// </summary>
+    internal void Apaiser(Communaute c, List<Humain> adultes, List<Humain> humains, long maintenant)
+    {
+        if (adultes.Count == 0 || c.Raid is not null || c.Projet is not null) return;
+        var dernier = Math.Max(c.FondeeLe, c.DernierRaidLe);
+        foreach (var g in _guerres)
+        {
+            if (g.A != c.Id && g.B != c.Id) continue;
+            if (g.Issue == IssueGuerre.EnCours && g.DernierSangLe == 0) dernier = Math.Max(dernier, g.Debut);
+            dernier = Math.Max(dernier, g.DernierSangLe);
+        }
+        if (maintenant - dernier < Calendrier.SecondesParAn) return;
+        var temperament = Temperament(adultes);
+        if (c.Bellicisme <= temperament) return;
+        var figure = c.FigureId > 0 ? humains[c.FigureId - 1] : adultes[0];
+        var demiVie = 2 + 6 * (1 - figure.Personnalite.Agreabilite);
+        var parSemaine = 1 - Math.Pow(0.5, 7.0 / Calendrier.JoursParAn / demiVie);
+        c.Bellicisme = Math.Max(temperament, c.Bellicisme - (c.Bellicisme - temperament) * parSemaine);
+    }
+
+    /// <summary>Tempérament guerrier des adultes d'un groupe : peu bienveillants et colériques, plus prompts à la violence.</summary>
+    private static double Temperament(List<Humain> adultes) =>
+        Math.Clamp(adultes.Average(h => 0.6 * (1 - h.Personnalite.Agreabilite) + 0.4 * h.Personnalite.Nevrosisme) - 0.2, 0, 1);
+
+    /// <summary>
+    /// Le faible fuit ou se rallie (0.39.1). Un petit groupe menacé par un voisin hostile bien plus fort (qui l'a déjà frappé, prépare
+    /// un coup ou aime la guerre) ne reste pas sous les raids : il rejoint un groupe ami, se soumet si sa figure est prudente et
+    /// conciliante, ou part hors de portée. La fuite est la réponse la plus courante des chasseurs-cueilleurs aux conflits
+    /// (Kelly, 2000 ; Fry, 2006).
+    /// </summary>
+    private void Refuges(List<Humain> humains, List<Communaute> actives, Dictionary<int, List<Humain>> adultes,
+        Dictionary<int, List<Humain>> guerriers, long maintenant)
+    {
+        foreach (var b in actives)
+        {
+            if (b.FusionVersId != 0 || b.SoumiseAId != 0 || b.DestinationX >= 0 || b.Raid is not null || b.Projet is not null || adultes[b.Id].Count == 0) continue;
+            var forceB = Math.Max(0.5, Forces(b, guerriers, actives, maintenant));
+            Communaute? menace = null;
+            var pire = 0.0;
+            foreach (var a in actives)
+            {
+                if (a.Id == b.Id || a.SoumiseAId == b.Id || RelationEntre(a.Id, b.Id) is not (EtatRelation.Hostiles or EtatRelation.EnGuerre)) continue;
+                if (Math.Max(Math.Abs(a.CentreX - b.CentreX), Math.Abs(a.CentreY - b.CentreY)) > DistanceRaidMax) continue;
+                var forceA = Forces(a, guerriers, actives, maintenant);
+                if (forceA < 2.5 * forceB) continue;
+                var g = GuerreEntre(a.Id, b.Id);
+                var danger = (g is not null && g.DernierSangLe > 0 && maintenant - g.DernierSangLe < Calendrier.SecondesParAn ? 1 : 0)
+                             + (a.Projet?.CibleId == b.Id || a.Raid?.CibleId == b.Id ? 1 : 0) + a.Bellicisme;
+                if (danger < 0.6) continue;
+                var score = danger * forceA / forceB;
+                if (score > pire) (pire, menace) = (score, a);
+            }
+            if (menace is null) continue;
+            var figure = humains[b.FigureId - 1];
+            var p = figure.Personnalite;
+            // On ne part pas sur un coup de tête : d'autant plus vite que la figure est prudente et la menace pressante.
+            if (alea.Reel() >= 0.25 * (0.5 + p.Prudence) * Math.Min(1.5, pire / 3)) continue;
+            var autre = humains[menace.FigureId - 1];
+            var guerre = GuerreEntre(menace.Id, b.Id);
+            var cause = guerre?.EvenementId ?? _offenses.GetValueOrDefault(Paire(menace.Id, b.Id));
+            if (cause == 0) cause = _debutsRelations.GetValueOrDefault(Paire(menace.Id, b.Id));
+
+            // Rejoindre un groupe ami à portée.
+            var ami = actives.Where(c => c.Id != b.Id && c.Id != menace.Id && c.FusionVersId == 0 && c.SoumiseAId != menace.Id
+                    && (Pacte(b.Id, c.Id) || RelationEntre(b.Id, c.Id) == EtatRelation.Alliees)
+                    && Math.Max(Math.Abs(c.CentreX - b.CentreX), Math.Abs(c.CentreY - b.CentreY)) <= DistanceRaidMax)
+                .MinBy(c => (Math.Max(Math.Abs(c.CentreX - b.CentreX), Math.Abs(c.CentreY - b.CentreY)), c.Id));
+            if (ami is not null && alea.Reel() < 0.5 + 0.5 * p.Sociabilite)
+            {
+                b.FusionVersId = ami.Id;
+                b.FusionDecideeLe = maintenant;
+                (b.DestinationX, b.DestinationY) = (ami.CentreX, ami.CentreY);
+                b.FusionEvenementId = Noter(maintenant, TypeEvenement.Guerre, figure, humains[ami.FigureId - 1],
+                    new Recit("guerre.refuge.rallie", ("f", figure), ("b", b), ("w", menace), ("g", ami)),
+                    cause, communaute: b.Id, autreCommunaute: ami.Id, significatif: true);
+                continue;
+            }
+
+            // Se soumettre, pour une figure prudente et conciliante, si l'autre l'accepte.
+            var sansQuartier = MeneContre(menace.Id, b.Id, Parole.Exterminez) || MeneContre(menace.Id, b.Id, Parole.ChassezDeLeursTerres);
+            if (!sansQuartier && p.Prudence + p.Agreabilite > 1 + alea.Reel() * 0.4)
+            {
+                b.SoumiseAId = menace.Id;
+                b.SoumiseLe = maintenant;
+                var id = b.SoumissionEvenementId = Noter(maintenant, TypeEvenement.Guerre, figure, autre,
+                    new Recit("guerre.refuge.soumission", ("f", figure), ("b", b), ("w", menace), ("o", autre)),
+                    cause, communaute: b.Id, autreCommunaute: menace.Id, significatif: true);
+                if (guerre is not null)
+                {
+                    guerre.Issue = IssueGuerre.Soumission;
+                    guerre.Fin = maintenant;
+                    guerre.VainqueurId = menace.Id;
+                    guerre.FinEvenementId = id;
+                }
+                FaireLaPaix(b, menace, humains, id);
+                continue;
+            }
+
+            // Partir hors de portée : à l'opposé de la menace, sur une terre praticable où l'on peut vivre.
+            if (Carte is null) continue;
+            var dx = b.CentreX - menace.CentreX;
+            var dy = b.CentreY - menace.CentreY;
+            if (dx == 0 && dy == 0) dx = 1;
+            var actuelle = Math.Max(Math.Abs(dx), Math.Abs(dy));
+            var marche = Math.Max(Echelle.Cases(10), DistanceRaidMax + 4 - actuelle);
+            var angle0 = Math.Atan2(dy, dx);
+            foreach (var ecart in new[] { 0.0, 0.5, -0.5, 1.0, -1.0 })
+            {
+                var x = Math.Clamp(b.CentreX + (int)Math.Round(Math.Cos(angle0 + ecart) * marche), 0, Carte.Largeur - 1);
+                var y = Math.Clamp(b.CentreY + (int)Math.Round(Math.Sin(angle0 + ecart) * marche), 0, Carte.Hauteur - 1);
+                if (!Climat.EstPraticable(Carte.BiomeEn(x, y)) || Carte.Plantes[Carte.Indice(x, y)] + Carte.Gibier[Carte.Indice(x, y)] < 40) continue;
+                if (Malheurs.Interdit(b.Id, x, y, adultes[b.Id]) is not null) continue;
+                (b.DestinationX, b.DestinationY) = (x, y);
+                Noter(maintenant, TypeEvenement.Guerre, figure, autre,
+                    new Recit("guerre.refuge.fuite", ("f", figure), ("b", b), ("w", menace), ("vers", Lieux.VersR(b.CentreX, b.CentreY, x, y)),
+                        ("d", Lieux.DistanceR(b.CentreX, b.CentreY, x, y))),
+                    cause, communaute: b.Id, autreCommunaute: menace.Id, significatif: true);
+                break;
+            }
+        }
+    }
+
     /// <summary>Le tempérament guerrier d'un groupe se forge avec ce qu'il vit.</summary>
     private static void Aguerrir(Communaute c, double ecart) => c.Bellicisme = Math.Clamp(c.Bellicisme + ecart, 0, 1);
 
@@ -270,11 +405,13 @@ public sealed partial class VieSociale
         var guerriers = adultes.ToDictionary(p => p.Key, p => p.Value.Where(h => EstGuerrier(h, maintenant)).ToList());
         Heriter(humains, maintenant);
         foreach (var c in actives.Where(c => c.Bellicisme < 0)) c.Bellicisme = BellicismeInitial(c, adultes[c.Id], Communautes);
+        foreach (var c in actives) Apaiser(c, adultes[c.Id], humains, maintenant);
 
         FinirGuerresSansAdversaire(humains, maintenant);
         Pactes(humains, actives, maintenant);
         Soumissions(humains, actives, adultes, guerriers, maintenant);
         IssuesDesGuerres(humains, actives, adultes, guerriers, maintenant);
+        Refuges(humains, actives, adultes, guerriers, maintenant);
 
         foreach (var a in actives)
         {
@@ -296,7 +433,8 @@ public sealed partial class VieSociale
                 // Raisons de frapper : venger les siens, disputer des terres qui ne nourrissent plus tout le monde,
                 // et le goût du groupe pour la violence.
                 var vengeance = Vengeance(adultes[a.Id], b.Id, humains);
-                var faim = a.Disette && distance <= a.Rayon + b.Rayon + 8 ? 0.5 : 0;
+                // La faim ne pousse qu'à prendre ce qui vaut (0.39.1) : des terres plus riches ou des réserves, pas un groupe aussi affamé.
+                var faim = a.Disette && distance <= a.Rayon + b.Rayon + 8 && VautLaPeine(a, b, adultes[b.Id].Count) ? 0.5 : 0;
                 var motivation = vengeance + faim + 0.4 * a.Bellicisme + (relation == EtatRelation.EnGuerre ? 0.2 : 0) + Croisade(adultes[a.Id], adultes[b.Id]);
                 // L'Entité a ordonné de les chasser ou de les exterminer : le groupe y revient sans cesse.
                 if (MeneContre(a.Id, b.Id, Parole.Exterminez) || MeneContre(a.Id, b.Id, Parole.ChassezDeLeursTerres)) motivation += 0.8;
@@ -378,7 +516,7 @@ public sealed partial class VieSociale
             raison = new Recit("guerre.raison.venger", ("v", victime), ("t", humains[meurtre.ContreId - 1]));
             cause = victime.MortEvenementId;
         }
-        else if (a.Disette)
+        else if (a.Disette && VautLaPeine(a, b, adultesDe(b).Count))
         {
             raison = Recit.Seul("guerre.raison.terres");
             cause = a.DisetteEvenementId;
@@ -452,7 +590,7 @@ public sealed partial class VieSociale
 
         // L'avis de chacun.
         // Des terres qui ne nourrissent plus le groupe poussent chacun à les disputer ; une faim extrême ôte l'envie de marcher au combat.
-        var terres = a.Disette ? 0.3 : 0;
+        var terres = a.Disette && VautLaPeine(a, b, humains.Vivants().Count(h => h.EstVivant && h.CommunauteId == b.Id && !h.EstEnfant(maintenant))) ? 0.3 : 0;
         // L'instigateur persuade d'autant mieux qu'il a du charisme et sait ce que chacun veut entendre (empathie cognitive).
         var persuasion = 0.3 * (instigateur.Personnalite.Charisme - 0.5) + 0.2 * (instigateur.Personnalite.Moral.EmpathieCognitive - 0.5);
         double Avis(Humain h) => Ardeur(h, b.Id, humains) + terres + 0.5 * h.AffectionPour(instigateur.Id) / 100 + persuasion
