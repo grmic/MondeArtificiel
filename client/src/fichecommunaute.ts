@@ -76,6 +76,13 @@ interface FicheCommunaute {
   autorite: Autorite | null;
   paroles: Mandat[] | null;
   parolesMonde: ParoleMonde[] | null;
+  /** Récits nés des catastrophes (0.39.2). */
+  malheurs: RecitMalheur[] | null;
+}
+
+interface RecitMalheur {
+  date: string; catastrophe: string; explication: string; porteurId: number; porteur: string; croyants: number; membres: number;
+  accuseId: number; accuse: string | null; effets: string[]; morts: number; mortsRacontes: number; oublie: string | null; evenement: number;
 }
 
 const ACTUALISATION_MS = 10000;
@@ -283,7 +290,7 @@ export class PanneauFicheCommunaute {
 
     const sections = [
       this.histoire(f), this.population(f), this.sexes(f), this.intelligence(f), this.caractere(f), this.savoirs(f),
-      this.guerres(f), this.vie(f), this.foi(f), this.langueEtArts(f), this.membres(f),
+      this.guerres(f), this.vie(f), this.foi(f), this.recits(f), this.langueEtArts(f), this.membres(f),
     ];
     const outils = el("div", "sections-boutons");
     for (const [texte, ouvrir] of [[t("fc.toutOuvrir"), true], [t("fc.toutFermer"), false]] as const) {
@@ -696,6 +703,29 @@ export class PanneauFicheCommunaute {
       }
       s.append(el("h4", undefined, t("fc.catastrophes")), ul);
     }
+    return s;
+  }
+
+  /** Récits et croyances nés des catastrophes : ce que le groupe se raconte de ses malheurs, et ce que cela change pour lui. */
+  private recits(f: FicheCommunaute): HTMLDetailsElement {
+    const s = this.section("recits");
+    const liste = f.malheurs ?? [];
+    if (liste.length === 0) {
+      s.append(el("p", "discret", t("fc.recits.aucun")));
+      return s;
+    }
+    const ul = el("ul", "liste");
+    for (const r of liste) {
+      const li = el("li", r.oublie ? "discret" : undefined);
+      li.append(`${r.date} · ${r.catastrophe} : ${r.explication} · `, this.lienHumain(r.porteurId, r.porteur), " · ",
+        t("fc.recits.croyants", { n: r.croyants, m: r.membres }));
+      if (r.morts > 0) li.append(" · ", t(r.mortsRacontes > r.morts ? "fc.recits.mortsRacontes" : "fc.recits.morts", { n: r.morts, r: r.mortsRacontes }));
+      if (r.accuse) li.append(" · ", t("fc.recits.accuse"), " ", this.lienHumain(r.accuseId, r.accuse));
+      if (r.effets.length > 0) li.append(el("br"), r.effets.join(t("fiche.pointVirgule")));
+      if (r.oublie) li.append(el("br"), t("fc.recits.oublie", { date: r.oublie }));
+      ul.append(li);
+    }
+    s.append(ul);
     return s;
   }
 

@@ -125,6 +125,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Plantes et bêtes inventées par l'Entité libre (null : aucune ; depuis la 0.35.3).</summary>
     public IReadOnlyList<Invention>? Inventions { get; init; }
+
+    /// <summary>Récits nés des catastrophes (null : aucun ; depuis la 0.39.0).</summary>
+    public IReadOnlyList<RecitCatastrophe>? RecitsCatastrophes { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -158,6 +161,7 @@ public sealed partial class MondeSimule
     private string? _extinction;
     private bool _pauseExtinction;
     private readonly VieSociale _social;
+    private readonly RecitsCatastrophes _recits;
     private readonly Installations _installations;
     private readonly Champs _champs;
     private readonly Cultes _cultes;
@@ -207,7 +211,7 @@ public sealed partial class MondeSimule
         _facteur = Vitesse.FacteurValide(etat.Facteur) ? etat.Facteur : 0;
         _humains = new Population(etat.Humains is { Count: > 0 } h
             ? h.Select(x => x.Copier()).OrderBy(x => x.Id)
-            : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes));
+            : GenerateurPopulation.Generer(carte, etat.Graine, etat.Secondes, configuration.Generation));
         _ecosysteme = new Ecosysteme(carte, etat.Gibier?.ToArray(), etat.Plantes?.ToArray(), etat.Pluies?.ToArray(), etat.DegatsNature?.ToArray(),
             etat.Limon?.ToArray(), etat.Rejets?.ToArray());
         _alea = etat.Alea is { } a ? Alea.Depuis(a, commun: true) : new Alea(etat.Graine ^ 0x534D554C4154UL) { Commun = true };
@@ -244,6 +248,7 @@ public sealed partial class MondeSimule
         _decrets = new Decrets(etat.Decrets);
         _comportement.Decrets = _ecosysteme.Decrets = _decrets;
         _comportement.Outremer = _social.Outremer = new Outremer(etat.Outremer);
+        _comportement.Malheurs = _social.Malheurs = _recits = new RecitsCatastrophes(etat.RecitsCatastrophes);
         _cultes = new Cultes(etat.Religions, etat.Prieres, etat.LieuxSacres, etat.Propheties, etat.EffetsEntite, etat.SouvenirsEntite);
         if (etat.ProchainePriere > _cultes.ProchainePriere) _cultes.ProchainePriere = etat.ProchainePriere;
         _comportement.Cultes = _social.Cultes = _cultes;
@@ -354,6 +359,7 @@ public sealed partial class MondeSimule
                     Troupeaux = _champs.Troupeaux.Count == 0 ? null : _champs.Troupeaux.ToList(),
                     Decrets = _decrets.Liste.Count == 0 ? null : _decrets.Liste.ToList(),
                     Inventions = _inventions.Count == 0 ? null : _inventions.ToList(),
+                    RecitsCatastrophes = _recits.Liste.Count == 0 ? null : _recits.Liste.Select(r => r.Copier()).ToList(),
                 };
             }
         }
@@ -1608,6 +1614,12 @@ public sealed partial class MondeSimule
     }
 
     /// <summary>Paroles adressées à des communautés et ce qu'elles en ont fait (copies).</summary>
+    /// <summary>Copie des récits nés des catastrophes (0.39.0).</summary>
+    public List<RecitCatastrophe> RecitsCatastrophes()
+    {
+        lock (_verrou) return _recits.Liste.Select(r => r.Copier()).ToList();
+    }
+
     public List<Mandat> Mandats()
     {
         lock (_verrou) return _social.Mandats.Select(m => m.Copier()).ToList();

@@ -135,7 +135,7 @@ public sealed partial class VieSociale
             if (lieu is null) continue;
             var d = Math.Max(Math.Abs(lieu.X - c.CentreX), Math.Abs(lieu.Y - c.CentreY));
             var i = carte.Indice(lieu.X, lieu.Y);
-            if (d <= 4 || nature.Limon[i] < Comportement.LimonVisible) continue;
+            if (d <= 4 || nature.Limon[i] < Comportement.LimonVisible || Malheurs.Interdit(c.Id, lieu.X, lieu.Y, groupe) is not null) continue;
             var abondance = nature.Abondance(lieu.X, lieu.Y, 3);
             if (abondance > meilleur.Abondance) meilleur = (lieu.X, lieu.Y, abondance, h);
         }

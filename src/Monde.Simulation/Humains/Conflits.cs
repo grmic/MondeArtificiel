@@ -84,6 +84,7 @@ public sealed partial class Comportement
             MotifGrief.Coups => new Recit("j.motif.coups", ("h", h)),
             MotifGrief.Vol => new Recit("j.motif.vol", ("h", h)),
             MotifGrief.Trahison => new Recit("j.motif.trahison", ("c", cible)),
+            MotifGrief.Malheur => new Recit("j.motif.malheur", ("c", cible)),
             MotifGrief.Moeurs => "",
             _ => grief.VictimeId > 0 ? new Recit("j.motif.meurtre", ("v", VieSociale.ParenteR(h, tous[grief.VictimeId - 1]))) : "",
         };

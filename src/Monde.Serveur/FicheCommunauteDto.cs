@@ -89,6 +89,33 @@ public sealed record FoiCommunauteDto(int? Croyance, IReadOnlyList<string> Relig
     IReadOnlyList<PriereDto> Prieres, int? Amour, int? Crainte, int? Revolte, IReadOnlyList<string> Effets, IReadOnlyList<SouvenirDto> Souvenirs,
     BilanPrieresDto? Bilan = null);
 
+/// <summary>
+/// Un récit né d'une catastrophe (0.39.0) : l'explication que le groupe s'en est donnée, qui l'a portée, combien y croient, ce qu'il change
+/// (lieu interdit, signes, rite, bête maudite, bouc émissaire) et les morts tels qu'on les raconte.
+/// </summary>
+public sealed record RecitMalheurDto(string Date, string Catastrophe, string Explication, int PorteurId, string Porteur, int Croyants, int Membres,
+    int AccuseId, string? Accuse, IReadOnlyList<string> Effets, int Morts, int MortsRacontes, string? Oublie, long Evenement)
+{
+    public static List<RecitMalheurDto> Liste(ServiceMonde service, int communaute, IReadOnlyList<Humain> humains)
+    {
+        var membres = humains.Where(h => h.EstVivant && h.CommunauteId == communaute).Select(h => h.Id).ToHashSet();
+        return service.Monde.RecitsCatastrophes().Where(r => r.CommunauteId == communaute).OrderBy(r => r.Vivant ? 0 : 1).ThenByDescending(r => r.NeLe).Take(30)
+            .Select(r =>
+            {
+                var effets = new List<string>();
+                if (r.Lieu) effets.Add(L.T("recits.effet.lieu"));
+                if (r.Signes) effets.Add(L.T($"recits.effet.signes.{r.Type}"));
+                if (r.Rite) effets.Add(r.DernierRiteLe > 0 ? L.T("recits.effet.riteLe", ("date", L.Date(r.DernierRiteLe))) : L.T("recits.effet.rite"));
+                if (r.Tabou) effets.Add(L.T("recits.effet.tabou"));
+                if (r.AccompliLe > 0) effets.Add(L.T("recits.effet.accompli", ("date", L.Date(r.AccompliLe))));
+                string Nom(int id) => id >= 1 && id <= humains.Count ? humains[id - 1].Nom : "?";
+                return new RecitMalheurDto(L.Date(r.NeLe), L.T($"catastropheNom.{r.Type}"), L.T($"recits.explication.{r.Explication}"), r.PorteurId, Nom(r.PorteurId),
+                    r.Croyants.Count, r.Croyants.Count(membres.Contains), r.AccuseId, r.AccuseId > 0 ? Nom(r.AccuseId) : null, effets, r.Morts, r.MortsRacontes,
+                    r.Vivant ? null : L.Date(r.OublieLe), r.EvenementId);
+            }).ToList();
+    }
+}
+
 /// <summary>Un geste visible de l'Entité dont la communauté se souvient (force 0 à 100 : il s'efface au fil des générations).</summary>
 public sealed record SouvenirDto(string Date, string Texte, bool Bienfait, int Force, string? Faute, long Evenement);
 
@@ -98,7 +125,8 @@ public sealed record SouvenirDto(string Date, string Texte, bool Bienfait, int F
 public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Vivants, int Adultes, PopulationDto Population, SexesDto Sexes,
     IntelligenceDto Intelligence, CaractereDto Caractere, SavoirsCommunauteDto Savoirs, VieCommunauteDto Vie, FoiCommunauteDto Foi,
     IReadOnlyList<EvenementDto> Marquants, IReadOnlyList<EvenementDto> Entite, IReadOnlyList<MembreFicheDto> Membres,
-    AutoriteDto? Autorite = null, IReadOnlyList<MandatDto>? Paroles = null, IReadOnlyList<ParoleMondeDto>? ParolesMonde = null)
+    AutoriteDto? Autorite = null, IReadOnlyList<MandatDto>? Paroles = null, IReadOnlyList<ParoleMondeDto>? ParolesMonde = null,
+    IReadOnlyList<RecitMalheurDto>? Malheurs = null)
 {
     private static System.Globalization.NumberFormatInfo Fr => L.Courante.Nombres;
 
@@ -137,7 +165,8 @@ public sealed record FicheCommunauteDto(CommunauteDto Base, string Age, int Viva
             membres.OrderBy(h => h.Naissance).Select(h => new MembreFicheDto(h.Id, h.Nom, h.Sexe == Sexe.Femme ? "femme" : "homme",
                 (int)h.AgeEnAnnees(maintenant), (int)Math.Round(h.Personnalite.Intelligence.Generale), Math.Round(h.Karma, 1), (int)Math.Round(h.Croyance),
                 h.EstBebe(maintenant) ? "bébé" : h.EstEnfant(maintenant) ? "enfant" : "adulte", Role(h))).ToList(),
-            ParolesEntite.Autorite(service, id), ParolesEntite.Mandats(service, id), Serveur.ParolesMonde.Liste(service, id));
+            ParolesEntite.Autorite(service, id), ParolesEntite.Mandats(service, id), Serveur.ParolesMonde.Liste(service, id),
+            RecitMalheurDto.Liste(service, id, humains));
     }
 
     private static string? Role(Humain h) => h.Role switch

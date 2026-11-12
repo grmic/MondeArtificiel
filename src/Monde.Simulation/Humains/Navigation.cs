@@ -125,6 +125,9 @@ public sealed partial class Comportement
     /// <summary>Les premières des groupes avec les terres d'outre-mer (terres vues, abordées, peuples rencontrés).</summary>
     public Outremer Outremer { get; set; } = new();
 
+    /// <summary>Récits nés des catastrophes : signes guettés, bêtes maudites (0.39.0).</summary>
+    public RecitsCatastrophes Malheurs { get; set; } = new();
+
     /// <summary>Matières qu'il trouve en faisant quelques pas autour de lui, pendant qu'il construit un bateau au rivage.</summary>
     [ThreadStatic] private static HashSet<Matiere>? _autour;
 

@@ -794,6 +794,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 TypeCatastrophe.Eruption when source.Phase == 0 => 0.02 + 0.15 * prudence,
                 _ => niveau == 2 ? 0.6 + 0.4 * prudence : 0.25 + 0.6 * prudence,
             };
+            // Le récit d'un malheur passé lui a appris les signes : la mer qui se retire, la terre qui gronde. À Simeulue, en 2004,
+            // le souvenir du « smong » de 1907 a fait fuir presque tout le monde vers les hauteurs (McAdoo et al., 2006).
+            if (Malheurs.Averti(h.Id, source.Type)) vigilance = Math.Max(vigilance, 0.5 + 0.45 * prudence);
             if (h.EstEnfant(_maintenant)) vigilance *= 0.7;
             if (alea.Reel() >= vigilance) return false;
         }
@@ -961,7 +964,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             return;
         }
         if (AvecLeRelief) ConstaterLeLimon(h, i, false);
-        if (ecosysteme.Gibier[i] >= 2000 && !h.EstEnfant(_maintenant))
+        if (ecosysteme.Gibier[i] >= 2000 && !h.EstEnfant(_maintenant) && !Malheurs.Tabou(h.Id, h.X, h.Y))
         {
             // Chasse à mains nues : réussite rare, meilleure pour les adroits et là où le gibier abonde.
             var (arme, gain) = ArmeDeChasse(h);

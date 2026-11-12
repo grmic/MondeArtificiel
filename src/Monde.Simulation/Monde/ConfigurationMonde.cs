@@ -32,9 +32,10 @@ public sealed record ConfigurationMonde(ulong Graine, int Couples, int Largeur, 
 {
     /// <summary>
     /// Génération des mondes neufs : 1 depuis la 0.31.3, 2 depuis la 0.32.0, 3 depuis la 0.37.0 (le langage connaît des idées
-    /// nouvelles : corps, parenté, temps, nombres, morale, invisible, bêtes et lieux ; voir <c>Idees.Nouvelles</c>).
+    /// nouvelles : corps, parenté, temps, nombres, morale, invisible, bêtes et lieux ; voir <c>Idees.Nouvelles</c>), 4 depuis la 0.39.0
+    /// (âges des fondateurs selon une pyramide de chasseurs-cueilleurs ; voir <c>GenerateurPopulation.AgesDuCouple</c>).
     /// </summary>
-    public const int GenerationActuelle = 3;
+    public const int GenerationActuelle = 4;
 
     /// <summary>Couples répartis sur tous les continents, en proportion de leurs terres habitables.</summary>
     public const int PlacementTous = 0;

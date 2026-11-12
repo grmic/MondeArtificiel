@@ -88,6 +88,7 @@ public sealed partial class DepotMonde
             ("memeSexe", true, true), ("feu", false, true), ("guerre", true, true), ("paix", true, true), ("religion", true, true),
             ("prophete", true, true), ("priere", true, true), ("priere.exaucee", true, false), ("entite.parole", true, true),
             ("entite.crue", true, false), ("entite.groupe", true, true), ("entite.geste", true, false),
+            ("recit", true, true), ("boucEmissaire", true, true),
         ];
         foreach (var c in Enum.GetNames<Simulation.Humains.CauseDeMort>()) l.Add(($"mort.{c}", true, false));
         l.Add(("mort.Catastrophe", true, false));

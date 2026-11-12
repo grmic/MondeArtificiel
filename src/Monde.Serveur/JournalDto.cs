@@ -455,7 +455,7 @@ public sealed record FicheDto(
 
     private static string Motif(Grief g, Func<int, string> nom) => g.Motif switch
     {
-        MotifGrief.Infidelite or MotifGrief.Rival or MotifGrief.Coups or MotifGrief.Moeurs or MotifGrief.Vol or MotifGrief.Trahison => L.T($"motif.{g.Motif}"),
+        MotifGrief.Infidelite or MotifGrief.Rival or MotifGrief.Coups or MotifGrief.Moeurs or MotifGrief.Vol or MotifGrief.Trahison or MotifGrief.Malheur => L.T($"motif.{g.Motif}"),
         _ => g.VictimeId > 0 ? L.T("motif.aTue", ("nom", nom(g.VictimeId))) : L.T("motif.meurtre"),
     };
 

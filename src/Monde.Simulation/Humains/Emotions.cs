@@ -22,6 +22,11 @@ public enum MotifGrief : byte
     Trahison = 6,
     /// <summary>Son feu, mal gardé, a gagné les herbes et blessé ou tué un de ses proches (<see cref="Grief.VictimeId"/>).</summary>
     Incendie = 7,
+    /// <summary>
+    /// On l'accuse d'avoir attiré un malheur (une catastrophe) sur le groupe : il est le bouc émissaire du récit qu'on s'en fait
+    /// (<see cref="Grief.EvenementId"/> : la naissance du récit). Depuis la 0.39.0.
+    /// </summary>
+    Malheur = 8,
 }
 
 /// <summary>
@@ -276,6 +281,7 @@ public sealed partial class VieSociale
                     MotifGrief.Vol => new Recit("j.pardon.vol", ("h", h), ("a", autre)),
                     MotifGrief.Trahison => new Recit("j.pardon.trahison", ("h", h), ("a", autre)),
                     MotifGrief.Incendie => new Recit("j.pardon.incendie", ("h", h), ("a", autre)),
+                    MotifGrief.Malheur => new Recit("j.pardon.malheur", ("h", h), ("a", autre)),
                     _ => new Recit("j.pardon.vengeance", ("h", h), ("a", autre)),
                 }, g.EvenementId, karma: g.Motif == MotifGrief.Moeurs ? Regard.Pardonner / 2 : Regard.Pardonner);
                 continue;

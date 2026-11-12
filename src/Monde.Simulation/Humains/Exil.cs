@@ -66,6 +66,9 @@ public sealed partial class VieSociale
         // puis tenu à l'écart (Boehm, 1999).
         MotifGrief.Vol => 0.45,
         MotifGrief.Trahison => 0.5,
+        // Celui qu'on accuse d'avoir attiré le malheur : l'accusation de sorcellerie mène souvent à l'exil, parfois au meurtre
+        // (Knauft, 1985 ; Boehm, 1999).
+        MotifGrief.Malheur => 0.55,
         _ => 0.3,
     };
 
@@ -92,6 +95,7 @@ public sealed partial class VieSociale
         MotifGrief.Coups => new Recit("j.exil.raison.coups", ("x", x)),
         MotifGrief.Vol => new Recit("j.exil.raison.vol", ("x", x)),
         MotifGrief.Trahison => new Recit("j.exil.raison.trahison", ("x", x)),
+        MotifGrief.Malheur => new Recit("j.exil.raison.malheur", ("x", x)),
         MotifGrief.Infidelite or MotifGrief.Rival => new Recit("j.exil.raison.infidelite", ("x", x)),
         _ => new Recit("j.exil.raison.defaut", ("x", x)),
     };
@@ -109,6 +113,7 @@ public sealed partial class VieSociale
             MotifGrief.Moeurs => (1.5, 0.25),
             MotifGrief.Coups => (0.6, 0.1),
             MotifGrief.Vol => (0.5, 0.1),
+            MotifGrief.Malheur => (1.0, 0.2),
             MotifGrief.Infidelite or MotifGrief.Rival => (0.4, 0.05),
             _ => (0.8, 0.1),
         };

@@ -475,6 +475,8 @@ public static class Contexte
             foi.Amour is { } am ? L.T("llm.c.amour", ("v", am)) : null, foi.Crainte is { } cr ? L.T("llm.c.crainte", ("v", cr)) : null,
             foi.Revolte is { } rv ? L.T("llm.c.revolte", ("v", rv)) : null }.Where(x => x is not null)));
         Ligne(d, "llm.c.souvenirs", string.Join(" ; ", foi.Effets.Concat(f.Entite.Take(8).Select(e => $"{e.Date} : {e.Texte}"))));
+        Ligne(d, "llm.c.recits", string.Join(" ; ", (f.Malheurs ?? []).Where(r => r.Oublie is null).Take(8)
+            .Select(r => $"{r.Date} : {r.Catastrophe}, {r.Explication} ({string.Join(", ", r.Effets.Prepend(L.T("fc.recits.croyants", ("n", r.Croyants), ("m", r.Membres))))}{(r.Accuse is null ? "" : ", " + L.T("fc.recits.accuse") + " " + r.Accuse + " n°" + r.AccuseId)})")));
         Ligne(d, "llm.c.savoirs", string.Join(" ; ", f.Savoirs.Connus.Take(20)));
         if (f.Marquants.Count > 0)
         {

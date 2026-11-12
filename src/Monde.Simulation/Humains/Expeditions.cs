@@ -14,6 +14,9 @@ public sealed partial class VieSociale
     /// <summary>Les premières des groupes avec les terres d'outre-mer (le même registre que celui du comportement).</summary>
     public Outremer? Outremer { get; set; }
 
+    /// <summary>Récits nés des catastrophes : lieux où chaque communauté ne campe plus (0.39.0).</summary>
+    public RecitsCatastrophes Malheurs { get; set; } = new();
+
     private void PrendreLaMer(List<Communaute> actives, Dictionary<int, List<Humain>> membres, Carte carte, long maintenant)
     {
         if (Outremer is null) return;

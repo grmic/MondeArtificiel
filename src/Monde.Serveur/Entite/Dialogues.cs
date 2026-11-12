@@ -490,8 +490,10 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                         ["cible"] = new JsonObject { ["type"] = "integer" },
                         ["direction"] = new JsonObject { ["type"] = "integer", ["minimum"] = 0, ["maximum"] = 7 },
                         ["param"] = new JsonObject { ["type"] = "integer" },
+                        // Ces mots sont-ils une question plutôt qu'un ordre ou un conseil (0.39.0) ?
+                        ["question"] = new JsonObject { ["type"] = "boolean" },
                     },
-                    ["required"] = new JsonArray("parole", "mots"),
+                    ["required"] = new JsonArray("parole", "mots", "question"),
                 },
             },
         },
@@ -588,7 +590,10 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             }
             // L'extrait de ses mots qui porte la parole : il doit s'y trouver tel quel, et ne pas être une question.
             var extrait = x["mots"] is JsonValue ve && ve.TryGetValue<string>(out var se) ? se.Trim() : "";
-            switch (Extrait(texte, extrait))
+            // Le LLM dit lui-même si ces mots sont une question (0.39.0) : une question, même sans « ? », n'est pas un ordre.
+            bool? question = x["question"] is JsonValue vq && vq.TryGetValue<bool>(out var q) ? q : null;
+            if (question == true) continue;
+            switch (Extrait(texte, extrait, question == false))
             {
                 case 1:
                     fautes.Add(L.T("dlg.erreur.extrait", ("parole", p)));
@@ -654,7 +659,11 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     /// 0 : l'extrait est bien dans ses mots ; 1 : il n'y est pas (ou il est vide) ; 2 : il est dans une question (une phrase qui finit par
     /// « ? ») : on ne traduit pas une question en ordre.
     /// </summary>
-    public static int Extrait(string texte, string extrait)
+    /// <param name="ordreSelonLeLlm">
+    /// Le LLM dit que ce n'est pas une question : une phrase qui finit par « ? » compte alors si ce qui reste autour de l'ordre n'est
+    /// qu'une courte queue de question (« Va vers l'est, veux-tu ? », « Pars demain, d'accord ? ») ; trois mots au plus.
+    /// </param>
+    public static int Extrait(string texte, string extrait, bool ordreSelonLeLlm = false)
     {
         var e = Normaliser(extrait);
         if (e.Length == 0) return 1;
@@ -666,9 +675,20 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             if (!(" " + Normaliser(ph) + " ").Contains(" " + e + " ", StringComparison.Ordinal)) continue;
             trouve = true;
             if (!ph.TrimEnd().EndsWith('?')) return 0;
+            if (ordreSelonLeLlm && QueueDeQuestion(Normaliser(ph), e)) return 0;
         }
         if (!trouve && (" " + Normaliser(texte) + " ").Contains(" " + e + " ", StringComparison.Ordinal)) return 0;
         return trouve ? 2 : 1;
+    }
+
+    /// <summary>Ce qui reste de la phrase autour de l'ordre est une queue de question courte (trois mots au plus), après l'ordre.</summary>
+    private static bool QueueDeQuestion(string phrase, string ordre)
+    {
+        var i = (" " + phrase + " ").IndexOf(" " + ordre + " ", StringComparison.Ordinal);
+        if (i < 0) return false;
+        var avant = phrase[..Math.Min(i, phrase.Length)].Trim();
+        var apres = phrase[Math.Min(phrase.Length, i + ordre.Length)..].Trim();
+        return avant.Length == 0 && apres.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length is >= 1 and <= 3;
     }
 
     // ───────────── Faire parler l'humain ─────────────

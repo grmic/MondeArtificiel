@@ -64,6 +64,7 @@ public sealed partial class Comportement
         foreach (var g in groupes) Pretre(Cultes.Religions[g.Key.ReligionId - 1], Social!.Communautes[g.Key.CommunauteId - 1], [.. g], maintenant);
         Opposer(vivants, tous, maintenant);
         Preceptes(vivants, tous, maintenant);
+        RecitsDesMalheurs(vivants, tous, maintenant);
         foreach (var g in groupes) Sacrifier(Cultes.Religions[g.Key.ReligionId - 1], Social!.Communautes[g.Key.CommunauteId - 1], [.. g], vivants, tous, maintenant);
         Schismes(vivants, tous, maintenant);
         Mefiance(vivants, maintenant);

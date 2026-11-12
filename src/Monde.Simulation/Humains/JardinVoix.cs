@@ -136,6 +136,14 @@ public static partial class Jardin
                     new(new Recit("jv.opinions.23", ("x", x)), 0.05 + 2 * Bas(p.Agreabilite) + S(p.Nevrosisme)),
                 ];
             }
+            else if (grief is { Motif: MotifGrief.Malheur })
+            {
+                options =
+                [
+                    new(new Recit("jv.opinions.malheur.1", ("x", x)), 0.4 + S(p.Nevrosisme)),
+                    new(new Recit("jv.opinions.malheur.2", ("x", x)), 0.2 + S(1 - m.Compassion)),
+                ];
+            }
             else if (grief is { Motif: MotifGrief.Trahison })
             {
                 options =
@@ -639,7 +647,7 @@ public static partial class Jardin
             if (!a.EstVivant || a.Id == h.Id) continue;
             foreach (var g in a.Griefs)
             {
-                if (g.ContreId == h.Id && g.Intensite >= 25 && g.Motif != MotifGrief.Moeurs && g.Intensite > (pire?.Intensite ?? 0)) (victime, pire) = (a, g);
+                if (g.ContreId == h.Id && g.Intensite >= 25 && g.Motif is not (MotifGrief.Moeurs or MotifGrief.Malheur) && g.Intensite > (pire?.Intensite ?? 0)) (victime, pire) = (a, g);
             }
         }
         if (victime is null || pire is null)

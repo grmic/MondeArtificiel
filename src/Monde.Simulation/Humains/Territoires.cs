@@ -163,6 +163,7 @@ public sealed partial class VieSociale
             c.Migrations++;
             c.DestinationX = c.DestinationY = -1;
         }
+        if (c.DestinationX < 0 && QuitterLeLieuMaudit(c, groupe, figure, carte, maintenant)) return;
         if (Generation >= 2 && !c.Disette && c.DestinationX < 0 && SuivreLaCrue(c, groupe, nature, carte, maintenant)) return;
         if (!c.Disette || c.DestinationX >= 0 || c.Abondance >= AbondanceFinDisette) return;
 
@@ -184,7 +185,7 @@ public sealed partial class VieSociale
             {
                 if (l.Type != TypeLieu.Nourriture) continue;
                 var d = Math.Max(Math.Abs(l.X - c.CentreX), Math.Abs(l.Y - c.CentreY));
-                if (d <= c.Rayon + 2 || d > DistanceMigrationMax) continue;
+                if (d <= c.Rayon + 2 || d > DistanceMigrationMax || Malheurs.Interdit(c.Id, l.X, l.Y, groupe) is not null) continue;
                 var abondance = nature.Abondance(l.X, l.Y, 4);
                 if (abondance > meilleur.Abondance) meilleur = (l.X, l.Y, abondance, h);
             }
@@ -207,12 +208,37 @@ public sealed partial class VieSociale
             var x = Math.Clamp(c.CentreX + (int)Math.Round(Math.Cos(angle) * distance), 0, carte.Largeur - 1);
             var y = Math.Clamp(c.CentreY + (int)Math.Round(Math.Sin(angle) * distance), 0, carte.Hauteur - 1);
             if (!Climat.EstPraticable(carte.BiomeEn(x, y)) || carte.Plantes[carte.Indice(x, y)] + carte.Gibier[carte.Indice(x, y)] < 40) continue;
+            if (Malheurs.Interdit(c.Id, x, y, groupe) is not null) continue;
             (c.DestinationX, c.DestinationY) = (x, y);
             Noter(maintenant, TypeEvenement.Communaute, figure, null,
                 new Recit("terr.aventure", ("c", c), ("vers", Lieux.VersR(c.CentreX, c.CentreY, x, y)), ("d", Lieux.DistanceR(c.CentreX, c.CentreY, x, y))),
                 c.DisetteEvenementId, communaute: c.Id);
             return;
         }
+    }
+
+    /// <summary>
+    /// Le camp est sur un lieu où la plupart ne veulent plus vivre, depuis le malheur qui y est arrivé : le groupe s'en va, juste
+    /// au-delà, vers une terre praticable. Après le tsunami de 2004, des villages entiers ont refusé de se réinstaller sur le rivage
+    /// (Ingram et al., 2006).
+    /// </summary>
+    private bool QuitterLeLieuMaudit(Communaute c, List<Humain> groupe, Humain figure, Carte carte, long maintenant)
+    {
+        if (!Malheurs.AUnInterdit(c.Id) || Malheurs.Interdit(c.Id, c.CentreX, c.CentreY, groupe) is not { } r) return false;
+        for (var essai = 0; essai < 12; essai++)
+        {
+            var angle = alea.Reel() * 2 * Math.PI;
+            var distance = r.Rayon + 2 + alea.Entier(Math.Max(2, r.Rayon) + 1);
+            var x = Math.Clamp(r.X + (int)Math.Round(Math.Cos(angle) * distance), 0, carte.Largeur - 1);
+            var y = Math.Clamp(r.Y + (int)Math.Round(Math.Sin(angle) * distance), 0, carte.Hauteur - 1);
+            if (!Climat.EstPraticable(carte.BiomeEn(x, y)) || r.Couvre(x, y)) continue;
+            (c.DestinationX, c.DestinationY) = (x, y);
+            Noter(maintenant, TypeEvenement.Communaute, figure, null,
+                new Recit("recit.quitte", ("c", c), ("cat", Nature.Catastrophes.NomR(r.Type)), ("vers", Lieux.VersR(c.CentreX, c.CentreY, x, y))),
+                r.EvenementId, communaute: c.Id);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>Relations entre communautés : affection moyenne entre leurs membres, et concurrence pour les mêmes terres.</summary>

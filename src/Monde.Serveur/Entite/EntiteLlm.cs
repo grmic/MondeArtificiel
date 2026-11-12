@@ -496,6 +496,9 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var schema = Actes.Schema(libre, auMonde);
         var traceJuge = new System.Text.StringBuilder();
         var (maintenant, humains) = monde.InstantaneHumains();
+        // Ce qu'elle a vu de chacun en lisant le monde (0.39.0) : si le monde avance pendant qu'elle réfléchit, un acte décidé d'après
+        // une situation qui a changé arrive trop tard.
+        var vus = Vus(humains, maintenant);
         _enCours = d.Occasion == OccasionLlm.Regard ? L.T("llm.etat.regard")
             : d.Humain >= 1 && d.Humain <= humains.Count ? humains[d.Humain - 1].Nom : L.T("llm.etat.communaute");
         var chrono = Stopwatch.StartNew();
@@ -625,7 +628,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         var proposer = reglages.ModeLu != ModeEntite.Agit;
         if (actes.All(a => a.Type == Actes.Rien)) echange = echange with { Statut = 5 };
         var id = Enregistrer(echange);
-        if (!proposer && echange.Statut != 5) await Appliquer(id, permises);
+        if (!proposer && echange.Statut != 5) await Appliquer(id, permises, vus);
     }
 
     private static string? Joindre(string? a, string? b) => a is null ? b : b is null ? a : a + " " + b;
@@ -649,7 +652,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
     /// Applique les actes d'un échange (proposé ou décidé) : chacun par les pouvoirs du joueur, après vérification ; un acte refusé par
     /// les règles est noté avec sa raison. Rend ce que les règles en ont fait.
     /// </summary>
-    public async Task<List<string>> Appliquer(long id, FamillesLlm? permises = null)
+    public async Task<List<string>> Appliquer(long id, FamillesLlm? permises = null, IReadOnlyDictionary<int, VuHumain>? vus = null)
     {
         var e = service.Depot.Echange(id) ?? throw new ArgumentException(L.T("llm.erreur.echange"));
         if (e.Statut is not (1 or 5)) throw new ArgumentException(L.T("llm.erreur.dejaTraite"));
@@ -690,6 +693,7 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
                 {
                     tard = L.T("llm.resultat.tropTardRaison", ("raison", x.Message));
                 }
+                if (tard is null && vus is not null && Perime(a, vus, monde) is { } change) tard = L.T("llm.resultat.tropTardRaison", ("raison", change));
                 if (tard is not null)
                 {
                     Registre.Noter(service, Registre.Llm, a, new FaitEntite([tard], -1, 0), 1, 0, e.Id);
@@ -727,6 +731,45 @@ public sealed class EntiteLlm(ServiceMonde service, ClientLlm client, IHubContex
         await hub.Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
         await hub.Clients.Diffuser("EntiteLlm", () => Etat());
         return resultats;
+    }
+
+    /// <summary>Ce que l'Entité-LLM a vu d'un humain en lisant le monde (0.39.0).</summary>
+    public readonly record struct VuHumain(int X, int Y, bool Vivant, int Communaute, bool Malade);
+
+    private static Dictionary<int, VuHumain> Vus(IReadOnlyList<Humain> humains, long maintenant)
+    {
+        var vus = new Dictionary<int, VuHumain>(humains.Count);
+        foreach (var h in humains)
+            if (h.EstVivant) vus[h.Id] = new VuHumain(h.X, h.Y, true, h.CommunauteId, h.EstMalade(maintenant));
+        return vus;
+    }
+
+    /// <summary>
+    /// Pourquoi un acte décidé d'après ce qu'elle a vu ne vaut plus (null : il vaut encore) : l'humain visé a changé de communauté,
+    /// est tombé malade ou a guéri (pour un geste), ou, pour une parole qui l'envoie dans une direction, il n'est plus en vue de là où
+    /// elle l'a vu (son propre rayon de perception, selon sa curiosité).
+    /// </summary>
+    public static string? Perime(ActeLlm a, IReadOnlyDictionary<int, VuHumain> vus, MondeSimule monde)
+    {
+        if (a.Type is not (Actes.Parler or Actes.Geste or Actes.SoufflerGeste or Actes.SoufflerCombinaison or Actes.Penchant)) return null;
+        var (maintenant, humains) = monde.InstantaneHumains();
+        var vises = new List<int>();
+        if (a.Humain is { } hu) vises.Add(hu);
+        if (a.Humains is { } hs) vises.AddRange(hs);
+        if (a.Type != Actes.Geste || a.Communaute is null) if (a.Cible is { } c) vises.Add(c);
+        var direction = a.Type == Actes.Parler && (a.Param ?? a.Direction ?? 0) != 0
+                        && Enum.TryParse<Parole>(a.Parole, true, out var p) && p is Parole.PartsVers or Parole.PartezVers;
+        foreach (var id in vises.Distinct())
+        {
+            if (!vus.TryGetValue(id, out var vu) || id < 1 || id > humains.Count || !humains[id - 1].EstVivant) continue;
+            var h = humains[id - 1];
+            if (h.CommunauteId != vu.Communaute) return L.T("llm.perime.communaute", ("nom", h.Nom));
+            if (a.Type == Actes.Geste && h.EstMalade(maintenant) != vu.Malade)
+                return L.T(vu.Malade ? "llm.perime.gueri" : "llm.perime.malade", ("nom", h.Nom));
+            if (direction && Math.Max(Math.Abs(h.X - vu.X), Math.Abs(h.Y - vu.Y)) > 6 + 8 * h.Personnalite.Curiosite)
+                return L.T("llm.perime.parti", ("nom", h.Nom));
+        }
+        return null;
     }
 
     /// <summary>Le joueur rejette une proposition.</summary>

@@ -81,6 +81,8 @@ public static class PremieresFois
                 else if (cle.StartsWith("rel.prophete.", StringComparison.Ordinal)) yield return ("prophete", true, true, false);
                 else if (cle == "pri.exaucee" || cle == "pric.exauce") yield return ("priere.exaucee", true, false, false);
                 else if (EstPriere(cle)) yield return ("priere", true, true, false);
+                else if (cle.StartsWith("recit.ne.", StringComparison.Ordinal)) yield return ("recit", true, true, false);
+                else if (cle == "recit.bouc") yield return ("boucEmissaire", true, true, false);
                 break;
             case TypeEvenement.Parole:
                 if (cle.StartsWith("ent.recoit.", StringComparison.Ordinal)) yield return ("entite.parole", true, true, false);
