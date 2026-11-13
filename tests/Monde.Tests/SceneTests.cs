@@ -18,7 +18,11 @@ public sealed class SceneTests
         {
             lu.AvancerDe(Calendrier.SecondesParJour / 2);
             temoin.AvancerDe(Calendrier.SecondesParJour / 2);
-            for (var k = 0; k < 5; k++) lu.Scene(lu.Carte.Largeur / 2, lu.Carte.Hauteur / 2, 400);
+            for (var k = 0; k < 5; k++)
+            {
+                lu.Scene(lu.Carte.Largeur / 2, lu.Carte.Hauteur / 2, 400);
+                lu.Camp(lu.Carte.Largeur / 2, lu.Carte.Hauteur / 2, 400);
+            }
         }
         Assert.Equal(HumainsTests.Empreinte(temoin), HumainsTests.Empreinte(lu));
     }
@@ -57,5 +61,42 @@ public sealed class SceneTests
             vus = monde.Scene(0, 0, 10_000).Humains.Count(p => p.VersX >= 0 && p.ParSeconde > 0);
         }
         Assert.True(vus > 0, "personne ne marche vers une case voisine en 400 pas");
+    }
+
+    [Fact]
+    public void Scene_DonneLeCorps()
+    {
+        var monde = NouveauMonde();
+        monde.AvancerDe(Calendrier.SecondesParJour);
+        var (_, vivants) = monde.InstantaneHumains();
+        foreach (var p in monde.Scene(0, 0, 10_000).Humains)
+        {
+            var h = vivants.First(v => v.Id == p.Id);
+            Assert.Equal(h.Reserves, p.Reserves, 6);
+            Assert.InRange(p.Endurance, 0, 1);
+            Assert.Equal(h.Apparence.Taille, p.Taille, 6);
+            Assert.Equal(h.Vetement?.Matiere ?? Matiere.Aucune, p.Vetement);
+            Assert.True(p.Enfants >= 0);
+            // Seule une femme allaite.
+            if ((p.Etat & 64) != 0) Assert.True(p.Femme);
+        }
+    }
+
+    [Fact]
+    public void Camp_DonneLesBetesSauvagesDansLeRayon()
+    {
+        var monde = NouveauMonde();
+        monde.AvancerDe(Calendrier.SecondesParJour);
+        var (huttes, champs, betes) = monde.Camp(monde.Carte.Largeur / 2, monde.Carte.Hauteur / 2, 6);
+        Assert.NotEmpty(betes);
+        Assert.All(betes, b =>
+        {
+            Assert.InRange(b.X, monde.Carte.Largeur / 2 - 6, monde.Carte.Largeur / 2 + 6);
+            Assert.InRange(b.Forme, 0, Faune.NombreDeFormes - 1);
+            Assert.InRange(b.Nombre, 1, 400);
+            Assert.True(b.Poids > 0);
+        });
+        Assert.All(huttes, h => Assert.InRange(h.Solidite, 0, 1));
+        Assert.All(champs, c => Assert.InRange(c.Ares, 0, 10_000));
     }
 }

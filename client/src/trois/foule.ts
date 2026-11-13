@@ -29,9 +29,18 @@ export interface HumainScene {
   peur: number;
   communaute: number;
   mere: number;
+  /** Depuis la 0.41.1 : réserves (0-100), endurance (0-1), taille propre (écart −3 à 3), enfants mis au monde, vêtement, usure. */
+  reserves: number;
+  endurance: number;
+  tailleEcart: number;
+  enfants: number;
+  vetement: number;
+  usure: number;
+  /** Essais (?debug3d) : un figurant posé à un endroit précis, dans une posture donnée. */
+  figurant?: { x: number; z: number; cap: number; posture: Posture };
 }
 
-export const CHAMPS = 16;
+export const CHAMPS = 22;
 
 export function lireScene(n: number[]): HumainScene[] {
   const liste: HumainScene[] = [];
@@ -39,15 +48,16 @@ export function lireScene(n: number[]): HumainScene[] {
     liste.push({
       id: n[k], x: n[k + 1], y: n[k + 2], versX: n[k + 3], versY: n[k + 4], avance: n[k + 5] / 1000, parSeconde: n[k + 6] / 1e6,
       activite: n[k + 7], etat: n[k + 8], age: n[k + 9] / 10, femme: n[k + 10] === 1, teint: n[k + 11] / 1000, humeur: n[k + 12],
-      peur: n[k + 13], communaute: n[k + 14], mere: n[k + 15],
+      peur: n[k + 13], communaute: n[k + 14], mere: n[k + 15], reserves: n[k + 16], endurance: n[k + 17] / 1000, tailleEcart: n[k + 18] / 100,
+      enfants: n[k + 19], vetement: n[k + 20], usure: n[k + 21] / 1000,
     });
   }
   return liste;
 }
 
-type Posture = "debout" | "marche" | "assis" | "couche" | "accroupi" | "nage" | "travail" | "porte";
+export type Posture = "debout" | "marche" | "assis" | "couche" | "accroupi" | "nage" | "travail" | "porte";
 
-interface Corps {
+export interface Corps {
   s: HumainScene;
   x: number;
   y: number;
@@ -62,9 +72,12 @@ interface Corps {
   cheveux: THREE.Color;
 }
 
-/** Taille (m) selon l'âge et le sexe : croissance de l'enfance, puis stature adulte propre à chacun (tirée de son numéro). */
-function stature(age: number, femme: boolean, id: number): number {
-  const adulte = (femme ? 1.58 : 1.7) + (unite(hacher(id, 41)) - 0.5) * 0.16;
+/**
+ * Taille (m) selon l'âge et le sexe : croissance de l'enfance, puis stature adulte propre à chacun (sa taille dans la simulation,
+ * écart-type d'environ 7 cm ; Roser et al., 2013), et un peu de tassement dans la vieillesse.
+ */
+function stature(age: number, femme: boolean, ecart: number): number {
+  const adulte = (femme ? 1.58 : 1.7) + ecart * 0.07;
   const courbe: [number, number][] = [[0, 0.29], [1, 0.44], [2, 0.51], [5, 0.65], [10, 0.82], [14, 0.93], [17, 1]];
   if (age >= 17) return adulte * (age > 65 ? 1 - (age - 65) * 0.002 : 1);
   for (let k = 1; k < courbe.length; k++) {
@@ -150,6 +163,13 @@ export class Foule {
   private image = 0;
   /** Instant du monde du dernier flux et moment (performance.now) où il est arrivé, vitesse atteinte. */
   private secondesScene = 0;
+  /** Humains montrés en corps détaillés (0.41.1) : pas de silhouette pour eux. */
+  readonly detailles = new Set<number>();
+  /** Figurants des essais automatiques (?debug3d), ajoutés à chaque flux. */
+  figurants: HumainScene[] = [];
+  /** Au-delà, ni silhouette ni corps : un point de vie (niveau de détail lointain). */
+  porteeSilhouettes = 2500;
+  private readonly points: THREE.InstancedMesh;
 
   constructor(private readonly relief: Relief) {
     const peau = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0 });
@@ -168,11 +188,16 @@ export class Foule {
       this.groupe.add(m);
       return m;
     });
+    this.points = new THREE.InstancedMesh(new THREE.OctahedronGeometry(1, 0), new THREE.MeshBasicMaterial({ color: 0xffe2a0, fog: false }), NOMBRE_MAX);
+    this.points.count = 0;
+    this.points.frustumCulled = false;
+    this.groupe.add(this.points);
   }
 
   /** Nouveau flux Scène. */
   recevoir(humains: HumainScene[], secondes: number): void {
     this.image++;
+    humains = [...humains, ...this.figurants];
     this.secondesScene = secondes;
     for (const s of humains) {
       const c = this.corps.get(s.id);
@@ -212,7 +237,7 @@ export class Foule {
     const rel = this.relief;
     for (const c of this.corps.values()) {
       const s = c.s;
-      const [tx, tz, marche] = this.cible(s, secondes);
+      const [tx, tz, marche] = s.figurant ? [s.figurant.x, s.figurant.z, false] : this.cible(s, secondes);
       if (Number.isNaN(c.x) || Math.hypot(tx - c.x, tz - c.z) > 400) {
         c.x = tx;
         c.z = tz;
@@ -232,8 +257,12 @@ export class Foule {
       c.phase += dt * Math.min(8, c.vitesse * 4.2);
       const surf = rel.surface(c.x, c.z);
       const eau = !Number.isNaN(surf.eau) && surf.eau - surf.sol > 1.1;
-      c.taille = stature(s.age, s.femme, s.id);
-      c.posture = posture(s, marche || c.vitesse > 0.3, eau && !(s.etat & 16));
+      c.taille = stature(s.age, s.femme, s.tailleEcart);
+      c.posture = s.figurant?.posture ?? posture(s, marche || c.vitesse > 0.3, eau && !(s.etat & 16));
+      if (s.figurant) {
+        c.cap = s.figurant.cap;
+        if (s.figurant.posture === "marche") c.phase += dt * 5;
+      }
       c.y = eau ? surf.eau - (s.etat & 16 ? -0.3 : 0.15) : surf.sol;
     }
     this.dessiner(camera, secondes);
@@ -251,23 +280,20 @@ export class Foule {
       this.parties[partie].setMatrixAt(n, matrice);
       this.parties[partie].setColorAt(n, couleur);
     };
+    let np = 0;
+    const pm = new THREE.Matrix4();
     for (const c of this.corps.values()) {
       if (n >= NOMBRE_MAX) break;
       const s = c.s;
-      let px = c.x;
-      let py = c.y;
-      let pz = c.z;
-      let cap = c.cap;
+      if (this.detailles.has(s.id) || Number.isNaN(c.x)) continue;
+      const { x: px, y: py, z: pz, cap } = this.placement(c);
       const h = c.taille;
-      // Un bébé porté est contre sa mère.
-      if (c.posture === "porte") {
-        const mere = this.corps.get(s.mere);
-        if (mere) {
-          cap = mere.cap;
-          px = mere.x + Math.sin(cap) * 0.16 * mere.taille;
-          pz = mere.z + Math.cos(cap) * 0.16 * mere.taille;
-          py = mere.y + mere.taille * (mere.posture === "couche" ? 0.12 : mere.posture === "assis" || mere.posture === "travail" ? 0.4 : 0.66);
-        }
+      const loin = Math.hypot(px - camera.x, pz - camera.z);
+      if (loin > this.porteeSilhouettes) {
+        // Point de vie : assez gros pour se voir de loin (environ deux pixels).
+        const r = Math.max(0.5, loin * 0.0015);
+        this.points.setMatrixAt(np++, pm.makeScale(r, r, r).setPosition(px - this.origine.x, py + 1 + r, pz - this.origine.z));
+        continue;
       }
       racine.makeTranslation(px - this.origine.x, py, pz - this.origine.z);
       racine.multiply(r.makeRotationY(cap));
@@ -325,12 +351,37 @@ export class Foule {
       poser(6, m.copy(buste).multiply(t.makeTranslation(-0.11 * large, 0.84, 0)).multiply(r.makeRotationX(bras[1])).multiply(t.makeRotationZ(-0.06)), c.peau);
       n++;
     }
+    this.points.count = np;
+    this.points.position.copy(this.origine);
+    this.points.instanceMatrix.needsUpdate = true;
     for (const p of this.parties) {
       p.count = n;
       p.position.copy(this.origine);
       p.instanceMatrix.needsUpdate = true;
       if (p.instanceColor) p.instanceColor.needsUpdate = true;
     }
+  }
+
+  /** Où est posé un humain : à sa place, ou contre sa mère s'il est porté. */
+  placement(c: Corps): { x: number; y: number; z: number; cap: number } {
+    if (c.posture === "porte") {
+      const mere = this.corps.get(c.s.mere);
+      if (mere && !Number.isNaN(mere.x)) {
+        const cap = mere.cap;
+        return {
+          cap,
+          x: mere.x + Math.sin(cap) * 0.16 * mere.taille + Math.cos(cap) * 0.1 * mere.taille,
+          z: mere.z + Math.cos(cap) * 0.16 * mere.taille - Math.sin(cap) * 0.1 * mere.taille,
+          y: mere.y + mere.taille * (mere.posture === "couche" ? 0.12 : mere.posture === "assis" || mere.posture === "travail" ? 0.4 : 0.6),
+        };
+      }
+    }
+    return { x: c.x, y: c.y, z: c.z, cap: c.cap };
+  }
+
+  /** Tous les humains affichés, avec leur état d'animation. */
+  get liste(): IterableIterator<Corps> {
+    return this.corps.values();
   }
 
   /** Position (tête) d'un humain affiché, ou null. */
@@ -359,6 +410,8 @@ export class Feux3D {
   private readonly flammes: THREE.InstancedMesh;
   private readonly buches: THREE.InstancedMesh;
   private readonly fumee: THREE.InstancedMesh;
+  /** Pierres du foyer (0.41.1). */
+  private readonly pierres: THREE.InstancedMesh;
   private readonly lumieres: THREE.PointLight[] = [];
   private feux: { x: number; y: number; z: number; couve: boolean; graine: number }[] = [];
 
@@ -369,7 +422,9 @@ export class Feux3D {
       new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 1 }), 1200);
     this.fumee = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1),
       new THREE.MeshStandardMaterial({ color: 0x9a9a9a, transparent: true, opacity: 0.18, depthWrite: false, roughness: 1 }), 3200);
-    for (const m of [this.flammes, this.buches, this.fumee]) {
+    this.pierres = new THREE.InstancedMesh(new THREE.DodecahedronGeometry(0.16, 0).scale(1, 0.6, 1),
+      new THREE.MeshStandardMaterial({ color: 0x6d6a64, roughness: 1, flatShading: true }), 4000);
+    for (const m of [this.flammes, this.buches, this.fumee, this.pierres]) {
       m.count = 0;
       m.frustumCulled = false;
       this.groupe.add(m);
@@ -402,7 +457,18 @@ export class Feux3D {
     let nf = 0;
     let nb = 0;
     let ns = 0;
+    let np = 0;
     for (const { f, d } of proches) {
+      if (d < 800) {
+        for (let k = 0; k < 10 && np < 4000; k++) {
+          const a = (k / 10) * Math.PI * 2 + unite(hacher(f.graine, k)) * 0.3;
+          const r = 0.62 + unite(hacher(f.graine, k, 1)) * 0.08;
+          const t = 0.8 + unite(hacher(f.graine, k, 2)) * 0.5;
+          q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), unite(hacher(f.graine, k, 3)) * 6.3);
+          m.compose(p.set(f.x + Math.cos(a) * r, f.y + 0.03, f.z + Math.sin(a) * r), q, e.set(t, t, t));
+          this.pierres.setMatrixAt(np++, m);
+        }
+      }
       if (d < 1500 && !f.couve && nf < 400) {
         for (let k = 0; k < 1; k++) {
           const flicker = 0.8 + 0.25 * Math.sin(temps * 9 + f.graine) + 0.15 * Math.sin(temps * 23 + f.graine * 0.3);
@@ -428,7 +494,8 @@ export class Feux3D {
     this.flammes.count = nf;
     this.buches.count = nb;
     this.fumee.count = ns;
-    for (const x of [this.flammes, this.buches, this.fumee]) x.instanceMatrix.needsUpdate = true;
+    this.pierres.count = np;
+    for (const x of [this.flammes, this.buches, this.fumee, this.pierres]) x.instanceMatrix.needsUpdate = true;
     const flambants = proches.filter((a) => !a.f.couve && a.d < 400);
     this.lumieres.forEach((l, k) => {
       const a = flambants[k];

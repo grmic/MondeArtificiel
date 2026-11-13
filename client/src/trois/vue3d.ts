@@ -4,8 +4,11 @@ import { connexion } from "../connexion";
 import { nombre, t } from "../langue";
 import { Bruit } from "./bruit";
 import { Ciel } from "./ciel";
+import { Camp3D, type CampJson } from "./camp";
 import { ACTIVITES, Feux3D, Foule, lireScene } from "./foule";
+import { MiniCarte } from "./minicarte";
 import { Nature3D } from "./nature3d";
+import { CorpsProches } from "./proches";
 import { Relief, type Temperatures, type TerrainVue } from "./relief";
 import { Terrain3D } from "./tuiles";
 
@@ -41,15 +44,21 @@ interface HorlogeJson {
 }
 
 type Qualite = "basse" | "moyenne" | "haute";
-const QUALITES: Record<Qualite, { pixels: number; finesse: number; vegetation: number }> = {
-  basse: { pixels: 1, finesse: 1.3, vegetation: 450 },
-  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900 },
-  haute: { pixels: 2, finesse: 2.4, vegetation: 1400 },
+/**
+ * Réglages de Qualité (proposition G1, 0.41.1) : corps détaillés jusqu'à `corps` m (au plus `nombre`), silhouettes jusqu'à
+ * `silhouettes` m, points de vie au-delà ; camp et bêtes jusqu'à `camp` m.
+ */
+const QUALITES: Record<Qualite, { pixels: number; finesse: number; vegetation: number; corps: number; nombre: number; silhouettes: number; camp: number }> = {
+  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, silhouettes: 1200, camp: 1200 },
+  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, silhouettes: 2000, camp: 2000 },
+  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, silhouettes: 2500, camp: 3000 },
 };
 
 /** Vitesse la plus haute en promenade (proposition E1) : au-delà, les humains sauteraient d'une case à l'autre. */
 export const FACTEUR_PROMENADE = 10;
 const HAUTEUR_YEUX = 1.62;
+/** Multiplicateurs de vitesse de déplacement (0.41.1) : touches 1 à 6, ou + et −. Maj multiplie encore par 6. */
+const ALLURES = [0.25, 1, 4, 16, 64, 256];
 
 const decoder = (texte: string) => Uint8Array.from(atob(texte), (c) => c.charCodeAt(0));
 
@@ -136,6 +145,8 @@ export class Vue3D {
   private readonly ciel: Ciel;
   private readonly foule: Foule;
   private readonly feux: Feux3D;
+  private readonly proches: CorpsProches;
+  private readonly camp: Camp3D;
   private readonly mer: THREE.Mesh;
   private readonly vagues: THREE.Texture;
   private readonly hud: HTMLElement;
@@ -161,6 +172,9 @@ export class Vue3D {
   private saisonVue = -1;
   private minuteurs: number[] = [];
   private eauAvertie = 0;
+  private allure = 2;
+  private readonly mini: MiniCarte;
+  private miniA = 0;
   private readonly surTouche = (e: KeyboardEvent) => this.toucher(e, true);
   private readonly surRelache = (e: KeyboardEvent) => this.toucher(e, false);
   private readonly surHorloge = (h: HorlogeJson) => void this.surveillerVitesse(h);
@@ -184,6 +198,8 @@ export class Vue3D {
     this.ciel = new Ciel(this.scene);
     this.foule = new Foule(this.relief);
     this.feux = new Feux3D(this.relief);
+    this.proches = new CorpsProches(this.foule);
+    this.camp = new Camp3D(this.relief);
     // La mer : un plan qui suit la caméra, maillé serré près d'elle et lâche au loin (de grands triangles qui passent derrière la
     // caméra se perdent avec la profondeur logarithmique).
     const plan = new THREE.PlaneGeometry(2, 2, 96, 96).rotateX(-Math.PI / 2);
@@ -199,7 +215,7 @@ export class Vue3D {
     this.mer = new THREE.Mesh(plan, eauMer);
     this.mer.renderOrder = 2;
     this.mer.frustumCulled = false;
-    this.scene.add(this.terrain.groupe, this.nature.groupe, this.foule.groupe, this.feux.groupe, this.mer);
+    this.scene.add(this.terrain.groupe, this.nature.groupe, this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.mer);
 
     this.qualite = (lireStockage("monde.qualite3d") as Qualite | null) ?? "moyenne";
     if (!(this.qualite in QUALITES)) this.qualite = "moyenne";
@@ -212,7 +228,11 @@ export class Vue3D {
     this.bulle.hidden = true;
     this.etiquettes = document.createElement("div");
     this.etiquettes.className = "etiquettes3d";
-    hote.append(this.etiquettes, this.bulle, this.hud);
+    this.mini = new MiniCarte(ctx.carte, this.relief.m, (x, z) => this.teleporter(x, z));
+    const allureLue = lireStockage("monde.allure3d");
+    const allure = allureLue === null ? NaN : Number(allureLue);
+    if (Number.isInteger(allure) && allure >= 0 && allure < ALLURES.length) this.allure = allure;
+    hote.append(this.etiquettes, this.bulle, this.hud, this.mini.element);
     this.construireHud();
     this.brancherSouris();
     this.appliquerQualite();
@@ -245,6 +265,9 @@ export class Vue3D {
         <button type="button" data-action="carte">${t("trois.carte")}</button>
         <button type="button" data-action="vol">${t("trois.voler")}</button>
         <button type="button" data-action="marche">${t("trois.marcher")}</button>
+        <label>${t("trois.allure")} <select data-action="allure">
+          ${ALLURES.map((a, k) => `<option value="${k}">${k + 1} · ×${a}</option>`).join("")}
+        </select></label>
         <label>${t("trois.qualite")} <select data-action="qualite">
           <option value="basse">${t("trois.qualite.basse")}</option>
           <option value="moyenne">${t("trois.qualite.moyenne")}</option>
@@ -270,6 +293,9 @@ export class Vue3D {
       ecrireStockage("monde.qualite3d", this.qualite);
       this.appliquerQualite();
     });
+    const allure = q<HTMLSelectElement>('[data-action="allure"]');
+    allure.value = String(this.allure);
+    allure.addEventListener("change", () => this.changerAllure(Number(allure.value)));
     const form = q<HTMLFormElement>('[data-action="aller"]');
     const champ = form.querySelector("input")!;
     champ.addEventListener("focus", () => this.remplirVivants());
@@ -310,6 +336,9 @@ export class Vue3D {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixels));
     this.terrain.facteur = q.finesse;
     this.nature.portee = q.vegetation;
+    this.proches.reglage = { portee: q.corps, nombre: q.nombre };
+    this.foule.porteeSilhouettes = q.silhouettes;
+    this.camp.portee = q.camp;
     this.nature.vider();
     this.cadrer();
   }
@@ -322,6 +351,24 @@ export class Vue3D {
     this.renderer.domElement.style.height = "100%";
     this.camera.aspect = l / h;
     this.camera.updateProjectionMatrix();
+  }
+
+  private changerAllure(k: number): void {
+    this.allure = Math.max(0, Math.min(ALLURES.length - 1, k));
+    ecrireStockage("monde.allure3d", String(this.allure));
+    const choix = this.hud.querySelector<HTMLSelectElement>('[data-action="allure"]');
+    if (choix) choix.value = String(this.allure);
+    this.ctx.message(t("trois.allureChoisie", { n: ALLURES[this.allure] }));
+  }
+
+  /** Mini-carte : la caméra va au point choisi, en vol, assez haut pour voir alentour, avec le même regard. */
+  private teleporter(x: number, z: number): void {
+    const sol = Math.max(0, this.relief.hauteur(x, z));
+    const haut = Math.max(120, Math.min(2000, this.camera.position.y - Math.max(0, this.relief.hauteur(this.camera.position.x, this.camera.position.z))));
+    this.camera.position.set(x, sol + haut, z);
+    this.viser = null;
+    this.mode = "vol";
+    this.afficherAide();
   }
 
   private changerMode(mode: "vol" | "marche"): void {
@@ -398,6 +445,15 @@ export class Vue3D {
       this.changerMode(this.mode === "vol" ? "marche" : "vol");
       return;
     }
+    const chiffre = /^(?:Digit|Numpad)([1-6])$/.exec(e.code);
+    if (chiffre) {
+      this.changerAllure(Number(chiffre[1]) - 1);
+      return;
+    }
+    if (e.key === "+" || e.code === "NumpadAdd" || e.key === "-" || e.code === "NumpadSubtract") {
+      this.changerAllure(this.allure + (e.key === "+" || e.code === "NumpadAdd" ? 1 : -1));
+      return;
+    }
     if (e.key === "Escape") {
       this.ctx.quitter();
       return;
@@ -430,6 +486,7 @@ export class Vue3D {
     }
     this.dernier = performance.now();
     void this.boucleScene();
+    void this.boucleCamp();
     void this.lireFeux();
     void this.lireTemperatures();
     this.minuteurs.push(window.setInterval(() => void this.lireFeux(), 5000), window.setInterval(() => void this.lireTemperatures(), 15000));
@@ -529,6 +586,23 @@ export class Vue3D {
     }
   }
 
+  /** Huttes, champs et bêtes autour de la caméra, toutes les trois secondes (ils changent lentement). */
+  private async boucleCamp(): Promise<void> {
+    while (this.ouverte) {
+      const p = this.camera.position;
+      const cx = Math.floor(p.x / this.relief.m);
+      const cz = Math.floor(p.z / this.relief.m);
+      const rayon = Math.min(8, Math.max(2, Math.ceil(this.camp.portee / this.relief.m)));
+      const camp = await connexion.invoke<CampJson>("Camp", cx, cz, rayon).catch(() => null);
+      if (camp && this.ouverte) this.camp.recevoir(camp);
+      // Plus souvent quand on se déplace vite : le camp suit la caméra.
+      for (let k = 0; k < 30 && this.ouverte; k++) {
+        await new Promise((r) => window.setTimeout(r, 100));
+        if (Math.hypot(this.camera.position.x - p.x, this.camera.position.z - p.z) > this.relief.m) break;
+      }
+    }
+  }
+
   private async lireFeux(): Promise<void> {
     const f = await connexion.invoke<{ feux: { x: number; y: number; couve: boolean }[] }>("Feux").catch(() => null);
     if (f) this.feux.definir(f.feux);
@@ -571,7 +645,8 @@ export class Vue3D {
     const sol = this.relief.hauteur(p.x, p.z);
     if (this.mode === "vol") {
       const haut = Math.max(2, p.y - Math.max(sol, 0));
-      const v = Math.max(8, haut * 0.9) * (rapide ? 5 : 1);
+      // L'allure choisie multiplie une vitesse qui croît avec la hauteur : ×1 = 1,2 × la hauteur par seconde (au moins 10 m/s).
+      const v = Math.max(10, haut * 1.2) * ALLURES[this.allure] * (rapide ? 6 : 1);
       const dir = new THREE.Vector3(-Math.sin(this.lacet) * Math.cos(this.tangage), Math.sin(this.tangage), -Math.cos(this.lacet) * Math.cos(this.tangage));
       const droite = new THREE.Vector3(Math.cos(this.lacet), 0, -Math.sin(this.lacet));
       p.addScaledVector(dir, avant * v * dt).addScaledVector(droite, cote * v * dt);
@@ -580,8 +655,12 @@ export class Vue3D {
       const plancher = Math.max(this.relief.hauteur(p.x, p.z), 0) + 1.5;
       if (p.y < plancher) p.y = plancher;
       p.y = Math.min(p.y, 60000);
+      // On ne sort pas de la carte (de plus de quelques kilomètres).
+      p.x = Math.max(-5000, Math.min(this.relief.largeurM + 5000, p.x));
+      p.z = Math.max(-5000, Math.min(this.relief.hauteurM + 5000, p.z));
     } else {
-      const v = rapide ? 4.5 : 1.4;
+      // À pied : le pas d'un marcheur à ×1 ; l'Entité peut aller bien plus vite qu'un humain.
+      const v = (rapide ? 4.5 : 1.4) * ALLURES[this.allure];
       const dx = (-Math.sin(this.lacet) * avant + Math.cos(this.lacet) * cote) * v * dt;
       const dz = (-Math.cos(this.lacet) * avant - Math.sin(this.lacet) * cote) * v * dt;
       if (dx !== 0 || dz !== 0) {
@@ -613,6 +692,8 @@ export class Vue3D {
     this.terrain.mettreAJour(p, 7);
     this.nature.mettreAJour(p, 3);
     this.foule.animer(dt, secondes, p);
+    this.proches.mettreAJour(p, maintenant / 1000);
+    this.camp.animer(p, secondes, maintenant / 1000);
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte);
     this.mer.position.set(p.x, 0, p.z);
     this.vagues.offset.set((p.x / 40 + maintenant / 60000) % 1, (-p.z / 40 + maintenant / 90000) % 1);
@@ -632,6 +713,13 @@ export class Vue3D {
     this.camera.updateMatrixWorld();
     this.renderer.render(this.scene, this.camera);
     this.montrerNoms();
+    if (maintenant - this.miniA > 100) {
+      this.miniA = maintenant;
+      this.mini.dessiner({
+        x: p.x, z: p.z, lacet: this.lacet, champ: (this.camera.fov * this.camera.aspect * Math.PI) / 360,
+        portee: Math.max(1500, (p.y - Math.max(0, this.relief.hauteur(p.x, p.z))) * 4), vivants: this.ctx.vivants(),
+      });
+    }
     this.images++;
     if (maintenant - this.imagesDepuis > 1000) {
       this.parSeconde = (this.images * 1000) / (maintenant - this.imagesDepuis);

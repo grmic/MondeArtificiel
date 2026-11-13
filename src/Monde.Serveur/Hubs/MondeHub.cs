@@ -921,6 +921,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Flux « Scène » de la vue 3D : les vivants à moins de <paramref name="rayon"/> cases de la caméra (0.41.0).</summary>
     public SceneDto Scene(int x, int y, int rayon) => SceneDto.Depuis(service, x, y, rayon);
 
+    /// <summary>Huttes, champs et bêtes autour d'une case, pour la vue 3D (0.41.1).</summary>
+    public CampDto Camp(int x, int y, int rayon) => CampDto.Depuis(service.Monde, x, y, rayon);
+
     /// <summary>Températures du jour sur chaque case, pour la neige de la vue 3D.</summary>
     public TemperaturesDto Temperatures() => TemperaturesDto.Depuis(service.Monde);
 

@@ -132,6 +132,11 @@ function facteurPour(largeur: number, hauteur: number, plafond: number): number 
   return Math.max(1, Math.min(plafond, cote, budget));
 }
 
+/** Image lissée de la carte à quelques pixels par case (mini-carte de la vue 3D, 0.41.1). */
+export function imageCarte(carte: Carte, plafond = 2): HTMLCanvasElement {
+  return dessinerImage(carte, facteurPour(carte.largeur, carte.hauteur, plafond));
+}
+
 /** Bruit fixe entre 0 et 1 pour un point entier (même dessin à chaque affichage). */
 function hachage(x: number, y: number): number {
   let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
