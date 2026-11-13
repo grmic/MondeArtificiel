@@ -114,7 +114,7 @@ public sealed partial class LanguesTests
 
     private static IEnumerable<(string Fichier, string Texte)> Sources()
     {
-        foreach (var f in Directory.EnumerateFiles(Path.Combine(Racine, "client", "src"), "*.ts"))
+        foreach (var f in Directory.EnumerateFiles(Path.Combine(Racine, "client", "src"), "*.ts", SearchOption.AllDirectories))
             yield return (f, File.ReadAllText(f));
         yield return (Path.Combine(Racine, "client", "index.html"), File.ReadAllText(Path.Combine(Racine, "client", "index.html")));
         foreach (var projet in new[] { "Monde.Serveur", "Monde.Simulation" })
@@ -228,7 +228,7 @@ public sealed partial class LanguesTests
     public void Navigateur_NEcritPasDeFrancaisEnDur()
     {
         var trouves = new List<string>();
-        foreach (var f in Directory.EnumerateFiles(Path.Combine(Racine, "client", "src"), "*.ts"))
+        foreach (var f in Directory.EnumerateFiles(Path.Combine(Racine, "client", "src"), "*.ts", SearchOption.AllDirectories))
         {
             if (Path.GetFileName(f) == "langue.ts") continue;
             var texte = CommentaireLigne().Replace(CommentaireBloc().Replace(File.ReadAllText(f), ""), "");

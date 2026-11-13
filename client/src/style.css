@@ -490,3 +490,28 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 .liste.bilan > li { padding: 2px 0; }
 .liste.bilan .lien { text-align: left; }
 .liste.bilan ul.causes { margin: 2px 0 4px 18px; padding: 0; color: var(--discret); font-size: 0.8rem; }
+
+/* Vue « Monde 3D » (0.41.0) : sous la barre et les panneaux, au-dessus de la carte. */
+.scene3d { position: fixed; inset: 0; background: #0b1016; }
+.scene3d canvas { display: block; cursor: grab; touch-action: none; }
+.scene3d canvas.glisse { cursor: grabbing; }
+.scene3d canvas.survol { cursor: pointer; }
+.hud3d {
+  position: absolute; left: 12px; bottom: 140px; max-width: min(560px, calc(100% - 24px));
+  display: flex; flex-direction: column; gap: 6px; padding: 8px 12px; border-radius: 10px;
+  background: var(--panneau); font-size: 0.85rem;
+}
+.hud3d .ligne { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.hud3d button.actif { background: #2f6f4a; border-color: #4ac26b; }
+.hud3d input { min-width: 12em; }
+.hud3d .aide, .hud3d .etat { opacity: 0.8; }
+.etiquettes3d { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.etiquettes3d span {
+  position: absolute; left: 0; top: 0; padding: 1px 6px; border-radius: 6px; white-space: nowrap;
+  background: rgba(10, 14, 20, 0.55); color: #f2efe6; font-size: 0.8rem;
+}
+.bulle3d {
+  position: absolute; left: 0; top: 0; pointer-events: none; padding: 4px 8px; border-radius: 6px;
+  background: var(--panneau); font-size: 0.85rem; white-space: nowrap;
+}
+@media (min-width: 1100px) { .hud3d { left: 456px; bottom: 12px; max-width: min(560px, calc(100% - 480px)); } }

@@ -8,6 +8,7 @@
   </head>
   <body>
     <div id="scene"></div>
+    <div id="scene3d" class="scene3d" hidden></div>
     <header class="barre">
       <h1 data-t="app.titre"></h1>
       <span id="statut" class="statut" data-t="connexion.enCours"></span>
@@ -15,6 +16,7 @@
       <span id="population" class="population"></span>
       <div id="vitesses" class="vitesses" role="group" data-t-aria-label="temps.vitesseDuTemps"></div>
       <form id="formGraine" class="graine">
+        <button type="button" id="boutonMonde3d" class="bouton-3d" data-t="barre.monde3d" data-t-title="barre.monde3dAide"></button>
         <button type="button" id="boutonRessources" data-t="barre.ressources" data-t-title="barre.ressourcesAide"></button>
         <button type="button" id="boutonCalques" data-t="barre.calques" data-t-title="barre.calquesAide"></button>
         <label class="case-barre" data-t-title="barre.reservesAide"><input id="voirReserves" type="checkbox" checked /> <span data-t="barre.reserves"></span></label>

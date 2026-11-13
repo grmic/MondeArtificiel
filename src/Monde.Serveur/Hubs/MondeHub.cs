@@ -918,6 +918,12 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Feux qui flambent ou couvent, et réserves, pour la carte.</summary>
     public FeuxDto Feux() => FeuxDto.Depuis(service.Monde);
 
+    /// <summary>Flux « Scène » de la vue 3D : les vivants à moins de <paramref name="rayon"/> cases de la caméra (0.41.0).</summary>
+    public SceneDto Scene(int x, int y, int rayon) => SceneDto.Depuis(service, x, y, rayon);
+
+    /// <summary>Températures du jour sur chaque case, pour la neige de la vue 3D.</summary>
+    public TemperaturesDto Temperatures() => TemperaturesDto.Depuis(service.Monde);
+
     /// <summary>Journal filtré, du plus récent au plus ancien (500 événements au plus par demande).</summary>
     public List<EvenementDto> Journal(FiltreJournal filtre)
     {

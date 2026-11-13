@@ -3,7 +3,7 @@ import { BandeauAppels, FenetreDialogue } from "./dialogue";
 import { PanneauActesEntite } from "./actesentite";
 import { PanneauBilan } from "./bilan";
 import { AlertesSuivis, chargerSuivis, oublierSuivis, PanneauSuivis } from "./suivis";
-import { chargerCarte, distanceEnMots, VueCarte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
+import { chargerCarte, distanceEnMots, VueCarte, type Carte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { Calques } from "./calques";
 import { connexion, demarrerConnexion } from "./connexion";
@@ -22,6 +22,7 @@ import { PanneauTerritoires } from "./territoires";
 import { PanneauParlerMonde } from "./parlermonde";
 import { placerSousLaBarre } from "./placement";
 import { nombre, t } from "./langue";
+import type { Vue3D } from "./trois/vue3d";
 import "./style.css";
 
 const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
@@ -158,7 +159,9 @@ async function demarrer(): Promise<void> {
     },
     (message) => (infos.textContent = message),
   );
+  let derniersHumains: HumainVue[] = [];
   const montrerHumains = (humains: HumainVue[]) => {
+    derniersHumains = humains;
     // Les noms restent connus après que les morts anciens ont quitté la liste : le journal les cite encore.
     // Un monde réinitialisé (le premier humain n'a plus le même nom) repart de zéro.
     const premier = humains.find((h) => h.id === 1);
@@ -459,6 +462,49 @@ async function demarrer(): Promise<void> {
     await journal.recharger();
   });
 
+  // Vue « Monde 3D » (0.41.0) : chargée à la première ouverture (Three.js pèse lourd), posée sous les panneaux habituels.
+  let carteCourante: Carte | null = null;
+  let vue3d: Vue3D | null = null;
+  const hote3d = element("#scene3d");
+  const bouton3d = element<HTMLButtonElement>("#boutonMonde3d");
+  const quitter3d = async () => {
+    bouton3d.classList.remove("actif");
+    element("#scene").hidden = false;
+    vue.suspendre(false);
+    vue.cadrer();
+    await vue3d?.fermer();
+  };
+  bouton3d.addEventListener("click", async () => {
+    if (bouton3d.classList.contains("actif")) {
+      await quitter3d();
+      return;
+    }
+    if (!carteCourante) return;
+    try {
+      if (!vue3d) {
+        infos.textContent = t("trois.ouverture");
+        const { Vue3D } = await import("./trois/vue3d");
+        vue3d = await Vue3D.creer(hote3d, {
+          carte: carteCourante,
+          nom: (id) => nomsParId.get(id) ?? "?",
+          ouvrirFiche: (id) => void fiche.ouvrir(id),
+          ficheCourante: () => fiche.courant || null,
+          vivants: () => derniersHumains.filter((h) => h.vivant).map((h) => ({ id: h.id, nom: h.nom, x: h.x, y: h.y, sexe: h.sexe })),
+          message: (texte) => (infos.textContent = texte),
+          quitter: () => void quitter3d(),
+        });
+      }
+      bouton3d.classList.add("actif");
+      vue.suspendre(true);
+      element("#scene").hidden = true;
+      infos.textContent = t("trois.ouverte", { moteur: vue3d.moteur });
+      await vue3d.ouvrir();
+    } catch (e) {
+      await quitter3d();
+      infos.textContent = `${t("trois.impossible")} ${e instanceof Error ? e.message : ""}`;
+    }
+  });
+
   // Carte du monde courant (sans réglages) ou aperçu d'autres réglages : rend un message d'erreur, ou null.
   const charger = async (reglages?: Reglages): Promise<string | null> => {
     infos.textContent = t("carte.generation");
@@ -468,6 +514,7 @@ async function demarrer(): Promise<void> {
       vue.afficher(carte, reglages !== undefined);
       if (!reglages) void calques.recharger();
       if (!reglages) humainsDeDepart = carte.emplacements.length * 2;
+      if (!reglages) carteCourante = carte;
       const apercu = reglages ? t("carte.apercu") : t("carte.mondeCourant");
       infos.textContent = t("carte.chargee", { apercu, graine: String(carte.graine), n: carte.emplacements.length });
       return null;
@@ -506,6 +553,11 @@ async function demarrer(): Promise<void> {
 
   // Nouveau monde : demandé depuis la configuration, annoncé par le serveur à tous les navigateurs ouverts.
   connexion.on("MondeReinitialise", (graine: number) => {
+    if (vue3d) {
+      void quitter3d();
+      vue3d.detruire();
+      vue3d = null;
+    }
     fiche.fermer();
     ficheCommunaute?.fermer();
     territoires.fermer();

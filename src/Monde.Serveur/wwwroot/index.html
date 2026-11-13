@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-DG9tLBkj.js"></script>
+    <script type="module" crossorigin src="/assets/index-DxPknphL.js"></script>
   </head>
   <body>
     <div id="scene"></div>
+    <div id="scene3d" class="scene3d" hidden></div>
     <header class="barre">
       <h1 data-t="app.titre"></h1>
       <span id="statut" class="statut" data-t="connexion.enCours"></span>
@@ -16,6 +17,7 @@
       <span id="population" class="population"></span>
       <div id="vitesses" class="vitesses" role="group" data-t-aria-label="temps.vitesseDuTemps"></div>
       <form id="formGraine" class="graine">
+        <button type="button" id="boutonMonde3d" class="bouton-3d" data-t="barre.monde3d" data-t-title="barre.monde3dAide"></button>
         <button type="button" id="boutonRessources" data-t="barre.ressources" data-t-title="barre.ressourcesAide"></button>
         <button type="button" id="boutonCalques" data-t="barre.calques" data-t-title="barre.calquesAide"></button>
         <label class="case-barre" data-t-title="barre.reservesAide"><input id="voirReserves" type="checkbox" checked /> <span data-t="barre.reserves"></span></label>

@@ -612,6 +612,12 @@ export class VueCarte {
     this.calqueTrajet.addChild(g);
   }
 
+  /** Suspend le dessin de la carte (vue 3D ouverte) ou le reprend. */
+  suspendre(oui: boolean): void {
+    if (oui) this.app.ticker.stop();
+    else this.app.ticker.start();
+  }
+
   /** Largeur de la carte affichée, en cases (0 si aucune). */
   largeurCarte(): number {
     return this.carte?.largeur ?? 0;
