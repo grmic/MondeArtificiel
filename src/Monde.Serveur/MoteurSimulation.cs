@@ -16,6 +16,9 @@ public sealed class MoteurSimulation(
     private static readonly TimeSpan Cadence = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan IntervalleDiffusion = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan IntervalleSauvegarde = TimeSpan.FromSeconds(10);
+    // Pendant un saut dans le futur (0.40.0) : humains et journal diffusés moins souvent, sauvegarde plus espacée, pour laisser le calcul aller.
+    private static readonly TimeSpan IntervalleDiffusionSaut = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan IntervalleSauvegardeSaut = TimeSpan.FromSeconds(30);
     // Le calcul se fait par tranches : entre deux, le monde est libre pour être lu (diffusion, fiches, sauvegarde).
     private static readonly TimeSpan Tranche = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan FenetreMesure = TimeSpan.FromSeconds(1);
@@ -28,6 +31,7 @@ public sealed class MoteurSimulation(
         var calcul = new Thread(() => Calculer(chrono, finCalcul.Token)) { IsBackground = true, Name = "Monde" };
         calcul.Start();
         var derniereDiffusion = TimeSpan.Zero;
+        var derniereHorloge = TimeSpan.Zero;
         var derniereSauvegarde = TimeSpan.Zero;
         var debutMesure = TimeSpan.Zero;
         var mondeMesure = service.Monde;
@@ -65,6 +69,23 @@ public sealed class MoteurSimulation(
                     await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
                 }
 
+                // Alertes des suivis ★ (0.40.0) : gardées, diffusées ; certaines sortes ont mis le monde en pause.
+                if (monde.PrendreAlertesSuivis() is { Count: > 0 } alertesSuivis)
+                {
+                    var rendues = service.RecevoirAlertes(alertesSuivis);
+                    if (rendues.Any(a => a.Pause))
+                    {
+                        service.FacteurAtteint = 0;
+                        service.Sauvegarder();
+                    }
+                    var suivis = AlerteSuiviDto.HumainsSuivis(service);
+                    await hub.Clients.Diffuser("AlertesSuivis", () => rendues.Select(a => AlerteSuiviDto.Depuis(a, service, suivis)).ToList(), arret);
+                    await hub.Clients.All.SendAsync("AlertesNonLues", service.AlertesNonLues(), arret);
+                    if (rendues.Any(a => a.Sorte == Simulation.SorteAlerte.Mort))
+                        await hub.Clients.All.SendAsync("Suivis", SuiviDto.Depuis(service), arret);
+                    await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
+                }
+
                 if (monde.PrendreObjectifAtteintDetaille() is { } objectif)
                 {
                     service.FacteurAtteint = 0;
@@ -82,10 +103,23 @@ public sealed class MoteurSimulation(
                     await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
                 }
 
-                if (maintenant - derniereDiffusion >= IntervalleDiffusion)
+                // Saut dans le futur fini (ou arrêté avant) : son bilan.
+                if (monde.PrendreBilanSaut() is { } bilan)
+                {
+                    service.Sauvegarder();
+                    await hub.Clients.Diffuser("BilanSaut", () => BilanSautDto.Depuis(bilan), arret);
+                    await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
+                }
+
+                var enSaut = monde.Saut is not null;
+                if (maintenant - derniereHorloge >= IntervalleDiffusion)
+                {
+                    derniereHorloge = maintenant;
+                    await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
+                }
+                if (maintenant - derniereDiffusion >= (enSaut ? IntervalleDiffusionSaut : IntervalleDiffusion))
                 {
                     derniereDiffusion = maintenant;
-                    await hub.Clients.Diffuser("Horloge", () => HorlogeDto.Depuis(service), arret);
                     await hub.Clients.Diffuser("Humains", () => HumainDto.Depuis(monde), arret);
                     // Nouveaux événements du journal (les 50 derniers au plus, l'historique complet reste consultable).
                     var nouveaux = monde.JournalRecent(dernierEvenement);
@@ -96,7 +130,7 @@ public sealed class MoteurSimulation(
                     }
                 }
 
-                if (maintenant - derniereSauvegarde >= IntervalleSauvegarde)
+                if (maintenant - derniereSauvegarde >= (enSaut ? IntervalleSauvegardeSaut : IntervalleSauvegarde))
                 {
                     derniereSauvegarde = maintenant;
                     service.Sauvegarder();

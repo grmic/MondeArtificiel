@@ -216,7 +216,7 @@ public sealed partial class DepotMonde
     /// ancien, jusqu'à en avoir <paramref name="limite"/> (assez pour que la fusion avec la table soit exacte).
     /// </summary>
     private static List<LigneJournal> LireArchives(SqliteConnection connexion, SqliteTransaction transaction,
-        IReadOnlyCollection<TypeEvenement>? types, int? humain, long? avantId, int limite, int? communaute)
+        IReadOnlyCollection<TypeEvenement>? types, int? humain, long? avantId, int limite, int? communaute, long? apresId = null)
     {
         using var commande = connexion.CreateCommand();
         commande.Transaction = transaction;
@@ -225,6 +225,11 @@ public sealed partial class DepotMonde
         {
             conditions.Add("premier < $a");
             commande.Parameters.AddWithValue("$a", a);
+        }
+        if (apresId is { } ap)
+        {
+            conditions.Add("dernier > $ap");
+            commande.Parameters.AddWithValue("$ap", ap);
         }
         if (humain is { } h)
         {
@@ -258,6 +263,7 @@ public sealed partial class DepotMonde
             {
                 var x = lignes[k];
                 if (avantId is { } av && x.Id >= av) continue;
+                if (apresId is { } apr && x.Id <= apr) continue;
                 if (voulus is not null && !voulus.Contains(x.Type)) continue;
                 if (humain is { } hu && x.Humain != hu && x.Autre != hu) continue;
                 if (communaute is { } co && x.Communaute != co && x.AutreCommunaute != co) continue;

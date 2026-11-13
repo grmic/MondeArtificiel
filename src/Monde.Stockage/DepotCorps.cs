@@ -48,14 +48,18 @@ public sealed partial class DepotMonde
         }
     }
 
-    private static void EnregistrerCorps(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
+    private static void EnregistrerCorps(SqliteConnection connexion, SqliteTransaction transaction, Ecritures ecritures, IReadOnlyList<Humain> humains)
     {
-        using var c = Preparer(connexion, transaction, "UPDATE humains SET corps = $c WHERE id = $id;", "$c", "$id");
+        using var c = new ParHumain(connexion, transaction, ecritures, "humains.corps",
+            Preparer(connexion, transaction, "UPDATE humains SET corps = $c WHERE id = $id;", "$c", "$id"), suitLaLigne: true);
         foreach (var h in humains)
         {
-            if (h.BlessureGrave <= 0 && h.Sequelle.Membre == Membre.Aucun && h.PartDesChamps <= 0) continue;
+            // Rien à dire du corps : la colonne reste vide (une ligne remplacée l'a déjà vidée ; sinon on la vide, si elle a changé).
+            c.Debut(h.Id);
             var s = h.Sequelle;
-            Lancer(c, JsonSerializer.Serialize(new Corps(h.BlessureGrave, h.BlessureOrigine, s.Membre, s.Debut, s.Fixe, s.Le, s.Origine, h.PartDesChamps)), h.Id);
+            var rien = h.BlessureGrave <= 0 && s.Membre == Membre.Aucun && h.PartDesChamps <= 0;
+            c.Ligne(rien ? DBNull.Value : JsonSerializer.Serialize(new Corps(h.BlessureGrave, h.BlessureOrigine, s.Membre, s.Debut, s.Fixe, s.Le, s.Origine, h.PartDesChamps)), h.Id);
+            c.Fin();
         }
     }
 }

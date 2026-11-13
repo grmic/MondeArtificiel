@@ -60,11 +60,16 @@ public sealed partial class DepotMonde
         }
     }
 
-    private static void EnregistrerMer(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
+    private static void EnregistrerMer(SqliteConnection connexion, SqliteTransaction transaction, Ecritures ecritures, IReadOnlyList<Humain> humains)
     {
-        using var c = Preparer(connexion, transaction, "UPDATE humains SET continent = $c, mer = $m WHERE id = $id;", "$c", "$m", "$id");
+        using var c = new ParHumain(connexion, transaction, ecritures, "humains.mer",
+            Preparer(connexion, transaction, "UPDATE humains SET continent = $c, mer = $m WHERE id = $id;", "$c", "$m", "$id"), suitLaLigne: true);
         foreach (var h in humains)
-            Lancer(c, h.Continent, h.Mer.Active ? JsonSerializer.Serialize(h.Mer) : DBNull.Value, h.Id);
+        {
+            c.Debut(h.Id);
+            c.Ligne(h.Continent, h.Mer.Active ? JsonSerializer.Serialize(h.Mer) : DBNull.Value, h.Id);
+            c.Fin();
+        }
     }
 
     private static List<DecouverteOutremer> LireOutremer(SqliteCommand commande)

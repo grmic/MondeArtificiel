@@ -41,7 +41,8 @@ public sealed partial class Comportement
     internal void RecenserLesGisements(IReadOnlyList<Humain> tous)
     {
         _gisementsConnus.Clear();
-        foreach (var h in tous)
+        // Les vivants seulement (0.40.0) : parcourir aussi les morts, à chaque pas, coûtait de plus en plus au fil des siècles.
+        foreach (var h in tous.Vivants())
         {
             if (!h.EstVivant) continue;
             foreach (var l in h.Memoire.Lieux)

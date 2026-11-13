@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 59;
+    public const int VersionSchema = 60;
 
     private readonly string _connexion;
 
@@ -642,6 +642,8 @@ public sealed partial class DepotMonde
         if (actuelle < 58) MigrerVersion58(connexion, transaction);
         // Version 59 : récits nés des catastrophes (0.39.0).
         if (actuelle < 59) MigrerVersion59(connexion, transaction);
+        // Version 60 : suivis ★ et alertes dans la base du monde (0.40.0).
+        if (actuelle < 60) MigrerVersion60(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -649,6 +651,7 @@ public sealed partial class DepotMonde
     /// <summary>Renvoie l'état enregistré, ou null si le monde n'a jamais été sauvegardé.</summary>
     public EtatMonde? Charger()
     {
+        OublierEmpreintes();
         using var connexion = Ouvrir();
         using var commande = connexion.CreateCommand();
         commande.CommandText = "SELECT graine, secondes, pas, vitesse, alea0, alea1, alea2, alea3, couples, largeur, hauteur, continents, placement, generation, ecart, langage FROM etat WHERE id = 1;";
@@ -1099,10 +1102,12 @@ public sealed partial class DepotMonde
         using var connexion = Ouvrir();
         using var transaction = connexion.BeginTransaction();
         var formes = FormesRecits.Lire(connexion, transaction);
+        if (remplacer) OublierEmpreintes();
+        var ecritures = new Ecritures(this);
         if (remplacer)
         {
             Executer(connexion, transaction,
-                "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; DELETE FROM journal_blocs; DELETE FROM journal_blocs_cles; DELETE FROM journal_suivis; DELETE FROM journal_purge; DELETE FROM premieres; " +
+                "DELETE FROM humains; DELETE FROM ressources; DELETE FROM etat; DELETE FROM journal; DELETE FROM journal_blocs; DELETE FROM journal_blocs_cles; DELETE FROM journal_suivis; DELETE FROM journal_purge; DELETE FROM premieres; DELETE FROM suivis; DELETE FROM alertes; " +
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
@@ -1234,6 +1239,7 @@ public sealed partial class DepotMonde
                 "$visite_chez", "$visite_depuis", "$visite_arrivee", "$visite_jusqua", "$visite_evenement", "$visite_le", "$rassemblement", "$rentrer", "$venu_de", "$demande_a", "$demande_ouvrage", "$demande_le", "$servis_taille", "$servis_assemblage", "$servis_peau", "$specialite", "$specialite_depuis"];
             var parametres = noms.Select(n => commande.Parameters.Add(new SqliteParameter { ParameterName = n })).ToArray();
             commande.Prepare();
+            ecritures.Inconnue(CleHumains);
             foreach (var h in humains)
             {
                 object[] valeurs =
@@ -1271,19 +1277,23 @@ public sealed partial class DepotMonde
                     h.FeuxPortes, h.PorteurDuFeuDepuis, h.FeuDemandeLe,
                     h.VisiteChezId, h.VisiteDepuis, h.VisiteArriveeLe, h.VisiteJusquA, h.VisiteEvenementId, h.VisiteLe, h.RassemblementId, h.Rentrer ? 1 : 0, h.VenuDeId, h.DemandeAId, (int)h.DemandeOuvrage, h.DemandeLe, h.ServisTaille, h.ServisAssemblage, h.ServisPeau, (int)h.Specialite, h.SpecialiteDepuis,
                 ];
+                // Ligne inchangée depuis la sauvegarde précédente (un mort, le plus souvent) : rien à écrire.
+                if (!ecritures.AEcrire(CleHumains, h.Id, Empreinte.Ajouter(Empreinte.Depart, valeurs), false)) continue;
                 for (var i = 0; i < valeurs.Length; i++) parametres[i].Value = valeurs[i];
                 commande.ExecuteNonQuery();
+                // INSERT OR REPLACE remet à leur défaut les colonnes écrites plus loin (peur, savoirs, mer, corps) : à réécrire.
+                ecritures.Remplaces.Add(h.Id);
             }
         }
 
         if (etat.Humains is { } tous)
         {
-            EnregistrerMemoires(connexion, transaction, tous, formes);
-            EnregistrerSanteNature(connexion, transaction, tous);
-            EnregistrerSavoirs(connexion, transaction, tous);
-            EnregistrerLangage(connexion, transaction, tous);
-            EnregistrerMer(connexion, transaction, tous);
-            EnregistrerCorps(connexion, transaction, tous);
+            EnregistrerMemoires(connexion, transaction, ecritures, tous, formes);
+            EnregistrerSanteNature(connexion, transaction, ecritures, tous);
+            EnregistrerSavoirs(connexion, transaction, ecritures, tous);
+            EnregistrerLangage(connexion, transaction, ecritures, tous);
+            EnregistrerMer(connexion, transaction, ecritures, tous);
+            EnregistrerCorps(connexion, transaction, ecritures, tous);
         }
         if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Braises is not null || etat.Reserves is not null) EnregistrerFeuxEtReserves(connexion, transaction, etat);
@@ -1316,71 +1326,89 @@ public sealed partial class DepotMonde
         formes.Enregistrer(connexion, transaction);
 
         transaction.Commit();
+        ecritures.Valider();
+        HumainsReecrits = ecritures.Remplaces.Count;
     }
 
-    private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains,
-        FormesRecits formes)
+    private const string CleHumains = "humains";
+
+    private static void EnregistrerMemoires(SqliteConnection connexion, SqliteTransaction transaction, Ecritures ecritures,
+        IReadOnlyList<Humain> humains, FormesRecits formes)
     {
-        Executer(connexion, transaction,
-            "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM griefs; DELETE FROM raisons; DELETE FROM jardin; DELETE FROM exclusions;");
-        using var exclusions = Preparer(connexion, transaction,
+        using var exclusions = new ParHumain(connexion, transaction, ecritures, "exclusions", Preparer(connexion, transaction,
             "INSERT INTO exclusions (humain, rang, type, de, le, jusqua, evenement, raison, levee) VALUES ($h, $r, $t, $d, $l, $j, $e, $x, $v);",
-            "$h", "$r", "$t", "$d", "$l", "$j", "$e", "$x", "$v");
-        using var jardin = Preparer(connexion, transaction,
+            "$h", "$r", "$t", "$d", "$l", "$j", "$e", "$x", "$v"), "DELETE FROM exclusions WHERE humain = $h;", "DELETE FROM exclusions;");
+        using var jardin = new ParHumain(connexion, transaction, ecritures, "jardin", Preparer(connexion, transaction,
             "INSERT INTO jardin (humain, rang, secondes, type, sujet, texte, intensite, cause, cle, forme, valeurs) VALUES ($h, $r, $s, $t, $su, $x, $i, $c, $k, $f, $v);",
-            "$h", "$r", "$s", "$t", "$su", "$x", "$i", "$c", "$k", "$f", "$v");
-        using var griefs = Preparer(connexion, transaction,
+            "$h", "$r", "$s", "$t", "$su", "$x", "$i", "$c", "$k", "$f", "$v"), "DELETE FROM jardin WHERE humain = $h;", "DELETE FROM jardin;");
+        using var griefs = new ParHumain(connexion, transaction, ecritures, "griefs", Preparer(connexion, transaction,
             "INSERT INTO griefs (humain, rang, contre, motif, intensite, initiale, evenement, victime) VALUES ($h, $r, $c, $m, $i, $n, $e, $v);",
-            "$h", "$r", "$c", "$m", "$i", "$n", "$e", "$v");
-        using var raisons = Preparer(connexion, transaction,
-            "INSERT INTO raisons (humain, rang, type, autre, poids) VALUES ($h, $r, $t, $a, $p);", "$h", "$r", "$t", "$a", "$p");
-        using var lieux = Preparer(connexion, transaction,
+            "$h", "$r", "$c", "$m", "$i", "$n", "$e", "$v"), "DELETE FROM griefs WHERE humain = $h;", "DELETE FROM griefs;");
+        using var raisons = new ParHumain(connexion, transaction, ecritures, "raisons", Preparer(connexion, transaction,
+            "INSERT INTO raisons (humain, rang, type, autre, poids) VALUES ($h, $r, $t, $a, $p);", "$h", "$r", "$t", "$a", "$p"),
+            "DELETE FROM raisons WHERE humain = $h;", "DELETE FROM raisons;");
+        using var lieux = new ParHumain(connexion, transaction, ecritures, "memoire_lieux", Preparer(connexion, transaction,
             "INSERT INTO memoire_lieux (humain, rang, type, x, y, vu_le, rappels, decu_le) VALUES ($h, $r, $t, $x, $y, $v, $n, $d);",
-            "$h", "$r", "$t", "$x", "$y", "$v", "$n", "$d");
-        using var liens = Preparer(connexion, transaction,
+            "$h", "$r", "$t", "$x", "$y", "$v", "$n", "$d"), "DELETE FROM memoire_lieux WHERE humain = $h;", "DELETE FROM memoire_lieux;");
+        using var liens = new ParHumain(connexion, transaction, ecritures, "liens", Preparer(connexion, transaction,
             "INSERT INTO liens (humain, rang, autre, familiarite, affection, derniere, amis, rivaux, bienfait) VALUES ($h, $r, $a, $f, $af, $d, $am, $ri, $bf);",
-            "$h", "$r", "$a", "$f", "$af", "$d", "$am", "$ri", "$bf");
-        using var pensees = Preparer(connexion, transaction,
-            "INSERT INTO pensees (humain, rang, secondes, texte, forme, valeurs) VALUES ($h, $r, $s, $t, $c, $p);", "$h", "$r", "$s", "$t", "$c", "$p");
+            "$h", "$r", "$a", "$f", "$af", "$d", "$am", "$ri", "$bf"), "DELETE FROM liens WHERE humain = $h;", "DELETE FROM liens;");
+        using var pensees = new ParHumain(connexion, transaction, ecritures, "pensees", Preparer(connexion, transaction,
+            "INSERT INTO pensees (humain, rang, secondes, texte, forme, valeurs) VALUES ($h, $r, $s, $t, $c, $p);", "$h", "$r", "$s", "$t", "$c", "$p"),
+            "DELETE FROM pensees WHERE humain = $h;", "DELETE FROM pensees;");
         foreach (var h in humains)
         {
             var m = h.Memoire;
+            lieux.Debut(h.Id);
             for (var r = 0; r < m.Lieux.Count; r++)
             {
                 var l = m.Lieux[r];
-                Lancer(lieux, h.Id, r, (int)l.Type, l.X, l.Y, l.VuLe, l.Rappels, l.DecuLe is { } d ? d : DBNull.Value);
+                lieux.Ligne(h.Id, r, (int)l.Type, l.X, l.Y, l.VuLe, l.Rappels, l.DecuLe is { } d ? d : DBNull.Value);
             }
+            lieux.Fin();
+            liens.Debut(h.Id);
             for (var r = 0; r < h.Liens.Count; r++)
             {
                 var l = h.Liens[r];
-                Lancer(liens, h.Id, r, l.Id, l.Familiarite, l.Affection, l.Derniere, l.Amis, l.Rivaux, l.Bienfait);
+                liens.Ligne(h.Id, r, l.Id, l.Familiarite, l.Affection, l.Derniere, l.Amis, l.Rivaux, l.Bienfait);
             }
+            liens.Fin();
+            pensees.Debut(h.Id);
             for (var r = 0; r < m.Pensees.Count; r++)
             {
                 var (texte, forme, valeurs) = formes.Colonnes(m.Pensees[r].Recit, m.Pensees[r].Brut);
-                Lancer(pensees, h.Id, r, m.Pensees[r].Secondes, texte, forme, valeurs);
+                pensees.Ligne(h.Id, r, m.Pensees[r].Secondes, texte, forme, valeurs);
             }
+            pensees.Fin();
+            jardin.Debut(h.Id);
             for (var r = 0; r < m.Jardin.Count; r++)
             {
                 var x = m.Jardin[r];
                 var (texte, forme, valeurs) = formes.Colonnes(x.Recit, x.Brut);
-                Lancer(jardin, h.Id, r, x.Secondes, (int)x.Type, x.SujetId, texte, x.Intensite, x.CauseId, x.Cle, forme, valeurs);
+                jardin.Ligne(h.Id, r, x.Secondes, (int)x.Type, x.SujetId, texte, x.Intensite, x.CauseId, x.Cle, forme, valeurs);
             }
+            jardin.Fin();
+            griefs.Debut(h.Id);
             for (var r = 0; r < h.Griefs.Count; r++)
             {
                 var g = h.Griefs[r];
-                Lancer(griefs, h.Id, r, g.ContreId, (int)g.Motif, g.Intensite, g.Initiale, g.EvenementId, g.VictimeId);
+                griefs.Ligne(h.Id, r, g.ContreId, (int)g.Motif, g.Intensite, g.Initiale, g.EvenementId, g.VictimeId);
             }
+            griefs.Fin();
+            raisons.Debut(h.Id);
             for (var r = 0; r < h.Raisons.Count; r++)
             {
                 var x = h.Raisons[r];
-                Lancer(raisons, h.Id, r, (int)x.Type, x.AutreId, x.Poids);
+                raisons.Ligne(h.Id, r, (int)x.Type, x.AutreId, x.Poids);
             }
+            raisons.Fin();
+            exclusions.Debut(h.Id);
             for (var r = 0; r < h.Exclusions.Count; r++)
             {
                 var x = h.Exclusions[r];
-                Lancer(exclusions, h.Id, r, (int)x.Type, x.De, x.Le, x.Jusqua, x.EvenementId, x.Raison, x.Levee);
+                exclusions.Ligne(h.Id, r, (int)x.Type, x.De, x.Le, x.Jusqua, x.EvenementId, x.Raison, x.Levee);
             }
+            exclusions.Fin();
         }
     }
 
@@ -1502,10 +1530,11 @@ public sealed partial class DepotMonde
     /// <summary>
     /// Lit le journal enregistré, du plus récent au plus ancien. Filtres facultatifs : types, humain concerné
     /// (acteur ou autre), communauté, événements significatifs seulement, et pagination par numéro (événements de numéro
-    /// inférieur à <paramref name="avantId"/>). <paramref name="premieres"/> : seulement les premières fois, qui ne sont jamais rangées.
+    /// inférieur à <paramref name="avantId"/>, et supérieur à <paramref name="apresId"/> pour une période). <paramref name="premieres"/> :
+    /// seulement les premières fois, qui ne sont jamais rangées.
     /// </summary>
     public List<EvenementJournal> LireJournal(IReadOnlyCollection<TypeEvenement>? types = null, int? humain = null,
-        long? avantId = null, int limite = 100, int? communaute = null, bool significatifs = false, bool premieres = false)
+        long? avantId = null, int limite = 100, int? communaute = null, bool significatifs = false, bool premieres = false, long? apresId = null)
     {
         limite = Math.Clamp(limite, 1, LimiteJournal);
         using var connexion = Ouvrir();
@@ -1538,6 +1567,11 @@ public sealed partial class DepotMonde
             conditions.Add("id < $a");
             commande.Parameters.AddWithValue("$a", a);
         }
+        if (apresId is { } ap)
+        {
+            conditions.Add("id > $ap");
+            commande.Parameters.AddWithValue("$ap", ap);
+        }
         commande.Parameters.AddWithValue("$limite", limite);
         var where = conditions.Count > 0 ? "WHERE " + string.Join(" AND ", conditions) : "";
         commande.CommandText = $"SELECT {ColonnesJournal} FROM journal {where} ORDER BY id DESC LIMIT $limite;";
@@ -1558,7 +1592,7 @@ public sealed partial class DepotMonde
             rangees.CommandText = "SELECT coalesce(max(dernier), 0) FROM journal_blocs;";
             var dernierRange = Convert.ToInt64(rangees.ExecuteScalar());
             if (dernierRange > 0 && (lignes.Count < limite || lignes[^1].Id < dernierRange))
-                lignes.AddRange(LireArchives(connexion, transaction, types, humain, avantId, limite, communaute));
+                lignes.AddRange(LireArchives(connexion, transaction, types, humain, avantId, limite, communaute, apresId));
         }
         var formes = FormesRecits.Lire(connexion, transaction);
         return [.. lignes.OrderByDescending(x => x.Id).Take(limite).Select(x => VersEvenement(x, formes))];
@@ -1611,6 +1645,7 @@ public sealed partial class DepotMonde
     /// </summary>
     public void RecommencerApresCopie(string cheminCopie, EtatMonde etat)
     {
+        OublierEmpreintes();
         var copie = Path.GetFullPath(cheminCopie);
         if (string.Equals(copie, CheminFichier, StringComparison.Ordinal))
         {
@@ -1639,6 +1674,7 @@ public sealed partial class DepotMonde
     /// </summary>
     public void Recommencer(EtatMonde etat)
     {
+        OublierEmpreintes();
         var reglages = LireReglages();
         var temporaire = Path.Combine(Path.GetDirectoryName(CheminFichier)!, $"monde-efface-{Guid.NewGuid():N}.tmp");
         if (!Renommer(temporaire))
@@ -1759,6 +1795,7 @@ public sealed partial class DepotMonde
     /// </summary>
     public void RemplacerPar(string prepare)
     {
+        OublierEmpreintes();
         var reglages = LireReglages();
         using (var connexion = Ouvrir())
         using (var commande = connexion.CreateCommand())

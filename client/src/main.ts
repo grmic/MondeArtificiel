@@ -1,7 +1,8 @@
 import { noterUsageLlm, PanneauEntiteLlm } from "./entitellm";
 import { BandeauAppels, FenetreDialogue } from "./dialogue";
 import { PanneauActesEntite } from "./actesentite";
-import { oublierSuivis, PanneauSuivis, signalerSuivis } from "./suivis";
+import { PanneauBilan } from "./bilan";
+import { AlertesSuivis, chargerSuivis, oublierSuivis, PanneauSuivis } from "./suivis";
 import { chargerCarte, distanceEnMots, VueCarte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { Calques } from "./calques";
@@ -312,6 +313,15 @@ async function demarrer(): Promise<void> {
   for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
     if (b.id !== "boutonSuivis") b.addEventListener("click", () => suivis.fermer());
   }
+  const alertesSuivis = new AlertesSuivis(element("#alerte"), element("#boutonSuivis"), (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id);
+  }, (id) => ouvrirCommunaute(id), () => suivis.ouvert);
+  suivis.lier(alertesSuivis);
+  new PanneauBilan(element("#bilanSaut"), (p) => {
+    fermerAutres();
+    journal.voirPeriode(p);
+  });
   element("#boutonSuivis").addEventListener("click", () => {
     fermerAutres();
     prieres.fermer();
@@ -444,7 +454,8 @@ async function demarrer(): Promise<void> {
     void connexion.invoke<{ usage?: string }>("EtatEntiteLlm").then((e) => noterUsageLlm(e.usage)).catch(() => undefined);
     montrerHumains(await connexion.invoke<HumainVue[]>("Humains"));
     void calques.recharger();
-    void signalerSuivis();
+    void chargerSuivis();
+    void alertesSuivis.charger();
     await journal.recharger();
   });
 
@@ -505,6 +516,7 @@ async function demarrer(): Promise<void> {
     alertes.vider();
     alertes.vues();
     oublierSuivis();
+    void alertesSuivis.charger();
     void journal.recharger();
     void charger().then(() => {
       configuration.mondeRecree();

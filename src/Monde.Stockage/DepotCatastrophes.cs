@@ -99,17 +99,20 @@ public sealed partial class DepotMonde
         }
     }
 
-    private static void EnregistrerSanteNature(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
+    private static void EnregistrerSanteNature(SqliteConnection connexion, SqliteTransaction transaction, Ecritures ecritures,
+        IReadOnlyList<Humain> humains)
     {
-        using var commande = Preparer(connexion, transaction, """
+        using var commande = new ParHumain(connexion, transaction, ecritures, "humains.sante", Preparer(connexion, transaction, """
             UPDATE humains SET peur = $p, peur_evenement = $pe, peur_type = $pt, infection = $i, infecte_le = $il,
                 symptomes_le = $s, guerison_le = $g, infection_evenement = $ie, immunites = $im
             WHERE id = $id;
-            """, "$p", "$pe", "$pt", "$i", "$il", "$s", "$g", "$ie", "$im", "$id");
+            """, "$p", "$pe", "$pt", "$i", "$il", "$s", "$g", "$ie", "$im", "$id"), suitLaLigne: true);
         foreach (var h in humains)
         {
-            Lancer(commande, h.Peur, h.PeurEvenementId, (int)h.PeurType, h.InfectionId, h.InfecteLe, h.SymptomesLe, h.GuerisonLe,
+            commande.Debut(h.Id);
+            commande.Ligne(h.Peur, h.PeurEvenementId, (int)h.PeurType, h.InfectionId, h.InfecteLe, h.SymptomesLe, h.GuerisonLe,
                 h.InfectionEvenementId, EcrireImmunites(h.Immunites), h.Id);
+            commande.Fin();
         }
     }
 

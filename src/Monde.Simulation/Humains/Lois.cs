@@ -62,6 +62,17 @@ public sealed record Assemblage(Matiere Corps, int NCorps, Matiere Tete, int NTe
     public static Assemblage? Lire(string? s)
     {
         if (string.IsNullOrEmpty(s) || s.Length > 64) return null;
+        // Relu à chaque pas pour les armes et les outils de chacun : gardé en cache (0.40.0), le résultat ne dépend que du texte.
+        if (Lus.TryGetValue(s, out var a)) return a;
+        a = LireTexte(s);
+        if (Lus.Count < 50_000) Lus.TryAdd(s, a);
+        return a;
+    }
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Assemblage?> Lus = new(StringComparer.Ordinal);
+
+    private static Assemblage? LireTexte(string s)
+    {
         var parties = s.Split('/');
         if (parties.Length != 3) return null;
         var pieces = parties[0].Split('+');

@@ -528,9 +528,22 @@ public static class Facons
 
     /// <summary>La valeur d'une chose déjà faite, pour ce besoin (avec sa qualité et son usure).</summary>
     public static double Valeur(Fonction f, Objet o) =>
-        o.Matiere == Matiere.Facture && LireObjet(o.Pieces) is { } x && Calculer(x.Facture) is { Reussie: true } c
-            ? Valeur(f, c.Traits) * (0.6 + 0.4 * o.Qualite) * Math.Max(0.3, o.Usure)
+        o.Matiere == Matiere.Facture && TraitsDe(o.Pieces) is { } t
+            ? Valeur(f, t) * (0.6 + 0.4 * o.Qualite) * Math.Max(0.3, o.Usure)
             : 0;
+
+    // Traits d'une chose faite, par sa recette écrite (null : illisible ou ratée). Les objets d'un humain sont revus à chaque
+    // pas : relire et recalculer la recette coûtait 8 % du calcul (0.40.0). Le résultat ne dépend que du texte.
+    private static readonly ConcurrentDictionary<string, Traits?> CacheTraits = new(StringComparer.Ordinal);
+
+    private static Traits? TraitsDe(string? pieces)
+    {
+        if (pieces is null) return null;
+        if (CacheTraits.TryGetValue(pieces, out var t)) return t;
+        t = LireObjet(pieces) is { } x && Calculer(x.Facture) is { Reussie: true } c ? c.Traits : null;
+        if (CacheTraits.Count < 50_000) CacheTraits.TryAdd(pieces, t);
+        return t;
+    }
 
     // ------------------------------------------------------------------ Écrire et lire, avec le savoir et l'objet
 

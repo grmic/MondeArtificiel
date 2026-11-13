@@ -16,6 +16,7 @@ public static partial class Lib
     {
         TypeObjectif.Date => L.Date(o.Limite),
         TypeObjectif.Naissance => L.T("objectif.naissance"),
+        TypeObjectif.AlerteSuivi => L.T("objectif.alerte"),
         _ => L.T("objectif.mort"),
     };
 

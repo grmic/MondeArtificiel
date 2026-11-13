@@ -106,6 +106,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     public void Vivre(Humain h, IReadOnlyList<Humain> tous, long maintenant)
     {
+        if (h.Id < _auCalme.Length) _auCalme[h.Id] = false;
         if (Commencer(h, tous, maintenant, out var partenaire)) Agir(h, partenaire, tous, maintenant);
     }
 
@@ -131,7 +132,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         partenaire = h.EstEnfant(maintenant) ? Gardien(h, tous, maintenant) : Vivant(tous, h.PartenaireId);
         var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId))
                               || AmiAuMemeEndroit(h, tous);
-        Metaboliser(h, chaleurPartagee, maintenant);
+        Metaboliser(h, chaleurPartagee, maintenant, PasARattraper(h));
         return h.EstVivant;
     }
 
@@ -371,32 +372,33 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private static Humain? Vivant(IReadOnlyList<Humain> tous, int id) =>
         id > 0 && id <= tous.Count && tous[id - 1].EstVivant ? tous[id - 1] : null;
 
-    private void Metaboliser(Humain h, bool chaleurPartagee, long maintenant)
+    /// <param name="pas">Pas vécus d'un bloc (plus d'un : un humain de fond au calme qui rattrape son heure, 0.40.0).</param>
+    private void Metaboliser(Humain h, bool chaleurPartagee, long maintenant, int pas = 1)
     {
         var p = h.Personnalite;
         var enceinte = h.EstEnceinte;
-        Depenser(h, FaimParPas * BesoinEnergie(h, maintenant));
-        h.Soif += SoifParPas;
-        h.Fatigue += h.Activite == Activite.Dormir
+        Depenser(h, FaimParPas * BesoinEnergie(h, maintenant) * pas);
+        h.Soif += SoifParPas * pas;
+        h.Fatigue += pas * (h.Activite == Activite.Dormir
             ? -RecuperationSommeil
-            : FatigueParPas * (1.2 - 0.4 * p.Endurance) * (h.Activite == Activite.Repos ? 0.5 : 1) * (enceinte ? 1.2 : 1);
+            : FatigueParPas * (1.2 - 0.4 * p.Endurance) * (h.Activite == Activite.Repos ? 0.5 : 1) * (enceinte ? 1.2 : 1));
 
         // Froid : la perte de chaleur dépend de l'écart au confort et de l'abri ; le corps en produit un peu.
         var temperature = Temperature(h.X, h.Y, maintenant);
         _temperature = temperature;
         // Au-delà de 28 °C, on transpire : la soif vient bien plus vite (jusqu'à un litre d'eau par heure d'effort).
-        if (temperature > 28) h.Soif += SoifParPas * (temperature - 28) / 8 * (h.Activite is Activite.Repos or Activite.Dormir ? 0.5 : 1);
+        if (temperature > 28) h.Soif += pas * SoifParPas * (temperature - 28) / 8 * (h.Activite is Activite.Repos or Activite.Dormir ? 0.5 : 1);
         var abri = AbriEn(h.X, h.Y) + Couverture(h);
         if (Installations.FoyerEn(h.X, h.Y) is not null) abri += ChaleurDuFeu;
         if (chaleurPartagee) abri += 0.3; // se tenir chaud avec son compagnon ou sa famille
         var perte = Math.Max(0, TemperatureConfort - temperature) * 0.05 * Math.Max(0, 1 - abri);
-        h.Froid += perte - ChaleurCorporelle;
+        h.Froid += pas * (perte - ChaleurCorporelle);
 
         // Le désir monte chez les adultes en âge d'avoir des enfants, s'ils ne sont pas en détresse.
         // Une maladie légère (des vers, une infection de la peau) ne l'éteint pas.
         if (h.EstFecond(maintenant) && !(h.EstMalade(maintenant) && Maladies.Fiche(h.Maladie).Gravite >= 0.5) && h.Faim < 70 && h.Soif < 70)
         {
-            h.Desir = Math.Min(100, h.Desir + DesirParPas);
+            h.Desir = Math.Min(100, h.Desir + DesirParPas * pas);
         }
 
         h.Faim = Math.Clamp(h.Faim, 0, 100);
@@ -405,11 +407,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         h.Froid = Math.Clamp(h.Froid, 0, 100);
         var faimSoif = (Math.Max(0, h.Faim - 50) + Math.Max(0, h.Soif - 50)) / 50;
         var froid = Math.Max(0, h.Froid - 40) / 50;
-        h.FaimSoifDuJour += faimSoif;
-        h.FroidDuJour += froid;
-        h.InconfortDuJour += faimSoif + froid + (h.EstMalade(maintenant) ? 0.6 : 0);
+        h.FaimSoifDuJour += faimSoif * pas;
+        h.FroidDuJour += froid * pas;
+        h.InconfortDuJour += (faimSoif + froid + (h.EstMalade(maintenant) ? 0.6 : 0)) * pas;
 
-        Souffrir(h, maintenant, 1);
+        Souffrir(h, maintenant, 1, pas: pas);
     }
 
     /// <summary>Points de faim que représente un point de réserves (100 points de réserves : environ six semaines de nourriture).</summary>
@@ -486,7 +488,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private const double ReservesDecharne = 15;
 
     /// <param name="sevre">Un tout-petit qui ne reçoit pas de lait maternel ce pas-ci (voir <see cref="Sevre"/>).</param>
-    private void Souffrir(Humain h, long maintenant, double fragilite, bool sevre = false)
+    /// <param name="pas">Pas vécus d'un bloc : dégâts, guérison et risque de tomber malade pour chacun d'eux.</param>
+    private void Souffrir(Humain h, long maintenant, double fragilite, bool sevre = false, int pas = 1)
     {
         var p = h.Personnalite;
         Span<double> degats = stackalloc double[NombreDeCauses];
@@ -506,7 +509,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var cause = CauseDeMort.Aucune;
         for (var i = 1; i < degats.Length; i++)
         {
-            total += degats[i] * fragilite;
+            total += degats[i] * fragilite * pas;
             if (degats[i] > pire) (pire, cause) = (degats[i], (CauseDeMort)i);
         }
         // Un corps décharné (réserves presque épuisées) qui meurt aussi assoiffé meurt d'abord de la faim qui l'a usé depuis des
@@ -515,7 +518,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
         // Une plaie soignée se refait plus vite.
         if (total == 0 && h.Faim < 60 && h.Soif < 60)
-            h.Sante = Math.Min(100, h.Sante + 0.03 * (h.PlaieSoin > 0 && Medecine.PlaieOuverte(h, maintenant) ? 1 + 0.5 * h.PlaieSoin : 1));
+            h.Sante = Math.Min(100, h.Sante + pas * 0.03 * (h.PlaieSoin > 0 && Medecine.PlaieOuverte(h, maintenant) ? 1 + 0.5 * h.PlaieSoin : 1));
         h.Sante -= total;
         if (h.Sante <= 0)
         {
@@ -535,7 +538,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                          // souvent malades (Larsen, 1995 ; Cohen et Armelagos, 1984).
                          * (h.PartDesChamps > 0.4 ? 1 + 0.6 * (h.PartDesChamps - 0.4) / 0.6 : 1) * (Sedentaire(h) ? 1.15 : 1) * AuMilieuDesBetes(h);
             var surcroit = sevre ? Sevre.Risque(h.AgeEnAnnees(maintenant)) : 1;
-            if (alea.Reel() < risque * fragilite * AdouciPour(h, maintenant) * surcroit * Decrets.Facteur(LoiDecret.Maladies, h.CommunauteId, maintenant))
+            var parPas = risque * fragilite * AdouciPour(h, maintenant) * surcroit * Decrets.Facteur(LoiDecret.Maladies, h.CommunauteId, maintenant);
+            // Sur plusieurs pas d'un bloc : la chance de tomber malade au moins une fois.
+            if (alea.Reel() < (pas == 1 ? parPas : 1 - Math.Pow(1 - Math.Min(1, parPas), pas)))
             {
                 var maladie = Maladies.Choisir(h, carte.BiomeEn(h.X, h.Y), Calendrier.Decomposer(maintenant).Saison, Population, maintenant, alea, FumeeInterieure(h));
                 // Le surcroît du tout-petit sans lait ne porte que sur les poumons et le ventre.
@@ -1383,6 +1388,35 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     [ThreadStatic] private static int _generation;
     [ThreadStatic] private static Queue<(int Indice, int Distance)>? _file;
 
+    // Pour chaque case, les voisines où l'on passe toujours (0.40.0) : terre ferme hors rivière, sans paroi ni passage entre
+    // les deux. Pour elles, Praticable et Franchissable sont vrais quel que soit l'humain : on s'épargne de les recalculer à
+    // chaque parcours. Les autres voisines sont examinées comme avant. Les biomes et le relief ne changent pas.
+    private byte[]? _voisinsSurs;
+
+    private byte[] VoisinsSurs()
+    {
+        if (_voisinsSurs is { } v) return v;
+        var n = carte.Largeur * carte.Hauteur;
+        var sures = new byte[n];
+        var relief = AvecLeRelief ? carte.Relief : null;
+        for (var i = 0; i < n; i++)
+        {
+            int x = i % carte.Largeur, y = i / carte.Largeur;
+            for (var k = 0; k < Voisins8.Length; k++)
+            {
+                int nx = x + Voisins8[k].Dx, ny = y + Voisins8[k].Dy;
+                if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
+                var j = carte.Indice(nx, ny);
+                var b = (Biome)carte.Biomes[j];
+                if (!Climat.EstPraticable(b) || b == Biome.Riviere) continue;
+                if (relief is not null && relief.Entre(i, j) is Franchissement.Paroi or Franchissement.Passage) continue;
+                sures[i] |= (byte)(1 << k);
+            }
+        }
+        Interlocked.CompareExchange(ref _voisinsSurs, sures, null);
+        return _voisinsSurs!;
+    }
+
     private int NouveauParcours()
     {
         var n = carte.Largeur * carte.Hauteur;
@@ -1394,6 +1428,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     private int PremierPasDuChemin(int depart, int cible, List<int>? chemin = null, int rayonMax = 40)
     {
         int cx = cible % carte.Largeur, cy = cible / carte.Largeur;
+        var voisinsSurs = VoisinsSurs();
+        var arret = Praticable(cible) ? 0 : 1;
         var generation = NouveauParcours();
         var (vus, parent, file) = (_vus!, _parents!, _file!);
         vus[depart] = generation;
@@ -1404,19 +1440,21 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         {
             var (i, d) = file.Dequeue();
             int x = i % carte.Largeur, y = i / carte.Largeur;
-            if (i != depart && Distance(x, y, cx, cy) <= (Praticable(cible) ? 0 : 1))
+            if (i != depart && Distance(x, y, cx, cy) <= arret)
             {
                 if (chemin is not null) return Remonter(i, depart, parent, chemin);
                 while (parent[i] != depart) i = parent[i];
                 return i;
             }
             if (d >= rayonMax) continue;
-            foreach (var (dx, dy) in Voisins8)
+            var sures = voisinsSurs[i];
+            for (var k = 0; k < Voisins8.Length; k++)
             {
+                var (dx, dy) = Voisins8[k];
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
-                if (vus[j] == generation || !Praticable(j) || !Franchissable(i, j)) continue;
+                if (vus[j] == generation || (sures >> k & 1) == 0 && (!Praticable(j) || !Franchissable(i, j))) continue;
                 vus[j] = generation;
                 parent[j] = i;
                 file.Enqueue((j, d + 1));
@@ -1433,6 +1471,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     {
         var rayon = rayonMax ?? RayonPerception(h);
         var debut = carte.Indice(h.X, h.Y);
+        var voisinsSurs = VoisinsSurs();
         var generation = NouveauParcours();
         var (vus, file) = (_vus!, _file!);
         vus[debut] = generation;
@@ -1462,15 +1501,17 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             }
             if (d >= rayon) continue;
             int x = i % carte.Largeur, y = i / carte.Largeur;
-            foreach (var (dx, dy) in Voisins8)
+            var sures = voisinsSurs[i];
+            for (var k = 0; k < Voisins8.Length; k++)
             {
+                var (dx, dy) = Voisins8[k];
                 int nx = x + dx, ny = y + dy;
                 if (nx < 0 || ny < 0 || nx >= carte.Largeur || ny >= carte.Hauteur) continue;
                 var j = carte.Indice(nx, ny);
                 if (vus[j] == generation) continue;
                 vus[j] = generation;
                 // L'eau non praticable peut être une cible (on boit depuis la rive) mais on ne la traverse pas ; une paroi non plus.
-                if (Praticable(j) && Franchissable(i, j)) file.Enqueue((j, d + 1));
+                if ((sures >> k & 1) != 0 || Praticable(j) && Franchissable(i, j)) file.Enqueue((j, d + 1));
             }
         }
         return meilleur;

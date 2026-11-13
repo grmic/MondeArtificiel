@@ -8,6 +8,8 @@ public enum TypeObjectif : byte
     Naissance = 1,
     /// <summary>La prochaine mort.</summary>
     Mort = 2,
+    /// <summary>La prochaine alerte sur un suivi ★ (0.40.0).</summary>
+    AlerteSuivi = 3,
 }
 
 /// <summary>
@@ -32,7 +34,12 @@ public sealed record Objectif(TypeObjectif Type, long Limite, string Description
     public static Objectif Evenement(TypeObjectif type, long maintenant)
     {
         if (type == TypeObjectif.Date) throw new ArgumentException("Utiliser Objectif.Date.", nameof(type));
-        return new Objectif(type, maintenant + AttenteMaximale, type == TypeObjectif.Naissance ? "prochaine naissance" : "prochaine mort");
+        return new Objectif(type, maintenant + AttenteMaximale, type switch
+        {
+            TypeObjectif.Naissance => "prochaine naissance",
+            TypeObjectif.Mort => "prochaine mort",
+            _ => "prochaine alerte d'un suivi",
+        });
     }
 
     /// <summary>Secondes du monde correspondant à une date du calendrier (année ≥ 1, saison 1 à 4, jour 1 à 90, heure 0 à 23).</summary>

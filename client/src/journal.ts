@@ -54,6 +54,8 @@ export class PanneauJournal {
   private significatifs = false;
   /** Seulement les premières fois. */
   private premieres = false;
+  /** Une période (lignes de numéro entre `apres` et `avant`, bornes exclues), ouverte depuis le bilan d'un saut. */
+  private periode: { apres: number; avant: number; libelle: string } | null = null;
   /** Texte cherché dans les lignes affichées (minuscules, sans accents). */
   private texte = "";
   /** Journal figé : la simulation continue, les nouveaux événements attendent la reprise. */
@@ -89,6 +91,25 @@ export class PanneauJournal {
     void this.recharger();
   }
 
+  /**
+   * Ce qui s'est passé pendant une période (bilan d'un saut dans le futur) : les lignes de numéro entre `apres` et `avant`
+   * (exclus), des types donnés, éventuellement les seuls faits marquants ou premières fois.
+   */
+  voirPeriode(p: { apres: number; avant: number; libelle: string; types: string[]; significatifs?: boolean; premieres?: boolean }): void {
+    this.periode = { apres: p.apres, avant: p.avant, libelle: p.libelle };
+    this.communaute = null;
+    this.humain = null;
+    this.types = new Set(p.types);
+    this.significatifs = p.significatifs ?? false;
+    this.premieres = p.premieres ?? false;
+    this.racine.querySelectorAll<HTMLInputElement>(".filtres input[data-cle]").forEach((c) => (c.checked = this.types.has(c.dataset.cle ?? "")));
+    const [sig, prem] = this.racine.querySelectorAll<HTMLInputElement>(".filtres .significatifs input");
+    if (sig) sig.checked = this.significatifs;
+    if (prem) prem.checked = this.premieres;
+    this.racine.hidden = false;
+    void this.recharger();
+  }
+
   basculer(): void {
     this.racine.hidden = !this.racine.hidden;
     if (!this.racine.hidden) void this.recharger();
@@ -105,7 +126,7 @@ export class PanneauJournal {
   }
 
   private filtre(avantId?: number) {
-    return { types: this.premieres ? TYPES.map(([cle]) => cle) : [...this.types], humain: this.humain, avantId: avantId ?? null, limite: 100, communaute: this.communaute?.id ?? null, significatifs: this.significatifs, premieres: this.premieres };
+    return { types: this.premieres ? TYPES.map(([cle]) => cle) : [...this.types], humain: this.humain, avantId: avantId ?? this.periode?.avant ?? null, apresId: this.periode?.apres ?? null, limite: 100, communaute: this.communaute?.id ?? null, significatifs: this.significatifs, premieres: this.premieres };
   }
 
   private async lire(avantId?: number): Promise<Evenement[]> {
@@ -114,7 +135,7 @@ export class PanneauJournal {
   }
 
   private recevoir(nouveaux: Evenement[]): void {
-    if (this.racine.hidden) return;
+    if (this.racine.hidden || this.periode) return;
     const c = this.communaute?.id;
     const gardes = nouveaux.filter((e) => (this.premieres || this.types.has(e.type)) && (this.humain === null || e.humain === this.humain || e.autre === this.humain)
       && (c === undefined || e.communaute === c || e.autreCommunaute === c) && (!this.significatifs || e.significatif) && (!this.premieres || e.premiere));
@@ -242,6 +263,8 @@ export class PanneauJournal {
     const suivi = el("div", "suivi");
     suivi.hidden = true;
     r.append(suivi);
+    const periode = el("div", "suivi periode");
+    periode.hidden = true;
 
     const zone = el("ul", "liste evenements");
     const plus = el("button", "plus", t("journal.plusAnciens"));
@@ -254,7 +277,7 @@ export class PanneauJournal {
       this.evenements.push(...anciens);
       this.dessinerListe();
     });
-    r.append(tete, filtres, rechercheTexte, recherche, suivi, zone, plus);
+    r.append(tete, filtres, rechercheTexte, recherche, suivi, periode, zone, plus);
   }
 
   /** Bouton de pause : ⏸ en direct ; en pause, ▶ et le nombre d'événements arrivés depuis. */
@@ -278,6 +301,17 @@ export class PanneauJournal {
         void this.recharger();
       });
       suivi.replaceChildren(t("journal.chronologie", { nom: this.communaute.nom, nomMin: `${this.communaute.nom.charAt(0).toLowerCase()}${this.communaute.nom.slice(1)}` }), arreter);
+    }
+    const periode = this.racine.querySelector<HTMLElement>(".periode")!;
+    periode.hidden = this.periode === null;
+    if (this.periode) {
+      const arreter = el("button", undefined, t("journal.toutLeJournal"));
+      arreter.type = "button";
+      arreter.addEventListener("click", () => {
+        this.periode = null;
+        void this.recharger();
+      });
+      periode.replaceChildren(this.periode.libelle, " ", arreter);
     }
     const zone = this.racine.querySelector(".evenements")!;
     const visibles = this.texte === "" ? this.evenements : this.evenements.filter((e) => sansAccents(e.texte).includes(this.texte));

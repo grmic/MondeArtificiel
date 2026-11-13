@@ -119,28 +119,34 @@ public sealed partial class DepotMonde
         }
     }
 
-    private static void EnregistrerLangage(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
+    private static void EnregistrerLangage(SqliteConnection connexion, SqliteTransaction transaction, Ecritures ecritures, IReadOnlyList<Humain> humains)
     {
-        Executer(connexion, transaction, "DELETE FROM langage_humains; DELETE FROM mots;");
-        using var langage = Preparer(connexion, transaction, """
+        using var langage = new ParHumain(connexion, transaction, ecritures, "langage_humains", Preparer(connexion, transaction, """
             INSERT INTO langage_humains (humain, parole, parole_enfant, parole_native, ordre, nom, sens, nom_le, nom_par, nom_evenement, seconde, compagnons)
             VALUES ($h, $p, $pe, $pn, $o, $n, $s, $nl, $np, $ne, $se, $co);
-            """, "$h", "$p", "$pe", "$pn", "$o", "$n", "$s", "$nl", "$np", "$ne", "$se", "$co");
-        using var mots = Preparer(connexion, transaction,
+            """, "$h", "$p", "$pe", "$pn", "$o", "$n", "$s", "$nl", "$np", "$ne", "$se", "$co"),
+            "DELETE FROM langage_humains WHERE humain = $h;", "DELETE FROM langage_humains;");
+        using var mots = new ParHumain(connexion, transaction, ecritures, "mots", Preparer(connexion, transaction,
             "INSERT INTO mots (humain, rang, idee, forme, signe, force, le, auteur, langue) VALUES ($h, $r, $i, $f, $s, $fo, $l, $a, $la);",
-            "$h", "$r", "$i", "$f", "$s", "$fo", "$l", "$a", "$la");
+            "$h", "$r", "$i", "$f", "$s", "$fo", "$l", "$a", "$la"), "DELETE FROM mots WHERE humain = $h;", "DELETE FROM mots;");
         foreach (var h in humains)
         {
-            if (h.StadeParole == 0 && h.NomLangue is null && h.Vocabulaire.Count == 0) continue;
-            if (h.NomLangue is { } nom && !EstMot(nom)) throw new ArgumentException($"Nom invalide : {nom}.");
-            Lancer(langage, h.Id, h.StadeParole, h.ParoleEnfant, h.ParoleNative, (int)h.Ordre, (object?)h.NomLangue ?? DBNull.Value,
-                (object?)h.NomSens ?? DBNull.Value, h.NomLangueLe, h.NomParId, h.NomEvenementId, h.LangueSecondeId, h.CompagnonsDeLangue);
-            for (var r = 0; r < h.Vocabulaire.Count; r++)
+            langage.Debut(h.Id);
+            mots.Debut(h.Id);
+            if (h.StadeParole != 0 || h.NomLangue is not null || h.Vocabulaire.Count != 0)
             {
-                var m = h.Vocabulaire[r];
-                if (!EstIdee(m.Idee) || !EstForme(m.Forme, m.Signe)) throw new ArgumentException($"Mot invalide : {m.Idee}={m.Forme}.");
-                Lancer(mots, h.Id, r, m.Idee, m.Forme, m.Signe, m.Force, m.Le, m.AuteurId, m.Langue);
+                if (h.NomLangue is { } nom && !EstMot(nom)) throw new ArgumentException($"Nom invalide : {nom}.");
+                langage.Ligne(h.Id, h.StadeParole, h.ParoleEnfant, h.ParoleNative, (int)h.Ordre, (object?)h.NomLangue ?? DBNull.Value,
+                    (object?)h.NomSens ?? DBNull.Value, h.NomLangueLe, h.NomParId, h.NomEvenementId, h.LangueSecondeId, h.CompagnonsDeLangue);
+                for (var r = 0; r < h.Vocabulaire.Count; r++)
+                {
+                    var m = h.Vocabulaire[r];
+                    if (!EstIdee(m.Idee) || !EstForme(m.Forme, m.Signe)) throw new ArgumentException($"Mot invalide : {m.Idee}={m.Forme}.");
+                    mots.Ligne(h.Id, r, m.Idee, m.Forme, m.Signe, m.Force, m.Le, m.AuteurId, m.Langue);
+                }
             }
+            langage.Fin();
+            mots.Fin();
         }
     }
 

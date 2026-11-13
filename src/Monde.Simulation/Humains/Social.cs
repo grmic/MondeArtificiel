@@ -438,12 +438,25 @@ public sealed partial class VieSociale(Alea alea)
     /// <summary>Au-delà de ce qu'il peut entretenir, l'humain perd le lien le plus faible.</summary>
     private static void Limiter(Humain h)
     {
-        var max = LiensMax(h);
-        while (h.Liens.Count > max)
+        var liens = h.Liens;
+        var enTrop = liens.Count - LiensMax(h);
+        if (enTrop <= 0) return;
+        if (enTrop == 1)
         {
-            h.Liens.Remove(h.Liens.MinBy(l => (l.Familiarite + Math.Abs(l.Affection), l.Derniere))!);
+            liens.Remove(liens.MinBy(Faiblesse)!);
+            return;
         }
+        // Retirer un à un le lien le plus faible (le premier venu à égalité) revient à retirer d'un coup les plus faibles, à
+        // égalité les premiers de la liste (le tri est stable) : même résultat, sans parcourir la liste à chaque retrait (0.40.0).
+        var retires = new bool[liens.Count];
+        foreach (var i in Enumerable.Range(0, liens.Count).OrderBy(i => Faiblesse(liens[i])).Take(enTrop)) retires[i] = true;
+        var n = 0;
+        for (var i = 0; i < liens.Count; i++)
+            if (!retires[i]) liens[n++] = liens[i];
+        liens.RemoveRange(n, liens.Count - n);
     }
+
+    private static (double, long) Faiblesse(Lien l) => (l.Familiarite + Math.Abs(l.Affection), l.Derniere);
 
     /// <summary>Pose un lien vu de <paramref name="h"/> : le dernier bienfait reste le sien (il n'est pas copié de l'autre côté).</summary>
     private static void Poser(Humain h, Lien lien)

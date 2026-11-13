@@ -34,17 +34,20 @@ public sealed class Carte
     private Nature.Terrain? _terrain;
 
     /// <summary>Roches, sols, rivières, grottes, sources et gisements : tirés de la graine et de la carte au premier besoin.</summary>
-    public Nature.Terrain Terrain => LazyInitializer.EnsureInitialized(ref _terrain, () => Nature.Terrain.Calculer(this));
+    // Lu à chaque pas par chaque humain : la fermeture n'est allouée qu'au premier calcul (0.40.0).
+    public Nature.Terrain Terrain => Volatile.Read(ref _terrain) ?? LazyInitializer.EnsureInitialized(ref _terrain, () => Nature.Terrain.Calculer(this));
 
     private Nature.Mer? _mer;
 
     /// <summary>Fonds, rivages, îles, passages, vents et courants : tirés de la graine et de la carte au premier besoin.</summary>
-    public Nature.Mer Mer => LazyInitializer.EnsureInitialized(ref _mer, () => Nature.Mer.Calculer(this));
+    // Lu à chaque pas par chaque humain : la fermeture n'est allouée qu'au premier calcul (0.40.0).
+    public Nature.Mer Mer => Volatile.Read(ref _mer) ?? LazyInitializer.EnsureInitialized(ref _mer, () => Nature.Mer.Calculer(this));
 
     private Nature.Relief? _relief;
 
     /// <summary>Parois, passages et cols, tels que les vit un marcheur : tirés de la graine et de la carte au premier besoin.</summary>
-    public Nature.Relief Relief => LazyInitializer.EnsureInitialized(ref _relief, () => Nature.Relief.Calculer(this));
+    // Lu à chaque pas par chaque humain : la fermeture n'est allouée qu'au premier calcul (0.40.0).
+    public Nature.Relief Relief => Volatile.Read(ref _relief) ?? LazyInitializer.EnsureInitialized(ref _relief, () => Nature.Relief.Calculer(this));
 
     public int Indice(int x, int y) => y * Largeur + x;
 

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Monde artificiel</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%2330784a'/%3E%3C/svg%3E" />
-    <script type="module" crossorigin src="/assets/index-CMOtecfO.js"></script>
+    <script type="module" crossorigin src="/assets/index-DG9tLBkj.js"></script>
   </head>
   <body>
     <div id="scene"></div>
@@ -60,6 +60,7 @@
           <option value="annee" data-t="temps.objectif.annee"></option>
           <option value="naissance" data-t="temps.objectif.naissance"></option>
           <option value="mort" data-t="temps.objectif.mort"></option>
+          <option value="alerte" data-t="temps.objectif.alerte"></option>
           <option value="date" data-t="temps.objectif.date"></option>
         </select>
         <span id="champsDate" class="champs-date" hidden>
@@ -70,9 +71,22 @@
         </span>
         <button type="submit" data-t="temps.aller"></button>
       </form>
+      <div class="ligne sauts">
+        <span data-t="temps.avancerDe"></span>
+        <button type="button" data-saut="10" data-t="temps.saut10" data-t-title="temps.sautAide"></button>
+        <button type="button" data-saut="50" data-t="temps.saut50" data-t-title="temps.sautAide"></button>
+        <button type="button" data-saut="100" data-t="temps.saut100" data-t-title="temps.sautAide"></button>
+        <button type="button" data-saut="500" data-t="temps.saut500" data-t-title="temps.sautAide"></button>
+      </div>
+      <div id="confirmerSaut" class="ligne confirmer-saut" hidden>
+        <span id="texteConfirmerSaut"></span>
+        <button type="button" id="sautOui" data-t="temps.sautOui"></button>
+        <button type="button" id="sautNon" data-t="commun.annuler"></button>
+      </div>
       <div id="objectifEnCours" class="ligne objectif" hidden>
         <span id="texteObjectif"></span>
         <button type="button" id="annulerObjectif" data-t="temps.arreter"></button>
+        <span id="progresSaut" class="progres-saut" hidden><progress id="barreSaut" max="1" value="0"></progress> <span id="texteSaut"></span></span>
       </div>
       <label class="ligne discret"><input id="reprendreVitesse" type="checkbox" /> <span data-t="temps.reprendreVitesse"></span></label>
       <label class="ligne discret"><input id="pauseCatastrophe" type="checkbox" /> <span data-t="temps.pauseCatastrophe"></span></label>
@@ -97,6 +111,7 @@
     <aside id="decouvertes" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.decouvertes" hidden></aside>
     <aside id="suivis" class="journal-panneau panneau-lateral" data-t-aria-label="barre.suivis" hidden></aside>
     <aside id="remarquables" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.remarquables" hidden></aside>
+    <aside id="bilanSaut" class="bilan-panneau panneau-lateral" data-t-aria-label="sautBilan.titre" hidden></aside>
     <aside id="prieres" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.prieres" hidden></aside>
     <aside id="entiteLlm" class="demographie-panneau panneau-lateral" data-t-aria-label="barre.entiteLlm" hidden></aside>
     <aside id="dialogue" class="dialogue-panneau panneau-lateral" data-t-aria-label="dlgc.fenetre" hidden></aside>

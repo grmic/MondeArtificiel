@@ -9,7 +9,7 @@ namespace Monde.Serveur;
 /// Détient le monde courant et sa sauvegarde. Au démarrage, le monde reprend à la date enregistrée,
 /// en pause par défaut, ou à sa dernière vitesse si ce réglage est choisi.
 /// </summary>
-public sealed class ServiceMonde : IDisposable
+public sealed partial class ServiceMonde : IDisposable
 {
     private readonly Lock _verrou = new();
 
@@ -108,6 +108,7 @@ public sealed class ServiceMonde : IDisposable
             PauseSurCatastrophe = _pauseSurCatastrophe, JournalQuotidien = _journalQuotidien, Coeurs = _coeurs, Clemence = _clemence, EspritsFertiles = _espritsFertiles,
         };
         ReglerLeFond(_monde);
+        AppliquerVeille(_monde);
         // Première sauvegarde complète : les humains d'un monde nouveau (ou d'une ancienne version) sont enregistrés.
         Sauvegarder();
     }
@@ -219,8 +220,13 @@ public sealed class ServiceMonde : IDisposable
         ReglerLeFond(_monde);
     }
 
-    /// <summary>Les suivis ☆ ont changé : ils restent en individu.</summary>
-    public void SuivisChanges() => ReglerLeFond(_monde);
+    /// <summary>Les suivis ☆ ont changé : ils restent en individu, et le monde veille sur eux.</summary>
+    public void SuivisChanges()
+    {
+        var monde = _monde;
+        ReglerLeFond(monde);
+        AppliquerVeille(monde);
+    }
 
     private HashSet<int> Ids(string cle) =>
         [.. (Depot.LireReglage(cle) ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
@@ -313,6 +319,7 @@ public sealed class ServiceMonde : IDisposable
             var terminees = (etat.Catastrophes ?? []).Where(c => !c.Active).Select(c => c.Id).ToHashSet();
             monde.MarquerJournalEnregistre(etat.JournalNonEnregistre?.Count ?? 0, etat.ArchivesNonEnregistrees?.Count ?? 0, terminees,
                 etat.PremieresNonEnregistrees?.Count ?? 0);
+            EnregistrerAlertesEnAttente();
         }
     }
 
@@ -350,6 +357,9 @@ public sealed class ServiceMonde : IDisposable
             Depot.EcrireReglage(Entite.EntiteLlm.CleUsage, nameof(Entite.UsageLlm.Jamais));
             _monde = nouveau;
             Fond = fond;
+            // Les suivis et les alertes appartiennent à l'ancien monde : le nouveau n'en a pas.
+            lock (_alertesAEnregistrer) _alertesAEnregistrer.Clear();
+            AppliquerVeille(nouveau);
         }
         if (garderAncien)
             _journal.LogInformation("Monde réinitialisé ({Configuration}) ; ancien monde copié dans {Copie}", configuration, CheminCopieAvantReinitialisation);
@@ -474,6 +484,7 @@ public sealed class ServiceMonde : IDisposable
             Depot.RemplacerPar(prepare);
             _monde = restaure;
             ReglerLeFond(restaure);
+            AppliquerVeille(restaure);
             _journal.LogInformation("Sauvegarde {Source} restaurée ; l'ancien monde est dans {Copie}", source, copie);
             return restaure;
         }

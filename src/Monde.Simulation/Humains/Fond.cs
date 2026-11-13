@@ -16,6 +16,34 @@ public sealed partial class Comportement
     /// <summary>Pas joués d'un coup par un humain de fond au calme : une heure.</summary>
     public const int PasParCreneau = (int)(Calendrier.SecondesParHeure / MondeSimule.SecondesParPas);
 
+    // Humains de fond au calme pour l'heure (par numéro), et pas qu'ils n'ont pas vécus depuis : leur corps les rattrape d'un bloc
+    // (faim, soif, fatigue, froid, santé) au pas suivant qu'ils vivent. Chaque humain n'écrit que sa case : sûr sur plusieurs cœurs.
+    private bool[] _auCalme = [];
+    private int[] _pasDus = [];
+
+    /// <summary>Avant chaque pas : de la place pour chaque humain né (sans humains de fond, rien n'est au calme).</summary>
+    internal void PreparerFond(int humains, bool actif)
+    {
+        if (!actif)
+        {
+            if (_auCalme.Length > 0) Array.Clear(_auCalme);
+            return;
+        }
+        if (_auCalme.Length > humains) return;
+        var taille = humains + 256;
+        Array.Resize(ref _auCalme, taille);
+        Array.Resize(ref _pasDus, taille);
+    }
+
+    /// <summary>Pas que le corps de cet humain doit rattraper (lui compris), remis à zéro.</summary>
+    private int PasARattraper(Humain h)
+    {
+        if (h.Id >= _pasDus.Length) return 1;
+        var dus = _pasDus[h.Id];
+        _pasDus[h.Id] = 0;
+        return 1 + dus;
+    }
+
     /// <summary>Nombre de pas que représente le pas en cours (1, sauf pour le temps libre d'un humain de fond).</summary>
     [ThreadStatic] private static int _cadence;
 
@@ -33,8 +61,18 @@ public sealed partial class Comportement
     /// </summary>
     public bool VivreEnFond(Humain h, IReadOnlyList<Humain> tous, long maintenant, bool creneau)
     {
+        // Au calme depuis sa dernière heure (0.40.0) : il ne vit pas ce pas ; son corps le rattrapera d'un bloc à la prochaine heure.
+        if (!creneau && h.Id < _auCalme.Length && _auCalme[h.Id] && _pasDus[h.Id] < PasParCreneau - 1)
+        {
+            _pasDus[h.Id]++;
+            return false;
+        }
         if (!Commencer(h, tous, maintenant, out var partenaire)) return true;
-        if (!AuCalme(h, partenaire, tous, maintenant))
+        var calme = AuCalme(h, partenaire, tous, maintenant);
+        // Pour l'heure qui vient, au calme d'un bloc : seulement s'il n'attend pas d'enfant (la grossesse se vit pas à pas)
+        // et s'il ne doit pas veiller sur un petit.
+        if (h.Id < _auCalme.Length) _auCalme[h.Id] = calme && h.EnceinteDepuis is null && !h.EstPetitEnfant(maintenant);
+        if (!calme)
         {
             Agir(h, partenaire, tous, maintenant);
             return true;

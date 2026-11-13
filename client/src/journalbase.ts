@@ -23,7 +23,7 @@ interface JournalBase {
 const MO = 1024 * 1024;
 
 /** Taille lisible : Mo jusqu'à 10 Go, puis Go. */
-function taille(octets: number): string {
+export function taille(octets: number): string {
   return octets >= 10 * 1024 * MO
     ? t("journalBase.go", { v: (octets / 1024 / MO).toFixed(1) })
     : t("journalBase.mo", { v: Math.max(1, Math.round(octets / MO)) });

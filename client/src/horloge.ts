@@ -1,4 +1,5 @@
 import { connexion } from "./connexion";
+import { taille } from "./journalbase";
 import { nombre as ecrire, t } from "./langue";
 
 export interface Horloge {
@@ -23,6 +24,24 @@ export interface Horloge {
   eteint: boolean;
   /** Vivants simulés de fond en ce moment (0 : option décochée ou sous le seuil). */
   deFond: number;
+  /** Saut dans le futur en cours (« Avancer de N ans »). */
+  saut: { cible: string; avancement: number; ansParMinute: number; resteSecondes: number | null } | null;
+}
+
+/** Ce qu'un saut ajouterait à la base (octets), au rythme mesuré du journal. */
+interface EstimationSaut {
+  ans: number;
+  fichier: number;
+  octetsParAn: number | null;
+  ajout: number | null;
+  libreDisque: number | null;
+  attention: boolean;
+}
+
+/** Durée lisible : « 12 min », « 1 h 40 ». */
+function duree(secondes: number): string {
+  const min = Math.max(1, Math.round(secondes / 60));
+  return min < 60 ? t("temps.dureeMin", { n: ecrire(min) }) : t("temps.dureeH", { h: ecrire(Math.floor(min / 60)), m: String(min % 60).padStart(2, "0") });
 }
 
 interface Vitesse {
@@ -146,6 +165,32 @@ export class PanneauHorloge {
     });
     this.el("#annulerObjectif").addEventListener("click", () => void this.envoyer("ChoisirVitesse", 0));
 
+    // « Avancer de N ans » : un long saut est d'abord estimé (taille de la base, place sur le disque).
+    let sautDemande = 0;
+    const confirmer = this.el("#confirmerSaut");
+    for (const bouton of this.racine.querySelectorAll<HTMLButtonElement>("[data-saut]")) {
+      bouton.addEventListener("click", () => void (async () => {
+        const ans = Number(bouton.dataset.saut);
+        const e = await connexion.invoke<EstimationSaut>("EstimerSaut", ans).catch(() => null);
+        if (e && (ans >= 50 || e.attention)) {
+          sautDemande = ans;
+          const morceaux = [t("temps.sautBase", { ans: ecrire(ans), fichier: taille(e.fichier) })];
+          morceaux.push(e.ajout !== null ? t("temps.sautAjout", { ajout: taille(e.ajout) }) : t("temps.sautInconnu"));
+          if (e.libreDisque !== null) morceaux.push(t("temps.sautLibre", { libre: taille(e.libreDisque) }));
+          this.el("#texteConfirmerSaut").textContent = morceaux.join(" ");
+          confirmer.classList.toggle("alerte", e.attention);
+          confirmer.hidden = false;
+          return;
+        }
+        await this.envoyer("Sauter", ans);
+      })());
+    }
+    this.el("#sautOui").addEventListener("click", () => {
+      confirmer.hidden = true;
+      if (sautDemande > 0) void this.envoyer("Sauter", sautDemande);
+    });
+    this.el("#sautNon").addEventListener("click", () => (confirmer.hidden = true));
+
     const reprendre = this.el<HTMLInputElement>("#reprendreVitesse");
     reprendre.addEventListener("change", () => void this.envoyer("ChoisirRedemarrage", reprendre.checked));
     const pause = this.el<HTMLInputElement>("#pauseCatastrophe");
@@ -185,6 +230,15 @@ export class PanneauHorloge {
     const zoneObjectif = this.el("#objectifEnCours");
     zoneObjectif.hidden = !h.objectif;
     this.el("#texteObjectif").textContent = h.objectif ? t("temps.enRoute", { objectif: h.objectif }) : "";
+    const progres = this.el("#progresSaut");
+    progres.hidden = !h.saut;
+    if (h.saut) {
+      this.el<HTMLProgressElement>("#barreSaut").value = h.saut.avancement;
+      const morceaux = [`${ecrire(h.saut.avancement * 100)} %`];
+      if (h.saut.ansParMinute > 0) morceaux.push(t("temps.ansParMinute", { n: ecrire(h.saut.ansParMinute, h.saut.ansParMinute < 10 ? 1 : 0) }));
+      if (h.saut.resteSecondes !== null) morceaux.push(t("temps.reste", { duree: duree(h.saut.resteSecondes) }));
+      this.el("#texteSaut").textContent = morceaux.join(" · ");
+    }
     this.el<HTMLInputElement>("#reprendreVitesse").checked = h.reprendreVitesse;
     this.el<HTMLInputElement>("#pauseCatastrophe").checked = h.pauseCatastrophe;
 

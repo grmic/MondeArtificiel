@@ -541,6 +541,8 @@ public sealed partial class MondeSimule
         numerote = _premieres.Marquer(numerote, TypeDeCatastrophe);
         _numeros.Prochain = Math.Max(_numeros.Prochain, numerote.Id + 1);
         _journalNonEnregistre.Add(numerote);
+        if (_veille.Active) _veille.Examiner(numerote, _humains);
+        _saut?.Compter(numerote, _humains);
         if (TypesEvenement.EstFrequent(numerote.Type)) return;
         _journalRecent.Enqueue(numerote);
         if (_journalRecent.Count > TailleJournalRecent) _journalRecent.Dequeue();
@@ -746,6 +748,7 @@ public sealed partial class MondeSimule
         if (objectif is not null) fin = Math.Min(fin, objectif.Limite);
         var nombreAvant = _humains.Count;
         var vivantsAvant = objectif?.Type == TypeObjectif.Mort ? _humains.Vivants().Count(h => h.EstVivant) : 0;
+        var alertesAvant = _veille.Produites;
 
         var pas = 0;
         var evenement = false;
@@ -793,9 +796,23 @@ public sealed partial class MondeSimule
                     TypeObjectif.Naissance => _humains.Count > nombreAvant,
                     // Les naissances du pas sont vivantes : on compare aux vivants d'avant, nouveau-nés compris.
                     TypeObjectif.Mort => _humains.Vivants().Count(h => h.EstVivant) < vivantsAvant + (_humains.Count - nombreAvant),
+                    TypeObjectif.AlerteSuivi => _veille.Produites > alertesAvant,
                     _ => false,
                 };
-                if (evenement) break;
+                if (evenement)
+                {
+                    _veille.PauseDemandee = false;
+                    break;
+                }
+            }
+            // Une alerte sur un suivi demande la pause (0.40.0) : le monde s'arrête aussitôt, même pendant un « Avancer jusqu'à ».
+            if (_veille.PauseDemandee)
+            {
+                _veille.PauseDemandee = false;
+                _objectif = null;
+                _facteur = 0;
+                _reliquat = 0;
+                return (pas, false);
             }
             if (chrono is not null && chrono.Elapsed >= budget) return (pas, false);
         }
@@ -923,6 +940,7 @@ public sealed partial class MondeSimule
             }
         }
         VerserJournal();
+        if (nouveauJour && _veille.Active) _veille.Constater(_secondes, _humains, _communautes);
     }
 
     /// <summary>
@@ -1038,6 +1056,7 @@ public sealed partial class MondeSimule
         var vivants = _humains.Vivants;
         var nombre = vivants.Count;
         var fond = _fond;
+        _comportement.PreparerFond(_humains.Count + 1, fond is not null);
         var eveilles = 0;
         for (var i = 0; i < nombre; i++)
         {
@@ -1075,6 +1094,7 @@ public sealed partial class MondeSimule
         while (_tours.Count < nombre) _tours.Add(new Tour());
         var tours = _tours;
         var fond = _fond;
+        _comportement.PreparerFond(_humains.Count + 1, fond is not null);
         var pas = _pas;
         var eveilles = 0;
         Surveillant?.Invoke(true);

@@ -212,47 +212,56 @@ public sealed partial class DepotMonde
         }
     }
 
-    private static void EnregistrerSavoirs(SqliteConnection connexion, SqliteTransaction transaction, IReadOnlyList<Humain> humains)
+    private static void EnregistrerSavoirs(SqliteConnection connexion, SqliteTransaction transaction, Ecritures ecritures, IReadOnlyList<Humain> humains)
     {
-        Executer(connexion, transaction, "DELETE FROM savoirs; DELETE FROM objets; DELETE FROM impulsions;");
-        using var etat = Preparer(connexion, transaction, """
+        using var etat = new ParHumain(connexion, transaction, ecritures, "humains.savoirs", Preparer(connexion, transaction, """
             UPDATE humains SET nage = $n, cuit_jusqua = $c, remede_espece = $re, remede_geste = $rg, remede_symptome = $rs, remede_le = $rl,
                 vetement_matiere = $vm, vetement_qualite = $vq, vetement_usure = $vu
             WHERE id = $id;
-            """, "$n", "$c", "$re", "$rg", "$rs", "$rl", "$vm", "$vq", "$vu", "$id");
-        using var savoirs = Preparer(connexion, transaction, """
+            """, "$n", "$c", "$re", "$rg", "$rs", "$rl", "$vm", "$vq", "$vu", "$id"), suitLaLigne: true);
+        using var savoirs = new ParHumain(connexion, transaction, ecritures, "savoirs", Preparer(connexion, transaction, """
             INSERT INTO savoirs (humain, rang, geste, a, b, effet, espece, symptome, essais, succes, appris_le, utilise_le, origine, maitre, evenement, pieces)
             VALUES ($h, $r, $g, $a, $b, $e, $es, $sy, $n, $s, $ap, $u, $o, $m, $ev, $pi);
-            """, "$h", "$r", "$g", "$a", "$b", "$e", "$es", "$sy", "$n", "$s", "$ap", "$u", "$o", "$m", "$ev", "$pi");
-        using var objets = Preparer(connexion, transaction,
+            """, "$h", "$r", "$g", "$a", "$b", "$e", "$es", "$sy", "$n", "$s", "$ap", "$u", "$o", "$m", "$ev", "$pi"),
+            "DELETE FROM savoirs WHERE humain = $h;", "DELETE FROM savoirs;");
+        using var objets = new ParHumain(connexion, transaction, ecritures, "objets", Preparer(connexion, transaction,
             "INSERT INTO objets (humain, rang, matiere, qualite, usure, plein, pieces) VALUES ($h, $r, $m, $q, $u, $p, $pi);",
-            "$h", "$r", "$m", "$q", "$u", "$p", "$pi");
-        using var impulsions = Preparer(connexion, transaction, """
+            "$h", "$r", "$m", "$q", "$u", "$p", "$pi"), "DELETE FROM objets WHERE humain = $h;", "DELETE FROM objets;");
+        using var impulsions = new ParHumain(connexion, transaction, ecritures, "impulsions", Preparer(connexion, transaction, """
             INSERT INTO impulsions (humain, rang, parole, mode, cible, param, force, le, jusqua, agir_le, reponse, evenement, orientation)
             VALUES ($h, $r, $p, $m, $c, $pa, $f, $le, $j, $a, $re, $ev, $o);
-            """, "$h", "$r", "$p", "$m", "$c", "$pa", "$f", "$le", "$j", "$a", "$re", "$ev", "$o");
+            """, "$h", "$r", "$p", "$m", "$c", "$pa", "$f", "$le", "$j", "$a", "$re", "$ev", "$o"),
+            "DELETE FROM impulsions WHERE humain = $h;", "DELETE FROM impulsions;");
         foreach (var h in humains)
         {
             var v = h.Vetement;
-            Lancer(etat, h.Nage, h.CuitJusqua, h.RemedeEspece, (int)h.RemedeGeste, (int)h.RemedeSymptome, h.RemedeLe,
+            etat.Debut(h.Id);
+            savoirs.Debut(h.Id);
+            objets.Debut(h.Id);
+            impulsions.Debut(h.Id);
+            etat.Ligne(h.Nage, h.CuitJusqua, h.RemedeEspece, (int)h.RemedeGeste, (int)h.RemedeSymptome, h.RemedeLe,
                 (int)(v?.Matiere ?? 0), v?.Qualite ?? 0, v?.Usure ?? 0, h.Id);
             for (var r = 0; r < h.Savoirs.Count; r++)
             {
                 var s = h.Savoirs[r];
-                Lancer(savoirs, h.Id, r, (int)s.Geste, (int)s.A, (int)s.B, (int)s.Effet, s.Espece, (int)s.Symptome, s.Essais, s.Succes,
+                savoirs.Ligne(h.Id, r, (int)s.Geste, (int)s.A, (int)s.B, (int)s.Effet, s.Espece, (int)s.Symptome, s.Essais, s.Succes,
                     s.AppriLe, s.UtiliseLe, (int)s.Origine, s.MaitreId, s.EvenementId, s.Pieces);
             }
             for (var r = 0; r < h.Objets.Count; r++)
             {
                 var o = h.Objets[r];
-                Lancer(objets, h.Id, r, (int)o.Matiere, o.Qualite, o.Usure, o.Plein, o.Pieces ?? "");
+                objets.Ligne(h.Id, r, (int)o.Matiere, o.Qualite, o.Usure, o.Plein, o.Pieces ?? "");
             }
             for (var r = 0; r < h.Impulsions.Count; r++)
             {
                 var i = h.Impulsions[r];
-                Lancer(impulsions, h.Id, r, (int)i.Parole, (int)i.Mode, i.CibleId, i.Param, i.Force, i.Le, i.Jusqua, i.AgirLe, (int)i.Reponse,
+                impulsions.Ligne(h.Id, r, (int)i.Parole, (int)i.Mode, i.CibleId, i.Param, i.Force, i.Le, i.Jusqua, i.AgirLe, (int)i.Reponse,
                     i.EvenementId, i.Orientation);
             }
+            etat.Fin();
+            savoirs.Fin();
+            objets.Fin();
+            impulsions.Fin();
         }
     }
 

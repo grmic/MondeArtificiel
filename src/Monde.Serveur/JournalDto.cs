@@ -76,7 +76,7 @@ public sealed record EvenementDto(long Id, long Secondes, string Date, string Ty
 /// <param name="Significatifs">Seulement les événements significatifs.</param>
 /// <param name="Premieres">Seulement les premières fois (au monde, ou pour une communauté).</param>
 public sealed record FiltreJournal(string[]? Types = null, int? Humain = null, long? AvantId = null, int Limite = 100, int? Communaute = null,
-    bool Significatifs = false, bool Premieres = false)
+    bool Significatifs = false, bool Premieres = false, long? ApresId = null)
 {
     /// <summary>Au plus un exemplaire de chaque type connu, et une limite entre 1 et la limite du dépôt.</summary>
     public bool EstValide => (Types is not { } t || t.Length <= EvenementDto.Cles.Count)
@@ -478,12 +478,13 @@ public sealed record FicheDto(
             (types.Count == 0 || types.Contains(e.Type))
             && (filtre.Humain is not { } h || e.HumainId == h || e.AutreId == h)
             && (filtre.AvantId is not { } a || e.Id < a)
+            && (filtre.ApresId is not { } ap || e.Id > ap)
             && (filtre.Communaute is not { } c || e.CommunauteId == c || e.AutreCommunauteId == c)
             && (!filtre.Significatifs || e.Significatif)
             && (!filtre.Premieres || PremieresFois.Est(e));
         var recents = service.Monde.JournalRecent().Where(Convient);
         var enregistres = service.Depot.LireJournal(types, filtre.Humain, filtre.AvantId, limite, filtre.Communaute, filtre.Significatifs,
-            filtre.Premieres);
+            filtre.Premieres, filtre.ApresId);
         return recents.Concat(enregistres).DistinctBy(e => e.Id).OrderByDescending(e => e.Id).Take(limite).ToList();
     }
 }

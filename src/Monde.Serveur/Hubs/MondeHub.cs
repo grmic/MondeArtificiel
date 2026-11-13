@@ -72,7 +72,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     /// <summary>
     /// Avance à la vitesse maximale jusqu'à une date ou un événement, puis met en pause.
-    /// Types : « date » (annee, saison 1-4, jour 1-90, heure 0-23), « matin », « saison », « annee », « naissance », « mort ».
+    /// Types : « date » (annee, saison 1-4, jour 1-90, heure 0-23), « matin », « saison », « annee », « naissance », « mort », « alerte » (prochaine alerte d'un suivi).
     /// </summary>
     public async Task<HorlogeDto> AllerJusqua(DemandeObjectif demande)
     {
@@ -90,6 +90,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
                 "annee" => Objectif.Date(Objectif.ProchaineAnnee(maintenant), maintenant),
                 "naissance" => Objectif.Evenement(TypeObjectif.Naissance, maintenant),
                 "mort" => Objectif.Evenement(TypeObjectif.Mort, maintenant),
+                "alerte" => Objectif.Evenement(TypeObjectif.AlerteSuivi, maintenant),
                 _ => throw new HubException(L.T("erreur.objectif")),
             };
             monde.FixerObjectif(objectif);
@@ -99,6 +100,25 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
             throw new HubException(L.T("erreur.date"));
         }
         return await DiffuserHorloge();
+    }
+
+    /// <summary>Durées proposées pour « Avancer de… » (années).</summary>
+    public static readonly int[] DureesSaut = [10, 50, 100, 500];
+
+    /// <summary>Saute de <paramref name="ans"/> années dans le futur, à la vitesse maximale ; un bilan s'affiche à l'arrivée.</summary>
+    public async Task<HorlogeDto> Sauter(int ans)
+    {
+        if (ans < 1 || ans * (long)Calendrier.SecondesParAn > Objectif.PorteeMaximale) throw new HubException(L.T("erreur.saut"));
+        if (service.Monde.Eteint) throw new HubException(L.T("erreur.plusPersonne"));
+        service.Monde.Sauter(ans);
+        return await DiffuserHorloge();
+    }
+
+    /// <summary>Ce qu'un saut ajouterait à la base au rythme mesuré, et la place libre sur le disque.</summary>
+    public EstimationSautDto EstimerSaut(int ans)
+    {
+        if (ans < 1 || ans * (long)Calendrier.SecondesParAn > Objectif.PorteeMaximale) throw new HubException(L.T("erreur.saut"));
+        return EstimationSautDto.Depuis(service, ans);
     }
 
     /// <summary>Mettre le monde en pause quand une catastrophe menace des humains.</summary>
@@ -165,6 +185,86 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     public void SignalerSuivis(int[] ajoutes, int[] retires)
     {
         if (service.Depot.ChangerSuivis(ajoutes ?? [], retires ?? [])) service.SuivisChanges();
+    }
+
+    // ───────────── Suivis ★ et alertes (0.40.0) ─────────────
+
+    public List<SuiviDto> Suivis() => SuiviDto.Depuis(service);
+
+    /// <summary>Suit un humain ou une communauté (ou change sa case « suivre l'héritier ») ; tous les navigateurs l'apprennent.</summary>
+    public async Task<List<SuiviDto>> Suivre(string genre, int id, bool heritier)
+    {
+        var communaute = Genre(genre);
+        var (existe, nom, _) = service.Monde.EtatSuivi(communaute, id);
+        if (!existe) throw new HubException(L.T("suivis.inexistant"));
+        service.ChangerSuivis([new Stockage.Suivi(communaute, id, nom, heritier && !communaute)], []);
+        return await DiffuserSuivis();
+    }
+
+    public async Task<List<SuiviDto>> NePlusSuivre(string genre, int id)
+    {
+        service.ChangerSuivis([], [(Genre(genre), id)]);
+        return await DiffuserSuivis();
+    }
+
+    /// <summary>
+    /// Suivis que ce navigateur gardait chez lui avant la 0.40.0 : ils rejoignent ceux du monde (rien n'est retiré, un suivi
+    /// déjà connu garde sa case « héritier »).
+    /// </summary>
+    public async Task<List<SuiviDto>> ImporterSuivis(SuiviDto[] suivis)
+    {
+        var connus = service.Suivis().Select(s => (s.Communaute, s.Id)).ToHashSet();
+        var ajoutes = new List<Stockage.Suivi>();
+        foreach (var s in (suivis ?? []).Take(1000))
+        {
+            if (s is null || s.Genre is not ("humain" or "communaute")) continue;
+            var communaute = s.Genre == "communaute";
+            var (existe, nom, _) = service.Monde.EtatSuivi(communaute, s.Id);
+            if (existe && connus.Add((communaute, s.Id))) ajoutes.Add(new Stockage.Suivi(communaute, s.Id, nom, false));
+        }
+        if (ajoutes.Count > 0) service.ChangerSuivis(ajoutes, []);
+        return await DiffuserSuivis();
+    }
+
+    private static bool Genre(string genre) => genre switch
+    {
+        "humain" => false,
+        "communaute" => true,
+        _ => throw new HubException(L.T("suivis.inexistant")),
+    };
+
+    private async Task<List<SuiviDto>> DiffuserSuivis()
+    {
+        var liste = SuiviDto.Depuis(service);
+        await Clients.All.SendAsync("Suivis", liste);
+        return liste;
+    }
+
+    /// <summary>Les dernières alertes (avant l'alerte <paramref name="avant"/> si non nul) et le nombre de non lues.</summary>
+    public AlertesDto Alertes(int nombre, long avant)
+    {
+        var alertes = service.LireAlertes(Math.Clamp(nombre, 1, 200), Math.Max(0, avant));
+        var suivis = AlerteSuiviDto.HumainsSuivis(service);
+        return new AlertesDto(alertes.Select(a => AlerteSuiviDto.Depuis(a, service, suivis)).ToList(), service.AlertesNonLues());
+    }
+
+    public async Task MarquerAlertesLues()
+    {
+        service.MarquerAlertesLues();
+        await Clients.All.SendAsync("AlertesNonLues", 0);
+    }
+
+    public ReglesAlertesDto ReglesAlertes() => ReglesAlertesDto.Depuis(service.ReglesAlertes);
+
+    public ReglesAlertesDto ChoisirReglesAlertes(bool[] prevenir, bool[] pause)
+    {
+        var regles = new ReglesAlertes();
+        if (prevenir is null || pause is null || prevenir.Length != Simulation.ReglesAlertes.Nombre || pause.Length != Simulation.ReglesAlertes.Nombre)
+            throw new HubException(L.T("alertes.reglesInvalides"));
+        prevenir.CopyTo(regles.Prevenir, 0);
+        pause.CopyTo(regles.Pause, 0);
+        service.ReglesAlertes = regles;
+        return ReglesAlertesDto.Depuis(regles);
     }
 
     /// <summary>Option « humains de fond simulés en groupe » et son seuil (nombre de vivants, 0 : toujours).</summary>
@@ -905,7 +1005,8 @@ public sealed record HorlogeDto(
     bool ReprendreVitesse,
     bool PauseCatastrophe,
     bool Eteint,
-    int DeFond)
+    int DeFond,
+    SautDto? Saut = null)
 {
     public static HorlogeDto Depuis(ServiceMonde service)
     {
@@ -916,6 +1017,6 @@ public sealed record HorlogeDto(
             date.JourDeSaison, date.Heure, date.Minute, date.EstJour, date.Lumiere,
             objectif is null ? Vitesse.NiveauDe(facteur) : -1, facteur,
             facteur == 0 ? 0 : service.FacteurAtteint, objectif is null ? null : Lib.Objectif(objectif), service.ReprendreVitesse, service.PauseSurCatastrophe, service.Monde.Eteint,
-            service.Monde.DeFond);
+            service.Monde.DeFond, objectif is null ? null : SautDto.Depuis(service.Monde.Saut));
     }
 }
