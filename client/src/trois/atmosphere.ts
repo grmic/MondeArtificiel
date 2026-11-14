@@ -14,8 +14,10 @@ const HM = 1200;
 const BR = [5.8e-6, 13.5e-6, 33.1e-6];
 const BM = 21e-6;
 const G = 0.76;
-const PAS = 12;
+const PAS = 16;
 const PAS_LUMIERE = 6;
+/** Pouvoir réfléchissant moyen du sol (forêts, sols, mers mêlés) : le sol renvoie un peu de lumière dans l'air. */
+const ALBEDO = 0.25;
 
 export type Rgb = [number, number, number];
 
@@ -61,8 +63,113 @@ const phaseR = (mu: number) => (3 / (16 * Math.PI)) * (1 + mu * mu);
 const phaseM = (mu: number) => (3 / (8 * Math.PI)) * ((1 - G * G) * (1 + mu * mu)) / ((2 + G * G) * Math.pow(1 + G * G - 2 * G * mu, 1.5));
 
 /**
+ * Diffusions multiples (0.41.6, proposition G1) : la lumière qui a déjà rebondi une fois ou plus dans l'air, selon la méthode de
+ * Hillaire (« A Scalable and Production Ready Sky and Atmosphere Rendering Technique », 2020). Pour chaque hauteur et chaque
+ * hauteur du soleil, on intègre sur toutes les directions la lumière d'une diffusion (phase isotrope) et la part de lumière
+ * renvoyée ; la somme de la série géométrique L2 / (1 − f) donne la luminance des ordres supérieurs. Table calculée une fois.
+ */
+const MS_H = 24;
+const MS_MU = 32;
+const MS_HAUT = RA - RT;
+let tableMs: Float32Array | null = null;
+
+function directionsSphere(n: number): number[][] {
+  const r: number[][] = [];
+  const or = Math.PI * (3 - Math.sqrt(5));
+  for (let i = 0; i < n; i++) {
+    const y = 1 - ((i + 0.5) / n) * 2;
+    const k = Math.sqrt(1 - y * y);
+    r.push([Math.cos(or * i) * k, y, Math.sin(or * i) * k]);
+  }
+  return r;
+}
+
+function calculerTableMs(): Float32Array {
+  const t = new Float32Array(MS_H * MS_MU * 3);
+  const dirs = directionsSphere(64);
+  const N = 20;
+  const iso = 1 / (4 * Math.PI);
+  for (let ih = 0; ih < MS_H; ih++) {
+    const h = ((ih / (MS_H - 1)) ** 2) * MS_HAUT;
+    const oy = RT + Math.max(h, 1);
+    for (let im = 0; im < MS_MU; im++) {
+      const mu = (im / (MS_MU - 1)) * 2 - 1;
+      const sx = Math.sqrt(Math.max(0, 1 - mu * mu));
+      const sy = mu;
+      const L2 = [0, 0, 0];
+      const F = [0, 0, 0];
+      for (const [dx, dy, dz] of dirs) {
+        let tmax = sortie(0, oy, 0, dx, dy, dz, RA);
+        const ts = sol(0, oy, 0, dx, dy, dz);
+        if (ts > 0) tmax = Math.min(tmax, ts);
+        const ds = tmax / N;
+        let odR = 0;
+        let odM = 0;
+        for (let i = 0; i < N; i++) {
+          const s = (i + 0.5) * ds;
+          const x = dx * s;
+          const y = oy + dy * s;
+          const z = dz * s;
+          const hh = Math.sqrt(x * x + y * y + z * z) - RT;
+          const hr = Math.exp(-hh / HR) * ds;
+          const hm = Math.exp(-hh / HM) * ds;
+          odR += hr;
+          odM += hm;
+          const ls = versLumiere(x, y, z, sx, sy, 0);
+          for (let c = 0; c < 3; c++) {
+            const tv = Math.exp(-(BR[c] * odR + BM * 1.1 * odM));
+            const diff = BR[c] * hr + BM * hm;
+            F[c] += tv * diff;
+            if (ls) L2[c] += tv * diff * Math.exp(-(BR[c] * ls[0] + BM * 1.1 * ls[1])) * iso;
+          }
+        }
+        // Le sol, s'il est touché, renvoie la lumière du soleil (lambertien).
+        if (ts > 0) {
+          const x = dx * ts;
+          const y = oy + dy * ts;
+          const z = dz * ts;
+          const r = Math.sqrt(x * x + y * y + z * z);
+          const cos = (x * sx + y * sy) / r;
+          const ls = cos > 0 ? versLumiere(x, y, z, sx, sy, 0) : null;
+          if (ls) for (let c = 0; c < 3; c++) {
+            const tv = Math.exp(-(BR[c] * odR + BM * 1.1 * odM));
+            L2[c] += tv * Math.exp(-(BR[c] * ls[0] + BM * 1.1 * ls[1])) * cos * (ALBEDO / Math.PI);
+          }
+        }
+      }
+      const k = (ih * MS_MU + im) * 3;
+      for (let c = 0; c < 3; c++) {
+        const l2 = L2[c] / dirs.length;
+        const f = (F[c] * iso * 4 * Math.PI) / dirs.length;
+        t[k + c] = l2 / Math.max(1e-4, 1 - f);
+      }
+    }
+  }
+  return t;
+}
+
+/** Luminance des diffusions multiples (par unité d'éclairement de l'astre) à la hauteur h pour un astre de hauteur μ. */
+function multiple(h: number, mu: number, sortieRgb: number[]): void {
+  if (!tableMs) tableMs = calculerTableMs();
+  const fh = Math.sqrt(Math.max(0, Math.min(1, h / MS_HAUT))) * (MS_H - 1);
+  const fm = ((Math.max(-1, Math.min(1, mu)) + 1) / 2) * (MS_MU - 1);
+  const h0 = Math.min(MS_H - 2, Math.floor(fh));
+  const m0 = Math.min(MS_MU - 2, Math.floor(fm));
+  const a = fh - h0;
+  const b = fm - m0;
+  for (let c = 0; c < 3; c++) {
+    const v00 = tableMs[(h0 * MS_MU + m0) * 3 + c];
+    const v01 = tableMs[(h0 * MS_MU + m0 + 1) * 3 + c];
+    const v10 = tableMs[((h0 + 1) * MS_MU + m0) * 3 + c];
+    const v11 = tableMs[((h0 + 1) * MS_MU + m0 + 1) * 3 + c];
+    sortieRgb[c] = (v00 * (1 - b) + v01 * b) * (1 - a) + (v10 * (1 - b) + v11 * b) * a;
+  }
+}
+
+/**
  * Lumière du ciel dans la direction d (unitaire, y vers le haut), pour un observateur à `hauteur` m, éclairé par une ou deux
- * sources (le soleil d'intensité 1, la lune d'intensité `lune`). Écrit le résultat dans `sortieRgb`.
+ * sources (le soleil d'intensité 1, la lune d'intensité `lune`). Écrit le résultat dans `sortieRgb`. Une diffusion calculée le
+ * long du regard (pas serrés près de l'œil), plus les diffusions multiples (table) et, vers le bas, le sol éclairé.
  */
 export function ciel(d: [number, number, number], hauteur: number, soleil: [number, number, number], lune: [number, number, number] | null, intensiteLune: number, sortieRgb: Rgb): void {
   const ox = 0;
@@ -76,32 +183,45 @@ export function ciel(d: [number, number, number], hauteur: number, soleil: [numb
     sortieRgb[0] = sortieRgb[1] = sortieRgb[2] = 0;
     return;
   }
-  const ds = tmax / PAS;
+  const avecLune = lune !== null && intensiteLune > 0;
   let odR = 0;
   let odM = 0;
   const sR = [0, 0, 0];
   const sM = [0, 0, 0];
   const lR = [0, 0, 0];
   const lM = [0, 0, 0];
+  const ms = [0, 0, 0];
+  const msS = [0, 0, 0];
+  const msL = [0, 0, 0];
+  let avant = 0;
   for (let i = 0; i < PAS; i++) {
-    const s = (i + 0.5) * ds;
+    // Pas de plus en plus longs : l'air proche (dense, et qui fait la brume de l'horizon) est mieux suivi.
+    const t1 = tmax * ((i + 1) / PAS) ** 2;
+    const ds = t1 - avant;
+    const s = (avant + t1) / 2;
+    avant = t1;
     const x = ox + dx * s;
     const y = oy + dy * s;
     const z = oz + dz * s;
-    const h = Math.sqrt(x * x + y * y + z * z) - RT;
+    const r = Math.sqrt(x * x + y * y + z * z);
+    const h = r - RT;
     const hr = Math.exp(-h / HR) * ds;
     const hm = Math.exp(-h / HM) * ds;
     odR += hr;
     odM += hm;
     const ls = versLumiere(x, y, z, soleil[0], soleil[1], soleil[2]);
-    if (ls) {
-      for (let c = 0; c < 3; c++) {
-        const att = Math.exp(-(BR[c] * (odR + ls[0]) + BM * 1.1 * (odM + ls[1])));
+    multiple(h, (x * soleil[0] + y * soleil[1] + z * soleil[2]) / r, msS);
+    if (avecLune) multiple(h, (x * lune[0] + y * lune[1] + z * lune[2]) / r, msL);
+    for (let c = 0; c < 3; c++) {
+      const tv = Math.exp(-(BR[c] * odR + BM * 1.1 * odM));
+      ms[c] += tv * (BR[c] * hr + BM * hm) * (msS[c] + (avecLune ? msL[c] * intensiteLune : 0));
+      if (ls) {
+        const att = tv * Math.exp(-(BR[c] * ls[0] + BM * 1.1 * ls[1]));
         sR[c] += att * hr;
         sM[c] += att * hm;
       }
     }
-    if (lune && intensiteLune > 0) {
+    if (avecLune) {
       const ll = versLumiere(x, y, z, lune[0], lune[1], lune[2]);
       if (ll) {
         for (let c = 0; c < 3; c++) {
@@ -122,7 +242,21 @@ export function ciel(d: [number, number, number], hauteur: number, soleil: [numb
     qR = phaseR(ml) * intensiteLune;
     qM = phaseM(ml) * intensiteLune;
   }
-  for (let c = 0; c < 3; c++) sortieRgb[c] = sR[c] * BR[c] * pR + sM[c] * BM * pM + lR[c] * BR[c] * qR + lM[c] * BM * qM;
+  for (let c = 0; c < 3; c++) sortieRgb[c] = sR[c] * BR[c] * pR + sM[c] * BM * pM + lR[c] * BR[c] * qR + lM[c] * BM * qM + ms[c];
+  // Vers le bas : le sol éclairé par le soleil (et le ciel, qui double à peu près sa lumière), vu à travers l'air.
+  if (tsol > 0 && tsol <= tmax + 1) {
+    const x = ox + dx * tsol;
+    const y = oy + dy * tsol;
+    const z = oz + dz * tsol;
+    const r = Math.sqrt(x * x + y * y + z * z);
+    const cos = Math.max(0, (x * soleil[0] + y * soleil[1] + z * soleil[2]) / r);
+    const ls = cos > 0 ? versLumiere(x, y, z, soleil[0], soleil[1], soleil[2]) : null;
+    for (let c = 0; c < 3; c++) {
+      const tv = Math.exp(-(BR[c] * odR + BM * 1.1 * odM));
+      const direct = ls ? Math.exp(-(BR[c] * ls[0] + BM * 1.1 * ls[1])) * cos : 0;
+      sortieRgb[c] += tv * (ALBEDO / Math.PI) * (direct + 0.2 * Math.max(0, soleil[1] + 0.1));
+    }
+  }
 }
 
 /** Ce qui reste de la lumière d'un astre dans la direction l, vue d'une hauteur donnée (0 sous l'horizon, rougi près de lui). */

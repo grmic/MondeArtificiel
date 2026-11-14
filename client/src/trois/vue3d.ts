@@ -1,13 +1,17 @@
 import * as THREE from "three/webgpu";
-import { float, mix, mrt, normalView, output, pass, screenUV, uniform, vec4 } from "three/tsl";
+import { float, mix, mrt, normalView, output, pass, renderOutput, screenUV, uniform, vec4, velocity } from "three/tsl";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
+import { traa } from "three/addons/tsl/display/TRAANode.js";
+import { smaa } from "three/addons/tsl/display/SMAANode.js";
+import { ssr } from "three/addons/tsl/display/SSRNode.js";
+import { Rayons } from "./rayons";
 import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import type { Carte } from "../carte";
 import { connexion } from "../connexion";
 import { nombre, t } from "../langue";
 import { Bruit } from "./bruit";
-import { Ciel } from "./ciel";
+import { Ciel, type ReglageNuages } from "./ciel";
 import { Camp3D, type CampJson } from "./camp";
 import { ACTIVITES, Feux3D, Foule, lireScene } from "./foule";
 import { MiniCarte } from "./minicarte";
@@ -58,16 +62,21 @@ interface ReglageQualite {
   ombres: number; porteeOmbres: number; ombreRelief: boolean; ombrePetits: boolean; douces: boolean;
   /** Occlusion ambiante : résolution relative (0 : aucune). Halo : lumières vives qui débordent. */
   ao: number; halo: boolean;
+  /**
+   * Effets modernes (0.41.6) : nuages en volume (null : nappe peinte), lissage des bords (SMAA, ou temporel TRAA), rayons du
+   * soleil dans la brume, réflexions à l'écran sur l'eau (qualité de 0 à 1, 0 : aucune ; résolution relative).
+   */
+  nuages: ReglageNuages | null; lissage: "aucun" | "smaa" | "traa"; rayons: boolean; reflets: number; resReflets: number;
 }
 /**
  * Réglages de Qualité (proposition G1, 0.41.1 ; Ultra et lumière en 0.41.3) : corps détaillés jusqu'à `corps` m (au plus `nombre`),
  * silhouettes jusqu'à `silhouettes` m, points de vie au-delà ; camp et bêtes jusqu'à `camp` m. Basse reste proche de la 0.41.2.
  */
 const QUALITES: Record<Qualite, ReglageQualite> = {
-  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, reels: 8, porteeReels: 15, silhouettes: 1200, camp: 1200, sol: 30, ombres: 0, porteeOmbres: 0, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false },
-  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, reels: 16, porteeReels: 30, silhouettes: 2000, camp: 2000, sol: 55, ombres: 1024, porteeOmbres: 160, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false },
-  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, reels: 40, porteeReels: 70, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true },
-  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, reels: 70, porteeReels: 120, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true },
+  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, reels: 8, porteeReels: 15, silhouettes: 1200, camp: 1200, sol: 30, ombres: 0, porteeOmbres: 0, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false, nuages: null, lissage: "aucun", rayons: false, reflets: 0, resReflets: 0 },
+  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, reels: 16, porteeReels: 30, silhouettes: 2000, camp: 2000, sol: 55, ombres: 1024, porteeOmbres: 160, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false, nuages: null, lissage: "smaa", rayons: false, reflets: 0, resReflets: 0 },
+  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, reels: 40, porteeReels: 70, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true, nuages: { pas: 24, pasLumiere: 4 }, lissage: "traa", rayons: true, reflets: 0.4, resReflets: 0.5 },
+  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, reels: 70, porteeReels: 120, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true, nuages: { pas: 48, pasLumiere: 6 }, lissage: "traa", rayons: true, reflets: 0.7, resReflets: 1 },
 };
 
 /** Vitesse la plus haute en promenade (proposition E1) : au-delà, les humains sauteraient d'une case à l'autre. */
@@ -199,6 +208,8 @@ export class Vue3D {
   private chaine: THREE.RenderPipeline | null = null;
   private aoNoeud: ReturnType<typeof ao> | null = null;
   private readonly uExposition = uniform(0.6);
+  /** Rayons du soleil dans la brume (0.41.6). */
+  private readonly rayons = new Rayons();
   private exposition = 0.6;
   private imagesOmbres = 0;
   private fondA = 0;
@@ -440,30 +451,70 @@ export class Vue3D {
     astre.shadow.radius = q.douces ? 3 : 1;
     for (const l of this.ombres?.lights ?? []) if (l.shadow) l.shadow.radius = astre.shadow.radius;
     this.ombrer();
-    // Chaîne de rendu : une passe de la scène (couleur, profondeur, normales), l'occlusion, l'exposition, le halo, puis les tons.
+    // Chaîne de rendu : une passe de la scène (couleur, profondeur, normales, mouvement, masques), l'occlusion, les reflets de
+    // l'eau, les rayons du soleil, l'exposition, le lissage, le halo, puis les tons (et le lissage SMAA, sur l'image finale).
     this.chaine?.dispose();
     this.aoNoeud?.dispose();
     this.chaine = null;
     this.aoNoeud = null;
-    if (q.ao === 0 && !q.halo) {
+    this.ciel.reglerNuages(q.nuages, q.rayons);
+    this.eau.reglerReflets(q.reflets > 0);
+    if (q.ao === 0 && !q.halo && q.lissage === "aucun" && !q.rayons && q.reflets === 0) {
       this.renderer.toneMappingExposure = this.exposition;
       return;
     }
     this.renderer.toneMappingExposure = 1;
-    const scene = pass(this.scene, this.camera);
-    let rendu = scene.getTextureNode("output").rgb.mul(this.uExposition);
+    // Le lissage remplace l'anticrénelage matériel (MSAA) : la passe se fait sans échantillons multiples.
+    const scene = pass(this.scene, this.camera, q.lissage === "aucun" ? {} : { samples: 0 });
+    const sorties: Record<string, THREE.Node> = { output };
+    if (q.ao > 0 || q.reflets > 0) sorties.normal = normalView;
+    if (q.lissage === "traa") sorties.velocity = velocity;
+    if (q.rayons || q.reflets > 0) sorties.extra = vec4(0, 0, 0, 1);
+    if (Object.keys(sorties).length > 1) scene.setMRT(mrt(sorties));
+    const profondeur = scene.getTextureNode("depth");
+    let rendu = scene.getTextureNode("output").rgb;
     if (q.ao > 0) {
-      scene.setMRT(mrt({ output, normal: normalView }));
-      const noeud = ao(scene.getTextureNode("depth"), scene.getTextureNode("normal"), this.camera);
+      const noeud = ao(profondeur, scene.getTextureNode("normal"), this.camera);
       noeud.resolutionScale = q.ao;
       noeud.samples.value = q.ao >= 1 ? 16 : 12;
       noeud.useTemporalFiltering = false;
       this.aoNoeud = noeud;
       rendu = rendu.mul(mix(float(1), noeud.getTextureNode().sample(screenUV).r, 0.85));
     }
+    if (q.reflets > 0) {
+      // Réflexions à l'écran, seulement sur l'eau (part du reflet écrite par l'eau) ; ailleurs le reflet du ciel reste.
+      const poids = scene.getTextureNode("extra").r;
+      const reflet = ssr(scene.getTextureNode("output"), profondeur, scene.getTextureNode("normal") as unknown as THREE.Node<"vec3">, {
+        metalnessNode: poids.greaterThan(0.001).select(float(1), float(0)), roughnessNode: float(0.03), camera: this.camera,
+      });
+      reflet.resolutionScale = q.resReflets;
+      reflet.quality.value = q.reflets;
+      reflet.maxDistance.value = 600;
+      reflet.thickness.value = 1.5;
+      reflet.blurQuality = 2;
+      const r = reflet.getTextureNode().sample(screenUV);
+      rendu = mix(rendu, r.rgb, r.a.mul(poids).clamp(0, 1));
+    }
+    if (q.rayons) rendu = rendu.add(this.rayons.noeud(scene.getTextureNode("extra"), this.camera));
+    rendu = rendu.mul(this.uExposition);
+    if (q.lissage === "traa") rendu = traa(rendu, profondeur, scene.getTextureNode("velocity"), this.camera).rgb;
     if (q.halo) rendu = rendu.add(bloom(vec4(rendu, 1), 0.12, 0.4, 1.2).rgb);
     const chaine = new THREE.RenderPipeline(this.renderer);
-    chaine.outputNode = vec4(rendu, 1);
+    if (q.lissage === "smaa") {
+      chaine.outputColorTransform = false;
+      chaine.outputNode = smaa(renderOutput(vec4(rendu, 1)));
+    } else chaine.outputNode = vec4(rendu, 1);
+    // Les sorties de la passe ont changé : chaque matériau déjà compilé doit écrire les nouvelles (sinon le sol, compilé avant,
+    // n'écrirait ni mouvement ni masque, et le lissage comme les reflets liraient des restes).
+    const vus = new Set<THREE.Material>();
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (!m) return;
+      for (const x of Array.isArray(m) ? m : [m]) if (!vus.has(x)) {
+        vus.add(x);
+        x.needsUpdate = true;
+      }
+    });
     this.chaine = chaine;
   }
 
@@ -1009,6 +1060,7 @@ export class Vue3D {
     const p = this.camera.position;
     const secondes = this.secondesMonde();
     this.ciel.regler(secondes, p);
+    this.rayons.regler(this.camera, this.ciel.direction, this.ciel.couleurSoleil, this.ciel.brume);
     this.vent.regler(secondes);
     // L'œil s'adapte à la lumière en une ou deux secondes (plus lentement vers le noir).
     const vise = this.ciel.expositionVisee;

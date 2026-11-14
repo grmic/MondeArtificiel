@@ -1,10 +1,14 @@
 import * as THREE from "three/webgpu";
 import {
-  Fn, abs, asin, atan, cameraPosition, clamp, dot, exp, float, fog, max, min, mix, mx_fractal_noise_float, normalize, positionWorld,
-  pow, select, sign, smoothstep, sqrt, texture, uniform, vec2, vec3,
+  Fn, abs, asin, atan, cameraPosition, clamp, dot, exp, float, fog, max, min, mix, mrt, normalize, positionWorld,
+  select, sign, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4,
 } from "three/tsl";
 import { ciel as diffusion, elevationDe, ligneDe, transmission, type Rgb } from "./atmosphere";
 import { hacher, unite } from "./bruit";
+import { Nuages } from "./nuages";
+
+/** Nuages en volume (0.41.6) : pas dans la couche et pas vers le soleil, ou null pour la nappe peinte. */
+export interface ReglageNuages { pas: number; pasLumiere: number }
 
 /** Durée du jour par saison (heures), comme le calendrier de la simulation (Calendrier.DureeJour). */
 const DUREE_JOUR = [12, 15, 12, 9];
@@ -28,9 +32,7 @@ const LUNE = 0.004;
 /** Lueur du ciel nocturne (étoiles, lumière de l'air), en éclairement. */
 const LUEUR_NUIT: Rgb = [0.0016, 0.002, 0.0034];
 /** Part de lumière du ciel ajoutée par les diffusions multiples (le calcul n'en suit qu'une). */
-const MULTIPLE = 2.1;
-/** Altitude des nuages (m). */
-const NUAGES = 2200;
+const MULTIPLE = 1.2;
 
 const lum = (c: Rgb) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 
@@ -56,6 +58,9 @@ export class Ciel {
   readonly reflets: THREE.DataTexture;
 
   private readonly maillage: THREE.Mesh;
+  private readonly materiauCiel: THREE.MeshBasicNodeMaterial;
+  private readonly nuages: Nuages;
+  private readonly cielDans: (d: THREE.Node<"vec3">) => THREE.Node<"vec3">;
   private readonly etoiles: THREE.Points;
   private readonly materiauEtoiles: THREE.PointsMaterial;
   private readonly tex: THREE.DataTexture;
@@ -77,7 +82,10 @@ export class Ciel {
   private readonly uCouleurLune = uniform(new THREE.Vector3(0, 0, 0));
   private readonly uNuit = uniform(new THREE.Vector3(0, 0, 0));
   private readonly uCouverture = uniform(0.35);
+  /** Décalage des nuages par le vent (m). */
   private readonly uVent = uniform(new THREE.Vector2());
+  /** Lumière du ciel qui éclaire les nuages (luminance moyenne du ciel). */
+  private readonly uAmbiant = uniform(new THREE.Vector3(0.1, 0.12, 0.15));
   private readonly uNuageClair = uniform(new THREE.Vector3(1, 1, 1));
   private readonly uNuageOmbre = uniform(new THREE.Vector3(0.5, 0.5, 0.55));
   // Brume : voile général (d'après le niveau de la mer) et brume des fonds, posée sur le bas du relief alentour.
@@ -107,34 +115,15 @@ export class Ciel {
       const v = sign(e).mul(sqrt(min(abs(e).div(Math.PI / 2), 1))).mul(0.5).add(0.5);
       return texture(this.tex, vec2(u, v)).rgb.mul(this.gain).add(this.uNuit);
     });
+    this.cielDans = (d) => cielDans(d) as THREE.Node<"vec3">;
+    this.nuages = new Nuages(this.uVent, this.uCouverture, this.uSoleil, this.uCouleurSoleil, this.uAmbiant);
+    // Ombre des nuages sur le sol : la lumière de l'astre (soleil ou lune) passe à travers la carte des nuages.
+    (this.astre as THREE.DirectionalLight & { colorNode?: THREE.Node }).colorNode =
+      uniform(this.astre.color).mul(this.nuages.ombre(positionWorld));
 
-    // Le ciel : diffusion, disque du soleil (dont le halo naît du rendu), disque de la lune, nuages.
-    const materiau = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, fog: false });
-    materiau.colorNode = Fn(() => {
-      const d = normalize(positionWorld.sub(cameraPosition));
-      const fond = cielDans(d).toVar();
-      const cs = dot(d, this.uSoleil);
-      const disque = smoothstep(0.99996, 0.999975, cs);
-      fond.addAssign(this.uCouleurSoleil.mul(disque.mul(30)));
-      const cl = dot(d, this.uLune);
-      const lune = smoothstep(0.99996, 0.999972, cl);
-      fond.addAssign(this.uCouleurLune.mul(lune));
-      // Nuages : une couche vers 2 200 m, d'un bruit fractal qui avance avec le vent ; éclairés par le soleil, plus clairs vers lui.
-      const dy = select(abs(d.y).lessThan(0.002), float(0.002).mul(sign(d.y).add(0.0001)), d.y);
-      const t = float(NUAGES).sub(cameraPosition.y).div(dy);
-      const p = cameraPosition.xz.add(d.xz.mul(t)).mul(0.00022).add(this.uVent);
-      const n = mx_fractal_noise_float(vec3(p.x, p.y, this.uVent.x.mul(0.3)), 5, 2.0, 0.5, 1.0).mul(0.5).add(0.5);
-      const seuil = float(1).sub(this.uCouverture);
-      const couvre = smoothstep(seuil, seuil.add(0.28), n);
-      const fondu = select(t.greaterThan(0), smoothstep(0.0, 0.1, abs(d.y)).mul(float(1).sub(smoothstep(15000, 45000, t))), float(0));
-      const epais = smoothstep(seuil, seuil.add(0.6), n);
-      const avant = pow(max(cs, 0), 6).mul(0.6);
-      const couleur = mix(this.uNuageClair, this.uNuageOmbre, epais).add(this.uCouleurSoleil.mul(avant.mul(this.gain).mul(ECHELLE * 0.08)));
-      // Au loin, les nuages se fondent dans la couleur du ciel.
-      const loin = smoothstep(4000, 40000, t);
-      return mix(fond, mix(couleur, fond, loin.mul(0.6)), couvre.mul(fondu).mul(0.92));
-    })();
-    this.maillage = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), materiau);
+    this.materiauCiel = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false, fog: false });
+    this.reglerNuages(null, false);
+    this.maillage = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), this.materiauCiel);
     this.maillage.scale.setScalar(450000);
     this.maillage.frustumCulled = false;
     this.maillage.renderOrder = -1;
@@ -168,8 +157,52 @@ export class Ciel {
       const epaisseur = couche(this.uVoile, float(1 / 1800), 0).add(couche(this.uBrume, this.uEpaisseur, this.uFond));
       const facteur = float(1).sub(exp(epaisseur.negate()));
       const horizon = cielDans(normalize(vec3(d.x, max(d.y, 0.02), d.z)));
-      return fog(horizon, facteur);
+      // Perspective aérienne (0.41.6, G1) : la brume des fonds, épaisse, diffuse surtout vers l'avant ; du côté du soleil elle
+      // s'éclaire (phase de Henyey-Greenstein), à l'ombre des nuages elle reste grise.
+      const brume = couche(this.uBrume, this.uEpaisseur, this.uFond);
+      const part = brume.div(max(epaisseur, 1e-6));
+      const mu = dot(d, this.uSoleil);
+      const g = 0.6;
+      const phase = float((1 - g * g) / (4 * Math.PI)).div(float(1 + g * g).sub(mu.mul(2 * g)).pow(1.5));
+      const eclairee = this.uCouleurSoleil.mul(phase.mul(0.9)).mul(this.nuages.ombre(cameraPosition)).add(this.uAmbiant.mul(0.9));
+      return fog(mix(horizon, max(horizon, eclairee), part.mul(0.85)), facteur);
     })();
+  }
+
+  /**
+   * Ciel et nuages selon la Qualité : nappe peinte, ou cumulus en volume. `masque` : le ciel écrit sa clarté (1 où le ciel est
+   * dégagé, moins derrière les nuages) dans la sortie « extra » de la chaîne de rendu, pour les rayons du soleil.
+   */
+  reglerNuages(volume: ReglageNuages | null, masque: boolean): void {
+    const materiau = this.materiauCiel;
+    const d = normalize(positionWorld.sub(cameraPosition)).toVar();
+    // Calculés une fois et lus deux fois (couleur et masque des rayons) : une variable du shader.
+    const n = (volume ? this.nuages.volume(d, volume.pas, volume.pasLumiere) : this.nuages.nappe(d, this.uNuageClair, this.uNuageOmbre)).toVar();
+    materiau.colorNode = Fn(() => {
+      const fond = this.cielDans(d).toVar();
+      const cs = dot(d, this.uSoleil);
+      const disque = smoothstep(0.99996, 0.999975, cs);
+      fond.addAssign(this.uCouleurSoleil.mul(disque.mul(30)));
+      const cl = dot(d, this.uLune);
+      const lune = smoothstep(0.99996, 0.999972, cl);
+      fond.addAssign(this.uCouleurLune.mul(lune));
+      // Au loin, les nuages se fondent dans la couleur du ciel (perspective aérienne).
+      const horizon = this.cielDans(normalize(vec3(d.x, max(d.y, 0.02), d.z)));
+      const air = smoothstep(0.0, 0.25, d.y).oneMinus().mul(0.55);
+      return mix(fond, n.rgb.mul(float(1).sub(air)).add(horizon.mul(air)), n.a);
+    })();
+    materiau.mrtNode = masque ? mrt({ extra: vec4(0, float(1).sub(n.a.mul(0.95)), 0, 1) }) : null;
+    materiau.needsUpdate = true;
+  }
+
+  /** Lumière du soleil après la traversée de l'air (pour les rayons). */
+  get couleurSoleil(): THREE.Vector3 {
+    return this.uCouleurSoleil.value;
+  }
+
+  /** Épaisseur relative de la brume des fonds, de 0 (après-midi) à 1 (petit matin). */
+  get brume(): number {
+    return Math.max(0, Math.min(1, (this.uBrume.value - 0.00012) / 0.0008));
   }
 
   /** Bas du relief alentour (m) : la brume des fonds s'y pose. */
@@ -263,10 +296,13 @@ export class Ciel {
     const c1 = unite(hacher(jour + 1, 31, 7));
     const f = (secondes % 86400) / 86400;
     this.uCouverture.value = 0.12 + 0.5 * (c0 + (c1 - c0) * f);
-    this.uVent.value.set((secondes * 0.004) % 1000, (secondes * 0.0015) % 1000);
+    // Le vent des nuages : quelques mètres par seconde, sa direction tourne lentement d'un jour à l'autre.
+    const cap = unite(hacher(jour, 47, 3)) * Math.PI * 2;
+    this.uVent.value.set((secondes * 6 * Math.cos(cap)) % 3.6e6, (secondes * 6 * Math.sin(cap)) % 3.6e6);
     const ciel = lum(this.cielSol);
     this.uNuageClair.value.set(ts[0] * S * 0.09 + ciel * 0.4 + 0.002, ts[1] * S * 0.09 + ciel * 0.42 + 0.002, ts[2] * S * 0.09 + ciel * 0.48 + 0.003);
     this.uNuageOmbre.value.copy(this.uNuageClair.value).multiplyScalar(0.55);
+    this.uAmbiant.value.set(this.cielSol[0] / Math.PI + LUEUR_NUIT[0], this.cielSol[1] / Math.PI + LUEUR_NUIT[1], this.cielSol[2] / Math.PI + LUEUR_NUIT[2]);
 
     // Brume des fonds : épaisse au petit matin et la nuit, légère l'après-midi.
     const apresLever = (heure - lever + 24) % 24;

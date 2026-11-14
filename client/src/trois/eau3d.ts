@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu";
 import {
-  Fn, abs, cameraPosition, clamp, dot, exp, float, length, max, mix, normalize, positionLocal, positionWorld, pow, sin, smoothstep,
+  Fn, abs, cameraPosition, clamp, dot, exp, float, length, max, mix, mrt, normalize, positionLocal, positionWorld, pow, sin, smoothstep,
   texture, time, transformNormalToView, uniform, vec2, vec3, vec4,
 } from "three/tsl";
 import { Bruit } from "./bruit";
@@ -189,7 +189,23 @@ export class Eau {
     const fresnel = float(0.02).add(pow(float(1).sub(max(dot(nPlat, vue), 0)), 5).mul(0.98));
     const epaisseur = float(1).sub(exp(prof.mul(mer ? -0.9 : -1.4)));
     mat.opacityNode = clamp(max(max(epaisseur.mul(0.93).add(0.04), fresnel), ecume.mul(0.95)), 0, 1).mul(smoothstep(0, 0.04, prof).mul(0.8).add(0.2));
+    // Part du reflet (0.41.6) : ce que les réflexions à l'écran remplacent (le reflet du ciel), moins sur l'écume.
+    this.materiaux.push({ mat, poids: fresnel.mul(float(1).sub(ecume)), normale: mat.normalNode as THREE.Node<"vec3"> });
     return mat;
+  }
+
+  private readonly materiaux: { mat: THREE.MeshStandardNodeMaterial; poids: THREE.Node<"float">; normale: THREE.Node<"vec3"> }[] = [];
+
+  /**
+   * Réflexions à l'écran (0.41.6, proposition D1) : l'eau écrit sa profondeur, sa normale (rides comprises) et la part de son
+   * reflet dans la chaîne de rendu ; les rives, les arbres et les humains s'y reflètent. Sinon, le reflet du ciel seul.
+   */
+  reglerReflets(actif: boolean): void {
+    for (const { mat, poids, normale } of this.materiaux) {
+      mat.depthWrite = actif;
+      mat.mrtNode = actif ? mrt({ extra: vec4(poids, 0, 0, 1), normal: normalize(normale) }) : null;
+      mat.needsUpdate = true;
+    }
   }
 
   /** Position (x, z) du maillage de la mer, qui suit la caméra (pour que la houle se calcule en coordonnées du monde). */
