@@ -1,6 +1,7 @@
 import * as THREE from "three/webgpu";
 import { hacher, lisser, unite } from "./bruit";
 import type { HumainScene } from "./foule";
+import type { VisageReel } from "./humain";
 
 /**
  * Corps détaillés de la vue 3D (0.41.1, proposition C2 précisée par zem) : chaque humain proche a son propre corps, construit
@@ -89,9 +90,9 @@ export function cleDe(f: Forme): string {
 }
 
 // Os du squelette.
-const OS = ["bassin", "ventre", "poitrine", "cou", "tete", "brasG", "avantBrasG", "mainG", "brasD", "avantBrasD", "mainD",
+export const OS = ["bassin", "ventre", "poitrine", "cou", "tete", "brasG", "avantBrasG", "mainG", "brasD", "avantBrasD", "mainD",
   "cuisseG", "jambeG", "piedG", "cuisseD", "jambeD", "piedD"] as const;
-type NomOs = (typeof OS)[number];
+export type NomOs = (typeof OS)[number];
 const O = Object.fromEntries(OS.map((n, i) => [n, i])) as Record<NomOs, number>;
 const PARENT: Record<NomOs, NomOs | null> = {
   bassin: null, ventre: "bassin", poitrine: "ventre", cou: "poitrine", tete: "cou",
@@ -100,7 +101,7 @@ const PARENT: Record<NomOs, NomOs | null> = {
 };
 
 /** Proportions pour une taille de 1 (le maillage est ensuite mis à l'échelle de la stature). */
-interface Proportions {
+export interface Proportions {
   hanche: number; genou: number; cheville: number; taille: number; seins: number; epaule: number; menton: number;
   hauteTete: number; xHanche: number; xEpaule: number; coude: number; poignet: number; longMain: number;
 }
@@ -266,7 +267,27 @@ function fondu(valeur: number, limite: number, largeur: number, avant: number, a
 }
 
 /** Construit le maillage d'un corps, les positions de repos de ses os, et ce qu'il faut pour le poser. */
-export function construire(f: Forme): { geometrie: THREE.BufferGeometry; repos: THREE.Vector3[]; p: Proportions } {
+/** Un corps prêt à monter : géométrie skinnée, os au repos (stature 1), proportions. */
+export interface Construit {
+  geometrie: THREE.BufferGeometry;
+  repos: THREE.Vector3[];
+  p: Proportions;
+  /** Os en plus des 17 (les yeux du corps réaliste, 0.41.4), avec leur parent. */
+  autres?: { nom: string; parent: NomOs }[];
+  /**
+   * Correction de repos, par os (repère du monde) : le corps réaliste a les bras écartés en A ; la correction les ramène le long
+   * du corps, où les postures les attendent.
+   */
+  corrections?: (THREE.Quaternion | null)[];
+  /** Matériaux, dans l'ordre des groupes de la géométrie (sinon : celui du corps pour tout). */
+  materiaux?: THREE.Material[];
+  /** Milieu des yeux au repos (stature 1), quand le corps a un vrai visage. */
+  yeux?: THREE.Vector3;
+  /** Expressions et regard du vrai visage. */
+  anime?: VisageReel;
+}
+
+export function construire(f: Forme): Construit {
   const p = proportions(f);
   const m = new Maillage();
   const masc = f.femme ? 0 : f.puberte;
@@ -711,6 +732,7 @@ export function construire(f: Forme): { geometrie: THREE.BufferGeometry; repos: 
 }
 
 const INVISIBLE = new THREE.MeshBasicMaterial({ visible: false });
+const QI = new THREE.Quaternion();
 
 /** Un corps posé dans la scène : son maillage, ses os, sa forme. */
 export class Corps {
@@ -721,27 +743,44 @@ export class Corps {
   readonly hanche: number;
   /** Proportions (pour poser la tête détaillée). */
   readonly p: Proportions;
-  private readonly materiaux: [THREE.Material, THREE.Material];
+  private materiaux: THREE.Material[];
+  /** Le corps a un vrai visage (corps réaliste) : pas de tête simple à remplacer. */
+  readonly visage: boolean;
+  /** Milieu des yeux au repos (corps réaliste). */
+  readonly yeuxRepos: THREE.Vector3 | null;
+  /** Expressions et regard du corps réaliste. */
+  readonly anime: VisageReel | null;
+  private readonly parents: number[];
+  private readonly corrections: (THREE.Quaternion | null)[] | null;
   /**
    * Les os vivent dans un repère à part, près de l'origine, et non sous le maillage : posé à des centaines de kilomètres, le
    * skinning en flottants 32 bits arrondirait les sommets au centimètre. Le maillage, lui, est placé normalement.
    */
   readonly armature = new THREE.Object3D();
 
-  constructor(f: Forme, materiau: THREE.Material) {
-    const { geometrie, repos, p } = construire(f);
-    this.cle = cleDe(f);
+  constructor(f: Forme, materiau: THREE.Material, construit: Construit = construire(f), cle = cleDe(f)) {
+    const { geometrie, repos, p } = construit;
+    this.cle = cle;
     this.hautTete = p.menton;
     this.hanche = p.hanche;
     this.p = p;
-    this.materiaux = [materiau, materiau];
-    this.os = OS.map((n) => Object.assign(new THREE.Bone(), { name: n }));
-    OS.forEach((n, i) => {
-      const parent = PARENT[n];
+    this.visage = !!construit.materiaux;
+    this.yeuxRepos = construit.yeux ?? null;
+    this.anime = construit.anime ?? null;
+    this.materiaux = construit.materiaux ?? [materiau, materiau];
+    this.corrections = construit.corrections ?? null;
+    const noms: string[] = [...OS, ...(construit.autres ?? []).map((a) => a.nom)];
+    this.parents = noms.map((n, i) => {
+      const parent = i < OS.length ? PARENT[n as NomOs] : construit.autres![i - OS.length].parent;
+      return parent ? O[parent] : -1;
+    });
+    this.os = noms.map((n) => Object.assign(new THREE.Bone(), { name: n }));
+    noms.forEach((_, i) => {
+      const parent = this.parents[i];
       const b = this.os[i];
-      if (parent) {
-        this.os[O[parent]].add(b);
-        b.position.copy(repos[i]).sub(repos[O[parent]]);
+      if (parent >= 0) {
+        this.os[parent].add(b);
+        b.position.copy(repos[i]).sub(repos[parent]);
       } else {
         b.position.copy(repos[i]);
       }
@@ -756,6 +795,7 @@ export class Corps {
 
   /** Montre ou cache la tête simple (remplacée de près par la tête détaillée). */
   teteSimple(visible: boolean): void {
+    if (this.visage) return;
     const voulu = visible ? this.materiaux[0] : INVISIBLE;
     if (this.materiaux[1] !== voulu) {
       this.materiaux[1] = voulu;
@@ -912,6 +952,19 @@ export class Corps {
       b[O.cou].rotation.y = lacet * 0.3 * w;
       b[O.tete].rotation.y = b[O.tete].rotation.y * (1 - w) + lacet * 0.45 * w;
       b[O.tete].rotation.x = b[O.tete].rotation.x * (1 - w) + Math.max(-0.5, Math.min(0.5, regard.tangage)) * w;
+    }
+    // Corps réaliste : la pose, pensée pour des bras le long du corps, s'applique après la correction du repos en A
+    // (rotation locale = correction du parent⁻¹ × pose × correction de l'os).
+    const c = this.corrections;
+    if (c) {
+      for (let k = 0; k < b.length; k++) {
+        const ck = c[k];
+        const cp = this.parents[k] >= 0 ? c[this.parents[k]] : null;
+        if (!ck && !cp) continue;
+        const q = b[k].quaternion;
+        if (ck) q.multiply(ck);
+        if (cp) q.premultiply(QI.copy(cp).invert());
+      }
     }
     return { descente, couche };
   }

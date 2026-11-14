@@ -1,0 +1,12 @@
+makehuman.bin : base humaine de la vue 3D (0.41.4).
+
+Source : MakeHuman, https://github.com/makehumancommunity/makehuman (dossier makehuman/data, commit a8bc2d5 du 26/06/2024).
+Données utilisées : maillage de base (3dobjs/base.obj), cibles de forme (targets/macrodetails, breast, expression/units,
+head, chin, cheek, eyes, nose, mouth, ears, eyebrows, neck, stomach, buttocks, genitals), squelette et poids
+(rigs/default.mhskel, rigs/default_weights.mhw).
+
+Licence : CC0 1.0 Universal (domaine public). Chacun de ces fichiers porte la mention « This asset was explicitly released
+as CC0 in september 2020 » (ou le champ "license": "CC0"), vérifiée par outils/makehuman/convertir.py, qui refuse tout
+fichier sans elle. Aucun code de MakeHuman (AGPL) n'est repris : seules les données sont lues et converties.
+
+Refaire le fichier : python3 outils/makehuman/convertir.py <makehuman/data> client/public/humain/makehuman.bin

@@ -3,6 +3,7 @@ import { hacher, unite } from "./bruit";
 import { Corps, cleDe, formeDe } from "./corps";
 import type { Corps as Etat, Foule } from "./foule";
 import { TeteDetaillee, type Expression } from "./tete";
+import { baseHumaine, construireReel } from "./humain";
 import { chargerVisages, couleurs, visageConnu, type Visage } from "../visage";
 import { echange } from "../dialogue";
 
@@ -13,6 +14,9 @@ export interface ReglageProches {
   /** Jusqu'où les visages sont détaillés (m), et combien à la fois (0.41.2). */
   visages: number;
   nombreVisages: number;
+  /** Corps réalistes (0.41.4) : combien au plus, et jusqu'où (m) ; au-delà, corps calculés. */
+  reels: number;
+  porteeReels: number;
 }
 
 /** Expressions visées selon l'humeur et la peur que donne le flux Scène (codes de MondeSimule.Scene). */
@@ -53,12 +57,14 @@ export class CorpsProches {
   readonly groupe = new THREE.Group();
   private readonly corps = new Map<number, Corps>();
   private readonly materiau = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0 });
-  reglage: ReglageProches = { portee: 90, nombre: 50, visages: 8, nombreVisages: 8 };
+  reglage: ReglageProches = { portee: 90, nombre: 50, visages: 8, nombreVisages: 8, reels: 16, porteeReels: 30 };
   private readonly tetes = new Map<number, TeteDetaillee>();
   private readonly expressions = new Map<number, Record<Expression, number>>();
   private visagesDemandes = 0;
   /** Humain toujours détaillé, corps et visage, où qu'il soit (suivi ou Portrait, 0.41.3). */
   force: number | null = null;
+  /** Corps réalistes MakeHuman (0.41.4) ; faux : corps calculés de la 0.41.1. */
+  reels = true;
   private readonly matrice = new THREE.Matrix4();
 
   constructor(private readonly foule: Foule) {}
@@ -99,7 +105,7 @@ export class CorpsProches {
     const tetesVoulues = new Set(gardes.filter((g) => g.d < this.reglage.visages).slice(0, this.reglage.nombreVisages).map((g) => g.c.id));
     if (this.force !== null && gardes.some((g) => g.c.id === this.force)) tetesVoulues.add(this.force);
     for (const [id, tete] of this.tetes) {
-      if (!tetesVoulues.has(id) || !this.corps.has(id)) {
+      if (!tetesVoulues.has(id) || !this.corps.has(id) || this.corps.get(id)!.anime) {
         tete.liberer();
         this.tetes.delete(id);
         this.corps.get(id)?.teteSimple(true);
@@ -107,18 +113,28 @@ export class CorpsProches {
     }
     this.foule.detailles.clear();
     let construits = 0;
-    for (const { c: pl, corps: c } of gardes) {
+    // Corps réalistes (0.41.4) dès que la base MakeHuman est chargée ; corps calculés en attendant (ou si elle manque).
+    const base = this.reels ? baseHumaine() : null;
+    let rang = 0;
+    for (const { c: pl, corps: c, d } of gardes) {
       const [peau, cheveux] = this.couleursDe(c);
       const forme = formeDe(c.s, peau, cheveux);
       let corps = this.corps.get(pl.id);
-      if (!corps || corps.cle !== cleDe(forme)) {
-        // Pas plus de deux constructions par image : les suivants gardent leur silhouette (ou leur ancien corps) en attendant.
-        if (construits >= 2) {
+      // Réaliste : les plus proches, dans la portée (un peu plus pour qui l'est déjà, pour ne pas basculer sans cesse).
+      const deja = corps?.anime ? 1.2 : 1;
+      const reel = !!base && (c.s.id === this.force || (rang < this.reglage.reels * deja && d < this.reglage.porteeReels * deja));
+      if (reel) rang++;
+      const visage = reel ? visageConnu(c.s.id) ?? null : null;
+      const cle = reel ? `${cleDe(forme)}|R|${visage ? cleVisage(visage) : "-"}` : cleDe(forme);
+      if (!corps || corps.cle !== cle) {
+        // Pas plus de deux constructions par image (une seule réaliste) : les suivants gardent leur silhouette (ou leur ancien
+        // corps) en attendant.
+        if (construits >= (reel ? 1 : 2)) {
           if (!corps) continue;
         } else {
           construits++;
           corps?.liberer();
-          corps = new Corps(forme, this.materiau);
+          corps = reel ? new Corps(forme, this.materiau, construireReel(base!, forme, visage, c.s.id), cle) : new Corps(forme, this.materiau);
           this.corps.set(pl.id, corps);
           this.groupe.add(corps.maillage);
         }
@@ -160,9 +176,29 @@ export class CorpsProches {
       m.position.set(pl.x, y, pl.z);
       m.updateMatrixWorld();
       corps.armature.updateMatrixWorld(true);
-      // Tête détaillée, de près.
-      if (tetesVoulues.has(pl.id)) this.poserTete(c, corps, peau, cheveux, camera, temps, tetesFaites < 1 ? () => tetesFaites++ : null);
+      // Tête détaillée, de près (le corps réaliste a déjà son visage : on l'anime).
+      if (corps.anime) {
+        if (tetesVoulues.has(pl.id)) this.animerVisage(c, corps, camera, temps);
+      } else if (tetesVoulues.has(pl.id)) this.poserTete(c, corps, peau, cheveux, camera, temps, tetesFaites < 1 ? () => tetesFaites++ : null);
     }
+  }
+
+  /** Expressions qui suivent l'humeur sans à-coups ; bouche qui bouge quand il répond à l'Entité. */
+  private expressionsDuMoment(c: Etat, temps: number): Record<Expression, number> {
+    const voulu = expressionsDe(c.s.humeur, c.s.peur);
+    const e = this.expressions.get(c.s.id) ?? { ...voulu };
+    for (const k of Object.keys(voulu) as Expression[]) e[k] += (voulu[k] - e[k]) * 0.04;
+    this.expressions.set(c.s.id, e);
+    const parle = c.s.id === echange.humain && performance.now() < echange.parleJusqua;
+    const bouche = parle ? 0.25 + 0.45 * Math.abs(Math.sin(temps * 9.5)) * (0.6 + 0.4 * Math.sin(temps * 2.3)) : 0;
+    return { ...e, bouche };
+  }
+
+  /** Visage du corps réaliste : expressions, clignements, regard (vers la caméra quand il écoute l'Entité). */
+  private animerVisage(c: Etat, corps: Corps, camera: THREE.Vector3, temps: number): void {
+    const dort = c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7);
+    corps.matriceTete(this.matrice);
+    corps.anime!.poser(corps.maillage, corps.os, this.matrice, this.expressionsDuMoment(c, temps), c.ecoute > 0.3 ? camera : null, dort, temps);
   }
 
   /** Construit au besoin (une par image au plus) puis pose la tête détaillée d'un humain proche. */
@@ -185,16 +221,9 @@ export class CorpsProches {
       return;
     }
     corps.teteSimple(false);
-    // Expressions : elles suivent l'humeur sans à-coups ; la bouche bouge quand il répond à l'Entité.
-    const voulu = expressionsDe(c.s.humeur, c.s.peur);
-    const e = this.expressions.get(c.s.id) ?? { ...voulu };
-    for (const k of Object.keys(voulu) as Expression[]) e[k] += (voulu[k] - e[k]) * 0.04;
-    this.expressions.set(c.s.id, e);
-    const parle = c.s.id === echange.humain && performance.now() < echange.parleJusqua;
-    const bouche = parle ? 0.25 + 0.45 * Math.abs(Math.sin(temps * 9.5)) * (0.6 + 0.4 * Math.sin(temps * 2.3)) : 0;
     const dort = c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7);
     corps.matriceTete(this.matrice);
-    tete.poser(this.matrice, { ...e, bouche }, c.ecoute > 0.3 ? camera : null, dort, temps);
+    tete.poser(this.matrice, this.expressionsDuMoment(c, temps), c.ecoute > 0.3 ? camera : null, dort, temps);
   }
 
   /**
@@ -205,7 +234,8 @@ export class CorpsProches {
     const corps = this.corps.get(id);
     if (!corps) return false;
     corps.matriceTete(this.matrice);
-    yeux.set(0, 1 - corps.p.hauteTete * 0.45, corps.p.hauteTete * 0.12).applyMatrix4(this.matrice);
+    if (corps.yeuxRepos) yeux.copy(corps.yeuxRepos).applyMatrix4(this.matrice);
+    else yeux.set(0, 1 - corps.p.hauteTete * 0.45, corps.p.hauteTete * 0.12).applyMatrix4(this.matrice);
     face.set(0, 0, 1).transformDirection(this.matrice);
     return true;
   }

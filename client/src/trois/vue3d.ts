@@ -51,7 +51,7 @@ interface HorlogeJson {
 
 type Qualite = "basse" | "moyenne" | "haute" | "ultra";
 interface ReglageQualite {
-  pixels: number; finesse: number; vegetation: number; corps: number; nombre: number; visages: number; nombreVisages: number; silhouettes: number; camp: number; sol: number;
+  pixels: number; finesse: number; vegetation: number; corps: number; nombre: number; visages: number; nombreVisages: number; reels: number; porteeReels: number; silhouettes: number; camp: number; sol: number;
   /** Ombres (0.41.3) : côté des cartes d'ombre (0 : aucune), portée des cascades (m), ombres du relief et des petites plantes, ombres douces. */
   ombres: number; porteeOmbres: number; ombreRelief: boolean; ombrePetits: boolean; douces: boolean;
   /** Occlusion ambiante : résolution relative (0 : aucune). Halo : lumières vives qui débordent. */
@@ -62,10 +62,10 @@ interface ReglageQualite {
  * silhouettes jusqu'à `silhouettes` m, points de vie au-delà ; camp et bêtes jusqu'à `camp` m. Basse reste proche de la 0.41.2.
  */
 const QUALITES: Record<Qualite, ReglageQualite> = {
-  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, silhouettes: 1200, camp: 1200, sol: 30, ombres: 0, porteeOmbres: 0, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false },
-  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, silhouettes: 2000, camp: 2000, sol: 55, ombres: 1024, porteeOmbres: 160, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false },
-  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true },
-  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true },
+  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, reels: 8, porteeReels: 15, silhouettes: 1200, camp: 1200, sol: 30, ombres: 0, porteeOmbres: 0, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false },
+  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, reels: 16, porteeReels: 30, silhouettes: 2000, camp: 2000, sol: 55, ombres: 1024, porteeOmbres: 160, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false },
+  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, reels: 40, porteeReels: 70, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true },
+  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, reels: 70, porteeReels: 120, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true },
 };
 
 /** Vitesse la plus haute en promenade (proposition E1) : au-delà, les humains sauteraient d'une case à l'autre. */
@@ -388,7 +388,7 @@ export class Vue3D {
     this.terrain.facteur = q.finesse;
     this.nature.portee = q.vegetation;
     this.sol.portee = q.sol;
-    this.proches.reglage = { portee: q.corps, nombre: q.nombre, visages: q.visages, nombreVisages: q.nombreVisages };
+    this.proches.reglage = { portee: q.corps, nombre: q.nombre, visages: q.visages, nombreVisages: q.nombreVisages, reels: q.reels, porteeReels: q.porteeReels };
     this.foule.porteeSilhouettes = q.silhouettes;
     this.camp.portee = q.camp;
     this.nature.vider();
