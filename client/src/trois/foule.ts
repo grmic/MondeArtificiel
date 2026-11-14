@@ -206,6 +206,11 @@ export class Foule {
     this.groupe.add(this.points);
   }
 
+  /** Les points lointains sont des repères : leur éclat suit l'inverse de l'exposition (0.41.3). */
+  set exposition(e: number) {
+    (this.points.material as THREE.MeshBasicMaterial).color.setHex(0xffe2a0).multiplyScalar(Math.min(4, 0.6 / Math.max(e, 0.01)));
+  }
+
   /** Nouveau flux Scène. */
   recevoir(humains: HumainScene[], secondes: number): void {
     this.image++;
@@ -449,12 +454,12 @@ export class Foule {
   }
 
   /** Où est un humain affiché (tête), son cap et s'il marche ; null s'il n'est pas dans la scène. */
-  etat(id: number): { tete: THREE.Vector3; cap: number; enMarche: boolean } | null {
+  etat(id: number): { tete: THREE.Vector3; cap: number; enMarche: boolean; taille: number } | null {
     const c = this.corps.get(id);
     if (!c || Number.isNaN(c.x)) return null;
     const pl = this.placement(c);
     const haut = c.posture === "couche" || c.posture === "nage" || c.posture === "porte" ? 0.25 : c.posture === "assis" || c.posture === "travail" ? 0.5 : c.posture === "accroupi" ? 0.6 : 0.85;
-    return { tete: new THREE.Vector3(pl.x, pl.y + c.taille * haut, pl.z), cap: pl.cap, enMarche: c.enMarche };
+    return { tete: new THREE.Vector3(pl.x, pl.y + c.taille * haut, pl.z), cap: pl.cap, enMarche: c.enMarche, taille: c.taille };
   }
 
   get nombre(): number {
@@ -506,7 +511,12 @@ export class Feux3D {
     }
   }
 
-  animer(temps: number, camera: THREE.Vector3, nuit: number): void {
+  /**
+   * `exposition` (0.41.3) : un feu brille toujours autant ; il paraît vif la nuit, quand l'œil s'est adapté, et pâle en plein jour.
+   * Les flammes dépassent alors le blanc et donnent un halo.
+   */
+  animer(temps: number, camera: THREE.Vector3, nuit: number, exposition = 0.6): void {
+    (this.flammes.material as THREE.MeshBasicMaterial).color.setHex(0xffa040).multiplyScalar(1.2 / Math.pow(Math.max(exposition, 0.01), 0.85));
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const p = new THREE.Vector3();
@@ -562,7 +572,7 @@ export class Feux3D {
         return;
       }
       l.position.set(a.f.x, a.f.y + 1, a.f.z);
-      l.intensity = (6 + 25 * nuit) * (0.85 + 0.15 * Math.sin(temps * 11 + a.f.graine));
+      l.intensity = (0.2 + 0.7 * nuit) * (0.85 + 0.15 * Math.sin(temps * 11 + a.f.graine));
     });
   }
 }

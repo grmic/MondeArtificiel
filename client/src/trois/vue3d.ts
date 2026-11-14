@@ -1,4 +1,8 @@
 import * as THREE from "three/webgpu";
+import { float, mix, mrt, normalView, output, pass, screenUV, uniform, vec4 } from "three/tsl";
+import { ao } from "three/addons/tsl/display/GTAONode.js";
+import { bloom } from "three/addons/tsl/display/BloomNode.js";
+import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import type { Carte } from "../carte";
 import { connexion } from "../connexion";
 import { nombre, t } from "../langue";
@@ -45,22 +49,35 @@ interface HorlogeJson {
   saut: unknown;
 }
 
-type Qualite = "basse" | "moyenne" | "haute";
+type Qualite = "basse" | "moyenne" | "haute" | "ultra";
+interface ReglageQualite {
+  pixels: number; finesse: number; vegetation: number; corps: number; nombre: number; visages: number; nombreVisages: number; silhouettes: number; camp: number; sol: number;
+  /** Ombres (0.41.3) : côté des cartes d'ombre (0 : aucune), portée des cascades (m), ombres du relief et des petites plantes, ombres douces. */
+  ombres: number; porteeOmbres: number; ombreRelief: boolean; ombrePetits: boolean; douces: boolean;
+  /** Occlusion ambiante : résolution relative (0 : aucune). Halo : lumières vives qui débordent. */
+  ao: number; halo: boolean;
+}
 /**
- * Réglages de Qualité (proposition G1, 0.41.1) : corps détaillés jusqu'à `corps` m (au plus `nombre`), silhouettes jusqu'à
- * `silhouettes` m, points de vie au-delà ; camp et bêtes jusqu'à `camp` m.
+ * Réglages de Qualité (proposition G1, 0.41.1 ; Ultra et lumière en 0.41.3) : corps détaillés jusqu'à `corps` m (au plus `nombre`),
+ * silhouettes jusqu'à `silhouettes` m, points de vie au-delà ; camp et bêtes jusqu'à `camp` m. Basse reste proche de la 0.41.2.
  */
-const QUALITES: Record<Qualite, { pixels: number; finesse: number; vegetation: number; corps: number; nombre: number; visages: number; nombreVisages: number; silhouettes: number; camp: number; sol: number }> = {
-  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, silhouettes: 1200, camp: 1200, sol: 30 },
-  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, silhouettes: 2000, camp: 2000, sol: 55 },
-  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 12, nombreVisages: 14, silhouettes: 2500, camp: 3000, sol: 85 },
+const QUALITES: Record<Qualite, ReglageQualite> = {
+  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, silhouettes: 1200, camp: 1200, sol: 30, ombres: 0, porteeOmbres: 0, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false },
+  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, silhouettes: 2000, camp: 2000, sol: 55, ombres: 1024, porteeOmbres: 160, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false },
+  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true },
+  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true },
 };
 
 /** Vitesse la plus haute en promenade (proposition E1) : au-delà, les humains sauteraient d'une case à l'autre. */
 export const FACTEUR_PROMENADE = 10;
 const HAUTEUR_YEUX = 1.62;
-/** Multiplicateurs de vitesse de déplacement (0.41.1) : touches 1 à 6, ou + et −. Maj multiplie encore par 6. */
-const ALLURES = [0.25, 1, 4, 16, 64, 256];
+/** Multiplicateurs de vitesse de déplacement (0.41.1 ; ×0,05 en 0.41.3) : touches 1 à 7, ou + et −. Maj multiplie encore par 6. */
+const ALLURES = [0.05, 0.25, 1, 4, 16, 64, 256];
+/** Plan proche de la caméra (0.41.3) : 1 cm, pour venir tout contre un visage (la profondeur logarithmique garde le lointain net). */
+const PRES = new URLSearchParams(location.search).has("profondeurlineaire") ? 0.2 : 0.01;
+/** Portrait (0.41.3) : distance au visage, de 30 cm à 3 m. */
+const PORTRAIT_MIN = 0.3;
+const PORTRAIT_MAX = 3;
 
 const decoder = (texte: string) => Uint8Array.from(atob(texte), (c) => c.charCodeAt(0));
 
@@ -140,7 +157,7 @@ function textureVagues(): THREE.Texture {
  */
 export class Vue3D {
   private readonly scene = new THREE.Scene();
-  private readonly camera = new THREE.PerspectiveCamera(62, 1, 0.2, 900000);
+  private readonly camera = new THREE.PerspectiveCamera(62, 1, PRES, 900000);
   private readonly relief: Relief;
   private readonly terrain: Terrain3D;
   private readonly nature: Nature3D;
@@ -170,7 +187,18 @@ export class Vue3D {
    * Suivi automatique (0.41.2) : la caméra reste près d'un humain où qu'il aille. `angle` : d'où on le regarde (0 : de face),
    * relatif à son cap ; glisser la souris tourne autour de lui, la molette rapproche ou éloigne.
    */
-  private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number } | null = null;
+  private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number; portrait: boolean } | null = null;
+  /** Lumière (0.41.3) : ombres en cascade, chaîne de rendu (occlusion, halo, exposition), exposition courante. */
+  private ombres: CSMShadowNode | null = null;
+  private chaine: THREE.RenderPipeline | null = null;
+  private aoNoeud: ReturnType<typeof ao> | null = null;
+  private readonly uExposition = uniform(0.6);
+  private exposition = 0.6;
+  private imagesOmbres = 0;
+  private fondA = 0;
+  /** Compteur d'images détaillé (touche I) : durées des dernières images. */
+  private readonly perf: HTMLElement;
+  private readonly durees: number[] = [];
   private souris: { x: number; y: number } | null = null;
   private qualite: Qualite;
   private images = 0;
@@ -195,16 +223,17 @@ export class Vue3D {
     terrainVue: TerrainVue | null,
   ) {
     this.relief = new Relief(ctx.carte, terrainVue);
+    this.ciel = new Ciel(this.scene);
     const sol = new THREE.MeshStandardMaterial({ vertexColors: true, map: textureSol(), roughness: 0.95, metalness: 0 });
     this.vagues = textureVagues();
-    const eauDouce = new THREE.MeshStandardMaterial({ color: 0x2c5a63, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.8, normalMap: this.vagues, depthWrite: false });
+    // L'eau reflète le ciel calculé (0.41.3).
+    const eauDouce = new THREE.MeshStandardMaterial({ color: 0x2c5a63, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.8, normalMap: this.vagues, depthWrite: false, envMap: this.ciel.reflets });
     eauDouce.normalScale.set(0.35, 0.35);
-    const eauMer = new THREE.MeshStandardMaterial({ color: 0x27607a, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.86, normalMap: this.vagues, depthWrite: false });
+    const eauMer = new THREE.MeshStandardMaterial({ color: 0x27607a, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.86, normalMap: this.vagues, depthWrite: false, envMap: this.ciel.reflets });
     eauMer.normalScale.set(0.5, 0.5);
     this.terrain = new Terrain3D(this.relief, sol, eauDouce);
     this.nature = new Nature3D(this.relief);
     this.sol = new Sol3D(this.relief);
-    this.ciel = new Ciel(this.scene);
     this.foule = new Foule(this.relief);
     this.feux = new Feux3D(this.relief);
     this.proches = new CorpsProches(this.foule);
@@ -238,10 +267,15 @@ export class Vue3D {
     this.etiquettes = document.createElement("div");
     this.etiquettes.className = "etiquettes3d";
     this.mini = new MiniCarte(ctx.carte, this.relief.m, (x, z) => this.teleporter(x, z));
-    const allureLue = lireStockage("monde.allure3d");
+    // L'allure gardée avant la 0.41.3 comptait à partir de ×0,25 : on la décale d'un cran.
+    const allureLue = lireStockage("monde.allure3d.2") ?? (lireStockage("monde.allure3d") === null ? null : String(Number(lireStockage("monde.allure3d")) + 1));
     const allure = allureLue === null ? NaN : Number(allureLue);
+    this.allure = 3;
     if (Number.isInteger(allure) && allure >= 0 && allure < ALLURES.length) this.allure = allure;
-    hote.append(this.etiquettes, this.bulle, this.hud, this.mini.element);
+    this.perf = document.createElement("div");
+    this.perf.className = "perf3d";
+    this.perf.hidden = lireStockage("monde.perf3d") !== "1";
+    hote.append(this.etiquettes, this.bulle, this.hud, this.mini.element, this.perf);
     this.construireHud();
     this.brancherSouris();
     this.appliquerQualite();
@@ -251,8 +285,10 @@ export class Vue3D {
     const forcerWebGL = new URLSearchParams(location.search).has("webgl");
     const renderer = new THREE.WebGPURenderer({ antialias: true, logarithmicDepthBuffer: !new URLSearchParams(location.search).has("profondeurlineaire"), forceWebGL: forcerWebGL });
     await renderer.init();
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.55;
+    // Rendu des tons « AgX » (comme un film ou un capteur : les fortes lumières passent au blanc sans virer) ; l'exposition suit la lumière.
+    renderer.toneMapping = THREE.AgXToneMapping;
+    renderer.toneMappingExposure = 1;
+    renderer.shadowMap.enabled = true;
     const json = await connexion.invoke<TerrainJson>("Terrain").catch(() => null);
     const terrain = json
       ? { roches: decoder(json.roches), pente: decoder(json.pente), debit: decoder(json.debit), profondeur: decoder(json.profondeur), lits: json.lits }
@@ -275,12 +311,13 @@ export class Vue3D {
         <button type="button" data-action="vol">${t("trois.voler")}</button>
         <button type="button" data-action="marche">${t("trois.marcher")}</button>
         <label>${t("trois.allure")} <select data-action="allure">
-          ${ALLURES.map((a, k) => `<option value="${k}">${k + 1} · ×${a}</option>`).join("")}
+          ${ALLURES.map((a, k) => `<option value="${k}">${k + 1} · ×${nombre(a, 2)}</option>`).join("")}
         </select></label>
         <label>${t("trois.qualite")} <select data-action="qualite">
           <option value="basse">${t("trois.qualite.basse")}</option>
           <option value="moyenne">${t("trois.qualite.moyenne")}</option>
           <option value="haute">${t("trois.qualite.haute")}</option>
+          <option value="ultra">${t("trois.qualite.ultra")}</option>
         </select></label>
       </div>
       <form class="ligne" data-action="aller">
@@ -289,6 +326,7 @@ export class Vue3D {
         <button type="submit">${t("trois.allerVoir")}</button>
         <button type="button" data-action="fiche" hidden></button>
         <button type="button" data-action="suivre" hidden></button>
+        <button type="button" data-action="portrait" hidden></button>
       </form>
       <div class="aide" data-role="aide"></div>
       <div class="etat" data-role="etat"></div>`;
@@ -326,6 +364,7 @@ export class Vue3D {
       if (id) this.allerVoir(id);
     });
     q<HTMLButtonElement>('[data-action="suivre"]').addEventListener("click", () => this.basculerSuivi());
+    q<HTMLButtonElement>('[data-action="portrait"]').addEventListener("click", () => this.basculerPortrait());
     this.afficherAide();
   }
 
@@ -336,7 +375,7 @@ export class Vue3D {
 
   private afficherAide(): void {
     const aide = this.hud.querySelector<HTMLElement>('[data-role="aide"]')!;
-    aide.textContent = t(this.suivi ? "trois.aide.suivi" : this.mode === "vol" ? "trois.aide.vol" : "trois.aide.marche");
+    aide.textContent = t(this.suivi?.portrait ? "trois.aide.portrait" : this.suivi ? "trois.aide.suivi" : this.mode === "vol" ? "trois.aide.vol" : "trois.aide.marche");
     for (const b of this.hud.querySelectorAll<HTMLButtonElement>('[data-action="vol"], [data-action="marche"]')) {
       b.classList.toggle("actif", b.dataset.action === this.mode);
     }
@@ -345,6 +384,7 @@ export class Vue3D {
   private appliquerQualite(): void {
     const q = QUALITES[this.qualite];
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixels));
+    this.reglerLumiere(q);
     this.terrain.facteur = q.finesse;
     this.nature.portee = q.vegetation;
     this.sol.portee = q.sol;
@@ -364,14 +404,91 @@ export class Vue3D {
     this.renderer.domElement.style.height = "100%";
     this.camera.aspect = l / h;
     this.camera.updateProjectionMatrix();
+    if (this.ombres?.camera) this.ombres.updateFrustums();
+  }
+
+  /**
+   * Lumière selon la Qualité (0.41.3, proposition C1) : ombres du soleil et de la lune en cascades (nettes près de soi, plus
+   * larges au loin), occlusion ambiante (GTAO : les creux et les plis s'assombrissent), halo des lumières vives, exposition.
+   */
+  private reglerLumiere(q: ReglageQualite): void {
+    const astre = this.ciel.astre;
+    if (q.ombres > 0) {
+      astre.shadow.mapSize.set(q.ombres, q.ombres);
+      astre.shadow.bias = -0.0004;
+      astre.shadow.normalBias = 0.04;
+      astre.shadow.camera.near = 1;
+      astre.shadow.camera.far = 30000;
+      if (!this.ombres) {
+        this.ombres = new CSMShadowNode(astre, { cascades: 4, maxFar: q.porteeOmbres, mode: "practical", lightMargin: 800 });
+        this.ombres.fade = true;
+        astre.shadow.shadowNode = this.ombres;
+      }
+      this.ombres.maxFar = q.porteeOmbres;
+      for (const l of this.ombres.lights) l.shadow?.mapSize.set(q.ombres, q.ombres);
+      if (this.ombres.camera) this.ombres.updateFrustums();
+    }
+    astre.castShadow = q.ombres > 0;
+    // Ombres douces en Ultra : un filtrage plus large (PCF) adoucit le bord des ombres.
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    astre.shadow.radius = q.douces ? 3 : 1;
+    for (const l of this.ombres?.lights ?? []) if (l.shadow) l.shadow.radius = astre.shadow.radius;
+    this.ombrer();
+    // Chaîne de rendu : une passe de la scène (couleur, profondeur, normales), l'occlusion, l'exposition, le halo, puis les tons.
+    this.chaine?.dispose();
+    this.aoNoeud?.dispose();
+    this.chaine = null;
+    this.aoNoeud = null;
+    if (q.ao === 0 && !q.halo) {
+      this.renderer.toneMappingExposure = this.exposition;
+      return;
+    }
+    this.renderer.toneMappingExposure = 1;
+    const scene = pass(this.scene, this.camera);
+    let rendu = scene.getTextureNode("output").rgb.mul(this.uExposition);
+    if (q.ao > 0) {
+      scene.setMRT(mrt({ output, normal: normalView }));
+      const noeud = ao(scene.getTextureNode("depth"), scene.getTextureNode("normal"), this.camera);
+      noeud.resolutionScale = q.ao;
+      noeud.samples.value = q.ao >= 1 ? 16 : 12;
+      noeud.useTemporalFiltering = false;
+      this.aoNoeud = noeud;
+      rendu = rendu.mul(mix(float(1), noeud.getTextureNode().sample(screenUV).r, 0.85));
+    }
+    if (q.halo) rendu = rendu.add(bloom(vec4(rendu, 1), 0.12, 0.4, 1.2).rgb);
+    const chaine = new THREE.RenderPipeline(this.renderer);
+    chaine.outputNode = vec4(rendu, 1);
+    this.chaine = chaine;
+  }
+
+  /** Qui porte et qui reçoit les ombres, d'après la Qualité (refait souvent : les maillages naissent et meurent). */
+  private ombrer(): void {
+    const q = QUALITES[this.qualite];
+    const actif = q.ombres > 0;
+    const regler = (g: THREE.Object3D, porter: boolean) => g.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.Material & { isMeshBasicMaterial?: boolean };
+      const basique = mat.isMeshBasicMaterial === true;
+      m.castShadow = actif && porter && !basique && !mat.transparent && !mat.polygonOffset;
+      m.receiveShadow = actif && !basique;
+    });
+    regler(this.terrain.groupe, q.ombreRelief);
+    regler(this.nature.groupe, true);
+    regler(this.sol.groupe, q.ombrePetits);
+    regler(this.foule.groupe, true);
+    regler(this.feux.groupe, true);
+    regler(this.proches.groupe, true);
+    regler(this.camp.groupe, true);
+    this.mer.receiveShadow = actif;
   }
 
   private changerAllure(k: number): void {
     this.allure = Math.max(0, Math.min(ALLURES.length - 1, k));
-    ecrireStockage("monde.allure3d", String(this.allure));
+    ecrireStockage("monde.allure3d.2", String(this.allure));
     const choix = this.hud.querySelector<HTMLSelectElement>('[data-action="allure"]');
     if (choix) choix.value = String(this.allure);
-    this.ctx.message(t("trois.allureChoisie", { n: ALLURES[this.allure] }));
+    this.ctx.message(t("trois.allureChoisie", { n: nombre(ALLURES[this.allure], 2) }));
   }
 
   /** Mini-carte : la caméra va au point choisi, en vol, assez haut pour voir alentour, avec le même regard. */
@@ -418,7 +535,9 @@ export class Vue3D {
       depart.y = e.clientY;
       if (this.suivi) {
         this.suivi.angle -= dx * 0.006;
-        this.suivi.hauteur = Math.max(-0.5, Math.min(12, this.suivi.hauteur - dy * 0.01));
+        // En Portrait, glisser de haut en bas fait tourner autour du visage (au-dessus, en dessous) ; en suivi, monter ou descendre.
+        if (this.suivi.portrait) this.suivi.hauteur = Math.max(-0.7, Math.min(1.2, this.suivi.hauteur + dy * 0.005));
+        else this.suivi.hauteur = Math.max(-0.5, Math.min(12, this.suivi.hauteur - dy * 0.01));
         return;
       }
       this.lacet -= dx * 0.0035;
@@ -443,7 +562,9 @@ export class Vue3D {
     toile.addEventListener("wheel", (e) => {
       e.preventDefault();
       if (this.suivi) {
-        this.suivi.distance = Math.max(1.2, Math.min(60, this.suivi.distance * (e.deltaY > 0 ? 1.12 : 1 / 1.12)));
+        // Jusqu'à 35 cm du visage en suivi, de 30 cm à 3 m en Portrait (0.41.3).
+        const [min, max] = this.suivi.portrait ? [PORTRAIT_MIN, PORTRAIT_MAX] : [0.35, 60];
+        this.suivi.distance = Math.max(min, Math.min(max, this.suivi.distance * (e.deltaY > 0 ? 1.1 : 1 / 1.1)));
         return;
       }
       if (this.mode !== "vol") return;
@@ -467,7 +588,7 @@ export class Vue3D {
       this.changerMode(this.mode === "vol" ? "marche" : "vol");
       return;
     }
-    const chiffre = /^(?:Digit|Numpad)([1-6])$/.exec(e.code);
+    const chiffre = /^(?:Digit|Numpad)([1-7])$/.exec(e.code);
     if (chiffre) {
       this.changerAllure(Number(chiffre[1]) - 1);
       return;
@@ -486,6 +607,15 @@ export class Vue3D {
     }
     if (e.key === "f" || e.key === "F") {
       this.basculerSuivi();
+      return;
+    }
+    if (e.key === "p" || e.key === "P") {
+      this.basculerPortrait();
+      return;
+    }
+    if (e.key === "i" || e.key === "I") {
+      this.perf.hidden = !this.perf.hidden;
+      ecrireStockage("monde.perf3d", this.perf.hidden ? "0" : "1");
       return;
     }
     const mouvement = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight", "Space", "PageUp", "PageDown"];
@@ -598,15 +728,60 @@ export class Vue3D {
     this.suivre(id);
   }
 
+  /**
+   * Mode Portrait (0.41.3) : la caméra tourne autour du visage de l'humain suivi (sinon de celui de la fiche, sinon du plus proche
+   * devant soi), de 30 cm à 3 m ; il garde son visage détaillé. P, F ou Échap pour en sortir.
+   */
+  basculerPortrait(): void {
+    if (this.suivi?.portrait) {
+      this.arreterSuivi();
+      return;
+    }
+    let id = this.suivi?.id ?? this.ctx.ficheCourante();
+    if (!id) {
+      const avant = new THREE.Vector3();
+      this.camera.getWorldDirection(avant);
+      let meilleur = 60;
+      for (const h of this.foule.tous()) {
+        const v = h.tete.clone().sub(this.camera.position);
+        const d = v.length();
+        if (d < meilleur && v.dot(avant) > d * 0.5) [meilleur, id] = [d, h.id];
+      }
+    }
+    if (!id) {
+      this.ctx.message(t("trois.portraitSansHumain"));
+      return;
+    }
+    this.portrait(id);
+  }
+
+  /** Portrait d'un humain : de face, un peu de côté, à 80 cm. */
+  portrait(id: number): void {
+    if (this.suivi?.id === id) {
+      this.suivi.portrait = true;
+      this.suivi.angle = 0.25;
+      this.suivi.distance = 0.8;
+      this.suivi.hauteur = 0.05;
+    } else {
+      this.suivre(id, true);
+      if (!this.suivi) return;
+    }
+    this.proches.force = id;
+    this.afficherAide();
+    this.majEtat();
+    this.ctx.message(t("trois.portraitDebut", { nom: this.ctx.nom(id) }));
+  }
+
   /** Suivi automatique d'un humain : de trois quarts, à quelques mètres, à hauteur d'homme. */
-  suivre(id: number): void {
+  suivre(id: number, portrait = false): void {
     const v = this.ctx.vivants().find((h) => h.id === id);
     if (!v) {
       this.ctx.message(t("trois.introuvable"));
       return;
     }
     this.viser = null;
-    this.suivi = { id, angle: Math.PI * 0.8, distance: 4.5, hauteur: 0.4, perdu: 0 };
+    this.suivi = portrait ? { id, angle: 0.25, distance: 0.8, hauteur: 0.05, perdu: 0, portrait: true } : { id, angle: Math.PI * 0.8, distance: 4.5, hauteur: 0.4, perdu: 0, portrait: false };
+    this.proches.force = id;
     if (!this.foule.position(id)) {
       // Pas encore dans la scène : on va à sa case, il apparaîtra au prochain flux.
       const [x, z] = this.relief.camp(v.x, v.y);
@@ -615,13 +790,14 @@ export class Vue3D {
     this.mode = "vol";
     this.afficherAide();
     this.majEtat();
-    this.ctx.message(t("trois.suiviDebut", { nom: v.nom }));
+    if (!portrait) this.ctx.message(t("trois.suiviDebut", { nom: v.nom }));
   }
 
   private arreterSuivi(): void {
     if (!this.suivi) return;
     const nom = this.ctx.nom(this.suivi.id);
     this.suivi = null;
+    this.proches.force = null;
     this.majEtat();
     this.afficherAide();
     this.ctx.message(t("trois.suiviFin", { nom }));
@@ -639,6 +815,8 @@ export class Vue3D {
       if (!v || s.perdu > 10) {
         this.ctx.message(t("trois.suiviPerdu", { nom: this.ctx.nom(s.id) }));
         this.suivi = null;
+        this.proches.force = null;
+        this.afficherAide();
         this.majEtat();
         return;
       }
@@ -647,7 +825,29 @@ export class Vue3D {
       return;
     }
     s.perdu = 0;
-    const { tete, cap, enMarche } = etat;
+    const { tete, cap, enMarche, taille } = etat;
+    if (s.portrait) {
+      // Portrait : autour des yeux, à la distance choisie, d'après la direction de son visage (couché, on le regarde d'au-dessus) ;
+      // l'angle reste attaché à son visage s'il se tourne ou marche.
+      const yeux = new THREE.Vector3();
+      const face = new THREE.Vector3();
+      if (!this.proches.yeux(s.id, yeux, face)) {
+        yeux.copy(tete).setY(tete.y + taille * 0.08);
+        face.set(Math.sin(cap), 0, Math.cos(cap));
+      }
+      const dir = face.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), s.angle);
+      dir.multiplyScalar(Math.cos(s.hauteur)).add(new THREE.Vector3(0, Math.sin(s.hauteur), 0)).normalize();
+      // Visage tourné vers le sol (à plat ventre, à la nage) : on reste au-dessus.
+      if (dir.y < -0.2) dir.setY(-0.2).normalize();
+      const cible = yeux.clone().addScaledVector(dir, s.distance);
+      const plancher = Math.max(this.relief.hauteur(cible.x, cible.z), 0) + 0.05;
+      if (cible.y < plancher) cible.y = plancher;
+      const p = this.camera.position;
+      if (p.distanceTo(cible) > 50) p.copy(cible);
+      else p.lerp(cible, Math.min(1, dt * 6));
+      this.regarderVers(yeux);
+      return;
+    }
     // Quand il marche, on revient peu à peu derrière lui (de trois quarts).
     if (enMarche) {
       const voulu = Math.PI * 0.8;
@@ -803,6 +1003,18 @@ export class Vue3D {
     const p = this.camera.position;
     const secondes = this.secondesMonde();
     this.ciel.regler(secondes, p);
+    // L'œil s'adapte à la lumière en une ou deux secondes (plus lentement vers le noir).
+    const vise = this.ciel.expositionVisee;
+    const vitesse = vise > this.exposition ? 0.8 : 1.6;
+    this.exposition *= Math.pow(vise / this.exposition, Math.min(1, dt * vitesse));
+    this.uExposition.value = this.exposition;
+    if (!this.chaine) this.renderer.toneMappingExposure = this.exposition;
+    this.ciel.exposition = this.exposition;
+    this.foule.exposition = this.exposition;
+    if (maintenant - this.fondA > 1000) {
+      this.fondA = maintenant;
+      this.ciel.fond = this.fondAlentour(p);
+    }
     this.terrain.mettreAJour(p, 7);
     this.nature.mettreAJour(p, 3);
     this.sol.mettreAJour(p, 2);
@@ -811,7 +1023,7 @@ export class Vue3D {
     this.suivreImage(dt);
     this.proches.mettreAJour(p, maintenant / 1000);
     this.camp.animer(p, secondes, maintenant / 1000);
-    this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte);
+    this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
     this.mer.position.set(p.x, 0, p.z);
     this.vagues.offset.set((p.x / 40 + maintenant / 60000) % 1, (-p.z / 40 + maintenant / 90000) % 1);
     // Aller voir : dès que l'humain est là, on se pose à pied à quelques mètres, face à lui.
@@ -828,7 +1040,15 @@ export class Vue3D {
     }
     this.camera.rotation.set(this.tangage, this.lacet, 0, "YXZ");
     this.camera.updateMatrixWorld();
-    this.renderer.render(this.scene, this.camera);
+    if (++this.imagesOmbres % 30 === 1) this.ombrer();
+    if (this.aoNoeud) {
+      // L'occlusion se mesure à l'échelle de ce qu'on regarde : quelques millimètres sur un visage, un mètre sur un paysage.
+      const haut = p.y - Math.max(0, this.relief.hauteur(p.x, p.z));
+      const r = this.suivi ? Math.max(0.03, Math.min(0.8, this.suivi.distance * 0.12)) : Math.max(0.3, Math.min(2.5, haut * 0.25));
+      this.aoNoeud.radius.value = r;
+    }
+    if (this.chaine) this.chaine.render();
+    else this.renderer.render(this.scene, this.camera);
     this.montrerNoms();
     if (maintenant - this.miniA > 100) {
       this.miniA = maintenant;
@@ -838,12 +1058,48 @@ export class Vue3D {
       });
     }
     this.images++;
+    this.durees.push(performance.now() - maintenant);
     if (maintenant - this.imagesDepuis > 1000) {
       this.parSeconde = (this.images * 1000) / (maintenant - this.imagesDepuis);
       this.images = 0;
       this.imagesDepuis = maintenant;
       this.majEtat();
+      this.majPerf();
     }
+  }
+
+  /** Bas du relief alentour (le fond de la vallée où l'on est), pour la brume des fonds. */
+  private fondAlentour(p: THREE.Vector3): number {
+    let bas = Math.max(0, this.relief.hauteur(p.x, p.z));
+    for (const r of [600, 1500, 3000]) {
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        bas = Math.min(bas, Math.max(0, this.relief.hauteur(p.x + Math.cos(a) * r, p.z + Math.sin(a) * r)));
+      }
+    }
+    return bas;
+  }
+
+  /** Compteur d'images (touche I) : images par seconde, durée moyenne et plus longue du travail du processeur, appels de dessin. */
+  private majPerf(): void {
+    if (this.perf.hidden) {
+      this.durees.length = 0;
+      return;
+    }
+    const n = this.durees.length || 1;
+    const moyenne = this.durees.reduce((a, b) => a + b, 0) / n;
+    const pire = Math.max(0, ...this.durees);
+    this.durees.length = 0;
+    const info = this.renderer.info.render as { drawCalls?: number; calls?: number; triangles?: number };
+    this.perf.textContent = t("trois.perf", {
+      images: Math.round(this.parSeconde),
+      moyenne: nombre(moyenne, 1),
+      pire: nombre(pire, 1),
+      appels: nombre(info.drawCalls ?? info.calls ?? 0),
+      triangles: nombre(Math.round((info.triangles ?? 0) / 1000)),
+      qualite: t(`trois.qualite.${this.qualite}`),
+      moteur: this.moteur,
+    });
   }
 
   private ecran(p: THREE.Vector3): { x: number; y: number } | null {
@@ -890,7 +1146,7 @@ export class Vue3D {
     this.camera.getWorldDirection(avant);
     const proches = [...this.foule.tous()]
       .map((h) => ({ h, d: h.tete.distanceTo(this.camera.position) }))
-      .filter(({ h, d }) => d < 45 && h.tete.clone().sub(this.camera.position).dot(avant) > 0)
+      .filter(({ h, d }) => d < 45 && d > 2.5 && h.tete.clone().sub(this.camera.position).dot(avant) > 0)
       .sort((a, b) => a.d - b.d)
       .slice(0, 12);
     while (this.etiquettes.children.length < proches.length) this.etiquettes.append(document.createElement("span"));
@@ -938,9 +1194,14 @@ export class Vue3D {
     const id = this.ctx.ficheCourante();
     bouton.hidden = !id;
     if (id) bouton.textContent = t("trois.allerVoirFiche", { nom: this.ctx.nom(id) });
+    const portrait = this.hud.querySelector<HTMLButtonElement>('[data-action="portrait"]')!;
+    const cible = this.suivi?.id ?? id;
+    portrait.hidden = !cible;
+    portrait.classList.toggle("actif", this.suivi?.portrait === true);
+    portrait.textContent = this.suivi?.portrait ? t("trois.portraitArreter") : cible ? t("trois.portraitDe", { nom: this.ctx.nom(cible) }) : "";
     const suivre = this.hud.querySelector<HTMLButtonElement>('[data-action="suivre"]')!;
     suivre.hidden = !id && !this.suivi;
-    suivre.classList.toggle("actif", this.suivi !== null);
+    suivre.classList.toggle("actif", this.suivi !== null && !this.suivi.portrait);
     suivre.textContent = this.suivi ? t("trois.suiviArreter", { nom: this.ctx.nom(this.suivi.id) }) : id ? t("trois.suivre", { nom: this.ctx.nom(id) }) : "";
   }
 }

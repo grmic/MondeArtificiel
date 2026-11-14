@@ -57,6 +57,8 @@ export class CorpsProches {
   private readonly tetes = new Map<number, TeteDetaillee>();
   private readonly expressions = new Map<number, Record<Expression, number>>();
   private visagesDemandes = 0;
+  /** Humain toujours détaillé, corps et visage, où qu'il soit (suivi ou Portrait, 0.41.3). */
+  force: number | null = null;
   private readonly matrice = new THREE.Matrix4();
 
   constructor(private readonly foule: Foule) {}
@@ -77,7 +79,7 @@ export class CorpsProches {
       if (Number.isNaN(c.x)) continue;
       const pl = this.foule.placement(c);
       const d = Math.hypot(pl.x - camera.x, pl.y - camera.y, pl.z - camera.z);
-      if (d < this.reglage.portee) candidats.push({ c: { ...pl, id: c.s.id }, d, corps: c });
+      if (d < this.reglage.portee || c.s.id === this.force) candidats.push({ c: { ...pl, id: c.s.id }, d: c.s.id === this.force ? -1 : d, corps: c });
     }
     candidats.sort((a, b) => a.d - b.d);
     const gardes = candidats.slice(0, this.reglage.nombre);
@@ -95,6 +97,7 @@ export class CorpsProches {
     }
     let tetesFaites = 0;
     const tetesVoulues = new Set(gardes.filter((g) => g.d < this.reglage.visages).slice(0, this.reglage.nombreVisages).map((g) => g.c.id));
+    if (this.force !== null && gardes.some((g) => g.c.id === this.force)) tetesVoulues.add(this.force);
     for (const [id, tete] of this.tetes) {
       if (!tetesVoulues.has(id) || !this.corps.has(id)) {
         tete.liberer();
@@ -192,6 +195,19 @@ export class CorpsProches {
     const dort = c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7);
     corps.matriceTete(this.matrice);
     tete.poser(this.matrice, { ...e, bouche }, c.ecoute > 0.3 ? camera : null, dort, temps);
+  }
+
+  /**
+   * Yeux et regard d'un humain en corps détaillé (0.41.3, Portrait) : le milieu des yeux et la direction où regarde son visage,
+   * d'après l'os de la tête (couché, il regarde le ciel). Faux s'il n'est pas détaillé.
+   */
+  yeux(id: number, yeux: THREE.Vector3, face: THREE.Vector3): boolean {
+    const corps = this.corps.get(id);
+    if (!corps) return false;
+    corps.matriceTete(this.matrice);
+    yeux.set(0, 1 - corps.p.hauteTete * 0.45, corps.p.hauteTete * 0.12).applyMatrix4(this.matrice);
+    face.set(0, 0, 1).transformDirection(this.matrice);
+    return true;
   }
 
   get nombre(): number {

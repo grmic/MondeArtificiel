@@ -259,6 +259,8 @@ export class PanneauFiche {
   private nomCourant = "";
   /** Fiche d'où l'on vient (une communauté), pour le bouton « retour » : fourni par la page, oublié à la fermeture. */
   retour: { libelle: string; aller: () => void } | null = null;
+  /** Vue 3D ouverte (0.41.3) : un bouton « Portrait » met la caméra face au visage de cet humain. */
+  portrait3d: ((id: number) => void) | null = null;
 
   constructor(
     private readonly racine: HTMLElement,
@@ -378,6 +380,15 @@ export class PanneauFiche {
       titre.append(nom);
     }
     tete.append(titre, boutonSuivre("humain", this.id, h.nom));
+    if (this.portrait3d) {
+      const vers = this.portrait3d;
+      const id = this.id;
+      const b = el("button", undefined, t("fiche.portrait3d"));
+      b.type = "button";
+      b.title = t("fiche.portrait3dTitre");
+      b.addEventListener("click", () => vers(id));
+      tete.append(b);
+    }
     const fermer = el("button", "fermer", "×");
     fermer.type = "button";
     fermer.title = t("fiche.fermer");

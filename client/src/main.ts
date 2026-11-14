@@ -472,6 +472,7 @@ async function demarrer(): Promise<void> {
     element("#scene").hidden = false;
     vue.suspendre(false);
     vue.cadrer();
+    fiche.portrait3d = null;
     await vue3d?.fermer();
   };
   bouton3d.addEventListener("click", async () => {
@@ -498,6 +499,8 @@ async function demarrer(): Promise<void> {
       vue.suspendre(true);
       element("#scene").hidden = true;
       infos.textContent = t("trois.ouverte", { moteur: vue3d.moteur });
+      const ouverte = vue3d;
+      fiche.portrait3d = (id) => ouverte.portrait(id);
       await vue3d.ouvrir();
     } catch (e) {
       await quitter3d();
