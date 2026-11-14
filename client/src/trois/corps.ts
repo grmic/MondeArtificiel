@@ -85,7 +85,7 @@ export function formeDe(s: HumainScene, peau: THREE.Color, cheveux: THREE.Color)
 export function cleDe(f: Forme): string {
   const r = (v: number, pas: number) => Math.round(v / pas);
   return [r(f.age < 18 ? f.age : 18 + (f.age - 18) / 4, 0.5), f.femme ? 1 : 0, r(f.musculature, 0.1), r(f.graisse, 0.1), r(f.maigreur, 0.1),
-    r(f.poitrine, 0.08), r(f.ptose, 0.1), f.grossesse, f.vetement, r(f.usure, 0.25), r(f.voute, 0.2)].join(",");
+    r(f.poitrine, 0.08), r(f.ptose, 0.1), f.grossesse, f.vetement, r(f.usure, 0.25), r(f.voute, 0.2), f.peau.getHexString(), f.cheveux.getHexString()].join(",");
 }
 
 // Os du squelette.
@@ -329,6 +329,13 @@ export function construire(f: Forme): { geometrie: THREE.BufferGeometry; repos: 
       // Ventre : graisse, et grossesse (plus bas, plus rond).
       dz += (0.035 * f.graisse + 0.004 * enfant) * bosse(q.x / 0.09, (q.y - (p.taille - 0.02)) / 0.08);
       dz += 0.075 * f.grossesse * bosse(q.x / 0.085, (q.y - (p.hanche + 0.06)) / 0.085);
+      // Nombril (un petit creux) et clavicules (plus visibles chez les maigres).
+      dz -= 0.005 * (1 - enfant * 0.5) * bosse(q.x / 0.008, (q.y - (p.taille - 0.012)) / 0.008);
+      const ax = Math.abs(q.x);
+      if (ax > 0.012 && ax < p.xEpaule * 0.9) {
+        const yClav = p.epaule - 0.014 + 0.008 * (ax / p.xEpaule);
+        dz += (0.003 + 0.004 * f.maigreur) * bosse(0, (q.y - yClav) / 0.009) * lisser(0.012, 0.03, ax);
+      }
       // Mont du pubis, chez l'adulte.
       dz += 0.006 * adulte * bosse(q.x / 0.03, (q.y - (p.hanche - 0.012)) / 0.02);
       q.z += dz * Math.sqrt(avant);
@@ -358,6 +365,8 @@ export function construire(f: Forme): { geometrie: THREE.BufferGeometry; repos: 
           if (d < 1) return peau.clone().lerp(aureole, montre * (1 - d * d * 0.6));
         }
       }
+      // Nombril.
+      if (Math.hypot(q.x / 0.007, (q.y - (p.taille - 0.012)) / 0.006) < 1) return peau.clone().multiplyScalar(0.7);
       // Pilosité pubienne de l'adulte (triangle), absente chez l'enfant.
       if (adulte > 0.05 && f.vetement === 0) {
         const h = q.y - (bas + 0.004);
@@ -390,6 +399,214 @@ export function construire(f: Forme): { geometrie: THREE.BufferGeometry; repos: 
     anneaux: 6, cotes: 16, rayon: () => [rCou, rCou * 0.95], couleur: () => peau,
     liens: (q) => fondu(q.y, p.menton - 0.005, 0.015, O.cou, O.tete),
   });
+  // Bras (G = côté +x, à la gauche de l'humain) : un seul tube de l'épaule au poignet (pas de couture au coude), puis la main
+  // avec ses doigts. La paume est tournée vers la cuisse.
+  const rBras = (0.025 + 0.012 * muscle + 0.004 * masc) * (1 + 0.25 * f.graisse - 0.2 * f.maigreur) + 0.006 * enfant;
+  const rAvant = (0.021 + 0.006 * muscle + 0.003 * masc) * (1 + 0.15 * f.graisse - 0.15 * f.maigreur) + 0.005 * enfant;
+  const ouvert = 0.09;
+  const paume = peau.clone().lerp(new THREE.Color(0.86, 0.68, 0.6), 0.35);
+  for (const cote of [1, -1]) {
+    const [b, ab, mn] = cote > 0 ? [O.brasG, O.avantBrasG, O.mainG] : [O.brasD, O.avantBrasD, O.mainD];
+    const epaule = new THREE.Vector3(cote * p.xEpaule, p.epaule - 0.012, -0.004);
+    const dir = new THREE.Vector3(cote * Math.sin(ouvert), -Math.cos(ouvert), 0);
+    const lBras = p.epaule - p.coude;
+    const lAvant = p.coude - p.poignet;
+    const lTout = lBras + lAvant + 0.02;
+    const rayonBras = (t: number) => {
+      const deltoide = 1 + (0.12 + 0.25 * muscle) * bosse(0, (t - 0.15) / 0.25);
+      const biceps = 1 + 0.18 * muscle * bosse(0, (t - 0.55) / 0.35);
+      const rond = t < 0.14 ? Math.sqrt(0.25 + 0.75 * (t / 0.14)) : 1;
+      return [rBras * deltoide * rond * (0.9 + 0.1 * (1 - t)), rBras * biceps * rond];
+    };
+    const rayonAvant = (t: number) => {
+      const r = rAvant * (1 + 0.25 * bosse(0, (t - 0.25) / 0.4) * (0.6 + muscle)) * entre(1, 0.72, t);
+      return [r, r * 0.85];
+    };
+    tube(m, {
+      depart: epaule.clone().addScaledVector(dir, -0.015), axe: dir, longueur: lTout, anneaux: 22, cotes: 14,
+      rayon: (t) => {
+        const d = t * lTout - 0.015;
+        const [a1, a2] = rayonBras(Math.min(1, Math.max(0, (d + 0.015) / (lBras + 0.03))));
+        const [c1, c2] = rayonAvant(Math.min(1, Math.max(0, (d - lBras + 0.012) / (lAvant + 0.02))));
+        const k = lisser(lBras - 0.02, lBras + 0.02, d);
+        // Le poignet s'aplatit vers la main.
+        const poignet = lisser(lBras + lAvant - 0.03, lBras + lAvant + 0.005, d);
+        return [entre(a1, c1, k) * (1 - 0.1 * poignet), entre(a2, c2, k) * (1 - 0.15 * poignet)];
+      },
+      deformer: (q, t) => {
+        // Pointe du coude, à l'arrière.
+        const d = t * lTout - 0.015;
+        if (q.z < -0.004) q.z -= 0.006 * bosse(0, (d - lBras) / 0.025);
+      },
+      couleur: () => peau,
+      liens: (_q, t) => {
+        const d = t * lTout - 0.015;
+        if (d < 0.02) return [[O.poitrine, Math.max(0, 0.4 - 10 * (d + 0.015))], [b, 1 - Math.max(0, 0.4 - 10 * (d + 0.015))]];
+        if (d > lBras + lAvant - 0.01) return fondu(d, lBras + lAvant, 0.01, ab, mn);
+        return fondu(d, lBras, 0.022, b, ab);
+      },
+    });
+    // Paume : large d'avant en arrière, mince de dedans en dehors.
+    const poignet = epaule.clone().addScaledVector(dir, lBras + lAvant);
+    const lPaume = p.longMain * 0.5;
+    const largeur = rAvant * 1.05;
+    const epais = rAvant * 0.45;
+    const cotePaume = (q: THREE.Vector3, centre: THREE.Vector3) => ((q.x - centre.x) * cote < 0 ? paume : peau);
+    tube(m, {
+      depart: poignet.clone().addScaledVector(dir, -0.006), axe: dir, longueur: lPaume + 0.008, anneaux: 7, cotes: 14,
+      avant: new THREE.Vector3(0, 0, 1),
+      rayon: (t) => {
+        const fin = t > 0.85 ? 0.75 + 0.25 * Math.sqrt(Math.max(0, 1 - ((t - 0.85) / 0.15) ** 2)) : 1;
+        return [epais * (t < 0.2 ? 1.15 : 1) * fin, largeur * entre(0.8, 1, Math.min(1, t * 2.5)) * fin];
+      },
+      couleur: (q) => cotePaume(q, poignet),
+      liens: (_q, t) => (t < 0.1 ? [[ab, 0.3], [mn, 0.7]] : [[mn, 1]]),
+    });
+    // Doigts : quatre, un peu repliés vers la paume, et le pouce devant.
+    const rDoigt = 0.0047 * (rAvant / 0.023);
+    const bout = poignet.clone().addScaledVector(dir, lPaume - 0.004);
+    const longueurs = [0.42, 0.47, 0.44, 0.35];
+    [0.72, 0.24, -0.24, -0.7].forEach((zr, k) => {
+      const l = p.longMain * longueurs[k];
+      const depart = bout.clone().add(new THREE.Vector3(0, 0, zr * largeur * 0.95));
+      tube(m, {
+        depart, axe: dir, longueur: l, anneaux: 6, cotes: 7,
+        rayon: (t) => {
+          const r = rDoigt * (k === 3 ? 0.85 : 1) * entre(1, 0.85, t) * Math.sqrt(Math.max(0, 1 - Math.max(0, (t - 0.8) / 0.2) ** 2));
+          return [r + 0.0001, r * 0.9 + 0.0001];
+        },
+        deformer: (q, t) => {
+          q.x -= cote * 0.45 * l * t * t;
+          q.y += 0.12 * l * t * t;
+        },
+        couleur: (q) => cotePaume(q, depart),
+        liens: () => [[mn, 1]],
+      });
+    });
+    {
+      const l = p.longMain * 0.36;
+      const depart = poignet.clone().addScaledVector(dir, lPaume * 0.18).add(new THREE.Vector3(-cote * epais * 0.3, 0, largeur * 0.8));
+      const axe = dir.clone().multiplyScalar(0.62).add(new THREE.Vector3(-cote * 0.3, 0, 0.6)).normalize();
+      tube(m, {
+        depart, axe, longueur: l, anneaux: 6, cotes: 8,
+        rayon: (t) => {
+          const r = rDoigt * 1.25 * entre(1.3, 0.85, t) * Math.sqrt(Math.max(0, 1 - Math.max(0, (t - 0.8) / 0.2) ** 2));
+          return [r + 0.0001, r + 0.0001];
+        },
+        couleur: (q) => cotePaume(q, depart),
+        liens: () => [[mn, 1]],
+      });
+    }
+  }
+
+  // Jambes : un seul tube de la hanche à la cheville (pas de couture au genou), rotule devant, mollet derrière.
+  const rCuisse = (0.05 + 0.008 * fem + 0.012 * muscle) * (1 + 0.3 * f.graisse - 0.2 * f.maigreur) + 0.008 * enfant;
+  const rMollet = (0.033 + 0.008 * muscle) * (1 + 0.15 * f.graisse - 0.15 * f.maigreur) + 0.004 * enfant;
+  for (const cote of [1, -1]) {
+    const [c, j, pd] = cote > 0 ? [O.cuisseG, O.jambeG, O.piedG] : [O.cuisseD, O.jambeD, O.piedD];
+    const x = cote * p.xHanche;
+    const haut = new THREE.Vector3(x - cote * 0.004, p.hanche + 0.02, 0);
+    const basJ = new THREE.Vector3(x - cote * 0.006, p.cheville, 0);
+    const axe = basJ.clone().sub(haut);
+    const lTout = axe.length();
+    const lCuisse = p.hanche + 0.02 - p.genou;
+    const lMollet = p.genou - p.cheville;
+    tube(m, {
+      depart: haut, axe, longueur: lTout, anneaux: 30, cotes: 16,
+      rayon: (t) => {
+        const d = t * lTout;
+        const tc = Math.min(1, d / lCuisse);
+        const rc = rCuisse * entre(1, 0.6, tc ** 0.8) * (1 + 0.1 * muscle * bosse(0, (tc - 0.4) / 0.4)) * (tc < 0.2 ? 0.8 + tc : 1);
+        const tm = Math.max(0, (d - lCuisse) / lMollet);
+        const base = rMollet * entre(1, 0.55, tm) * (tm < 0.1 ? 0.85 + 1.5 * tm : 1);
+        const k = lisser(lCuisse - 0.025, lCuisse + 0.03, d);
+        return [entre(rc, base * 0.92 * (1 + 0.06 * muscle * bosse(0, (tm - 0.3) / 0.28)), k), entre(rc * 1.02, base, k)];
+      },
+      deformer: (q, t) => {
+        const d = t * lTout;
+        const tm = (d - lCuisse) / lMollet;
+        // Le mollet ressort vers l'arrière ; la rotule devant le genou.
+        if (q.z < 0 && tm > 0) q.z -= rMollet * (0.3 + 0.25 * muscle) * bosse(0, (tm - 0.3) / 0.3) * Math.min(1, -q.z / (rMollet * 0.5));
+        if (q.z > 0) q.z += 0.007 * bosse(0, (d - lCuisse + 0.008) / 0.028) * Math.min(1, q.z / (rMollet * 0.6));
+      },
+      couleur: () => peau,
+      liens: (_q, t) => {
+        const d = t * lTout;
+        if (d < lCuisse * 0.15) {
+          const tc = d / lCuisse;
+          return [[O.bassin, 0.5 - 3 * tc], [c, 0.5 + 3 * tc]];
+        }
+        if (d > lTout - 0.012) return fondu(d, lTout - 0.004, 0.008, j, pd);
+        return fondu(d, lCuisse, 0.025, c, j);
+      },
+    });
+    const pied = 0.15 * (0.85 + 0.15 * (1 - enfant));
+    tube(m, {
+      depart: new THREE.Vector3(x - cote * 0.006, p.cheville * 0.45, -0.035), axe: new THREE.Vector3(0, -0.12, 1), longueur: pied,
+      anneaux: 11, cotes: 12, avant: new THREE.Vector3(0, 1, 0),
+      rayon: (t) => {
+        const s = Math.sqrt(Math.max(0, 1 - Math.max(0, (t - 0.7) / 0.3) ** 2)) * Math.sqrt(Math.min(1, t * 6 + 0.15));
+        return [0.026 * (0.85 + 0.3 * t) * s + 0.0001, entre(0.03, 0.012, t) * s + 0.0001];
+      },
+      // Le gros orteil : le bout du pied avance un peu plus du côté intérieur.
+      deformer: (q, t) => {
+        if (t > 0.75 && (q.x - x) * cote < 0) q.z += 0.008 * (t - 0.75) / 0.25;
+      },
+      couleur: () => peau,
+      liens: () => [[pd, 1]],
+    });
+  }
+
+  // Organes de l'homme adulte nu : sobres, à leur taille réelle. Rien chez l'enfant.
+  if (!f.femme && adulte > 0.5 && f.vetement === 0) {
+    const yBase = bas + 0.012;
+    const zBase = 0.03 + 0.012 * f.graisse;
+    const rouge = peau.clone().lerp(sombre, 0.4);
+    for (const cote of [-1, 1]) {
+      tube(m, {
+        depart: new THREE.Vector3(cote * 0.011, yBase - 0.004, zBase - 0.014), axe: new THREE.Vector3(0, -1, 0.15), longueur: 0.034,
+        anneaux: 8, cotes: 10, rayon: (t) => {
+          const s = Math.sin(Math.PI * t);
+          return [0.014 * s + 0.0001, 0.015 * s + 0.0001];
+        },
+        couleur: () => rouge, liens: () => [[O.bassin, 1]],
+      });
+    }
+    tube(m, {
+      depart: new THREE.Vector3(0, yBase + 0.006, zBase - 0.004), axe: new THREE.Vector3(0, -1, 0.42), longueur: 0.05,
+      anneaux: 9, cotes: 12, rayon: (t) => {
+        const fin = t > 0.85 ? Math.sqrt(Math.max(0, 1 - ((t - 0.85) / 0.15) ** 2)) : 1;
+        return [0.0105 * fin + 0.0001, 0.0105 * fin + 0.0001];
+      },
+      couleur: (_q, t) => (t > 0.8 ? peau.clone().lerp(aureole, 0.5) : peau), liens: () => [[O.bassin, 1]],
+    });
+  }
+
+  // Vêtement : pagne ou jupe de la taille à mi-cuisse (raccourci et effrangé par l'usure).
+  if (f.vetement > 0) {
+    const couleur = f.vetement === PEAU_MATIERE ? new THREE.Color(0.42, 0.28, 0.17) : f.vetement === FEUILLES ? new THREE.Color(0.32, 0.42, 0.18)
+      : f.vetement === ECORCE ? new THREE.Color(0.38, 0.3, 0.22) : new THREE.Color(0.62, 0.55, 0.36);
+    couleur.multiplyScalar(0.75 + 0.25 * f.usure);
+    const haut = p.taille - 0.02;
+    const basJupe = entre(p.genou + 0.05, p.hanche - 0.11, 1 - Math.min(1, f.usure + 0.3));
+    tube(m, {
+      depart: new THREE.Vector3(0, haut, 0), axe: new THREE.Vector3(0, -1, 0), longueur: haut - basJupe, anneaux: 8, cotes: 28,
+      rayon: (t) => {
+        const y = haut - t * (haut - basJupe);
+        const [rx, rz] = torse(Math.max(p.hanche, y));
+        const evase = 1.12 + 0.35 * t;
+        return [Math.max(rx, 0.1 * plein) * evase, (rz + 0.012) * evase];
+      },
+      deformer: (q, t, phi) => {
+        if (t > 0.95) q.y += 0.015 * (1 - f.usure) * Math.abs(Math.sin(phi * 7));
+      },
+      couleur: (_q, t, phi) => couleur.clone().multiplyScalar(1 - 0.12 * Math.abs(Math.sin(phi * (f.vetement === PEAU_MATIERE ? 3 : 18))) - 0.05 * t),
+      liens: (_q, t) => [[O.bassin, 1 - 0.3 * t]],
+    });
+  }
+
+  // Tête et chevelure simples, en dernier : un groupe à part du maillage, que l'on cache quand la tête détaillée les remplace.
+  const debutTete = m.indices.length;
   const hT = p.hauteTete;
   const yTete = 1 - hT * 0.5;
   const rxT = hT * 0.56;
@@ -465,139 +682,6 @@ export function construire(f: Forme): { geometrie: THREE.BufferGeometry; repos: 
     liens: (q) => (q.y < yTete - hT * 0.45 ? [[O.cou, 0.5], [O.tete, 0.5]] : [[O.tete, 1]]),
   });
 
-  // Bras (G = côté +x, à la gauche de l'humain).
-  const rBras = (0.025 + 0.012 * muscle + 0.004 * masc) * (1 + 0.25 * f.graisse - 0.2 * f.maigreur) + 0.006 * enfant;
-  const rAvant = (0.021 + 0.006 * muscle + 0.003 * masc) * (1 + 0.15 * f.graisse - 0.15 * f.maigreur) + 0.005 * enfant;
-  const ouvert = 0.09;
-  for (const cote of [1, -1]) {
-    const [b, ab, mn] = cote > 0 ? [O.brasG, O.avantBrasG, O.mainG] : [O.brasD, O.avantBrasD, O.mainD];
-    const epaule = new THREE.Vector3(cote * p.xEpaule, p.epaule - 0.012, -0.004);
-    const dir = new THREE.Vector3(cote * Math.sin(ouvert), -Math.cos(ouvert), 0);
-    const lBras = p.epaule - p.coude;
-    const lAvant = p.coude - p.poignet;
-    tube(m, {
-      depart: epaule.clone().addScaledVector(dir, -0.015), axe: dir, longueur: lBras + 0.03, anneaux: 10, cotes: 14,
-      rayon: (t) => {
-        const deltoide = 1 + (0.12 + 0.25 * muscle) * bosse(0, (t - 0.15) / 0.25);
-        const biceps = 1 + 0.18 * muscle * bosse(0, (t - 0.55) / 0.35);
-        const rond = t < 0.14 ? Math.sqrt(0.25 + 0.75 * (t / 0.14)) : 1;
-        return [rBras * deltoide * rond * (0.9 + 0.1 * (1 - t)), rBras * biceps * rond];
-      },
-      couleur: () => peau,
-      liens: (_q, t) => (t < 0.1 ? [[O.poitrine, 0.4 - 4 * t], [b, 0.6 + 4 * t]] : t > 0.88 ? [[b, 1 - (t - 0.88) * 4], [ab, (t - 0.88) * 4]] : [[b, 1]]),
-    });
-    const coude = epaule.clone().addScaledVector(dir, lBras);
-    tube(m, {
-      depart: coude.clone().addScaledVector(dir, -0.012), axe: dir, longueur: lAvant + 0.02, anneaux: 9, cotes: 12,
-      rayon: (t) => {
-        const r = rAvant * (1 + 0.25 * bosse(0, (t - 0.25) / 0.4) * (0.6 + muscle)) * entre(1, 0.72, t);
-        return [r, r * 0.85];
-      },
-      couleur: () => peau,
-      liens: (_q, t) => (t < 0.08 ? [[b, 0.5], [ab, 0.5]] : t > 0.9 ? [[ab, 0.5], [mn, 0.5]] : [[ab, 1]]),
-    });
-    const poignet = coude.clone().addScaledVector(dir, lAvant);
-    tube(m, {
-      depart: poignet.clone().addScaledVector(dir, -0.005), axe: dir, longueur: p.longMain * 0.95, anneaux: 7, cotes: 10,
-      rayon: (t) => {
-        const s = Math.sqrt(Math.max(0, 1 - Math.max(0, (t - 0.55) / 0.45) ** 2));
-        return [rAvant * 0.5 * s + 0.0001, rAvant * (t < 0.15 ? 0.55 : 0.95) * s + 0.0001];
-      },
-      // La paume tournée vers la cuisse : la main est large d'avant en arrière.
-      avant: new THREE.Vector3(cote, 0, 0), couleur: () => peau, liens: () => [[mn, 1]],
-    });
-  }
-
-  // Jambes.
-  const rCuisse = (0.05 + 0.008 * fem + 0.012 * muscle) * (1 + 0.3 * f.graisse - 0.2 * f.maigreur) + 0.008 * enfant;
-  const rMollet = (0.033 + 0.008 * muscle) * (1 + 0.15 * f.graisse - 0.15 * f.maigreur) + 0.004 * enfant;
-  for (const cote of [1, -1]) {
-    const [c, j, pd] = cote > 0 ? [O.cuisseG, O.jambeG, O.piedG] : [O.cuisseD, O.jambeD, O.piedD];
-    const x = cote * p.xHanche;
-    tube(m, {
-      depart: new THREE.Vector3(x - cote * 0.004, p.hanche + 0.02, 0), axe: new THREE.Vector3(-cote * 0.02, -1, 0), longueur: p.hanche + 0.02 - p.genou,
-      anneaux: 12, cotes: 16,
-      rayon: (t) => {
-        const r = rCuisse * entre(1, 0.6, t ** 0.8) * (1 + 0.1 * muscle * bosse(0, (t - 0.4) / 0.4)) * (t < 0.2 ? 0.8 + t : 1);
-        return [r, r * 1.02];
-      },
-      couleur: () => peau,
-      liens: (_q, t) => (t < 0.15 ? [[O.bassin, 0.5 - 3 * t], [c, 0.5 + 3 * t]] : t > 0.9 ? [[c, 1 - (t - 0.9) * 5], [j, (t - 0.9) * 5]] : [[c, 1]]),
-    });
-    tube(m, {
-      depart: new THREE.Vector3(x - cote * 0.006, p.genou + 0.012, 0), axe: new THREE.Vector3(0, -1, 0), longueur: p.genou + 0.012 - p.cheville,
-      anneaux: 11, cotes: 14,
-      rayon: (t) => {
-        const base = rMollet * entre(1, 0.55, t) * (t < 0.1 ? 0.85 + 1.5 * t : 1);
-        return [base * 0.92 * (1 + 0.06 * muscle * bosse(0, (t - 0.3) / 0.28)), base];
-      },
-      deformer: (q, t) => {
-        // Le mollet ressort vers l'arrière.
-        if (q.z < 0) q.z -= rMollet * (0.3 + 0.25 * muscle) * bosse(0, (t - 0.3) / 0.3) * Math.min(1, -q.z / (rMollet * 0.5));
-      },
-      couleur: () => peau,
-      liens: (_q, t) => (t < 0.08 ? [[c, 0.5], [j, 0.5]] : t > 0.92 ? [[j, 0.5], [pd, 0.5]] : [[j, 1]]),
-    });
-    const pied = 0.15 * (0.85 + 0.15 * (1 - enfant));
-    tube(m, {
-      depart: new THREE.Vector3(x - cote * 0.006, p.cheville * 0.45, -0.035), axe: new THREE.Vector3(0, -0.12, 1), longueur: pied,
-      anneaux: 9, cotes: 10, avant: new THREE.Vector3(0, 1, 0),
-      rayon: (t) => {
-        const s = Math.sqrt(Math.max(0, 1 - Math.max(0, (t - 0.7) / 0.3) ** 2)) * Math.sqrt(Math.min(1, t * 6 + 0.15));
-        return [0.026 * (0.85 + 0.3 * t) * s + 0.0001, entre(0.03, 0.012, t) * s + 0.0001];
-      },
-      couleur: () => peau,
-      liens: () => [[pd, 1]],
-    });
-  }
-
-  // Organes de l'homme adulte nu : sobres, à leur taille réelle. Rien chez l'enfant.
-  if (!f.femme && adulte > 0.5 && f.vetement === 0) {
-    const yBase = bas + 0.012;
-    const zBase = 0.03 + 0.012 * f.graisse;
-    const rouge = peau.clone().lerp(sombre, 0.4);
-    for (const cote of [-1, 1]) {
-      tube(m, {
-        depart: new THREE.Vector3(cote * 0.011, yBase - 0.004, zBase - 0.014), axe: new THREE.Vector3(0, -1, 0.15), longueur: 0.034,
-        anneaux: 8, cotes: 10, rayon: (t) => {
-          const s = Math.sin(Math.PI * t);
-          return [0.014 * s + 0.0001, 0.015 * s + 0.0001];
-        },
-        couleur: () => rouge, liens: () => [[O.bassin, 1]],
-      });
-    }
-    tube(m, {
-      depart: new THREE.Vector3(0, yBase + 0.006, zBase - 0.004), axe: new THREE.Vector3(0, -1, 0.42), longueur: 0.05,
-      anneaux: 9, cotes: 12, rayon: (t) => {
-        const fin = t > 0.85 ? Math.sqrt(Math.max(0, 1 - ((t - 0.85) / 0.15) ** 2)) : 1;
-        return [0.0105 * fin + 0.0001, 0.0105 * fin + 0.0001];
-      },
-      couleur: (_q, t) => (t > 0.8 ? peau.clone().lerp(aureole, 0.5) : peau), liens: () => [[O.bassin, 1]],
-    });
-  }
-
-  // Vêtement : pagne ou jupe de la taille à mi-cuisse (raccourci et effrangé par l'usure).
-  if (f.vetement > 0) {
-    const couleur = f.vetement === PEAU_MATIERE ? new THREE.Color(0.42, 0.28, 0.17) : f.vetement === FEUILLES ? new THREE.Color(0.32, 0.42, 0.18)
-      : f.vetement === ECORCE ? new THREE.Color(0.38, 0.3, 0.22) : new THREE.Color(0.62, 0.55, 0.36);
-    couleur.multiplyScalar(0.75 + 0.25 * f.usure);
-    const haut = p.taille - 0.02;
-    const basJupe = entre(p.genou + 0.05, p.hanche - 0.11, 1 - Math.min(1, f.usure + 0.3));
-    tube(m, {
-      depart: new THREE.Vector3(0, haut, 0), axe: new THREE.Vector3(0, -1, 0), longueur: haut - basJupe, anneaux: 8, cotes: 28,
-      rayon: (t) => {
-        const y = haut - t * (haut - basJupe);
-        const [rx, rz] = torse(Math.max(p.hanche, y));
-        const evase = 1.12 + 0.35 * t;
-        return [Math.max(rx, 0.1 * plein) * evase, (rz + 0.012) * evase];
-      },
-      deformer: (q, t, phi) => {
-        if (t > 0.95) q.y += 0.015 * (1 - f.usure) * Math.abs(Math.sin(phi * 7));
-      },
-      couleur: (_q, t, phi) => couleur.clone().multiplyScalar(1 - 0.12 * Math.abs(Math.sin(phi * (f.vetement === PEAU_MATIERE ? 3 : 18))) - 0.05 * t),
-      liens: (_q, t) => [[O.bassin, 1 - 0.3 * t]],
-    });
-  }
 
   // Os au repos (positions absolues pour une taille de 1).
   const repos: THREE.Vector3[] = [];
@@ -620,8 +704,13 @@ export function construire(f: Forme): { geometrie: THREE.BufferGeometry; repos: 
     set(`jambe${s}`, cote * (p.xHanche - 0.006), p.genou, 0);
     set(`pied${s}`, cote * (p.xHanche - 0.006), p.cheville, 0);
   }
-  return { geometrie: m.geometrie(), repos, p };
+  const geometrie = m.geometrie();
+  geometrie.addGroup(0, debutTete, 0);
+  geometrie.addGroup(debutTete, m.indices.length - debutTete, 1);
+  return { geometrie, repos, p };
 }
+
+const INVISIBLE = new THREE.MeshBasicMaterial({ visible: false });
 
 /** Un corps posé dans la scène : son maillage, ses os, sa forme. */
 export class Corps {
@@ -630,6 +719,9 @@ export class Corps {
   readonly cle: string;
   readonly hautTete: number;
   readonly hanche: number;
+  /** Proportions (pour poser la tête détaillée). */
+  readonly p: Proportions;
+  private readonly materiaux: [THREE.Material, THREE.Material];
   /**
    * Les os vivent dans un repère à part, près de l'origine, et non sous le maillage : posé à des centaines de kilomètres, le
    * skinning en flottants 32 bits arrondirait les sommets au centimètre. Le maillage, lui, est placé normalement.
@@ -641,6 +733,8 @@ export class Corps {
     this.cle = cleDe(f);
     this.hautTete = p.menton;
     this.hanche = p.hanche;
+    this.p = p;
+    this.materiaux = [materiau, materiau];
     this.os = OS.map((n) => Object.assign(new THREE.Bone(), { name: n }));
     OS.forEach((n, i) => {
       const parent = PARENT[n];
@@ -652,12 +746,28 @@ export class Corps {
         b.position.copy(repos[i]);
       }
     });
-    this.maillage = new THREE.SkinnedMesh(geometrie, materiau);
+    this.maillage = new THREE.SkinnedMesh(geometrie, this.materiaux);
     this.armature.add(this.os[0]);
     this.armature.updateMatrixWorld(true);
     this.maillage.bindMode = THREE.DetachedBindMode;
     this.maillage.bind(new THREE.Skeleton(this.os), new THREE.Matrix4());
     this.maillage.frustumCulled = false;
+  }
+
+  /** Montre ou cache la tête simple (remplacée de près par la tête détaillée). */
+  teteSimple(visible: boolean): void {
+    const voulu = visible ? this.materiaux[0] : INVISIBLE;
+    if (this.materiaux[1] !== voulu) {
+      this.materiaux[1] = voulu;
+      this.maillage.material = [...this.materiaux];
+    }
+  }
+
+  /** Repère du corps au repos (stature 1) → monde, pour ce qui suit la tête : maillage × os de la tête × inverse de liaison. */
+  matriceTete(sortie: THREE.Matrix4): THREE.Matrix4 {
+    const os = this.os[O.tete];
+    const k = this.maillage.skeleton.bones.indexOf(os);
+    return sortie.multiplyMatrices(this.maillage.matrixWorld, os.matrixWorld).multiply(this.maillage.skeleton.boneInverses[k]);
   }
 
   /** Remet tous les os droits. */
@@ -669,7 +779,8 @@ export class Corps {
    * Pose le squelette pour une posture. `phase` : cycle de marche ; `temps` : secondes réelles (petits mouvements) ;
    * `graine` : propre à chacun. Renvoie de combien descendre le bassin (en part de la taille) et la rotation du corps entier.
    */
-  poser(posture: string, phase: number, temps: number, graine: number, voute: number, boite: boolean, porteBebe: boolean): { descente: number; couche: number } {
+  poser(posture: string, phase: number, temps: number, graine: number, voute: number, boite: boolean, porteBebe: boolean,
+    regard: { lacet: number; tangage: number; poids: number } | null = null): { descente: number; couche: number } {
     this.droit();
     const b = this.os;
     const respire = Math.sin(temps * 1.6 + graine) * 0.015;
@@ -792,6 +903,15 @@ export class Corps {
     if (porteBebe && posture !== "couche" && posture !== "nage") {
       b[O.brasD].rotation.set(-0.35, 0, 0.35);
       b[O.avantBrasD].rotation.set(-1.6, 0.4, 0);
+    }
+    // Tourné vers quelqu'un (l'Entité qui lui parle) : la tête et un peu le buste se tournent vers lui.
+    if (regard && regard.poids > 0.01 && couche === 0) {
+      const w = regard.poids;
+      const lacet = Math.max(-1.1, Math.min(1.1, regard.lacet));
+      b[O.poitrine].rotation.y = b[O.poitrine].rotation.y * (1 - w) + lacet * 0.25 * w;
+      b[O.cou].rotation.y = lacet * 0.3 * w;
+      b[O.tete].rotation.y = b[O.tete].rotation.y * (1 - w) + lacet * 0.45 * w;
+      b[O.tete].rotation.x = b[O.tete].rotation.x * (1 - w) + Math.max(-0.5, Math.min(0.5, regard.tangage)) * w;
     }
     return { descente, couche };
   }

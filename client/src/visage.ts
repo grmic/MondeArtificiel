@@ -33,7 +33,7 @@ const enum T {
 const NS = "http://www.w3.org/2000/svg";
 let numero = 0;
 
-type Rgb = [number, number, number];
+export type Rgb = [number, number, number];
 
 function hex(c: string): Rgb {
   return [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
@@ -67,7 +67,7 @@ function noeud<K extends keyof SVGElementTagNameMap>(nom: K, attributs: Record<s
 }
 
 /** Couleurs de la peau, des cheveux et des yeux. Cheveux et yeux sont d'autant plus sombres que la peau l'est. */
-function couleurs(v: Visage): { peau: Rgb; ombre: Rgb; cheveux: Rgb; yeux: Rgb; levres: Rgb } {
+export function couleurs(v: Visage): { peau: Rgb; ombre: Rgb; cheveux: Rgb; yeux: Rgb; levres: Rgb } {
   let peau = gamme(["#f3d9c6", "#e2b48f", "#c68a5e", "#8d5a3b", "#4f3122"], v.teint);
   // La pâleur de la maladie tire vers le gris ; la fièvre rosit les joues (voir plus bas).
   peau = melange(peau, [214, 206, 196], v.paleur * 0.45);
@@ -289,6 +289,16 @@ function charger(ids: number[], fait: () => void): void {
       for (const v of liste) visages.set(v.id, { v, le });
     }))).catch(() => undefined).finally(() => aRappeler.forEach((r) => r()));
   }, 0);
+}
+
+/** Visages de ces humains, chargés au besoin (vue 3D, 0.41.2) : <fait> est rappelé quand ils sont connus. */
+export function chargerVisages(ids: number[], fait: () => void): void {
+  charger(ids, fait);
+}
+
+/** Le visage d'un humain s'il est déjà connu. */
+export function visageConnu(id: number): Visage | null {
+  return visages.get(id)?.v ?? null;
 }
 
 /** Une petite place pour le visage d'un humain, remplie dès qu'il est connu. */

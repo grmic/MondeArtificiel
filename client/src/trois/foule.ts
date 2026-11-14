@@ -70,6 +70,16 @@ export interface Corps {
   vu: number;
   peau: THREE.Color;
   cheveux: THREE.Color;
+  /** Chemin en cours (case de départ et d'arrivée) et où il en était au dernier pas du monde (0.41.2). */
+  chemin: string;
+  avancePrec: number;
+  secondesPrec: number;
+  /** Il devrait marcher mais n'avance plus d'un pas à l'autre (bloqué, en attente) : on ne le fait pas avancer. */
+  bloque: boolean;
+  /** Il marche vraiment (son corps se déplace) : seule raison d'animer la marche. */
+  enMarche: boolean;
+  /** Tourné vers l'Entité qui lui parle (0 à 1, pour la tête). */
+  ecoute: number;
 }
 
 /**
@@ -165,6 +175,8 @@ export class Foule {
   private secondesScene = 0;
   /** Humains montrés en corps détaillés (0.41.1) : pas de silhouette pour eux. */
   readonly detailles = new Set<number>();
+  /** L'humain à qui l'Entité parle (0 : personne) : il s'arrête et se tourne vers la caméra (0.41.2). */
+  interlocuteur = 0;
   /** Figurants des essais automatiques (?debug3d), ajoutés à chaque flux. */
   figurants: HumainScene[] = [];
   /** Au-delà, ni silhouette ni corps : un point de vie (niveau de détail lointain). */
@@ -202,6 +214,20 @@ export class Foule {
     for (const s of humains) {
       const c = this.corps.get(s.id);
       if (c) {
+        // Même chemin, pas suivant du monde, et pas d'avancée : il est arrêté, même si la simulation le dit en route.
+        const chemin = `${s.x},${s.y},${s.versX},${s.versY}`;
+        if (chemin === c.chemin && s.versX >= 0) {
+          if (secondes > c.secondesPrec) {
+            c.bloque = s.avance <= c.avancePrec + 1e-6;
+            c.avancePrec = s.avance;
+            c.secondesPrec = secondes;
+          }
+        } else {
+          c.chemin = chemin;
+          c.bloque = false;
+          c.avancePrec = s.avance;
+          c.secondesPrec = secondes;
+        }
         c.s = s;
         c.vu = this.image;
       } else {
@@ -210,23 +236,28 @@ export class Foule {
         const gris = s.age > 50 ? Math.min(1, (s.age - 50) / 25) : 0;
         const brun = 0.05 + 0.12 * unite(hacher(s.id, 5)) * (1 - t);
         const cheveux = new THREE.Color().setRGB(brun + gris * 0.55, brun * 0.7 + gris * 0.55, brun * 0.5 + gris * 0.55, THREE.SRGBColorSpace);
-        this.corps.set(s.id, { s, x: NaN, y: 0, z: NaN, cap: unite(hacher(s.id, 11)) * Math.PI * 2, phase: 0, vitesse: 0, taille: 1, posture: "debout", vu: this.image, peau, cheveux });
+        this.corps.set(s.id, {
+          s, x: NaN, y: 0, z: NaN, cap: unite(hacher(s.id, 11)) * Math.PI * 2, phase: 0, vitesse: 0, taille: 1, posture: "debout", vu: this.image, peau, cheveux,
+          chemin: `${s.x},${s.y},${s.versX},${s.versY}`, avancePrec: s.avance, secondesPrec: secondes, bloque: false, enMarche: false, ecoute: 0,
+        });
       }
     }
     for (const [id, c] of this.corps) if (c.vu !== this.image) this.corps.delete(id);
   }
 
   /** Position visée d'un humain à l'instant `secondes` du monde. */
-  private cible(s: HumainScene, secondes: number): [number, number, boolean] {
+  private cible(c: Corps, secondes: number): [number, number, boolean] {
+    const s = c.s;
     const [ax, az] = this.relief.camp(s.x, s.y);
     if (s.versX >= 0) {
       const [bx, bz] = this.relief.camp(s.versX, s.versY);
-      const f = Math.min(0.985, s.avance + s.parSeconde * Math.max(0, secondes - this.secondesScene));
+      const parSeconde = c.bloque ? 0 : s.parSeconde;
+      const f = Math.min(0.985, s.avance + parSeconde * Math.max(0, secondes - this.secondesScene));
       const lateral = (unite(hacher(s.id, 13)) - 0.5) * 6;
       const dx = bx - ax;
       const dz = bz - az;
       const l = Math.hypot(dx, dz) || 1;
-      return [ax + dx * f - (dz / l) * lateral, az + dz * f + (dx / l) * lateral, s.parSeconde > 0];
+      return [ax + dx * f - (dz / l) * lateral, az + dz * f + (dx / l) * lateral, parSeconde > 0 && f < 0.985];
     }
     const [ox, oz] = decalage(s, secondes);
     return [ax + ox, az + oz, false];
@@ -237,28 +268,40 @@ export class Foule {
     const rel = this.relief;
     for (const c of this.corps.values()) {
       const s = c.s;
-      const [tx, tz, marche] = s.figurant ? [s.figurant.x, s.figurant.z, false] : this.cible(s, secondes);
+      // Un dormeur (on lui parle en rêve), un bébé porté ou un nageur ne se retournent pas.
+      const ecoute = s.id === this.interlocuteur && c.posture !== "couche" && c.posture !== "porte" && c.posture !== "nage";
+      let [tx, tz] = s.figurant ? [s.figurant.x, s.figurant.z] : this.cible(c, secondes);
       if (Number.isNaN(c.x) || Math.hypot(tx - c.x, tz - c.z) > 400) {
         c.x = tx;
         c.z = tz;
       }
+      // Celui à qui l'Entité parle s'arrête pour l'écouter.
+      if (ecoute && !Number.isNaN(c.x)) [tx, tz] = [c.x, c.z];
       const dx = tx - c.x;
       const dz = tz - c.z;
       const d = Math.hypot(dx, dz);
       const k = Math.min(1, dt * 1.5);
       c.x += dx * k;
       c.z += dz * k;
-      const v = dt > 0 ? (d * k) / dt : 0;
+      const pas = d * k;
+      const v = dt > 0 ? pas / dt : 0;
       c.vitesse += (v - c.vitesse) * Math.min(1, dt * 4);
-      if (d > 0.05 && c.vitesse > 0.15) {
-        const ecart = ((((Math.atan2(dx, dz) - c.cap + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
-        c.cap += ecart * Math.min(1, dt * 5);
+      // Il ne marche que si son corps se déplace vraiment (avec un peu d'hystérésis) : plus de marche sur place quand le monde
+      // est arrêté, qu'il attend au bout de son chemin ou qu'il est bloqué.
+      c.enMarche = c.enMarche ? c.vitesse > 0.12 : c.vitesse > 0.25;
+      const voulu = ecoute ? Math.atan2(camera.x - c.x, camera.z - c.z) : d > 0.05 && c.vitesse > 0.15 ? Math.atan2(dx, dz) : null;
+      if (voulu !== null) {
+        const ecart = ((((voulu - c.cap + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
+        c.cap += ecart * Math.min(1, dt * (ecoute ? 2.2 : 5));
       }
-      c.phase += dt * Math.min(8, c.vitesse * 4.2);
+      c.ecoute += ((ecoute ? 1 : 0) - c.ecoute) * Math.min(1, dt * 3);
+      c.taille = stature(s.age, s.femme, s.tailleEcart);
+      // Les jambes avancent avec le sol parcouru : une foulée (deux pas) fait environ 0,8 fois la taille.
+      if (c.enMarche) c.phase += Math.min(dt * 12, (pas * Math.PI * 2) / (0.82 * c.taille));
       const surf = rel.surface(c.x, c.z);
       const eau = !Number.isNaN(surf.eau) && surf.eau - surf.sol > 1.1;
-      c.taille = stature(s.age, s.femme, s.tailleEcart);
-      c.posture = s.figurant?.posture ?? posture(s, marche || c.vitesse > 0.3, eau && !(s.etat & 16));
+      if (eau) c.phase += dt * Math.min(6, 1 + c.vitesse * 3);
+      c.posture = s.figurant?.posture ?? posture(s, c.enMarche, eau && !(s.etat & 16));
       if (s.figurant) {
         c.cap = s.figurant.cap;
         if (s.figurant.posture === "marche") c.phase += dt * 5;
@@ -391,12 +434,27 @@ export class Foule {
   }
 
   /** Humains affichés : id, position de la tête et ce qu'on sait d'eux. */
-  *tous(): Generator<{ id: number; tete: THREE.Vector3; s: HumainScene; cap: number }> {
+  *tous(): Generator<{ id: number; tete: THREE.Vector3; pied: THREE.Vector3; s: HumainScene; cap: number; taille: number }> {
     for (const c of this.corps.values()) {
       if (Number.isNaN(c.x)) continue;
+      const pl = this.placement(c);
       const haut = c.posture === "couche" || c.posture === "nage" || c.posture === "porte" ? 0.2 : c.posture === "assis" || c.posture === "travail" ? 0.5 : c.posture === "accroupi" ? 0.6 : 0.9;
-      yield { id: c.s.id, tete: new THREE.Vector3(c.x, c.y + c.taille * haut, c.z), s: c.s, cap: c.cap };
+      // Allongé, le corps s'étend le long de son cap : « pied » est alors l'autre bout du corps.
+      const couche = c.posture === "couche" || c.posture === "nage";
+      const pied = couche
+        ? new THREE.Vector3(pl.x - Math.sin(pl.cap) * c.taille * 0.8, pl.y + 0.15, pl.z - Math.cos(pl.cap) * c.taille * 0.8)
+        : new THREE.Vector3(pl.x, pl.y + 0.05, pl.z);
+      yield { id: c.s.id, tete: new THREE.Vector3(pl.x, pl.y + c.taille * haut, pl.z), pied, s: c.s, cap: pl.cap, taille: c.taille };
     }
+  }
+
+  /** Où est un humain affiché (tête), son cap et s'il marche ; null s'il n'est pas dans la scène. */
+  etat(id: number): { tete: THREE.Vector3; cap: number; enMarche: boolean } | null {
+    const c = this.corps.get(id);
+    if (!c || Number.isNaN(c.x)) return null;
+    const pl = this.placement(c);
+    const haut = c.posture === "couche" || c.posture === "nage" || c.posture === "porte" ? 0.25 : c.posture === "assis" || c.posture === "travail" ? 0.5 : c.posture === "accroupi" ? 0.6 : 0.85;
+    return { tete: new THREE.Vector3(pl.x, pl.y + c.taille * haut, pl.z), cap: pl.cap, enMarche: c.enMarche };
   }
 
   get nombre(): number {

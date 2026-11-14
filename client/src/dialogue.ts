@@ -40,6 +40,13 @@ async function modeleChoisi(): Promise<boolean> {
 
 let ouvrir: (humain: number, nom: string, priere?: number) => void = () => {};
 
+/**
+ * L'humain à qui l'Entité parle en ce moment (0.41.2), lu par la vue 3D : il se tourne vers elle (sauf s'il dort) et remue les
+ * lèvres quand il répond. `parleJusqua` : instant (performance.now) où sa dernière réplique finit d'être dite.
+ */
+export const echange = { humain: 0, voie: "", parleJusqua: 0 };
+let repliquesVues = { dialogue: 0, n: 0 };
+
 /** Ouvre la fenêtre de dialogue avec un humain (depuis une fiche ou un appel). */
 export function ouvrirDialogue(humain: number, nom: string, priere = 0): void {
   ouvrir(humain, nom, priere);
@@ -124,11 +131,14 @@ export class FenetreDialogue {
 
   fermer(): void {
     this.racine.hidden = true;
+    echange.humain = 0;
   }
 
   /** Pour un humain : reprend le dialogue en cours avec lui, sinon propose d'en commencer un (choix de la voie). */
   private async preparer(humain: number, nom: string, priere: number): Promise<void> {
     this.racine.hidden = false;
+    echange.humain = humain;
+    echange.voie = "";
     this.retour.textContent = "";
     const courant = await connexion.invoke<Dialogue | null>("DialogueEnCours").catch(() => null);
     if (courant && courant.humain === humain) {
@@ -236,6 +246,15 @@ export class FenetreDialogue {
 
   private afficher(d: Dialogue): void {
     this.dernier = d;
+    echange.humain = d.enCours ? d.humain : 0;
+    echange.voie = d.voie;
+    // Une nouvelle réplique de l'humain : il la dit (environ 14 caractères par seconde).
+    const dites = d.liste.filter((r) => r.mots).length;
+    if (repliquesVues.dialogue === d.id && dites > repliquesVues.n) {
+      const mots = [...d.liste].reverse().find((r) => r.mots)?.mots ?? "";
+      echange.parleJusqua = performance.now() + Math.min(9000, 900 + mots.length * 70);
+    }
+    repliquesVues = { dialogue: d.id, n: dites };
     const lienNom = bouton(d.nom, () => this.ouvrirHumain(d.humain), "lien");
     this.titre.replaceChildren(vignette(d.humain, 28), " ", lienNom, el("span", "discret", ` · ${d.voie}`));
     const fil = el("div", "dialogue-fil");
@@ -288,6 +307,7 @@ export class FenetreDialogue {
   /** Les conversations passées (toutes, ou celles de l'humain affiché). */
   private async liste(): Promise<void> {
     this.racine.hidden = false;
+    echange.humain = 0;
     this.pied.hidden = true;
     this.titre.replaceChildren(t("dlgc.conversations"));
     const ul = el("ul", "liste dialogues");

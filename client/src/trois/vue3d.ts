@@ -8,7 +8,9 @@ import { Camp3D, type CampJson } from "./camp";
 import { ACTIVITES, Feux3D, Foule, lireScene } from "./foule";
 import { MiniCarte } from "./minicarte";
 import { Nature3D } from "./nature3d";
+import { Sol3D } from "./sol3d";
 import { CorpsProches } from "./proches";
+import { echange } from "../dialogue";
 import { Relief, type Temperatures, type TerrainVue } from "./relief";
 import { Terrain3D } from "./tuiles";
 
@@ -48,10 +50,10 @@ type Qualite = "basse" | "moyenne" | "haute";
  * Réglages de Qualité (proposition G1, 0.41.1) : corps détaillés jusqu'à `corps` m (au plus `nombre`), silhouettes jusqu'à
  * `silhouettes` m, points de vie au-delà ; camp et bêtes jusqu'à `camp` m.
  */
-const QUALITES: Record<Qualite, { pixels: number; finesse: number; vegetation: number; corps: number; nombre: number; silhouettes: number; camp: number }> = {
-  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, silhouettes: 1200, camp: 1200 },
-  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, silhouettes: 2000, camp: 2000 },
-  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, silhouettes: 2500, camp: 3000 },
+const QUALITES: Record<Qualite, { pixels: number; finesse: number; vegetation: number; corps: number; nombre: number; visages: number; nombreVisages: number; silhouettes: number; camp: number; sol: number }> = {
+  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, silhouettes: 1200, camp: 1200, sol: 30 },
+  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, silhouettes: 2000, camp: 2000, sol: 55 },
+  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 12, nombreVisages: 14, silhouettes: 2500, camp: 3000, sol: 85 },
 };
 
 /** Vitesse la plus haute en promenade (proposition E1) : au-delà, les humains sauteraient d'une case à l'autre. */
@@ -142,6 +144,7 @@ export class Vue3D {
   private readonly relief: Relief;
   private readonly terrain: Terrain3D;
   private readonly nature: Nature3D;
+  private readonly sol: Sol3D;
   private readonly ciel: Ciel;
   private readonly foule: Foule;
   private readonly feux: Feux3D;
@@ -163,6 +166,11 @@ export class Vue3D {
   private facteur = 0;
   private facteurAvant: number | null = null;
   private viser: number | null = null;
+  /**
+   * Suivi automatique (0.41.2) : la caméra reste près d'un humain où qu'il aille. `angle` : d'où on le regarde (0 : de face),
+   * relatif à son cap ; glisser la souris tourne autour de lui, la molette rapproche ou éloigne.
+   */
+  private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number } | null = null;
   private souris: { x: number; y: number } | null = null;
   private qualite: Qualite;
   private images = 0;
@@ -195,6 +203,7 @@ export class Vue3D {
     eauMer.normalScale.set(0.5, 0.5);
     this.terrain = new Terrain3D(this.relief, sol, eauDouce);
     this.nature = new Nature3D(this.relief);
+    this.sol = new Sol3D(this.relief);
     this.ciel = new Ciel(this.scene);
     this.foule = new Foule(this.relief);
     this.feux = new Feux3D(this.relief);
@@ -215,7 +224,7 @@ export class Vue3D {
     this.mer = new THREE.Mesh(plan, eauMer);
     this.mer.renderOrder = 2;
     this.mer.frustumCulled = false;
-    this.scene.add(this.terrain.groupe, this.nature.groupe, this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.mer);
+    this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.mer);
 
     this.qualite = (lireStockage("monde.qualite3d") as Qualite | null) ?? "moyenne";
     if (!(this.qualite in QUALITES)) this.qualite = "moyenne";
@@ -240,7 +249,7 @@ export class Vue3D {
 
   static async creer(hote: HTMLElement, ctx: Contexte): Promise<Vue3D> {
     const forcerWebGL = new URLSearchParams(location.search).has("webgl");
-    const renderer = new THREE.WebGPURenderer({ antialias: true, logarithmicDepthBuffer: true, forceWebGL: forcerWebGL });
+    const renderer = new THREE.WebGPURenderer({ antialias: true, logarithmicDepthBuffer: !new URLSearchParams(location.search).has("profondeurlineaire"), forceWebGL: forcerWebGL });
     await renderer.init();
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.55;
@@ -250,7 +259,7 @@ export class Vue3D {
       : null;
     const vue = new Vue3D(hote, renderer, ctx, terrain);
     // Pour les essais automatiques : ?debug3d expose la vue dans la console.
-    if (new URLSearchParams(location.search).has("debug3d")) (window as unknown as { vue3d: Vue3D }).vue3d = vue;
+    if (new URLSearchParams(location.search).has("debug3d")) Object.assign(window, { vue3d: vue, THREE3: THREE });
     return vue;
   }
 
@@ -279,6 +288,7 @@ export class Vue3D {
         <datalist id="vivants3d"></datalist>
         <button type="submit">${t("trois.allerVoir")}</button>
         <button type="button" data-action="fiche" hidden></button>
+        <button type="button" data-action="suivre" hidden></button>
       </form>
       <div class="aide" data-role="aide"></div>
       <div class="etat" data-role="etat"></div>`;
@@ -315,6 +325,7 @@ export class Vue3D {
       const id = this.ctx.ficheCourante();
       if (id) this.allerVoir(id);
     });
+    q<HTMLButtonElement>('[data-action="suivre"]').addEventListener("click", () => this.basculerSuivi());
     this.afficherAide();
   }
 
@@ -325,7 +336,7 @@ export class Vue3D {
 
   private afficherAide(): void {
     const aide = this.hud.querySelector<HTMLElement>('[data-role="aide"]')!;
-    aide.textContent = t(this.mode === "vol" ? "trois.aide.vol" : "trois.aide.marche");
+    aide.textContent = t(this.suivi ? "trois.aide.suivi" : this.mode === "vol" ? "trois.aide.vol" : "trois.aide.marche");
     for (const b of this.hud.querySelectorAll<HTMLButtonElement>('[data-action="vol"], [data-action="marche"]')) {
       b.classList.toggle("actif", b.dataset.action === this.mode);
     }
@@ -336,10 +347,12 @@ export class Vue3D {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixels));
     this.terrain.facteur = q.finesse;
     this.nature.portee = q.vegetation;
-    this.proches.reglage = { portee: q.corps, nombre: q.nombre };
+    this.sol.portee = q.sol;
+    this.proches.reglage = { portee: q.corps, nombre: q.nombre, visages: q.visages, nombreVisages: q.nombreVisages };
     this.foule.porteeSilhouettes = q.silhouettes;
     this.camp.portee = q.camp;
     this.nature.vider();
+    this.sol.vider();
     this.cadrer();
   }
 
@@ -403,6 +416,11 @@ export class Vue3D {
       depart.bouge += Math.abs(dx) + Math.abs(dy);
       depart.x = e.clientX;
       depart.y = e.clientY;
+      if (this.suivi) {
+        this.suivi.angle -= dx * 0.006;
+        this.suivi.hauteur = Math.max(-0.5, Math.min(12, this.suivi.hauteur - dy * 0.01));
+        return;
+      }
       this.lacet -= dx * 0.0035;
       this.tangage = Math.max(-1.5, Math.min(1.5, this.tangage - dy * 0.0035));
     });
@@ -424,6 +442,10 @@ export class Vue3D {
     toile.addEventListener("pointerleave", () => (this.souris = null));
     toile.addEventListener("wheel", (e) => {
       e.preventDefault();
+      if (this.suivi) {
+        this.suivi.distance = Math.max(1.2, Math.min(60, this.suivi.distance * (e.deltaY > 0 ? 1.12 : 1 / 1.12)));
+        return;
+      }
       if (this.mode !== "vol") return;
       const sol = this.relief.hauteur(this.camera.position.x, this.camera.position.z);
       const haut = Math.max(2, this.camera.position.y - sol);
@@ -455,11 +477,21 @@ export class Vue3D {
       return;
     }
     if (e.key === "Escape") {
+      if (this.suivi) {
+        this.arreterSuivi();
+        return;
+      }
       this.ctx.quitter();
+      return;
+    }
+    if (e.key === "f" || e.key === "F") {
+      this.basculerSuivi();
       return;
     }
     const mouvement = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight", "Space", "PageUp", "PageDown"];
     if (mouvement.includes(e.code)) {
+      // Se déplacer soi-même met fin au suivi.
+      if (this.suivi && e.code !== "ShiftLeft" && e.code !== "ShiftRight") this.arreterSuivi();
       this.touches.add(e.code);
       e.preventDefault();
     }
@@ -552,6 +584,86 @@ export class Vue3D {
     this.tangage = Math.atan2(d.y, Math.hypot(d.x, d.z));
   }
 
+  /** Suivre l'humain de la fiche ouverte (ou cesser de suivre). */
+  private basculerSuivi(): void {
+    if (this.suivi) {
+      this.arreterSuivi();
+      return;
+    }
+    const id = this.ctx.ficheCourante();
+    if (!id) {
+      this.ctx.message(t("trois.suivreSansFiche"));
+      return;
+    }
+    this.suivre(id);
+  }
+
+  /** Suivi automatique d'un humain : de trois quarts, à quelques mètres, à hauteur d'homme. */
+  suivre(id: number): void {
+    const v = this.ctx.vivants().find((h) => h.id === id);
+    if (!v) {
+      this.ctx.message(t("trois.introuvable"));
+      return;
+    }
+    this.viser = null;
+    this.suivi = { id, angle: Math.PI * 0.8, distance: 4.5, hauteur: 0.4, perdu: 0 };
+    if (!this.foule.position(id)) {
+      // Pas encore dans la scène : on va à sa case, il apparaîtra au prochain flux.
+      const [x, z] = this.relief.camp(v.x, v.y);
+      this.camera.position.set(x + 4, Math.max(this.relief.hauteur(x, z), 0) + 3, z + 4);
+    }
+    this.mode = "vol";
+    this.afficherAide();
+    this.majEtat();
+    this.ctx.message(t("trois.suiviDebut", { nom: v.nom }));
+  }
+
+  private arreterSuivi(): void {
+    if (!this.suivi) return;
+    const nom = this.ctx.nom(this.suivi.id);
+    this.suivi = null;
+    this.majEtat();
+    this.afficherAide();
+    this.ctx.message(t("trois.suiviFin", { nom }));
+  }
+
+  /** À chaque image : place la caméra près de l'humain suivi, tournée vers lui. */
+  private suivreImage(dt: number): void {
+    const s = this.suivi;
+    if (!s) return;
+    const etat = this.foule.etat(s.id);
+    if (!etat) {
+      // Hors de la scène (mort, ou trop loin d'un coup) : on rejoint sa case ; au bout de dix secondes, on abandonne.
+      s.perdu += dt;
+      const v = this.ctx.vivants().find((h) => h.id === s.id);
+      if (!v || s.perdu > 10) {
+        this.ctx.message(t("trois.suiviPerdu", { nom: this.ctx.nom(s.id) }));
+        this.suivi = null;
+        this.majEtat();
+        return;
+      }
+      const [x, z] = this.relief.camp(v.x, v.y);
+      this.camera.position.set(x + 4, Math.max(this.relief.hauteur(x, z), 0) + 3, z + 4);
+      return;
+    }
+    s.perdu = 0;
+    const { tete, cap, enMarche } = etat;
+    // Quand il marche, on revient peu à peu derrière lui (de trois quarts).
+    if (enMarche) {
+      const voulu = Math.PI * 0.8;
+      const ecart = Math.atan2(Math.sin(voulu - s.angle), Math.cos(voulu - s.angle));
+      s.angle += ecart * Math.min(1, dt * 0.6);
+    }
+    const a = cap + s.angle;
+    const cible = new THREE.Vector3(tete.x + Math.sin(a) * s.distance, tete.y + s.hauteur, tete.z + Math.cos(a) * s.distance);
+    const plancher = Math.max(this.relief.hauteur(cible.x, cible.z), 0) + 0.6;
+    if (cible.y < plancher) cible.y = plancher;
+    const p = this.camera.position;
+    if (p.distanceTo(cible) > 200) p.copy(cible);
+    else p.lerp(cible, Math.min(1, dt * 4));
+    this.regarderVers(tete);
+  }
+
   /** Va près d'un humain : on y est aussitôt, à pied, à quelques mètres, tourné vers lui. */
   allerVoir(id: number): void {
     const v = this.ctx.vivants().find((h) => h.id === id);
@@ -622,9 +734,11 @@ export class Vue3D {
     if (!premiere && (this.relief.saison !== this.saisonVue || gel)) {
       this.terrain.invalider();
       this.nature.invalider();
+      this.sol.invalider();
     } else if (premiere) {
       this.terrain.invalider();
       this.nature.vider();
+      this.sol.vider();
     }
     this.saisonVue = this.relief.saison;
   }
@@ -691,7 +805,10 @@ export class Vue3D {
     this.ciel.regler(secondes, p);
     this.terrain.mettreAJour(p, 7);
     this.nature.mettreAJour(p, 3);
+    this.sol.mettreAJour(p, 2);
+    this.foule.interlocuteur = echange.humain;
     this.foule.animer(dt, secondes, p);
+    this.suivreImage(dt);
     this.proches.mettreAJour(p, maintenant / 1000);
     this.camp.animer(p, secondes, maintenant / 1000);
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte);
@@ -736,19 +853,31 @@ export class Vue3D {
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
   }
 
+  /**
+   * L'humain sous la souris (0.41.2) : tout son corps compte, des pieds à la tête, avec une marge qui suit sa taille à l'écran ;
+   * entre plusieurs, le plus proche de la caméra.
+   */
   private humainSous(x: number, y: number): number | null {
     let meilleur: number | null = null;
-    let dMin = 30;
+    let profondeur = Infinity;
     const avant = new THREE.Vector3();
     this.camera.getWorldDirection(avant);
     for (const h of this.foule.tous()) {
       const versLui = h.tete.clone().sub(this.camera.position);
-      if (versLui.dot(avant) <= 0 || versLui.length() > 600) continue;
-      const e = this.ecran(h.tete);
-      if (!e) continue;
-      const d = Math.hypot(e.x - x, e.y - y);
-      if (d < dMin) {
-        dMin = d;
+      const loin = versLui.length();
+      if (versLui.dot(avant) <= 0 || loin > 600) continue;
+      const a = this.ecran(h.tete);
+      const b = this.ecran(h.pied);
+      if (!a || !b) continue;
+      // Distance du clic au segment tête-pieds, à l'écran.
+      const vx = b.x - a.x;
+      const vy = b.y - a.y;
+      const l2 = vx * vx + vy * vy;
+      const t = l2 > 0 ? Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / l2)) : 0;
+      const d = Math.hypot(x - (a.x + t * vx), y - (a.y + t * vy));
+      const marge = Math.max(12, Math.sqrt(l2) * 0.22);
+      if (d < marge && loin < profondeur) {
+        profondeur = loin;
         meilleur = h.id;
       }
     }
@@ -809,5 +938,9 @@ export class Vue3D {
     const id = this.ctx.ficheCourante();
     bouton.hidden = !id;
     if (id) bouton.textContent = t("trois.allerVoirFiche", { nom: this.ctx.nom(id) });
+    const suivre = this.hud.querySelector<HTMLButtonElement>('[data-action="suivre"]')!;
+    suivre.hidden = !id && !this.suivi;
+    suivre.classList.toggle("actif", this.suivi !== null);
+    suivre.textContent = this.suivi ? t("trois.suiviArreter", { nom: this.ctx.nom(this.suivi.id) }) : id ? t("trois.suivre", { nom: this.ctx.nom(id) }) : "";
   }
 }
