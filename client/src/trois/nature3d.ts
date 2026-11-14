@@ -3,6 +3,8 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { hacher, unite } from "./bruit";
 import * as B from "./relief";
 import type { Relief } from "./relief";
+import type { Matieres } from "./matieres";
+import * as Vg from "./vegetaux";
 
 /** Sortes de plantes et de pierres posées sur le sol. */
 const enum Sorte {
@@ -13,22 +15,26 @@ const enum Sorte {
   Buisson,
   Rocher,
   Roseau,
+  FougereArbo,
 }
-const SORTES = 7;
+const SORTES = 8;
 
 /** Jusqu'où chaque sorte est dessinée, en part de la portée de la végétation. */
-const PORTEE: number[] = [1, 1, 1, 0.3, 0.55, 0.6, 0.35];
+const PORTEE: number[] = [1, 1, 1, 0.3, 0.55, 0.6, 0.35, 1];
+
+/** Souplesse au vent de chaque sorte (0.41.5). */
+const SOUPLESSE: number[] = [0.45, 0.8, 0.5, 1.6, 1.0, 0, 2.0, 0.9];
 
 /** Densité de chaque sorte par case de 10 m, selon le biome. */
 const DENSITES: Partial<Record<number, [Sorte, number][]>> = {
   [B.PLAINE]: [[Sorte.Fougere, 0.55], [Sorte.Buisson, 0.08], [Sorte.Feuillu, 0.015], [Sorte.Conifere, 0.01]],
   [B.CONIFERES]: [[Sorte.Conifere, 0.32], [Sorte.Fougere, 0.3], [Sorte.Buisson, 0.05]],
-  [B.TROPICALE]: [[Sorte.Tropical, 0.25], [Sorte.Feuillu, 0.12], [Sorte.Fougere, 0.4]],
-  [B.FEUILLUS]: [[Sorte.Feuillu, 0.28], [Sorte.Fougere, 0.3], [Sorte.Buisson, 0.08]],
+  [B.TROPICALE]: [[Sorte.Tropical, 0.12], [Sorte.FougereArbo, 0.13], [Sorte.Feuillu, 0.12], [Sorte.Fougere, 0.4]],
+  [B.FEUILLUS]: [[Sorte.Feuillu, 0.28], [Sorte.FougereArbo, 0.02], [Sorte.Fougere, 0.3], [Sorte.Buisson, 0.08]],
   [B.DESERT]: [[Sorte.Rocher, 0.03], [Sorte.Buisson, 0.02], [Sorte.Tropical, 0.005]],
   [B.MONTAGNE]: [[Sorte.Conifere, 0.08], [Sorte.Rocher, 0.1], [Sorte.Fougere, 0.1]],
   [B.SOMMET]: [[Sorte.Rocher, 0.08]],
-  [B.MARAIS]: [[Sorte.Roseau, 0.5], [Sorte.Feuillu, 0.03], [Sorte.Fougere, 0.2]],
+  [B.MARAIS]: [[Sorte.Roseau, 0.5], [Sorte.Feuillu, 0.03], [Sorte.FougereArbo, 0.03], [Sorte.Fougere, 0.2]],
   [B.MANGROVE]: [[Sorte.Feuillu, 0.25], [Sorte.Roseau, 0.2]],
   [B.LANDE]: [[Sorte.Buisson, 0.15], [Sorte.Fougere, 0.15], [Sorte.Rocher, 0.03], [Sorte.Tropical, 0.01]],
   [B.PLAGE]: [[Sorte.Tropical, 0.01], [Sorte.Rocher, 0.01]],
@@ -87,7 +93,7 @@ function modeles(): THREE.BufferGeometry[] {
 }
 
 /** Hauteurs (m) de chaque sorte : minimum et étendue. */
-const TAILLES: [number, number][] = [[16, 16], [9, 9], [4, 6], [0.6, 0.9], [0.9, 1.4], [0.6, 2.4], [1, 1.2]];
+const TAILLES: [number, number][] = [[16, 16], [9, 9], [1.6, 3], [0.6, 0.9], [0.9, 1.4], [0.6, 2.4], [1, 1.2], [3.5, 5]];
 
 interface Pose {
   x: number;
@@ -118,11 +124,37 @@ export class Nature3D {
   private readonly versions = new Map<number, number>();
   /** Portée en mètres (selon la qualité). */
   portee = 900;
+  private readonly texture: boolean;
 
-  constructor(private readonly relief: Relief) {
+  constructor(private readonly relief: Relief, matieres: Matieres | null = null) {
     const materiau = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, metalness: 0, flatShading: true });
-    modeles().forEach((g, k) => {
-      const m = new THREE.InstancedMesh(g, materiau, k <= Sorte.Tropical ? 40000 : 60000);
+    // 0.41.5 : plantes texturées qui bougent au vent ; sans les textures, les formes simples d'avant.
+    const formes: { g: THREE.BufferGeometry; m: THREE.Material | THREE.Material[] }[] = [];
+    if (matieres) {
+      const z = matieres.zones;
+      const feuilles = matieres.materiauFeuillage();
+      const ecorce = matieres.materiauEcorce(0);
+      const stipe = matieres.materiauEcorce(1);
+      formes.push(
+        { g: Vg.araucaria(z), m: [ecorce, feuilles] },
+        { g: Vg.feuillu(z), m: [ecorce, feuilles] },
+        { g: Vg.cycas(z), m: [stipe, feuilles] },
+        { g: Vg.touffeFougere(z), m: feuilles },
+        { g: Vg.buisson(z), m: feuilles },
+        { g: Vg.rocher(), m: matieres.materiauRocher() },
+        { g: Vg.preles(z), m: feuilles },
+        { g: Vg.fougereArborescente(z), m: [stipe, feuilles] },
+      );
+    } else {
+      const simples = modeles();
+      simples.forEach((g) => formes.push({ g, m: materiau }));
+      formes.push({ g: simples[Sorte.Tropical], m: materiau });
+    }
+    this.texture = matieres !== null;
+    formes.forEach(({ g, m: mat }, k) => {
+      const capacite = k <= Sorte.Tropical || k === Sorte.FougereArbo ? 40000 : 60000;
+      if (this.texture) g.setAttribute("vent", new THREE.InstancedBufferAttribute(new Float32Array(capacite * 3), 3));
+      const m = new THREE.InstancedMesh(g, mat, capacite);
       m.count = 0;
       m.frustumCulled = false;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -280,6 +312,10 @@ export class Nature3D {
           m.compose(pos, q, ech);
           maillage.setMatrixAt(comptes[s], m);
           maillage.setColorAt(comptes[s], col.setRGB(p.r, p.g, p.b));
+          if (this.texture) {
+            const v = maillage.geometry.getAttribute("vent") as THREE.InstancedBufferAttribute;
+            v.setXYZ(comptes[s], p.angle * 7.3, SOUPLESSE[s], p.echelle);
+          }
           comptes[s]++;
         }
       }
@@ -289,6 +325,8 @@ export class Nature3D {
       maillage.position.copy(this.origine);
       maillage.instanceMatrix.needsUpdate = true;
       if (maillage.instanceColor) maillage.instanceColor.needsUpdate = true;
+      const v = maillage.geometry.getAttribute("vent");
+      if (v) v.needsUpdate = true;
     });
   }
 

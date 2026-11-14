@@ -17,6 +17,8 @@ import { CorpsProches } from "./proches";
 import { echange } from "../dialogue";
 import { Relief, type Temperatures, type TerrainVue } from "./relief";
 import { Terrain3D } from "./tuiles";
+import { Eau, maillageMer } from "./eau3d";
+import { Matieres, Vent } from "./matieres";
 
 /** Ce que la vue 3D demande au reste du client. */
 export interface Contexte {
@@ -169,6 +171,10 @@ export class Vue3D {
   private readonly camp: Camp3D;
   private readonly mer: THREE.Mesh;
   private readonly vagues: THREE.Texture;
+  /** Eau (0.41.5) : carte des fonds, matériaux de la mer et de l'eau douce. Vent : plantes et vagues. */
+  private readonly eau: Eau;
+  private readonly vent: Vent;
+  private readonly matieres: Matieres | null;
   private readonly hud: HTMLElement;
   private readonly bulle: HTMLElement;
   private readonly etiquettes: HTMLElement;
@@ -221,35 +227,33 @@ export class Vue3D {
     private readonly renderer: THREE.WebGPURenderer,
     private readonly ctx: Contexte,
     terrainVue: TerrainVue | null,
+    matieres: Matieres | null,
   ) {
     this.relief = new Relief(ctx.carte, terrainVue);
     this.ciel = new Ciel(this.scene);
-    const sol = new THREE.MeshStandardMaterial({ vertexColors: true, map: textureSol(), roughness: 0.95, metalness: 0 });
     this.vagues = textureVagues();
-    // L'eau reflète le ciel calculé (0.41.3).
-    const eauDouce = new THREE.MeshStandardMaterial({ color: 0x2c5a63, roughness: 0.08, metalness: 0.1, transparent: true, opacity: 0.8, normalMap: this.vagues, depthWrite: false, envMap: this.ciel.reflets });
-    eauDouce.normalScale.set(0.35, 0.35);
-    const eauMer = new THREE.MeshStandardMaterial({ color: 0x27607a, roughness: 0.06, metalness: 0.1, transparent: true, opacity: 0.86, normalMap: this.vagues, depthWrite: false, envMap: this.ciel.reflets });
-    eauMer.normalScale.set(0.5, 0.5);
-    this.terrain = new Terrain3D(this.relief, sol, eauDouce);
-    this.nature = new Nature3D(this.relief);
-    this.sol = new Sol3D(this.relief);
+    this.vent = matieres?.vent ?? new Vent();
+    this.matieres = matieres;
+    // 0.41.5 : sol en couches photographiées (si les textures sont là), eau qui suit la profondeur des fonds.
+    let sol: THREE.Material;
+    if (matieres) sol = matieres.materiauSol();
+    else {
+      const detail = textureSol();
+      detail.repeat.set(1 / 6, 1 / 6);
+      sol = new THREE.MeshStandardMaterial({ vertexColors: true, map: detail, roughness: 0.95, metalness: 0 });
+    }
+    this.eau = new Eau(this.relief, this.vagues, this.ciel.reflets, this.vent);
+    const eauDouce = this.eau.materiau(false);
+    const eauMer = this.eau.materiau(true);
+    this.terrain = new Terrain3D(this.relief, sol, eauDouce, matieres?.moyennes ?? null);
+    this.nature = new Nature3D(this.relief, matieres);
+    this.sol = new Sol3D(this.relief, matieres);
     this.foule = new Foule(this.relief);
     this.feux = new Feux3D(this.relief);
     this.proches = new CorpsProches(this.foule);
     this.camp = new Camp3D(this.relief);
-    // La mer : un plan qui suit la caméra, maillé serré près d'elle et lâche au loin (de grands triangles qui passent derrière la
-    // caméra se perdent avec la profondeur logarithmique).
-    const plan = new THREE.PlaneGeometry(2, 2, 96, 96).rotateX(-Math.PI / 2);
-    const pos = plan.getAttribute("position");
-    const uv = plan.getAttribute("uv");
-    const etirer = (u: number) => Math.sign(u) * Math.abs(u) ** 3 * 800000;
-    for (let i = 0; i < pos.count; i++) {
-      const x = etirer(pos.getX(i));
-      const z = etirer(pos.getZ(i));
-      pos.setXYZ(i, x, 0, z);
-      uv.setXY(i, x / 40, -z / 40);
-    }
+    // La mer : des anneaux autour de la caméra, fins près d'elle (houle), larges jusqu'à l'horizon.
+    const plan = maillageMer();
     this.mer = new THREE.Mesh(plan, eauMer);
     this.mer.renderOrder = 2;
     this.mer.frustumCulled = false;
@@ -293,7 +297,8 @@ export class Vue3D {
     const terrain = json
       ? { roches: decoder(json.roches), pente: decoder(json.pente), debit: decoder(json.debit), profondeur: decoder(json.profondeur), lits: json.lits }
       : null;
-    const vue = new Vue3D(hote, renderer, ctx, terrain);
+    const matieres = await Matieres.charger();
+    const vue = new Vue3D(hote, renderer, ctx, terrain, matieres);
     // Pour les essais automatiques : ?debug3d expose la vue dans la console.
     if (new URLSearchParams(location.search).has("debug3d")) Object.assign(window, { vue3d: vue, THREE3: THREE });
     return vue;
@@ -387,6 +392,7 @@ export class Vue3D {
     this.reglerLumiere(q);
     this.terrain.facteur = q.finesse;
     this.nature.portee = q.vegetation;
+    if (this.matieres) this.matieres.portee.value = q.vegetation;
     this.sol.portee = q.sol;
     this.proches.reglage = { portee: q.corps, nombre: q.nombre, visages: q.visages, nombreVisages: q.nombreVisages, reels: q.reels, porteeReels: q.porteeReels };
     this.foule.porteeSilhouettes = q.silhouettes;
@@ -1003,6 +1009,7 @@ export class Vue3D {
     const p = this.camera.position;
     const secondes = this.secondesMonde();
     this.ciel.regler(secondes, p);
+    this.vent.regler(secondes);
     // L'œil s'adapte à la lumière en une ou deux secondes (plus lentement vers le noir).
     const vise = this.ciel.expositionVisee;
     const vitesse = vise > this.exposition ? 0.8 : 1.6;
@@ -1025,7 +1032,8 @@ export class Vue3D {
     this.camp.animer(p, secondes, maintenant / 1000);
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
     this.mer.position.set(p.x, 0, p.z);
-    this.vagues.offset.set((p.x / 40 + maintenant / 60000) % 1, (-p.z / 40 + maintenant / 90000) % 1);
+    this.eau.origineMer.value.set(p.x, p.z);
+    this.eau.mettreAJour(p);
     // Aller voir : dès que l'humain est là, on se pose à pied à quelques mètres, face à lui.
     if (this.viser !== null) {
       const cible = this.foule.position(this.viser);

@@ -3,6 +3,8 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { hacher, unite } from "./bruit";
 import * as B from "./relief";
 import type { Relief } from "./relief";
+import { Couche, type Matieres } from "./matieres";
+import * as Vg from "./vegetaux";
 
 /**
  * Le sol tout près de soi (0.41.2) : plantes basses, mousses, fleurs, cailloux et feuilles mortes, posés de façon déterministe
@@ -35,7 +37,7 @@ const DENSITES: Partial<Record<number, [Sorte, number][]>> = {
 };
 
 /** Taille (m) : minimum et étendue. */
-const TAILLES: [number, number][] = [[0.25, 0.5], [0.25, 0.4], [0.25, 0.45], [0.12, 0.15], [0.05, 0.3], [0.8, 0.8]];
+const TAILLES: [number, number][] = [[0.25, 0.5], [0.45, 0.6], [0.25, 0.45], [0.12, 0.15], [0.05, 0.3], [0.45, 0.4]];
 
 function colorer(g: THREE.BufferGeometry, couleur: (y: number, k: number) => [number, number, number]): THREE.BufferGeometry {
   const p = g.getAttribute("position");
@@ -148,13 +150,31 @@ export class Sol3D {
   /** Portée en mètres (selon la qualité) ; 0 : rien. */
   portee = 55;
 
-  constructor(private readonly relief: Relief) {
+  /** Sortes texturées (0.41.5) : elles portent l'attribut d'instance `vent`. */
+  private readonly texturees = new Set<number>();
+
+  constructor(private readonly relief: Relief, matieres: Matieres | null = null) {
     // Lambert : moins coûteux, et les normales de sommets avec MeshStandardMaterial donnaient des taches noires au loin (SwiftShader).
     const plantes = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     const tapis = new THREE.MeshLambertMaterial({ vertexColors: true });
     const pierres = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, metalness: 0, flatShading: true });
-    modeles().forEach((g, k) => {
-      const m = new THREE.InstancedMesh(g, k === Sorte.Caillou ? pierres : k === Sorte.Mousse || k === Sorte.Litiere ? tapis : plantes, 24000);
+    const formes: [THREE.BufferGeometry, THREE.Material][] = modeles().map((g, k) => [g, k === Sorte.Caillou ? pierres : k === Sorte.Mousse || k === Sorte.Litiere ? tapis : plantes]);
+    if (matieres) {
+      // 0.41.5 : prêles, fougères et feuilles mortes photographiées, qui ploient au vent ; cailloux de roche nue.
+      const feuilles = matieres.materiauFeuillage();
+      formes[Sorte.Prele] = [Vg.preles(matieres.zones), feuilles];
+      formes[Sorte.Fougere] = [Vg.touffeFougere(matieres.zones, 6, 59), feuilles];
+      formes[Sorte.Litiere] = [Vg.litiere(matieres.zones), feuilles];
+      formes[Sorte.Caillou] = [Vg.rocher(), matieres.materiauRocher(Couche.Roche)];
+      // Mousse : un coussin bas couvert de la photographie de roche moussue.
+      formes[Sorte.Mousse] = [Vg.coussin(), matieres.materiauRocher(Couche.RocheMoussue, [0.75, 1.15, 0.45])];
+      for (const s of [Sorte.Prele, Sorte.Fougere, Sorte.Litiere]) {
+        this.texturees.add(s);
+        formes[s][0].setAttribute("vent", new THREE.InstancedBufferAttribute(new Float32Array(24000 * 3), 3));
+      }
+    }
+    formes.forEach(([g, mat]) => {
+      const m = new THREE.InstancedMesh(g, mat, 24000);
       m.count = 0;
       m.frustumCulled = false;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -325,11 +345,15 @@ export class Sol3D {
           const penche = s === Sorte.Litiere || s === Sorte.Mousse ? p.penche * 0.2 : p.penche;
           q.setFromEuler(e.set(penche, p.angle, penche * 0.5));
           pos.set(p.x - this.origine.x, p.y, p.z - this.origine.z);
-          const plat = s === Sorte.Litiere ? 1 : s === Sorte.Mousse ? 1.6 : 1;
+          const plat = s === Sorte.Litiere ? 1 : s === Sorte.Mousse ? 1.15 : 1;
           ech.set(p.echelle * plat, p.echelle, p.echelle * plat);
           m.compose(pos, q, ech);
           maillage.setMatrixAt(comptes[s], m);
           maillage.setColorAt(comptes[s], col.setRGB(p.r, p.g, p.b));
+          if (this.texturees.has(s)) {
+            const v = maillage.geometry.getAttribute("vent") as THREE.InstancedBufferAttribute;
+            v.setXYZ(comptes[s], p.angle * 5.1, s === Sorte.Litiere ? 0 : 2.2, Math.max(0.4, p.echelle));
+          }
           comptes[s]++;
         }
       }
@@ -339,6 +363,8 @@ export class Sol3D {
       maillage.position.copy(this.origine);
       maillage.instanceMatrix.needsUpdate = true;
       if (maillage.instanceColor) maillage.instanceColor.needsUpdate = true;
+      const v = maillage.geometry.getAttribute("vent");
+      if (v) v.needsUpdate = true;
     });
   }
 }

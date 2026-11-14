@@ -1,0 +1,22 @@
+Textures de la nature de la vue 3D (0.41.5) : sol, écorces, feuillages.
+
+Fichiers : sols-couleur.webp et sols-normales.webp (7 couches de 512 px empilées : sous-bois, litière, boue, sable, roche,
+roche moussue, neige ; l'opacité de sols-couleur porte le relief de chaque couche), ecorces-couleur.webp et ecorces-normales.webp
+(2 couches de 256 px : écorce d'arbre, stipe), feuillages.webp (atlas 2048 px des cartes de feuillage), nature.json (couleurs
+moyennes, zones de l'atlas).
+
+Sources, toutes sous licence CC0 1.0 Universal (domaine public) :
+- Poly Haven (https://polyhaven.com/license : « Our assets are all licensed as CC0 ») : forrest_ground_01, leafy_grass,
+  mud_forest, coast_sand_01, aerial_rocks_02, mossy_rock, snow_02 (sols) ; tree_bark_03, palm_bark (écorces) ; fern_02
+  (fougère). Versions 1k. Chaque fichier a l'empreinte md5 que donne l'API officielle (api.polyhaven.com/files/<nom>), vérifiée
+  par outils/nature/composer.py ; les cartes de normales de coast_sand_01, aerial_rocks_02 et snow_02 viennent d'une copie
+  recompressée du même fichier (empreinte sha256 gardée dans outils/nature/empreintes.json).
+- ambientCG (https://docs.ambientcg.com/license/ : « All ambientCG assets are provided under the Creative Commons CC0 1.0
+  Universal License ») : LeafSet022, LeafSet023, LeafSet024, Foliage001, Foliage008 (1K-PNG, Color et Opacity), d'où sont
+  découpées les feuilles qui composent les rameaux de magnolia et d'araucaria, les frondes de cycas, les prêles, les buissons
+  et les feuilles mortes.
+
+Les images sont réduites, aplanies (grandes variations de clarté ôtées pour que la répétition se voie moins) et assemblées ;
+rien d'autre n'en est repris.
+
+Refaire les fichiers : python3 outils/nature/composer.py <dossier des sources> client/public/nature

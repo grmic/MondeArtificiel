@@ -50,6 +50,16 @@ const SOLS: [number, number, number][] = [
   [78, 110, 52], [72, 88, 56], [140, 126, 82],
 ];
 
+/**
+ * Le sol vu de près (0.41.5), sous les plantes désormais dessinées : litière et terre plus brunes en forêt. Les couleurs ci-dessus
+ * restent celles du pays vu de loin, au-delà des plantes (le vert des forêts).
+ */
+const SOLS_PRES: [number, number, number][] = [
+  [150, 140, 110], [180, 165, 125], [110, 100, 80], [120, 110, 85], [222, 206, 160], [86, 98, 58],
+  [104, 128, 64], [70, 72, 50], [66, 80, 46], [206, 174, 116], [128, 118, 104], [236, 238, 244],
+  [84, 86, 52], [72, 88, 56], [140, 126, 82],
+];
+
 /** Couleur des roches à nu (ordre de l'énumération Roche) : granite, basalte, volcanique, calcaire, craie, grès, schiste, alluvions, évaporites. */
 const ROCHES: [number, number, number][] = [
   [150, 135, 130], [70, 70, 74], [90, 62, 56], [176, 170, 156], [222, 220, 206], [178, 132, 92], [96, 100, 108], [140, 124, 100], [214, 210, 200],
@@ -58,10 +68,33 @@ const ROCHES: [number, number, number][] = [
 const lineaire = (c: number) => Math.pow(c / 255, 2.2);
 const versLineaire = (t: [number, number, number][]) => t.map(([r, g, b]) => [lineaire(r), lineaire(g), lineaire(b)] as const);
 const SOLS_L = versLineaire(SOLS);
+const SOLS_PRES_L = versLineaire(SOLS_PRES);
 const ROCHES_L = versLineaire(ROCHES);
 const NEIGE_L = [lineaire(240), lineaire(244), lineaire(250)] as const;
 const LIT_L = [lineaire(70), lineaire(84), lineaire(80)] as const;
 const SABLE_L = [lineaire(214), lineaire(198), lineaire(150)] as const;
+
+/**
+ * Couches photographiées de chaque biome (0.41.5) : [couche, part]. Couches : 0 sous-bois, 1 litière, 2 boue, 3 sable, 4 roche,
+ * 5 roche moussue, 6 neige. La première couche domine ou cède par taches.
+ */
+const COUCHES_BIOME: Partial<Record<number, [number, number][]>> = {
+  [OCEAN]: [[3, 0.8], [2, 0.2]],
+  [EAU_PEU_PROFONDE]: [[3, 0.75], [2, 0.25]],
+  [LAC]: [[2, 0.6], [3, 0.4]],
+  [RIVIERE]: [[2, 0.5], [3, 0.5]],
+  [PLAGE]: [[3, 0.9], [1, 0.1]],
+  [MARAIS]: [[2, 0.65], [0, 0.35]],
+  [PLAINE]: [[0, 0.7], [1, 0.3]],
+  [CONIFERES]: [[1, 0.65], [0, 0.35]],
+  [TROPICALE]: [[1, 0.55], [2, 0.25], [0, 0.2]],
+  [DESERT]: [[3, 0.8], [4, 0.2]],
+  [MONTAGNE]: [[4, 0.5], [0, 0.3], [5, 0.2]],
+  [SOMMET]: [[4, 0.7], [6, 0.3]],
+  [FEUILLUS]: [[1, 0.75], [0, 0.25]],
+  [MANGROVE]: [[2, 0.8], [1, 0.2]],
+  [LANDE]: [[0, 0.4], [5, 0.3], [1, 0.3]],
+};
 
 /** Un bras de rivière entre deux cases : extrémités (m), demi-largeur et profondeur à chaque bout, surface de l'eau à chaque bout. */
 interface Bras {
@@ -105,6 +138,8 @@ export class Relief {
   saison = 0;
   dansSaison = 0.5;
   private readonly camps = new Map<number, [number, number]>();
+  private readonly poidsTmp = new Float32Array(7);
+  private readonly couleurTmp = new Float32Array(3);
 
   constructor(carte: Carte, terrain: TerrainVue | null) {
     this.l = carte.largeur;
@@ -372,7 +407,7 @@ export class Relief {
    * Couleur du sol (linéaire, 0 à 1) au point donné : biomes mêlés aux lisières, roche à nu dans les pentes, sable au bord de la mer,
    * lit mouillé des rivières, neige quand il gèle à midi, et teintes de saison (sec en été, roux à l'automne).
    */
-  couleur(x: number, z: number, e: Echantillon, pente: number, sortie: Float32Array, k: number): void {
+  couleur(x: number, z: number, e: Echantillon, pente: number, sortie: Float32Array, k: number, palette: readonly (readonly number[])[] = SOLS_L): void {
     const [u, v] = this.onduler(x, z);
     const iu = Math.floor(u);
     const iv = Math.floor(v);
@@ -384,7 +419,7 @@ export class Relief {
     for (const [dx, dz, p] of [[0, 0, (1 - fu) * (1 - fv)], [1, 0, fu * (1 - fv)], [0, 1, (1 - fu) * fv], [1, 1, fu * fv]] as const) {
       const ix = Math.min(this.l - 1, Math.max(0, iu + dx));
       const iz = Math.min(this.hc - 1, Math.max(0, iv + dz));
-      const c = SOLS_L[this.biomes[iz * this.l + ix]] ?? SOLS_L[PLAINE];
+      const c = palette[this.biomes[iz * this.l + ix]] ?? palette[PLAINE];
       r += c[0] * p;
       g += c[1] * p;
       b += c[2] * p;
@@ -436,6 +471,75 @@ export class Relief {
     sortie[k] = r * variation * (1 + 0.28 * tache);
     sortie[k + 1] = g * variation * (1 + 0.06 * tache);
     sortie[k + 2] = b * variation * (1 - 0.12 * tache);
+  }
+
+  /**
+   * Couches photographiées du sol au point donné (0.41.5) : poids des sept couches (ordre de matieres.ts : sous-bois, litière, boue,
+   * sable, roche, roche moussue, neige) et mouillé (lit des rivières), dans `poids` à partir de `kp` (8 valeurs). La couleur calculée
+   * par `couleur` (biomes, saisons, roches, neige) est rapportée à la couleur moyenne des couches : `teinte` (à partir de `kt`) en
+   * garde le sens sans effacer la photographie.
+   */
+  couches(x: number, z: number, e: Echantillon, pente: number, moyennes: readonly (readonly number[])[], poids: Float32Array, kp: number, teinte: Float32Array, kt: number, lointain: Float32Array): void {
+    const w = this.poidsTmp;
+    w.fill(0);
+    const [u, v] = this.onduler(x, z);
+    const iu = Math.floor(u);
+    const iv = Math.floor(v);
+    const fu = u - iu;
+    const fv = v - iv;
+    // Taches : l'une ou l'autre des couches d'un biome domine par endroits.
+    const tache = 0.5 + 0.5 * this.b2.fbm(x - 3100, z + 1700, 60, 3);
+    for (const [dx, dz, p] of [[0, 0, (1 - fu) * (1 - fv)], [1, 0, fu * (1 - fv)], [0, 1, (1 - fu) * fv], [1, 1, fu * fv]] as const) {
+      const ix = Math.min(this.l - 1, Math.max(0, iu + dx));
+      const iz = Math.min(this.hc - 1, Math.max(0, iv + dz));
+      const table = COUCHES_BIOME[this.biomes[iz * this.l + ix]] ?? COUCHES_BIOME[PLAINE]!;
+      for (let k = 0; k < table.length; k++) {
+        const [c, a] = table[k];
+        w[c] += p * a * (k === 0 ? 0.55 + 0.9 * tache : 1.45 - 0.9 * tache);
+      }
+    }
+    const somme0 = w.reduce((a, b) => a + b, 0) || 1;
+    for (let c = 0; c < 7; c++) w[c] /= somme0;
+    const melanger = (c: number, a: number) => {
+      if (a <= 0) return;
+      for (let k = 0; k < 7; k++) w[k] *= 1 - a;
+      w[c] += a;
+    };
+    // Sable au bord de la mer, et sur les fonds.
+    melanger(3, lisser(4, 1.5, e.h) * lisser(-3, 0.2, e.h) + lisser(-1, -6, e.h) * 0.7);
+    // Roche à nu dans les pentes : moussue là où il pleut (forêts, marais), nue ailleurs.
+    const i = this.caseEn(x, z);
+    const b = i >= 0 ? this.biomes[i] : PLAINE;
+    const humide = b === FEUILLUS || b === TROPICALE || b === CONIFERES || b === MARAIS || b === MANGROVE ? 0.7 : b === MONTAGNE || b === LANDE ? 0.35 : 0;
+    const roc = lisser(0.5, 0.85, pente);
+    melanger(5, roc * humide);
+    melanger(4, roc * (1 - humide));
+    // Lit des rivières : boue mouillée.
+    melanger(2, e.lit * 0.85);
+    // Neige (même règle que la couleur).
+    const temp = this.temperatureEn(x, z);
+    const sommet = b === SOMMET ? 1 : 0;
+    const neige = Math.max(sommet * lisser(800, 1600, e.h), temp === null ? 0 : lisser(1, -3, temp)) * (1 - lisser(0.7, 0.95, pente)) * lisser(0.5, 2, e.h);
+    melanger(6, neige);
+    for (let c = 0; c < 7; c++) poids[kp + c] = w[c];
+    // Mouillé : lit des rivières, sable que la vague vient de quitter, sol gorgé d'eau des marais et des mangroves.
+    poids[kp + 7] = Math.max(e.lit, lisser(1.2, 0.2, e.h) * lisser(-0.8, 0, e.h) * 0.6, b === MARAIS || b === MANGROVE ? 0.4 * w[2] : 0);
+    // Teinte : couleur voulue / couleur moyenne des couches, adoucie (la photographie garde le dessus).
+    this.couleur(x, z, e, pente, this.couleurTmp, 0, SOLS_PRES_L);
+    // Le pays vu de loin, au-delà des plantes : la couleur d'avant (forêts vertes).
+    this.couleur(x, z, e, pente, lointain, kt);
+    let mr = 0;
+    let mg = 0;
+    let mb = 0;
+    for (let c = 0; c < 7; c++) {
+      mr += moyennes[c][0] * w[c];
+      mg += moyennes[c][1] * w[c];
+      mb += moyennes[c][2] * w[c];
+    }
+    const ratio = (voulu: number, moyen: number) => Math.min(2.6, Math.max(0.35, Math.pow(voulu / Math.max(moyen, 1e-3), 0.42)));
+    teinte[kt] = ratio(this.couleurTmp[0], mr);
+    teinte[kt + 1] = ratio(this.couleurTmp[1], mg);
+    teinte[kt + 2] = ratio(this.couleurTmp[2], mb);
   }
 
   /**

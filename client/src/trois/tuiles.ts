@@ -1,5 +1,6 @@
 import * as THREE from "three/webgpu";
 import type { Echantillon, Relief } from "./relief";
+import { PERIODE_SOL } from "./matieres";
 
 /** Segments par côté de tuile : 33 × 33 points, plus une jupe qui cache les fentes entre tuiles de finesses différentes. */
 const N = 32;
@@ -40,6 +41,8 @@ export class Terrain3D {
     private readonly relief: Relief,
     private readonly materiau: THREE.Material,
     private readonly materiauEau: THREE.Material,
+    /** Couleurs moyennes des couches photographiées du sol (0.41.5) ; null : couleurs seules, comme avant. */
+    private readonly moyennes: readonly (readonly number[])[] | null = null,
   ) {
     let taille = relief.m;
     while (taille < Math.max(relief.largeurM, relief.hauteurM)) taille *= 2;
@@ -154,6 +157,11 @@ export class Terrain3D {
     const normales = new Float32Array((points + jupe) * 3);
     const couleurs = new Float32Array((points + jupe) * 3);
     const uvs = new Float32Array((points + jupe) * 2);
+    const couches = this.moyennes ? new Float32Array((points + jupe) * 8) : null;
+    const lointains = this.moyennes ? new Float32Array((points + jupe) * 3) : null;
+    // Coordonnées de texture en mètres, ramenées dans une période commune à toutes les échelles du sol (raccord exact, précision gardée).
+    const ux = ((n.x0 % PERIODE_SOL) + PERIODE_SOL) % PERIODE_SOL;
+    const uz = ((n.z0 % PERIODE_SOL) + PERIODE_SOL) % PERIODE_SOL;
     const normale = new THREE.Vector3();
     for (let j = 0; j <= N; j++) {
       for (let i = 0; i <= N; i++) {
@@ -171,9 +179,11 @@ export class Terrain3D {
         e.h = h[k];
         e.eau = eau[k];
         e.lit = lit[k];
-        r.couleur(n.x0 + x, n.z0 + z, e, 1 - normale.y * normale.y > 0 ? Math.sqrt(1 - normale.y * normale.y) : 0, couleurs, v * 3);
-        uvs[v * 2] = (n.x0 + x) / 6;
-        uvs[v * 2 + 1] = (n.z0 + z) / 6;
+        const pente = 1 - normale.y * normale.y > 0 ? Math.sqrt(1 - normale.y * normale.y) : 0;
+        if (couches && lointains && this.moyennes) r.couches(n.x0 + x, n.z0 + z, e, pente, this.moyennes, couches, v * 8, couleurs, v * 3, lointains);
+        else r.couleur(n.x0 + x, n.z0 + z, e, pente, couleurs, v * 3);
+        uvs[v * 2] = ux + x;
+        uvs[v * 2 + 1] = uz + z;
       }
     }
     // Jupe : les points du bord, abaissés.
@@ -192,6 +202,8 @@ export class Terrain3D {
         normales[w * 3 + c] = normales[v * 3 + c];
         couleurs[w * 3 + c] = couleurs[v * 3 + c];
       }
+      if (couches) for (let c = 0; c < 8; c++) couches[w * 8 + c] = couches[v * 8 + c];
+      if (lointains) for (let c = 0; c < 3; c++) lointains[w * 3 + c] = lointains[v * 3 + c];
       uvs[w * 2] = uvs[v * 2];
       uvs[w * 2 + 1] = uvs[v * 2 + 1];
     });
@@ -218,6 +230,17 @@ export class Terrain3D {
     geometrie.setAttribute("normal", new THREE.BufferAttribute(normales, 3));
     geometrie.setAttribute("color", new THREE.BufferAttribute(couleurs, 3));
     geometrie.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    if (couches) {
+      const p0 = new Float32Array((points + jupe) * 4);
+      const p1 = new Float32Array((points + jupe) * 4);
+      for (let v = 0; v < points + jupe; v++) {
+        p0.set(couches.subarray(v * 8, v * 8 + 4), v * 4);
+        p1.set(couches.subarray(v * 8 + 4, v * 8 + 8), v * 4);
+      }
+      geometrie.setAttribute("poids0", new THREE.BufferAttribute(p0, 4));
+      geometrie.setAttribute("poids1", new THREE.BufferAttribute(p1, 4));
+      if (lointains) geometrie.setAttribute("lointain", new THREE.BufferAttribute(lointains, 3));
+    }
     geometrie.setIndex(indices);
     geometrie.computeBoundingSphere();
 
