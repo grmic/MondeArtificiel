@@ -254,6 +254,39 @@ export interface Situation {
   dort: boolean;
   /** Tourné vers l'Entité qui lui parle (0 à 1). */
   ecoute: number;
+  /** F1 (0.41.8) : froid ressenti, faim, fatigue, peur (0 à 1), malade (0 ou 1, plus fort quand la santé est basse), enceinte. */
+  froid: number;
+  faim: number;
+  fatigue: number;
+  peur: number;
+  malade: number;
+  enceinte: boolean;
+  /** Humeur du flux Scène : 0 abattu, 1 triste, 2 serein, 3 content, 4 joyeux, 5 en deuil, 6 furieux, 7 déprimé. */
+  humeur: number;
+  /** Névrosisme et extraversion (0 à 1). */
+  nevrosisme: number;
+  extraversion: number;
+  /** H1 : il parle à quelqu'un en face de lui (0 à 1) ; l'autre écoute. */
+  parle: number;
+  /** H1 : il est en conversation (qu'il parle ou écoute). */
+  converse: boolean;
+}
+
+/** Abattement (F1) : fatigue, faim, tristesse, maladie ; 0 à 1. */
+function abattement(s: Situation): number {
+  const triste = s.humeur === 0 || s.humeur === 7 ? 1 : s.humeur === 5 ? 0.8 : s.humeur === 1 ? 0.5 : 0;
+  return Math.min(1, Math.max(lisser(0.35, 0.9, s.fatigue), lisser(0.3, 0.9, s.faim) * 0.8, triste, s.malade * 0.7));
+}
+
+/** Corps ouvert (F1) : joie et assurance, sans peur ni froid ; 0 à 1. */
+function ouverture(s: Situation): number {
+  const joie = s.humeur === 4 ? 1 : s.humeur === 3 ? 0.5 : 0;
+  return joie * (1 - s.peur) * (1 - s.froid) * (0.6 + 0.4 * s.extraversion);
+}
+
+/** Repli (F1) : la peur et le froid serrent les bras et montent les épaules ; l'anxieux s'y met plus vite. */
+function repli(s: Situation): number {
+  return Math.min(1, Math.max(s.peur * (0.7 + 0.6 * s.nevrosisme), s.froid));
 }
 
 /** Hauteur du sol sous le corps, en repère du corps (taille 1) : y = ax·x + az·z. */
@@ -266,10 +299,10 @@ export interface SolLocal {
 type Variante = { nom: string; poids: (s: Situation) => number };
 const ASSIS: Variante[] = [
   { nom: "tailleur", poids: (s) => (s.femme ? 0.8 : 1.3) * (1 - 0.5 * lisser(55, 80, s.age)) },
-  { nom: "genoux", poids: (s) => 1.1 + (s.age < 14 ? 0.5 : 0) },
+  { nom: "genoux", poids: (s) => 1.1 + (s.age < 14 ? 0.5 : 0) + 4 * repli(s) },
   { nom: "cote", poids: (s) => (s.femme ? 1.2 : 0.35) * lisser(8, 16, s.age) },
   { nom: "talons", poids: (s) => 0.6 * (1 - 0.7 * lisser(50, 75, s.age)) },
-  { nom: "allonge", poids: (s) => (s.femme ? 1.1 : 0.6) + 0.6 * lisser(50, 75, s.age) },
+  { nom: "allonge", poids: (s) => ((s.femme ? 1.1 : 0.6) + 0.6 * lisser(50, 75, s.age)) * (1 - 0.85 * s.froid) * (1 - 0.6 * s.peur) },
   { nom: "uneJambe", poids: () => 0.9 },
 ];
 const ACCROUPI: Variante[] = [
@@ -279,16 +312,19 @@ const ACCROUPI: Variante[] = [
 ];
 const COUCHE: Variante[] = [
   { nom: "cote", poids: () => 1.3 },
-  { nom: "dos", poids: (s) => 0.8 + (s.age < 2 ? 1 : 0) },
-  { nom: "fusil", poids: (s) => 0.6 + (s.age < 12 ? 0.6 : 0) },
-  { nom: "ventre", poids: (s) => (s.age < 1 ? 0 : 0.35) },
+  { nom: "dos", poids: (s) => (0.8 + (s.age < 2 ? 1 : 0)) * (1 - 0.75 * s.froid) },
+  { nom: "fusil", poids: (s) => 0.6 + (s.age < 12 ? 0.6 : 0) + 4 * s.froid + 1.5 * s.malade + 1.5 * s.peur },
+  { nom: "ventre", poids: (s) => (s.age < 1 || s.enceinte ? 0 : 0.35) * (1 - s.froid) },
 ];
 const BRAS_DEBOUT: Variante[] = [
-  { nom: "ballants", poids: () => 3 },
-  { nom: "devant", poids: (s) => (s.age < 6 ? 0.1 : 0.55) },
-  { nom: "dos", poids: (s) => (s.age < 6 ? 0.1 : 0.5) },
-  { nom: "hanche", poids: (s) => (s.age < 4 ? 0.1 : 0.45) },
-  { nom: "croises", poids: (s) => (s.age < 6 ? 0.05 : 0.35) },
+  { nom: "ballants", poids: (s) => 3 * (1 - repli(s)) ** 2 * (1 - 0.8 * s.malade) },
+  { nom: "devant", poids: (s) => (s.age < 6 ? 0.1 : 0.55) * (1 + s.peur) * (1 - 0.8 * s.froid) * (1 - 0.6 * s.malade) },
+  { nom: "dos", poids: (s) => (s.age < 6 ? 0.1 : 0.5) * (0.6 + 0.8 * (1 - s.nevrosisme)) * (1 - s.froid) },
+  { nom: "hanche", poids: (s) => (s.age < 4 ? 0.1 : 0.45) * (0.5 + s.extraversion) * (1 - s.froid) },
+  // Bras serrés contre soi : le froid et la peur (le petit enfant aussi se serre).
+  { nom: "croises", poids: (s) => (s.age < 6 ? 0.05 : 0.35) + 5 * s.froid + 2 * s.peur * (0.5 + s.nevrosisme) },
+  // Une main sur le ventre : le malade, la femme enceinte.
+  { nom: "ventre", poids: (s) => (s.age < 8 ? 0 : 5 * s.malade + (s.enceinte ? 1.1 : 0)) },
 ];
 
 /** Tire une variante : goût propre (hachage de l'id) × poids, renouvelé à chaque « époque ». */
@@ -381,7 +417,9 @@ export class Animateur {
   private choisirCle(s: Situation, t: number): string {
     const imposee = Animateur.imposees.get(s.id);
     if (imposee) return imposee;
-    const lent = (periode: number, sel: number) => Math.floor((t + unite(hacher(s.id, sel)) * periode) / periode);
+    // L'état (froid, peur, maladie) fait revoir le choix dès qu'il change de palier (F1).
+    const etat = Math.round(s.froid * 2) + 3 * Math.round(s.peur * 2) + 9 * Math.round(s.malade);
+    const lent = (periode: number, sel: number) => Math.floor((t + unite(hacher(s.id, sel)) * periode) / periode) + 7919 * etat;
     switch (s.posture) {
       case "marche":
         // Le nourrisson ne marche pas : il va à quatre pattes (vers 7-12 mois).
@@ -533,6 +571,30 @@ export class Animateur {
       p.ajouter("ventre", s.voute * 0.1, 0, 0);
       p.ajouter("cou", -s.voute * 0.22, 0, 0);
     }
+    if (famille_ !== "couche" && famille_ !== "nage" && famille_ !== "porte") this.allure(p, s);
+  }
+
+  /**
+   * Ce que vit l'humain se voit à son port (F1) : abattu (fatigue, faim, tristesse, maladie), épaules tombantes, dos rond, tête
+   * basse ; replié (peur, froid), épaules montées et rentrées ; joyeux et sûr de lui, poitrine ouverte, tête haute (Wallbott 1998 ;
+   * Dael, Mortillaro et Scherer 2012 ; Coulson 2004).
+   */
+  private allure(p: Pose, s: Situation): void {
+    const a = abattement(s);
+    const r = repli(s);
+    const o = ouverture(s);
+    if (a + r + o < 0.02) return;
+    p.ajouter("ventre", 0.05 * a + 0.03 * r - 0.02 * o, 0, 0);
+    p.ajouter("poitrine", 0.1 * a + 0.07 * r - 0.07 * o, 0, 0);
+    p.ajouter("cou", 0.06 * a + 0.04 * r - 0.02 * o, 0, 0);
+    p.ajouter("tete", 0.12 * a + 0.03 * r - 0.06 * o, 0, 0);
+    if (PO.claviculeG >= 0) {
+      // Clavicules : élévation (z, signe par côté) et avancée (y).
+      const monte = 0.12 * s.froid + 0.08 * s.peur - 0.06 * a + 0.02 * o;
+      const avance = 0.07 * a + 0.06 * r - 0.05 * o;
+      p.ajouter("claviculeG", 0, -avance, monte);
+      p.ajouter("claviculeD", 0, avance, -monte);
+    }
   }
 
   // ——— Debout ———
@@ -555,7 +617,15 @@ export class Animateur {
       p.poserPied(c, sg * (0.055 * largeur + 0.012 * libre), 0.025 * libre, 1);
     }
     // Bras : la façon de les tenir change de temps en temps.
-    const bras = imposee ?? choisir(BRAS_DEBOUT, s, Math.floor((t + 50 * unite(hacher(s.id, 93))) / 70), 4);
+    const etat = Math.round(s.froid * 2) + 3 * Math.round(s.peur * 2) + 9 * Math.round(s.malade);
+    const epoque = Math.floor((t + 50 * unite(hacher(s.id, 93))) / 70) + 7919 * etat;
+    // Un état fort l'emporte presque toujours sur l'habitude (F1) : transi ou terrorisé, on serre les bras ; très malade, on se
+    // tient le ventre.
+    const fort = unite(hacher(s.id, epoque, 95));
+    const bras = imposee
+      ?? (s.age >= 6 && repli(s) > 0.6 && fort < 0.85 ? "croises"
+        : s.age >= 8 && s.malade > 0.6 && fort < 0.75 ? "ventre"
+          : choisir(BRAS_DEBOUT, s, epoque, 4));
     this.brasDebout(p, bras, s, petit);
   }
 
@@ -597,16 +667,34 @@ export class Animateur {
         p.main(c, 0.15, 0.5);
         break;
       }
-      case "croises":
+      case "croises": {
+        // Le froid serre davantage : mains plus haut sur les bras, qui les frottent (F1).
+        const f = s.froid;
+        const frotte = f > 0.3 ? 0.02 * f * Math.sin(this.derniere * 6.5 + g) : 0;
         for (const c of COTES) {
-          p.epaule(c, 0.35, 0.15, -0.55);
-          p.coude(c, 1.9, 0);
+          p.epaule(c, 0.35 + 0.1 * f, 0.15 - 0.08 * f, -0.55 - 0.1 * f);
+          p.coude(c, 1.9 + 0.2 * f, 0);
           // Chaque main sur le haut du bras opposé, l'une devant l'autre.
-          p.viserMain(c, PO.poitrine, -SIGNE[c] * 0.088, -0.045 + (c === "G" ? 0.02 : 0), c === "G" ? 0.11 : 0.09);
+          p.viserMain(c, PO.poitrine, -SIGNE[c] * (0.088 + 0.01 * f), -0.045 + 0.02 * f + (c === "G" ? 0.02 : 0) + SIGNE[c] * frotte, c === "G" ? 0.11 : 0.09);
         }
-        p.main("G", 0.25, 0.3);
-        p.main("D", 0.25, 0.3);
+        p.main("G", 0.25 + 0.3 * f, 0.3);
+        p.main("D", 0.25 + 0.3 * f, 0.3);
         break;
+      }
+      case "ventre": {
+        // Une main (les deux chez le malade) à plat sur le ventre.
+        ballants();
+        const deux = s.malade > 0.5 && unite(hacher(s.id, 98)) < 0.6;
+        const avance = 0.1 + (s.enceinte ? 0.035 : 0);
+        for (const c of COTES) {
+          if (!deux && c !== (unite(hacher(s.id, 97)) < 0.5 ? "G" : "D")) continue;
+          p.epaule(c, 0.3, 0.1, -0.4);
+          p.coude(c, 1.3, 0.2);
+          p.viserMain(c, PO.ventre, SIGNE[c] * (deux ? 0.035 : 0.01), -0.015 + (c === "G" ? 0.025 : 0), avance);
+          p.main(c, 0.12, 0.3);
+        }
+        break;
+      }
       default:
         ballants();
     }
@@ -708,7 +796,7 @@ export class Animateur {
         p.colonne("ventre", 0.3);
         p.colonne("poitrine", 0.15);
         p.colonne("cou", -0.15);
-        const enlace = unite(hacher(s.id, Math.floor(t / 200), 99)) < 0.5;
+        const enlace = repli(s) > 0.3 || unite(hacher(s.id, Math.floor(t / 200), 99)) < 0.5;
         for (const c of COTES) {
           p.epaule(c, 0.85, 0.2, -0.3);
           p.coude(c, enlace ? 1.2 : 0.7, 0.3);
@@ -1095,7 +1183,8 @@ export class Animateur {
     // Respiration : environ 40/min chez le nourrisson, 25 vers 3 ans, 12-20 chez l'adulte (propre à chacun), plus vite avec
     // l'effort, plus lente et profonde en dormant (Fleming et al., 2011, Lancet).
     const base = s.age < 1 ? 40 : s.age < 3 ? 30 : s.age < 7 ? 23 : s.age < 13 ? 19 : 12 + 6 * unite(hacher(s.id, 113));
-    const parMinute = base * (1 + 0.6 * this.effort) * (s.dort ? 0.85 : 1);
+    // La peur et la fièvre accélèrent le souffle (F1).
+    const parMinute = base * (1 + 0.6 * this.effort + 0.35 * s.peur + 0.25 * s.malade) * (s.dort ? 0.85 : 1);
     this.phaseSouffle = (this.phaseSouffle + dt * parMinute / 60 * Math.PI * 2) % (Math.PI * 2);
     // Inspiration plus courte que l'expiration.
     const souffle = Math.sin(this.phaseSouffle - 0.35 * Math.sin(this.phaseSouffle));
@@ -1109,9 +1198,20 @@ export class Animateur {
       p.ajouter("claviculeD", 0, 0, -0.012 * ampl * souffle);
     }
     const famille_ = famille(this.cible);
+    // Frissons (F1) : tremblement rapide et irrégulier du buste et des épaules quand le froid mord, même endormi.
+    const frisson = lisser(0.45, 0.9, s.froid);
+    if (frisson > 0 && famille_ !== "eau") {
+      const f = 0.01 * frisson * (Math.sin(t * 57 + g) * 0.6 + Math.sin(t * 43.7 + 2 * g) * 0.4) * (0.6 + 0.4 * Math.max(0, Math.sin(t * 0.9 + g)));
+      p.ajouter("poitrine", f, 0, 0.5 * f);
+      p.ajouter("cou", -f, 0, 0);
+      if (corps.idx[PO.claviculeG] >= 0) {
+        p.ajouter("claviculeG", 0, 0, 1.5 * f);
+        p.ajouter("claviculeD", 0, 0, -1.5 * f);
+      }
+    }
     if (s.dort) return;
-    // Petits mouvements propres à chacun (plus chez l'enfant).
-    const vif = (0.7 + 0.6 * unite(hacher(s.id, 115))) * (s.age < 12 ? 1.6 : 1);
+    // Petits mouvements propres à chacun (plus chez l'enfant, l'anxieux ; moins chez qui est las).
+    const vif = (0.7 + 0.6 * unite(hacher(s.id, 115))) * (s.age < 12 ? 1.6 : 1) * (0.7 + 0.6 * s.nevrosisme) * (1 - 0.45 * abattement(s));
     if (famille_ !== "eau") {
       p.ajouter("poitrine", 0.012 * vif * onde(t, g + 13, 0.21), 0.02 * vif * onde(t, g + 17, 0.13), 0.01 * vif * onde(t, g + 19, 0.17));
       for (const c of COTES) {
@@ -1124,9 +1224,45 @@ export class Animateur {
     }
     // Regard : tête et buste vers ce qu'il regarde, sans à-coups.
     this.regarder(corps, s, t, dt, p);
-    // Gestes d'attente (debout ou assis, sans travailler).
-    if ((famille_ === "debout" && this.cible === "debout") || (famille_ === "sol" && this.cible.startsWith("assis"))) this.gesticuler(s, t, p);
+    // Gestes d'attente (debout ou assis, sans travailler) ; en parlant, la main accompagne la parole (H1).
+    const libre = (famille_ === "debout" && this.cible === "debout") || (famille_ === "sol" && this.cible.startsWith("assis"));
+    if (libre && s.converse) {
+      this.geste = null;
+      this.causer(s, t, p);
+    } else if (libre) this.gesticuler(s, t, p);
     else this.geste = null;
+  }
+
+  /**
+   * Conversation (H1) : celui qui parle bouge la main dominante (les deux s'il est extraverti) en battements qui suivent la
+   * parole, paume ouverte vers l'autre (McNeill 1992) ; celui qui écoute hoche la tête de temps en temps.
+   */
+  private causer(s: Situation, t: number, p: Pose): void {
+    const g = this.graine;
+    const w = ease(Math.min(1, s.parle * 1.4));
+    if (w < 0.02) {
+      // Il écoute : un hochement de temps en temps.
+      const h = Math.max(0, Math.sin(t * 0.7 + g)) ** 12;
+      p.ajouter("tete", 0.09 * h * Math.sin(t * 9), 0, 0);
+      return;
+    }
+    const dominante: Cote = unite(hacher(s.id, 159)) < 0.88 ? "D" : "G";
+    const ampleur = 0.55 + 0.7 * s.extraversion;
+    // Battements : rapprochés et irréguliers (2 à 3 par seconde), avec des temps forts.
+    const battement = Math.max(0, Math.sin(t * 5.3 + g)) * (0.5 + 0.5 * Math.max(0, onde(t, g + 61, 1.3)));
+    for (const c of COTES) {
+      const k = c === dominante ? 1 : lisser(0.55, 0.95, s.extraversion) * 0.7;
+      if (k <= 0) continue;
+      const wk = w * k;
+      const i = c === "G" ? 0 : 1;
+      for (const cible of p.mains[i]) cible.poids *= 1 - wk;
+      p.ajouter(`bras${c}`, -(0.35 + 0.15 * onde(t, g + 67 * SIGNE[c], 0.5)) * ampleur * wk, 0, SIGNE[c] * 0.12 * wk);
+      p.ajouter(`avantBras${c}`, -(0.9 + 0.25 * battement) * ampleur * wk, SIGNE[c] * 0.7 * wk, 0);
+      p.ajouter(`main${c}`, 0, 0, -SIGNE[c] * 0.25 * battement * wk);
+      p.main(c, 0.15 + 0.25 * (1 - wk) + 0.15 * onde(t, g + 71, 0.9) * wk, 0.2, 0.08 * wk);
+    }
+    p.ajouter("tete", 0.04 * battement * w, 0, 0);
+    p.ajouter("poitrine", -0.02 * w * ampleur, 0, 0);
   }
 
   private phaseSouffle = 0;
@@ -1168,12 +1304,29 @@ export class Animateur {
   private gesticuler(s: Situation, t: number, p: Pose): void {
     if (!this.geste && t > this.prochainGeste) {
       const h = unite(hacher(s.id, Math.floor(t), 117));
-      const noms = ["tete", "visage", "cheveux", "bras", "etirer", "derriere", "mains"];
-      const nom = noms[Math.floor(h * noms.length)];
+      // Le froid fait frotter bras et mains ; l'anxieux touche son visage et ses cheveux (gestes d'auto-apaisement, Ekman et
+      // Friesen 1969) ; las, on s'étire (F1).
+      const poids: [string, number][] = [
+        ["tete", 1], ["visage", 1 + 1.5 * s.nevrosisme + s.peur], ["cheveux", 0.8 + s.nevrosisme], ["bras", 1 + 5 * s.froid],
+        ["etirer", 0.8 + 1.5 * s.fatigue], ["derriere", 1 + s.peur], ["mains", 1 + 5 * s.froid],
+      ];
+      let total = 0;
+      for (const [, w] of poids) total += w;
+      let r = h * total;
+      let nom = "tete";
+      for (const [n, w] of poids) {
+        r -= w;
+        if (r <= 0) {
+          nom = n;
+          break;
+        }
+      }
       const cote: Cote = unite(hacher(s.id, Math.floor(t), 119)) < 0.62 ? "D" : "G";
       this.geste = { nom, cote, debut: t, duree: nom === "etirer" ? 3.5 : nom === "derriere" ? 2.2 : 2.6 };
       // Un geste toutes les 15 à 60 s, plus souvent chez l'enfant.
-      this.prochainGeste = t + (15 + 45 * unite(hacher(s.id, Math.floor(t), 121))) * (s.age < 12 ? 0.6 : 1);
+      // Plus souvent chez l'enfant, l'anxieux, qui a peur ou froid ; moins chez qui est abattu.
+      this.prochainGeste = t + (15 + 45 * unite(hacher(s.id, Math.floor(t), 121))) * (s.age < 12 ? 0.6 : 1)
+        * (1.3 - 0.6 * s.nevrosisme) / (1 + 1.5 * Math.max(s.froid, s.peur)) * (1 + abattement(s));
     }
     const g = this.geste;
     if (!g) return;

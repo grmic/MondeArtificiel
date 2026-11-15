@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { hacher, unite } from "./bruit";
+import { hacher, lisser, unite } from "./bruit";
 import { Corps, cleDe, formeDe } from "./corps";
 import type { Corps as Etat, Foule } from "./foule";
 import { TeteDetaillee, type Expression } from "./tete";
@@ -86,7 +86,7 @@ export class CorpsProches {
   /** Animation de chacun (0.41.7) : elle survit à son corps, refait quand sa forme change. */
   private readonly animateurs = new Map<number, Animateur>();
   /** Ce que chacun regarde, et quand il en change. */
-  private readonly regards = new Map<number, { id: number; jusqua: number }>();
+  private readonly regards = new Map<number, { id: number; jusqua: number; vus: number[] }>();
 
   constructor(private readonly foule: Foule) {}
 
@@ -172,6 +172,9 @@ export class CorpsProches {
     for (const c of this.foule.liste) if (c.posture === "porte" && c.s.mere > 0) enfants.set(c.s.mere, c);
     const places = new Map<number, { x: number; y: number; z: number; h: number }>();
     for (const { pl, c } of poses) places.set(pl.id, { x: pl.x, y: pl.y, z: pl.z, h: c.taille });
+    // Ceux qui marchent (H1) : on lève la tête vers qui arrive.
+    const arrivants: { id: number; x: number; z: number; cap: number }[] = [];
+    for (const { pl, c } of poses) if (c.posture === "marche") arrivants.push({ id: pl.id, x: pl.x, z: pl.z, cap: pl.cap });
     for (const { pl, c, corps } of poses) {
       const s = c.s;
       let anim = this.animateurs.get(s.id);
@@ -190,10 +193,15 @@ export class CorpsProches {
         activite: s.activite, phase: c.phase, vitesse: c.vitesse, endurance: s.endurance, reserves: s.reserves,
         enfant: enfant && (s.etat & 4) !== 0 ? enfant.s.age : (s.etat & 4) !== 0 ? 0.4 : null,
         porteur: etatMere ? etatMere.posture : null, dort, ecoute: c.ecoute,
+        // F1 (0.41.8) : ce que vit l'humain ; la maladie pèse d'autant plus que la santé est basse.
+        froid: lisser(15, 70, s.froid), faim: s.faim / 100, fatigue: s.fatigue / 100, peur: lisser(10, 70, s.peur),
+        malade: s.etat & 1 ? 0.6 + 0.4 * (1 - s.sante / 100) : lisser(60, 25, s.sante), enceinte: (s.etat & 2) !== 0,
+        humeur: s.humeur, nevrosisme: s.nevrosisme, extraversion: s.extraversion,
+        parle: c.parle, converse: c.interlocuteur > 0,
       };
       // Ce qu'il regarde (E1) : l'Entité qui lui parle, sinon tour à tour les gens proches, sa mère, son enfant.
       anim.ecoute = c.ecoute > 0.3;
-      anim.regard = c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, places, pl, temps);
+      anim.regard = c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, c.interlocuteur, places, pl, temps, arrivants);
       // Pente du sol sous lui, dans son repère (taille 1).
       let sol: SolLocal | null = null;
       if (c.posture !== "nage" && !(c.posture === "porte" && mere && sit.porteur !== "couche")) {
@@ -234,18 +242,34 @@ export class CorpsProches {
   }
 
   /** Change de temps en temps ce qu'un humain regarde : quelqu'un de proche (sa mère, son enfant d'abord), ou rien. */
-  private choisirRegard(id: number, mere: number, enfant: number, places: Map<number, { x: number; y: number; z: number; h: number }>,
-    pl: { x: number; z: number }, temps: number): THREE.Vector3 | null {
+  private choisirRegard(id: number, mere: number, enfant: number, interlocuteur: number,
+    places: Map<number, { x: number; y: number; z: number; h: number }>, pl: { x: number; z: number }, temps: number,
+    arrivants: readonly { id: number; x: number; z: number; cap: number }[]): THREE.Vector3 | null {
     let r = this.regards.get(id);
+    // Qui s'approche (à moins de 12 m, droit vers lui) attire le regard aussitôt, une fois.
+    let arrive = 0;
+    for (const a of arrivants) {
+      if (a.id === id) continue;
+      const dx = pl.x - a.x;
+      const dz = pl.z - a.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 12 && d > 1 && (Math.sin(a.cap) * dx + Math.cos(a.cap) * dz) / d > 0.8) arrive = a.id;
+    }
+    if (arrive && r?.id !== arrive && !(r?.vus ?? []).includes(arrive) && unite(hacher(id, arrive, 139)) < 0.85) {
+      r = { id: arrive, jusqua: temps + 1.5 + 2 * unite(hacher(id, arrive, 141)), vus: [...(r?.vus ?? []).slice(-4), arrive] };
+      this.regards.set(id, r);
+    }
     if (!r || temps > r.jusqua || (r.id && !places.has(r.id))) {
       const proches: number[] = [];
       for (const [k, q] of places) if (k !== id && Math.hypot(q.x - pl.x, q.z - pl.z) < 7) proches.push(k);
       const h = unite(hacher(id, Math.floor(temps * 3), 131));
       let choix = 0;
-      if (enfant && places.has(enfant) && h < 0.45) choix = enfant;
+      // En conversation, on regarde surtout l'autre (et de temps en temps ailleurs, comme on le fait en parlant).
+      if (interlocuteur && places.has(interlocuteur) && h < 0.75) choix = interlocuteur;
+      else if (enfant && places.has(enfant) && h < 0.45) choix = enfant;
       else if (mere && places.has(mere) && h < 0.5) choix = mere;
       else if (proches.length > 0 && h < 0.75) choix = proches[Math.floor(unite(hacher(id, Math.floor(temps * 3), 133)) * proches.length)];
-      r = { id: choix, jusqua: temps + 1.5 + 5 * unite(hacher(id, Math.floor(temps * 3), 137)) };
+      r = { id: choix, jusqua: temps + 1.5 + 5 * unite(hacher(id, Math.floor(temps * 3), 137)), vus: r?.vus ?? [] };
       this.regards.set(id, r);
     }
     const q = r.id ? places.get(r.id) : undefined;

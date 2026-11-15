@@ -20,9 +20,16 @@ namespace Monde.Simulation;
 /// <param name="Enfants">Enfants qu'elle a mis au monde (0.41.1 : forme de la poitrine et du ventre).</param>
 /// <param name="Vetement">Matière de ce qui le couvre (<see cref="Matiere.Aucune"/> : nu).</param>
 /// <param name="Usure">État de ce qui le couvre (1 neuf, 0 en lambeaux).</param>
+/// <param name="Froid">Froid ressenti, 0 à 100 (0.41.8 : bras serrés, épaules montées, frissons à l'affichage).</param>
+/// <param name="Faim">Faim, 0 à 100 (0.41.8 : épaules tombantes).</param>
+/// <param name="Fatigue">Fatigue, 0 à 100 (0.41.8 : tête basse, gestes lents).</param>
+/// <param name="Sante">Santé, 0 à 100 (0.41.8 : le malade se tient le ventre, se replie).</param>
+/// <param name="Nevrosisme">Trait Névrosisme, 0 à 1 (0.41.8 : l'anxieux bouge plus, se replie plus vite).</param>
+/// <param name="Extraversion">Trait Extraversion, 0 à 1 (0.41.8 : l'extraverti prend plus de place, parle avec les mains).</param>
 public readonly record struct HumainScene(int Id, int X, int Y, int VersX, int VersY, double Avance, double ParSeconde,
     Activite Activite, int Etat, double Age, bool Femme, double Teint, int Humeur, double Peur, int Communaute, int Mere,
-    double Reserves = 50, double Endurance = 0.5, double Taille = 0, int Enfants = 0, Matiere Vetement = Matiere.Aucune, double Usure = 0);
+    double Reserves = 50, double Endurance = 0.5, double Taille = 0, int Enfants = 0, Matiere Vetement = Matiere.Aucune, double Usure = 0,
+    double Froid = 0, double Faim = 0, double Fatigue = 0, double Sante = 100, double Nevrosisme = 0.5, double Extraversion = 0.5);
 
 /// <summary>Une hutte vue en 3D (0.41.1).</summary>
 public readonly record struct HutteScene(int Id, int X, int Y, double Solidite, bool Enduite);
@@ -119,7 +126,8 @@ public sealed partial class MondeSimule
                 liste.Add(new HumainScene(h.Id, h.X, h.Y, versX, versY, avance, parSeconde, h.Activite, etat,
                     h.AgeEnAnnees(maintenant), h.Sexe == Sexe.Femme, h.Apparence.Teint, humeur, h.Peur, h.CommunauteId, h.MereId,
                     h.Reserves, h.Personnalite.Endurance, h.Apparence.Taille, enfants.GetValueOrDefault(h.Id),
-                    h.Vetement?.Matiere ?? Matiere.Aucune, h.Vetement?.Usure ?? 0));
+                    h.Vetement?.Matiere ?? Matiere.Aucune, h.Vetement?.Usure ?? 0, h.Froid, h.Faim, h.Fatigue, h.Sante,
+                    h.Personnalite.Nevrosisme, h.Personnalite.Extraversion));
             }
             return (maintenant, liste);
         }

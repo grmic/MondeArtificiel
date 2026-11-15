@@ -1002,7 +1002,10 @@ export class Vue3D {
 
   private async lireFeux(): Promise<void> {
     const f = await connexion.invoke<{ feux: { x: number; y: number; couve: boolean }[] }>("Feux").catch(() => null);
-    if (f) this.feux.definir(f.feux);
+    if (f) {
+      this.feux.definir(f.feux);
+      this.foule.definirFeux(f.feux);
+    }
   }
 
   private async lireTemperatures(): Promise<void> {

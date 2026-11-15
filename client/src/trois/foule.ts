@@ -1,6 +1,7 @@
 import * as THREE from "three/webgpu";
 import { hacher, unite } from "./bruit";
 import type { Relief } from "./relief";
+import { etreAvecLesAutres } from "./social";
 
 /** Activités, dans l'ordre de l'énumération Activite du serveur (pour les textes « activite.X »). */
 export const ACTIVITES = [
@@ -36,11 +37,18 @@ export interface HumainScene {
   enfants: number;
   vetement: number;
   usure: number;
+  /** 0.41.8 : froid ressenti, faim, fatigue, santé (0 à 100), névrosisme et extraversion (0 à 1). */
+  froid: number;
+  faim: number;
+  fatigue: number;
+  sante: number;
+  nevrosisme: number;
+  extraversion: number;
   /** Essais (?debug3d) : un figurant posé à un endroit précis, dans une posture donnée. */
   figurant?: { x: number; z: number; cap: number; posture: Posture };
 }
 
-export const CHAMPS = 22;
+export const CHAMPS = 28;
 
 export function lireScene(n: number[]): HumainScene[] {
   const liste: HumainScene[] = [];
@@ -50,6 +58,7 @@ export function lireScene(n: number[]): HumainScene[] {
       activite: n[k + 7], etat: n[k + 8], age: n[k + 9] / 10, femme: n[k + 10] === 1, teint: n[k + 11] / 1000, humeur: n[k + 12],
       peur: n[k + 13], communaute: n[k + 14], mere: n[k + 15], reserves: n[k + 16], endurance: n[k + 17] / 1000, tailleEcart: n[k + 18] / 100,
       enfants: n[k + 19], vetement: n[k + 20], usure: n[k + 21] / 1000,
+      froid: n[k + 22], faim: n[k + 23], fatigue: n[k + 24], sante: n[k + 25], nevrosisme: n[k + 26] / 1000, extraversion: n[k + 27] / 1000,
     });
   }
   return liste;
@@ -73,6 +82,9 @@ export interface Corps {
   /** Chemin en cours (case de départ et d'arrivée) et où il en était au dernier pas du monde (0.41.2). */
   chemin: string;
   avancePrec: number;
+  /** H1 (0.41.8) : celui à qui il parle (0 : personne), et s'il a la parole (0 à 1). */
+  interlocuteur: number;
+  parle: number;
   secondesPrec: number;
   /** Il devrait marcher mais n'avance plus d'un pas à l'autre (bloqué, en attente) : on ne le fait pas avancer. */
   bloque: boolean;
@@ -128,7 +140,7 @@ function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Postu
 }
 
 /** Où se tient, dans sa case, quelqu'un qui ne marche pas : autour du camp, plus loin pour cueillir ou chasser. */
-function decalage(s: HumainScene, secondes: number): [number, number] {
+function decalage(s: HumainScene, secondes: number, auFeu: boolean): [number, number] {
   const angle0 = unite(hacher(s.id, 7)) * Math.PI * 2;
   const r0 = unite(hacher(s.id, 9));
   let rayon: number;
@@ -136,6 +148,20 @@ function decalage(s: HumainScene, secondes: number): [number, number] {
   switch (s.activite) {
     case A.Veiller:
       rayon = 2.4 + r0;
+      break;
+    case A.Repos:
+    case A.VeillerEnfant:
+    case A.Fabriquer:
+    case A.Enseigner:
+    case A.Soigner:
+    case A.Experimenter:
+      // Au camp où brûle un feu, on s'assoit autour (H1) ; sinon on se disperse.
+      if (auFeu) {
+        rayon = 2.1 + 1.6 * r0;
+        break;
+      }
+      rayon = 4 + r0 * 12;
+      derive = secondes / 36000;
       break;
     case A.Dormir:
     case A.SAbriter:
@@ -179,6 +205,18 @@ export class Foule {
   interlocuteur = 0;
   /** Figurants des essais automatiques (?debug3d), ajoutés à chaque flux. */
   figurants: HumainScene[] = [];
+  /** Feux de camp (H1) : où ils sont (m) et sur quelles cases. */
+  feux: { x: number; z: number }[] = [];
+  private feuxCases = new Set<string>();
+  /** Secondes réelles écoulées (tours de parole). */
+  private horloge = 0;
+  definirFeux(feux: { x: number; y: number }[]): void {
+    this.feuxCases = new Set(feux.map((f) => `${f.x},${f.y}`));
+    this.feux = feux.map((f) => {
+      const [x, z] = this.relief.camp(f.x, f.y);
+      return { x, z };
+    });
+  }
   /** Au-delà, ni silhouette ni corps : un point de vie (niveau de détail lointain). */
   porteeSilhouettes = 2500;
   private readonly points: THREE.InstancedMesh;
@@ -243,6 +281,7 @@ export class Foule {
         this.corps.set(s.id, {
           s, x: NaN, y: 0, z: NaN, cap: unite(hacher(s.id, 11)) * Math.PI * 2, phase: 0, vitesse: 0, taille: 1, posture: "debout", vu: this.image, peau, cheveux,
           chemin: `${s.x},${s.y},${s.versX},${s.versY}`, avancePrec: s.avance, secondesPrec: secondes, bloque: false, enMarche: false, ecoute: 0,
+          interlocuteur: 0, parle: 0,
         });
       }
     }
@@ -263,7 +302,7 @@ export class Foule {
       const l = Math.hypot(dx, dz) || 1;
       return [ax + dx * f - (dz / l) * lateral, az + dz * f + (dx / l) * lateral, parSeconde > 0 && f < 0.985];
     }
-    const [ox, oz] = decalage(s, secondes);
+    const [ox, oz] = decalage(s, secondes, this.feuxCases.has(`${s.x},${s.y}`));
     return [ax + ox, az + oz, false];
   }
 
@@ -312,6 +351,8 @@ export class Foule {
       }
       c.y = eau ? surf.eau - (s.etat & 16 ? -0.3 : 0.15) : surf.sol;
     }
+    this.horloge += dt;
+    etreAvecLesAutres(this.corps.values(), this.feux, dt, this.horloge);
     this.dessiner(camera, secondes);
   }
 
