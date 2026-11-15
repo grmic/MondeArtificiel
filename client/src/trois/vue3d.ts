@@ -671,6 +671,18 @@ export class Vue3D {
       this.touches.delete(e.code);
       return;
     }
+    // Flèches, Page préc./suiv. et Espace sur un panneau (fiche, journal…) sous le pointeur ou cliqué : on le fait défiler au lieu
+    // de déplacer la caméra (sans souris ni ascenseur visible, on ne pouvait plus descendre dans la fiche).
+    if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Space", "Home", "End"].includes(e.code)) {
+      const zone = defilable(cible) ?? defilable(dernierPointeur ? document.elementFromPoint(dernierPointeur.x, dernierPointeur.y) : null);
+      if (zone) {
+        const page = zone.clientHeight * 0.9;
+        const pas = { ArrowUp: -40, ArrowDown: 40, PageUp: -page, PageDown: page, Space: e.shiftKey ? -page : page, Home: -zone.scrollHeight, End: zone.scrollHeight }[e.code] ?? 0;
+        zone.scrollBy({ top: pas, behavior: "smooth" });
+        e.preventDefault();
+        return;
+      }
+    }
     if (e.key === "m" || e.key === "M") {
       this.changerMode(this.mode === "vol" ? "marche" : "vol");
       return;
@@ -1328,4 +1340,21 @@ export class Vue3D {
     suivre.classList.toggle("actif", this.suivi !== null && !this.suivi.portrait);
     suivre.textContent = this.suivi ? t("trois.suiviArreter", { nom: this.ctx.nom(this.suivi.id) }) : id ? t("trois.suivre", { nom: this.ctx.nom(id) }) : "";
   }
+}
+
+/** Dernière position du pointeur sur la page (pour savoir quel panneau est survolé). */
+let dernierPointeur: { x: number; y: number } | null = null;
+window.addEventListener("pointermove", (e) => (dernierPointeur = { x: e.clientX, y: e.clientY }), { passive: true });
+
+/** La zone qui défile du panneau latéral où se trouve `el`, s'il y en a une et qu'elle déborde. */
+function defilable(el: Element | null): HTMLElement | null {
+  const panneau = el?.closest?.(".panneau-lateral");
+  if (!panneau) return null;
+  let z: Element | null = el;
+  while (z && z !== panneau) {
+    if (z instanceof HTMLElement && z.scrollHeight > z.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(z).overflowY)) return z;
+    z = z.parentElement;
+  }
+  for (const c of panneau.querySelectorAll<HTMLElement>(".corps, .evenements")) if (c.scrollHeight > c.clientHeight + 2) return c;
+  return null;
 }
