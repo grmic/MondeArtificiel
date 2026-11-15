@@ -212,6 +212,8 @@ export class Vue3D {
   private readonly rayons = new Rayons();
   private exposition = 0.6;
   private imagesOmbres = 0;
+  /** Images pendant lesquelles toutes les cascades d'ombre sont refaites (après un changement de Qualité ou un saut). */
+  private ombresAFaire = 2;
   private fondA = 0;
   /** Compteur d'images détaillé (touche I) : durées des dernières images. */
   private readonly perf: HTMLElement;
@@ -403,6 +405,8 @@ export class Vue3D {
     this.reglerLumiere(q);
     this.terrain.facteur = q.finesse;
     this.nature.portee = q.vegetation;
+    // Une ombre d'arbre s'étire loin quand le soleil est bas : on garde une marge au-delà de la dernière cascade.
+    this.nature.porteeOmbre = q.porteeOmbres + 150;
     if (this.matieres) this.matieres.portee.value = q.vegetation;
     this.sol.portee = q.sol;
     this.proches.reglage = { portee: q.corps, nombre: q.nombre, visages: q.visages, nombreVisages: q.nombreVisages, reels: q.reels, porteeReels: q.porteeReels };
@@ -451,6 +455,7 @@ export class Vue3D {
     astre.shadow.radius = q.douces ? 3 : 1;
     for (const l of this.ombres?.lights ?? []) if (l.shadow) l.shadow.radius = astre.shadow.radius;
     this.ombrer();
+    this.ombresAFaire = 2;
     // Chaîne de rendu : une passe de la scène (couleur, profondeur, normales, mouvement, masques), l'occlusion, les reflets de
     // l'eau, les rayons du soleil, l'exposition, le lissage, le halo, puis les tons (et le lissage SMAA, sur l'image finale).
     this.chaine?.dispose();
@@ -519,6 +524,27 @@ export class Vue3D {
     this.chaine = chaine;
   }
 
+  /**
+   * Cadence des cascades d'ombre (0.41.6) : chaque cascade redessine la scène vue du soleil, ce qui coûtait les trois quarts des
+   * triangles. La plus proche est refaite à chaque image ; les trois autres, plus larges et dont les texels couvrent bien plus
+   * que le pas de la caméra, à tour de rôle (une image sur deux pour la deuxième, une sur quatre pour les deux plus lointaines).
+   * Une carte refaite moins souvent garde la matrice avec laquelle elle a été dessinée : l'ombre reste juste, au plus en retard
+   * de trois images au loin. Après un changement de Qualité ou un saut, toutes sont refaites.
+   */
+  private cadencerOmbres(): void {
+    const lumieres = this.ombres?.lights;
+    if (!lumieres?.length) return;
+    const n = this.imagesOmbres;
+    const toutes = this.ombresAFaire > 0;
+    if (toutes) this.ombresAFaire--;
+    lumieres.forEach((l, i) => {
+      if (!l.shadow) return;
+      l.shadow.autoUpdate = false;
+      const due = i === 0 || (i === 1 && n % 2 === 1) || (i === 2 && n % 4 === 0) || (i >= 3 && n % 4 === 2);
+      if (toutes || due) l.shadow.needsUpdate = true;
+    });
+  }
+
   /** Qui porte et qui reçoit les ombres, d'après la Qualité (refait souvent : les maillages naissent et meurent). */
   private ombrer(): void {
     const q = QUALITES[this.qualite];
@@ -555,6 +581,7 @@ export class Vue3D {
     const haut = Math.max(120, Math.min(2000, this.camera.position.y - Math.max(0, this.relief.hauteur(this.camera.position.x, this.camera.position.z))));
     this.camera.position.set(x, sol + haut, z);
     this.viser = null;
+    this.ombresAFaire = 2;
     this.mode = "vol";
     this.afficherAide();
   }
@@ -1097,11 +1124,13 @@ export class Vue3D {
         this.mode = "marche";
         this.afficherAide();
         this.viser = null;
+        this.ombresAFaire = 2;
       }
     }
     this.camera.rotation.set(this.tangage, this.lacet, 0, "YXZ");
     this.camera.updateMatrixWorld();
     if (++this.imagesOmbres % 30 === 1) this.ombrer();
+    this.cadencerOmbres();
     if (this.aoNoeud) {
       // L'occlusion se mesure à l'échelle de ce qu'on regarde : quelques millimètres sur un visage, un mètre sur un paysage.
       const haut = p.y - Math.max(0, this.relief.hauteur(p.x, p.z));

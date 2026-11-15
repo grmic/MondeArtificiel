@@ -124,6 +124,13 @@ export class Nature3D {
   private readonly versions = new Map<number, number>();
   /** Portée en mètres (selon la qualité). */
   portee = 900;
+  /**
+   * Portée des ombres portées (0.41.6) : seules les plantes à moins de cette distance sont dessinées dans les cartes d'ombre.
+   * Plus loin, aucune ombre n'est reçue ; redessiner là-bas des centaines de milliers d'arbres par cascade coûtait la moitié
+   * de l'image. Les instances proches sont rangées en tête pour qu'il suffise de réduire le nombre d'instances.
+   */
+  porteeOmbre = Infinity;
+  private readonly ombrees: number[] = [];
   private readonly texture: boolean;
 
   constructor(private readonly relief: Relief, matieres: Matieres | null = null) {
@@ -159,6 +166,15 @@ export class Nature3D {
       m.frustumCulled = false;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.setColorAt(0, new THREE.Color(1, 1, 1));
+      this.ombrees.push(0);
+      let plein = 0;
+      m.onBeforeShadow = () => {
+        plein = m.count;
+        m.count = Math.min(m.count, this.ombrees[k]);
+      };
+      m.onAfterShadow = () => {
+        m.count = plein;
+      };
       this.maillages.push(m);
       this.groupe.add(m);
     });
@@ -297,28 +313,34 @@ export class Nature3D {
     const ech = new THREE.Vector3();
     const col = new THREE.Color();
     const comptes = new Array(SORTES).fill(0);
-    for (const parSorte of this.blocs.values()) {
-      for (let s = 0; s < SORTES; s++) {
-        const maillage = this.maillages[s];
-        const limite = this.portee * PORTEE[s];
-        for (const p of parSorte[s]) {
-          if (comptes[s] >= maillage.instanceMatrix.count) break;
-          const dx = p.x - camera.x;
-          const dz = p.z - camera.z;
-          if (dx * dx + dz * dz > limite * limite) continue;
-          q.setFromAxisAngle(axe, p.angle);
-          pos.set(p.x - this.origine.x, p.y, p.z - this.origine.z);
-          ech.set(p.echelle * (s === Sorte.Rocher ? 1.3 : 1), p.echelle, p.echelle * (s === Sorte.Rocher ? 1.1 : 1));
-          m.compose(pos, q, ech);
-          maillage.setMatrixAt(comptes[s], m);
-          maillage.setColorAt(comptes[s], col.setRGB(p.r, p.g, p.b));
-          if (this.texture) {
-            const v = maillage.geometry.getAttribute("vent") as THREE.InstancedBufferAttribute;
-            v.setXYZ(comptes[s], p.angle * 7.3, SOUPLESSE[s], p.echelle);
+    // Deux tours : d'abord les plantes assez proches pour porter une ombre visible, puis les autres.
+    const ombre2 = this.porteeOmbre * this.porteeOmbre;
+    for (const proches of [true, false]) {
+      for (const parSorte of this.blocs.values()) {
+        for (let s = 0; s < SORTES; s++) {
+          const maillage = this.maillages[s];
+          const limite = this.portee * PORTEE[s];
+          for (const p of parSorte[s]) {
+            if (comptes[s] >= maillage.instanceMatrix.count) break;
+            const dx = p.x - camera.x;
+            const dz = p.z - camera.z;
+            const d2 = dx * dx + dz * dz;
+            if (d2 > limite * limite || (d2 <= ombre2) !== proches) continue;
+            q.setFromAxisAngle(axe, p.angle);
+            pos.set(p.x - this.origine.x, p.y, p.z - this.origine.z);
+            ech.set(p.echelle * (s === Sorte.Rocher ? 1.3 : 1), p.echelle, p.echelle * (s === Sorte.Rocher ? 1.1 : 1));
+            m.compose(pos, q, ech);
+            maillage.setMatrixAt(comptes[s], m);
+            maillage.setColorAt(comptes[s], col.setRGB(p.r, p.g, p.b));
+            if (this.texture) {
+              const v = maillage.geometry.getAttribute("vent") as THREE.InstancedBufferAttribute;
+              v.setXYZ(comptes[s], p.angle * 7.3, SOUPLESSE[s], p.echelle);
+            }
+            comptes[s]++;
           }
-          comptes[s]++;
         }
       }
+      if (proches) for (let s = 0; s < SORTES; s++) this.ombrees[s] = comptes[s];
     }
     this.maillages.forEach((maillage, s) => {
       maillage.count = comptes[s];
