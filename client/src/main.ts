@@ -475,6 +475,14 @@ async function demarrer(): Promise<void> {
     fiche.portrait3d = null;
     await vue3d?.fermer();
   };
+  // Alerte d'une troupe (0.42.0) : « Aller voir » ouvre la vue 3D près de son chef.
+  alertesSuivis.allerVoir = (id) => {
+    vue.selectionner(id);
+    void fiche.ouvrir(id).then(() => {
+      if (bouton3d.classList.contains("actif") && vue3d) vue3d.allerVoir(id);
+      else bouton3d.click();
+    });
+  };
   bouton3d.addEventListener("click", async () => {
     if (bouton3d.classList.contains("actif")) {
       await quitter3d();

@@ -274,6 +274,8 @@ export interface Situation {
   converse: boolean;
   /** Enlacé avec son partenaire : +1 ou −1 (de quel côté il se couche, pour que les deux têtes soient du même côté), 0 sinon. */
   enlace: number;
+  /** 0.42.0 : geste de combat du rejeu d'un assaut (voir combat.ts), où il en est (0 à 1) et l'arme en main ; mort : plus de souffle. */
+  combat?: { geste: string; u: number; arme: number; mort: boolean } | null;
 }
 
 /** Abattement (F1) : fatigue, faim, tristesse, maladie ; 0 à 1. */
@@ -352,6 +354,10 @@ function choisir(l: Variante[], s: Situation, epoque: number, sel: number): stri
 /** Les familles de postures, pour les passages. */
 function famille(cle: string): "debout" | "sol" | "couche" | "eau" | "porte" | "quatre" {
   if (cle === "debout" || cle === "marche") return "debout";
+  if (cle.startsWith("combat.")) {
+    const g = cle.slice(7);
+    return g === "chute" || g === "gisant" ? "couche" : g === "cache" || g === "blesse" || g === "reveil" ? "sol" : "debout";
+  }
   if (cle.startsWith("couche")) return "couche";
   if (cle === "nage") return "eau";
   if (cle.startsWith("porte")) return "porte";
@@ -433,6 +439,7 @@ export class Animateur {
   private choisirCle(s: Situation, t: number): string {
     const imposee = Animateur.imposees.get(s.id);
     if (imposee) return imposee;
+    if (s.combat) return "combat." + s.combat.geste;
     // L'état (froid, peur, maladie) fait revoir le choix dès qu'il change de palier (F1).
     const etat = Math.round(s.froid * 2) + 3 * Math.round(s.peur * 2) + 9 * Math.round(s.malade);
     const lent = (periode: number, sel: number) => Math.floor((t + unite(hacher(s.id, sel)) * periode) / periode) + 7919 * etat;
@@ -478,6 +485,13 @@ export class Animateur {
     // Les vieux se baissent et se relèvent plus lentement ; les enfants plus vite.
     const k = (s.age < 12 ? 0.75 : 1) * (1 + 0.6 * lisser(55, 80, s.age)) * (0.85 + 0.3 * unite(hacher(s.id, 85)));
     if (!de) return [{ cle: vers, duree: 0.01 }];
+    // Combat (0.42.0) : tout va vite. La chute s'anime d'elle-même ; le dormeur se lève en sursaut.
+    if (vers.startsWith("combat.") || de.startsWith("combat.")) {
+      if (vers === "combat.chute" || vers === "combat.gisant") return [{ cle: vers, duree: 0.12 }];
+      if (a === "couche" && b === "debout") return [{ cle: "assis.genoux", duree: 0.45 }, { cle: "releve", duree: 0.4 }, { cle: vers, duree: 0.25 }];
+      if (a === "debout" && b === "sol") return [{ cle: vers, duree: 0.35 }];
+      return [{ cle: vers, duree: 0.2 }];
+    }
     if (a === b) {
       if (a === "debout") return [{ cle: vers, duree: 0.35 }];
       return [{ cle: vers, duree: 1.4 * k }];
@@ -581,9 +595,13 @@ export class Animateur {
       case "porte":
         this.porte(p, variante, s, t);
         break;
+      case "combat":
+        this.combattre(p, variante, s, t);
+        break;
     }
     // Une mère porte son enfant (D1) : ses bras le tiennent selon son âge et sa propre posture.
-    if (s.enfant !== null && famille_ !== "couche" && famille_ !== "nage" && famille_ !== "descente" && famille_ !== "releve") {
+    if (s.enfant !== null && famille_ !== "couche" && famille_ !== "nage" && famille_ !== "descente" && famille_ !== "releve"
+      && !(famille_ === "combat" && (variante === "gisant" || variante === "chute"))) {
       porterEnfant(p, s.enfant, famille_, s.allaite === true);
     }
     // Les vieux : dos voûté, genoux un peu fléchis.
@@ -592,7 +610,8 @@ export class Animateur {
       p.ajouter("ventre", s.voute * 0.1, 0, 0);
       p.ajouter("cou", -s.voute * 0.22, 0, 0);
     }
-    if (famille_ !== "couche" && famille_ !== "nage" && famille_ !== "porte") this.allure(p, s);
+    const aTerre = famille_ === "combat" && (variante === "gisant" || variante === "chute");
+    if (famille_ !== "couche" && famille_ !== "nage" && famille_ !== "porte" && !aTerre) this.allure(p, s);
   }
 
   /**
@@ -1121,6 +1140,199 @@ export class Animateur {
 
   // ——— S'asseoir et se relever : accroupi, une main vers le sol ———
 
+  // ——— Combat (0.42.0) : gestes du rejeu d'un assaut, calculés comme les autres poses, sans capture de mouvement ———
+
+  private combattre(p: Pose, geste: string, s: Situation, t: number): void {
+    const c = s.combat;
+    const u = c?.u ?? 0;
+    const arme = c?.arme ?? 0;
+    // Le peureux se tient plus en retrait, l'épuisé frappe mollement.
+    const elan = (1 - 0.35 * s.fatigue) * (1 - 0.25 * s.peur);
+    switch (geste) {
+      case "garde":
+        this.garde(p, s, t, arme);
+        break;
+      case "frappe":
+      case "lancer": {
+        this.garde(p, s, t, arme);
+        // Armer (bras haut derrière), frapper (vers l'avant et le bas), revenir.
+        const armer = ease(Math.min(1, u / 0.45));
+        const coup = ease(Math.min(1, Math.max(0, (u - 0.45) / 0.15)));
+        const retour = ease(Math.max(0, (u - 0.6) / 0.4));
+        const k = armer * (1 - coup);
+        const f = coup * (1 - retour) * elan;
+        const lancer = geste === "lancer";
+        p.epaule("D", 0.9 + 1.9 * k - 0.4 * f, 0.3 + (lancer ? 0.35 : 0.15) * k, lancer ? 0.6 * k : 0.2 * k);
+        p.coude("D", 1.5 - 0.4 * k - 1.2 * f, 0.1);
+        p.poignet("D", -0.4 * k + 0.6 * f);
+        p.colonne("poitrine", 0.1 - 0.12 * k + 0.25 * f, -0.35 * k + 0.3 * f);
+        p.colonne("ventre", 0.08 + 0.1 * f, -0.15 * k + 0.15 * f);
+        p.hanche("G", 0.35 + 0.25 * f, 0.1);
+        p.genou("G", 0.45 + 0.3 * f);
+        if (lancer && u > 0.5) p.main("D", 0.1, 0.2, 0.1);
+        break;
+      }
+      case "estoc": {
+        // Épieu ou lance à deux mains : on ramène, on pousse en se fendant.
+        this.garde(p, s, t, arme);
+        const ramene = ease(Math.min(1, u / 0.4));
+        const pousse = ease(Math.min(1, Math.max(0, (u - 0.4) / 0.18))) * (1 - ease(Math.max(0, (u - 0.62) / 0.38))) * elan;
+        for (const k of COTES) {
+          p.epaule(k, 0.55 - 0.15 * ramene * (1 - pousse) + 0.75 * pousse, k === "D" ? 0.15 : 0.05, k === "D" ? -0.2 : -0.5);
+          p.coude(k, 1.5 + 0.2 * ramene * (1 - pousse) - 1.25 * pousse, 0.3);
+        }
+        p.hanche("G", 0.4 + 0.5 * pousse, 0.1);
+        p.genou("G", 0.5 + 0.45 * pousse);
+        p.colonne("poitrine", 0.08 + 0.2 * pousse, 0.1);
+        p.colonne("ventre", 0.06 + 0.12 * pousse);
+        break;
+      }
+      case "parer":
+        // Les avant-bras devant le visage, le buste en arrière, un pas de recul.
+        this.garde(p, s, t, arme);
+        for (const k of COTES) {
+          p.epaule(k, 1.45, 0.25, -0.3);
+          p.coude(k, 1.85, 0.2);
+          p.poignet(k, 0.2);
+        }
+        p.colonne("poitrine", -0.12, 0.1 * Math.sin(u * Math.PI * 2));
+        p.colonne("tete", 0.25);
+        p.hanche("D", -0.2, 0.08);
+        p.genou("D", 0.35);
+        break;
+      case "touche": {
+        // Le coup reçu : le buste part en arrière, une main va au flanc.
+        this.garde(p, s, t, 0);
+        const w = Math.sin(Math.min(1, u) * Math.PI);
+        p.colonne("poitrine", -0.3 * w, 0.2 * w);
+        p.colonne("cou", -0.2 * w);
+        p.colonne("tete", -0.25 * w);
+        p.epaule("G", 0.3, 0.1, -0.4);
+        p.coude("G", 1.4, 0.2);
+        p.viserMain("G", PO.ventre, 0.06, 0, 0.1, 0.9);
+        for (const k of COTES) p.genou(k, 0.45 + 0.2 * w);
+        break;
+      }
+      case "blesse":
+        // Un genou à terre, la main pressée sur la plaie, la tête basse ; le souffle court (vivre).
+        this.accroupi(p, "unGenou", s, t);
+        p.epaule("G", 0.35, 0.1, -0.4);
+        p.coude("G", 1.45, 0.2);
+        p.viserMain("G", PO.ventre, 0.07, 0.01, 0.1, 1);
+        p.main("G", 0.2, 0.3);
+        p.epaule("D", 0.5, 0.25, -0.1);
+        p.coude("D", 0.3, 0.2);
+        p.viserMain("D", -1, -0.16, 0, 0.15, 0.8, true);
+        p.colonne("tete", 0.45);
+        p.colonne("poitrine", 0.3);
+        break;
+      case "chute": {
+        // Il s'effondre en arrière : les genoux cèdent, le corps bascule, les bras s'ouvrent.
+        const k = ease(u);
+        p.coucher(-Math.PI / 2 * k, 0.25 * k * (unite(hacher(s.id, 131)) < 0.5 ? 1 : -1));
+        for (const c2 of COTES) {
+          p.hanche(c2, 0.5 * Math.sin(k * Math.PI) + 0.1 * k, 0.12 * k);
+          p.genou(c2, 0.9 * Math.sin(k * Math.PI) + 0.25 * k);
+          p.epaule(c2, 0.6 * (1 - k) + 0.2, 0.5 * k, 0.2);
+          p.coude(c2, 0.5, 0.2);
+        }
+        p.colonne("cou", -0.3 * k);
+        p.appuis = k < 0.55 ? APPUI_PIEDS : APPUI_CORPS;
+        p.plantes = k < 0.55 ? [1, 1] : [0, 0];
+        break;
+      }
+      case "gisant": {
+        // Sur le dos, les membres relâchés là où ils sont tombés ; la tête roulée sur le côté.
+        const h = (n: number) => unite(hacher(s.id, n));
+        p.coucher(-Math.PI / 2, (h(131) < 0.5 ? 1 : -1) * 0.25);
+        p.appuis = APPUI_CORPS;
+        p.plantes = [0, 0];
+        p.hanche("G", 0.1 + 0.3 * h(133), 0.15 + 0.2 * h(135), 0.5);
+        p.hanche("D", 0.05 + 0.4 * h(137), 0.1 + 0.25 * h(139), 0.45);
+        p.genou("G", 0.15 + 0.6 * h(141));
+        p.genou("D", 0.1 + 0.5 * h(143));
+        p.cheville("G", -0.45);
+        p.cheville("D", -0.45);
+        p.epaule("G", -0.1 + 0.4 * h(145), 0.4 + 0.7 * h(147), 0.3);
+        p.epaule("D", -0.1 + 0.4 * h(149), 0.3 + 0.8 * h(151), 0.3);
+        p.coude("G", 0.2 + 0.6 * h(153), 0.4);
+        p.coude("D", 0.2 + 0.6 * h(155), 0.4);
+        p.main("G", 0.5, 0.4);
+        p.main("D", 0.5, 0.4);
+        p.colonne("cou", -0.1);
+        p.colonne("tete", 0, (h(157) < 0.5 ? 1 : -1) * 0.7, 0);
+        break;
+      }
+      case "cache":
+        // Accroupi, ramassé, la tête rentrée : se faire petit.
+        this.accroupi(p, "pointes", s, t);
+        p.colonne("poitrine", 0.35);
+        p.colonne("tete", 0.1);
+        for (const k of COTES) {
+          p.epaule(k, 0.6, 0.15, -0.2);
+          p.coude(k, 1.2, 0.3);
+          p.viserMain(k, PO[`jambe${k}`], 0, 0.08, 0.12, 0.7);
+        }
+        break;
+      case "reveil":
+        this.passage(p, s, true);
+        break;
+      case "tire":
+      case "tiree": {
+        // Le ravisseur avance en tenant la captive par le poignet, bras tendu derrière lui ; elle résiste, penchée en arrière.
+        this.marche(p, s, 0, 0);
+        if (geste === "tire") {
+          p.epaule("D", -0.55, 0.15, 0.2);
+          p.coude("D", 0.15, 0);
+          p.main("D", 1.2);
+          p.colonne("cou", 0, -0.5);
+        } else {
+          p.epaule("G", 1.0, 0.1, 0);
+          p.coude("G", 0.1, 0);
+          p.colonne("poitrine", -0.15);
+          p.colonne("tete", 0.2);
+        }
+        break;
+      }
+      default:
+        this.debout(p, s, t, 0, 0);
+    }
+  }
+
+  /** Garde : genoux fléchis, pied gauche devant, buste penché, poings ou arme levés. */
+  private garde(p: Pose, s: Situation, t: number, arme: number): void {
+    const g = this.graine;
+    const balance = 0.03 * Math.sin(t * 3.1 + g);
+    p.bassin(0.12, 0.25, balance);
+    p.colonne("ventre", 0.08, -0.12);
+    p.colonne("poitrine", 0.1, -0.1);
+    p.colonne("cou", -0.12);
+    p.colonne("tete", -0.05);
+    p.hanche("G", 0.35, 0.1, 0.05);
+    p.genou("G", 0.45);
+    p.cheville("G", 0.15);
+    p.hanche("D", -0.05, 0.12, 0.25);
+    p.genou("D", 0.35);
+    p.cheville("D", 0.2);
+    p.poserPied("G", 0.07, 0.14, 1);
+    p.poserPied("D", -0.08, -0.1, 1);
+    const longue = arme === 3 || arme === 4;
+    if (longue) {
+      for (const k of COTES) {
+        p.epaule(k, 0.55, k === "D" ? 0.15 : 0.05, k === "D" ? -0.2 : -0.5);
+        p.coude(k, 1.5, 0.3);
+      }
+    } else {
+      p.epaule("G", 0.75, 0.2, -0.3);
+      p.coude("G", 1.7, 0.2);
+      p.epaule("D", arme > 0 ? 0.9 : 0.7, 0.3, -0.2);
+      p.coude("D", arme > 0 ? 1.5 : 1.75, 0.2);
+    }
+    p.main("G", arme > 0 && longue ? 1.4 : 1.35, 0.9);
+    p.main("D", 1.4, 0.9);
+    void s;
+  }
+
   private passage(p: Pose, s: Situation, releve: boolean): void {
     const c: Cote = unite(hacher(s.id, 111)) < 0.5 ? "G" : "D";
     for (const k of COTES) {
@@ -1228,6 +1440,8 @@ export class Animateur {
   // ——— Le vivant (E1) : respiration, petits mouvements, regard, gestes ———
 
   private vivre(corps: Corps, s: Situation, t: number, dt: number, p: Pose): void {
+    // Un mort ne respire plus et ne bouge plus (0.42.0).
+    if (s.combat?.mort) return;
     const g = this.graine;
     // Respiration : environ 40/min chez le nourrisson, 25 vers 3 ans, 12-20 chez l'adulte (propre à chacun), plus vite avec
     // l'effort, plus lente et profonde en dormant (Fleming et al., 2011, Lancet).

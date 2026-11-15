@@ -172,6 +172,8 @@ function boutonsProches(a: AlerteSuivi): HTMLElement[] {
  */
 export class AlertesSuivis {
   private nonLues = 0;
+  /** 0.42.0 : ouvre la vue 3D près de cet humain (le chef d'une troupe en marche ou aux portes d'un camp). */
+  allerVoir: ((id: number) => void) | null = null;
   private readonly titreBouton: string;
 
   constructor(
@@ -230,6 +232,14 @@ export class AlertesSuivis {
     fermer.title = t("commun.fermer");
     fermer.addEventListener("click", () => this.retirer(carte));
     const proches = alertes.flatMap(boutonsProches);
+    // Une troupe en marche ou aux portes d'un camp : « Aller voir » ouvre la vue 3D près de son chef (0.42.0).
+    const troupe = alertes.filter((x) => x.sorte.startsWith("Troupe") && x.humain > 0).at(-1);
+    if (troupe && this.allerVoir) {
+      const b = el("button", "proche", t("suivis.allerVoirTroupe"));
+      b.type = "button";
+      b.addEventListener("click", () => this.allerVoir?.(troupe.humain));
+      proches.push(b);
+    }
     const corps = el("div", "corps-alerte");
     corps.append(texte);
     if (proches.length > 0) {

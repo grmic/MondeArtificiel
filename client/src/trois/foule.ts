@@ -2,6 +2,7 @@ import * as THREE from "three/webgpu";
 import { hacher, unite } from "./bruit";
 import type { Relief } from "./relief";
 import { etreAvecLesAutres } from "./social";
+import type { Rejeu, Role } from "./combat";
 
 /** Activités, dans l'ordre de l'énumération Activite du serveur (pour les textes « activite.X »). */
 export const ACTIVITES = [
@@ -64,7 +65,7 @@ export function lireScene(n: number[]): HumainScene[] {
   return liste;
 }
 
-export type Posture = "debout" | "marche" | "assis" | "couche" | "accroupi" | "nage" | "travail" | "porte" | "enlace";
+export type Posture = "debout" | "marche" | "assis" | "couche" | "accroupi" | "nage" | "travail" | "porte" | "enlace" | "combat";
 
 export interface Corps {
   s: HumainScene;
@@ -94,6 +95,8 @@ export interface Corps {
   enMarche: boolean;
   /** Tourné vers l'Entité qui lui parle (0 à 1, pour la tête). */
   ecoute: number;
+  /** 0.42.0 : ce que le rejeu d'un assaut lui fait faire (ou, mort, comment il gît), sinon null. */
+  role: Role | null;
 }
 
 /**
@@ -115,6 +118,7 @@ export function stature(age: number, femme: boolean, ecart: number): number {
 }
 
 function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Posture {
+  if (s.activite === A.Mort) return "couche";
   if (s.etat & 32 || s.activite === A.PorteParSaMere) return "porte";
   if (dansLEau) return "nage";
   if (enMouvement) return "marche";
@@ -143,6 +147,11 @@ function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Postu
     default:
       return "debout";
   }
+}
+
+/** Couché (endormi, au repos, ou à terre dans un combat). */
+export function aTerre(c: Corps): boolean {
+  return c.posture === "couche" || (c.posture === "combat" && (c.role?.geste === "gisant" || c.role?.geste === "chute"));
 }
 
 /** Où se tient, dans sa case, quelqu'un qui ne marche pas : autour du camp, plus loin pour cueillir ou chasser. */
@@ -216,7 +225,7 @@ function emprise(c: Corps): number {
 function ecarter(cibles: Map<Corps, [number, number, boolean]>): void {
   const arretes: { c: Corps; t: [number, number, boolean]; r: number }[] = [];
   for (const [c, t] of cibles) {
-    const r = t[2] || c.s.versX >= 0 ? 0 : emprise(c);
+    const r = t[2] || c.s.versX >= 0 || (c.role && !c.role.mort) ? 0 : emprise(c);
     if (r > 0) arretes.push({ c, t, r });
   }
   if (arretes.length < 2) return;
@@ -361,7 +370,7 @@ export class Foule {
         this.corps.set(s.id, {
           s, x: NaN, y: 0, z: NaN, cap: unite(hacher(s.id, 11)) * Math.PI * 2, phase: 0, vitesse: 0, taille: 1, posture: "debout", vu: this.image, peau, cheveux,
           chemin: `${s.x},${s.y},${s.versX},${s.versY}`, avancePrec: s.avance, secondesPrec: secondes, bloque: false, enMarche: false, ecoute: 0,
-          interlocuteur: 0, parle: 0, partenaire: 0,
+          interlocuteur: 0, parle: 0, partenaire: 0, role: null,
         });
       }
     }
@@ -413,11 +422,34 @@ export class Foule {
     return [ax + ox, az + oz, false];
   }
 
+  /** 0.42.0 : l'assaut rejoué en ce moment et où il en est (s), et où gisent les morts des assauts déjà vus. */
+  rejeu: Rejeu | null = null;
+  tRejeu = 0;
+  readonly gisants = new Map<number, { x: number; z: number; cap: number }>();
+
+  /** Rôle d'un humain dans l'assaut rejoué ; un mort, hors rejeu, gît là où il est tombé. */
+  private roleDe(c: Corps): Role | null {
+    const r = this.rejeu?.role(c.s.id, this.tRejeu) ?? null;
+    if (r) {
+      if (r.mort) this.gisants.set(c.s.id, { x: r.x, z: r.z, cap: r.cap ?? c.cap });
+      return r;
+    }
+    if (c.s.activite !== A.Mort) return null;
+    const g = this.gisants.get(c.s.id);
+    const x = g?.x ?? (Number.isNaN(c.x) ? this.relief.camp(c.s.x, c.s.y)[0] : c.x);
+    const z = g?.z ?? (Number.isNaN(c.z) ? this.relief.camp(c.s.x, c.s.y)[1] : c.z);
+    return { x, z, cap: g?.cap ?? c.cap, geste: "gisant", u: 1, arme: 0, court: false, mort: true, face: 0 };
+  }
+
   /** Avance l'animation : `dt` secondes réelles, `secondes` instant estimé du monde. */
   animer(dt: number, secondes: number, camera: THREE.Vector3): void {
     const rel = this.relief;
     const cibles = new Map<Corps, [number, number, boolean]>();
-    for (const c of this.corps.values()) cibles.set(c, c.s.figurant ? [c.s.figurant.x, c.s.figurant.z, false] : this.cible(c, secondes));
+    for (const c of this.corps.values()) {
+      // Les figurants des essais jouent aussi l'assaut rejoué (essai des gestes de combat).
+      c.role = this.roleDe(c);
+      cibles.set(c, c.role ? [c.role.x, c.role.z, c.role.court] : c.s.figurant ? [c.s.figurant.x, c.s.figurant.z, false] : this.cible(c, secondes));
+    }
     ecarter(cibles);
     for (const c of this.corps.values()) {
       const s = c.s;
@@ -433,7 +465,8 @@ export class Foule {
       const dx = tx - c.x;
       const dz = tz - c.z;
       const d = Math.hypot(dx, dz);
-      const k = Math.min(1, dt * 1.5);
+      // En combat, on suit le rejeu de près : on court, on recule d'un pas, on tombe là où l'on est.
+      const k = Math.min(1, dt * (c.role ? (c.role.court ? 5 : 4) : 1.5));
       c.x += dx * k;
       c.z += dz * k;
       const pas = d * k;
@@ -443,9 +476,11 @@ export class Foule {
       // est arrêté, qu'il attend au bout de son chemin ou qu'il est bloqué.
       c.enMarche = c.enMarche ? c.vitesse > 0.12 : c.vitesse > 0.25;
       const voulu = ecoute ? Math.atan2(camera.x - c.x, camera.z - c.z) : d > 0.05 && c.vitesse > 0.15 ? Math.atan2(dx, dz) : null;
-      if (voulu !== null) {
-        const ecart = ((((voulu - c.cap + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
-        c.cap += ecart * Math.min(1, dt * (ecoute ? 2.2 : 5));
+      const vouluCombat = c.role && c.role.cap !== null && !(c.role.court && d > 0.3) ? c.role.cap : null;
+      const vise = vouluCombat ?? voulu;
+      if (vise !== null) {
+        const ecart = ((((vise - c.cap + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
+        c.cap += ecart * Math.min(1, dt * (ecoute ? 2.2 : c.role ? 7 : 5));
       }
       c.ecoute += ((ecoute ? 1 : 0) - c.ecoute) * Math.min(1, dt * 3);
       c.taille = stature(s.age, s.femme, s.tailleEcart);
@@ -454,8 +489,8 @@ export class Foule {
       const surf = rel.surface(c.x, c.z);
       const eau = !Number.isNaN(surf.eau) && surf.eau - surf.sol > 1.1;
       if (eau) c.phase += dt * Math.min(6, 1 + c.vitesse * 3);
-      c.posture = s.figurant?.posture ?? posture(s, c.enMarche, eau && !(s.etat & 16));
-      if (s.figurant) {
+      c.posture = c.role?.geste ? "combat" : c.role ? (c.enMarche ? "marche" : "debout") : s.figurant?.posture ?? posture(s, c.enMarche, eau && !(s.etat & 16));
+      if (s.figurant && !c.role) {
         c.cap = s.figurant.cap;
         if (s.figurant.posture === "marche") c.phase += dt * 5;
       }
@@ -534,6 +569,24 @@ export class Foule {
           bras = [-1.1 + Math.sin(secondes * 1.5 + s.id) * 0.2, -0.9];
           flexion = 0.6;
           break;
+        case "combat": {
+          const g = c.role?.geste;
+          if (g === "gisant" || g === "chute") {
+            racine.multiply(t.makeTranslation(0, 0.09 * h, 0.45 * h)).multiply(r.makeRotationX(-Math.PI / 2));
+            bras = [0.4, 0.5];
+          } else if (g === "cache" || g === "blesse" || g === "reveil") {
+            racine.multiply(t.makeTranslation(0, -0.27 * h, 0));
+            jambes = [-1.1, -0.8];
+            bras = [-0.9, -0.8];
+            flexion = 0.6;
+          } else {
+            const coup = g === "frappe" || g === "estoc" || g === "lancer" ? Math.sin((c.role?.u ?? 0) * Math.PI * 2) : 0;
+            jambes = [0.35, -0.15];
+            bras = [-1.1 - 1.2 * coup, -0.9];
+            flexion = 0.15;
+          }
+          break;
+        }
         case "nage": {
           racine.multiply(t.makeTranslation(0, 0.05, -0.5 * h)).multiply(r.makeRotationX(Math.PI / 2));
           const a = Math.sin(c.phase * 1.5) * 0.3;
@@ -602,9 +655,9 @@ export class Foule {
     for (const c of this.corps.values()) {
       if (Number.isNaN(c.x)) continue;
       const pl = this.placement(c);
-      const haut = c.posture === "couche" || c.posture === "nage" || c.posture === "porte" ? 0.2 : c.posture === "assis" || c.posture === "travail" ? 0.5 : c.posture === "accroupi" ? 0.6 : 0.9;
+      const haut = aTerre(c) || c.posture === "nage" || c.posture === "porte" ? 0.2 : c.posture === "assis" || c.posture === "travail" ? 0.5 : c.posture === "accroupi" ? 0.6 : 0.9;
       // Allongé, le corps s'étend le long de son cap : « pied » est alors l'autre bout du corps.
-      const couche = c.posture === "couche" || c.posture === "nage";
+      const couche = aTerre(c) || c.posture === "nage";
       const pied = couche
         ? new THREE.Vector3(pl.x - Math.sin(pl.cap) * c.taille * 0.8, pl.y + 0.15, pl.z - Math.cos(pl.cap) * c.taille * 0.8)
         : new THREE.Vector3(pl.x, pl.y + 0.05, pl.z);
@@ -617,7 +670,7 @@ export class Foule {
     const c = this.corps.get(id);
     if (!c || Number.isNaN(c.x)) return null;
     const pl = this.placement(c);
-    const haut = c.posture === "couche" || c.posture === "nage" || c.posture === "porte" ? 0.25 : c.posture === "assis" || c.posture === "travail" ? 0.5 : c.posture === "accroupi" ? 0.6 : 0.85;
+    const haut = aTerre(c) || c.posture === "nage" || c.posture === "porte" ? 0.25 : c.posture === "assis" || c.posture === "travail" ? 0.5 : c.posture === "accroupi" ? 0.6 : 0.85;
     return { tete: new THREE.Vector3(pl.x, pl.y + c.taille * haut, pl.z), cap: pl.cap, enMarche: c.enMarche, taille: c.taille };
   }
 

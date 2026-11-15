@@ -10,7 +10,7 @@ import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import type { Carte } from "../carte";
 import { connexion } from "../connexion";
 import { nombre, t } from "../langue";
-import { Bruit } from "./bruit";
+import { Bruit, hacher, unite } from "./bruit";
 import { Ciel, type ReglageNuages } from "./ciel";
 import { Camp3D, type CampJson } from "./camp";
 import { ACTIVITES, Feux3D, Foule, lireScene } from "./foule";
@@ -24,6 +24,7 @@ import { Relief, type Temperatures, type TerrainVue } from "./relief";
 import { Terrain3D } from "./tuiles";
 import { Eau, maillageMer } from "./eau3d";
 import { Matieres, Vent } from "./matieres";
+import { Rejeu, type AssautJson } from "./combat";
 
 /** Ce que la vue 3D demande au reste du client. */
 export interface Contexte {
@@ -54,7 +55,18 @@ interface TerrainJson {
 interface HorlogeJson {
   facteur: number;
   saut: unknown;
+  /** « Avancer jusqu'à » en cours (texte), ou null : le monde file alors exprès, on ne le bride pas. */
+  objectif?: string | null;
 }
+
+/** Une durée du monde en mots courts (« 3 h », « 1 j »). */
+function duree(secondes: number): string {
+  const h = Math.max(1, Math.round(secondes / 3600));
+  return h < 24 ? t("trois.combat.heures", { n: h }) : t("trois.combat.jours", { n: Math.round(h / 24) });
+}
+
+/** Vitesses du rejeu d'un assaut (touche V). */
+const VITESSES_REJEU = [0.5, 1, 2, 4];
 
 type Qualite = "basse" | "moyenne" | "haute" | "ultra";
 interface ReglageQualite {
@@ -204,6 +216,12 @@ export class Vue3D {
   private facteur = 0;
   private facteurAvant: number | null = null;
   private viser: number | null = null;
+  /** 0.42.0 : assauts déjà vus ou proposés, celui qu'on peut revoir (R), vitesse du rejeu, caméra de combat, vitesse du monde à rendre. */
+  private readonly assautsConnus = new Set<number>();
+  private aRevoir: AssautJson | null = null;
+  private vitesseRejeu = 1;
+  private cameraCombat = true;
+  private facteurApresRejeu: number | null = null;
   /**
    * Suivi automatique (0.41.2) : la caméra reste près d'un humain où qu'il aille. `angle` : d'où on le regarde (0 : de face),
    * relatif à son cap ; glisser la souris tourne autour de lui, la molette rapproche ou éloigne.
@@ -771,6 +789,27 @@ export class Vue3D {
       this.basculerPortrait();
       return;
     }
+    if (e.key === "c" || e.key === "C") {
+      this.cameraCombat = !this.cameraCombat;
+      this.ctx.message(t(this.cameraCombat ? "trois.combat.camera" : "trois.combat.libre"));
+      return;
+    }
+    if (e.key === "r" || e.key === "R") {
+      if (this.aRevoir && !this.foule.rejeu) void this.lancerRejeu(this.aRevoir);
+      else if (!this.foule.rejeu) this.ctx.message(t("trois.combat.rienARevoir"));
+      return;
+    }
+    if (e.key === "v" || e.key === "V") {
+      const k = (VITESSES_REJEU.indexOf(this.vitesseRejeu) + 1) % VITESSES_REJEU.length;
+      this.vitesseRejeu = VITESSES_REJEU[k];
+      this.ctx.message(t("trois.combat.vitesse", { v: nombre(this.vitesseRejeu) }));
+      return;
+    }
+    if (e.key === "t" || e.key === "T") {
+      // Attendre l'assaut : le monde file jusqu'au prochain, puis s'arrête ; on le rejoue s'il a lieu près d'ici.
+      void connexion.invoke("AllerJusqua", { type: "assaut" }).then(() => this.ctx.message(t("trois.combat.attendre"))).catch(() => undefined);
+      return;
+    }
     if (e.key === "i" || e.key === "I") {
       this.perf.hidden = !this.perf.hidden;
       ecrireStockage("monde.perf3d", this.perf.hidden ? "0" : "1");
@@ -778,8 +817,12 @@ export class Vue3D {
     }
     const mouvement = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight", "Space", "PageUp", "PageDown"];
     if (mouvement.includes(e.code)) {
-      // Se déplacer soi-même met fin au suivi.
+      // Se déplacer soi-même met fin au suivi (et rend la caméra libre pendant un assaut).
       if (this.suivi && e.code !== "ShiftLeft" && e.code !== "ShiftRight") this.arreterSuivi();
+      if (this.foule.rejeu && this.cameraCombat && e.code !== "ShiftLeft" && e.code !== "ShiftRight") {
+        this.cameraCombat = false;
+        this.ctx.message(t("trois.combat.libre"));
+      }
       this.touches.add(e.code);
       e.preventDefault();
     }
@@ -807,6 +850,7 @@ export class Vue3D {
     this.dernier = performance.now();
     void this.boucleScene();
     void this.boucleCamp();
+    void this.boucleAssauts();
     void this.lireFeux();
     void this.lireTemperatures();
     this.minuteurs.push(window.setInterval(() => void this.lireFeux(), 5000), window.setInterval(() => void this.lireTemperatures(), 15000));
@@ -826,6 +870,13 @@ export class Vue3D {
     for (const m of this.minuteurs) window.clearInterval(m);
     this.minuteurs = [];
     this.touches.clear();
+    // Un assaut se rejouait : le monde reprend sa vitesse.
+    this.foule.rejeu = null;
+    if (this.facteurApresRejeu) {
+      const f = this.facteurApresRejeu;
+      this.facteurApresRejeu = null;
+      await connexion.invoke("ChoisirFacteur", f).catch(() => undefined);
+    }
     if (this.facteurAvant !== null) {
       const f = this.facteurAvant;
       this.facteurAvant = null;
@@ -845,7 +896,7 @@ export class Vue3D {
 
   /** En promenade, la vitesse ne dépasse pas ×10 (sauf un saut dans le futur demandé exprès). */
   private async surveillerVitesse(h: HorlogeJson): Promise<void> {
-    if (!this.ouverte || h.saut || h.facteur <= FACTEUR_PROMENADE) return;
+    if (!this.ouverte || h.saut || h.objectif || h.facteur <= FACTEUR_PROMENADE) return;
     this.facteurAvant ??= h.facteur;
     await connexion.invoke("ChoisirFacteur", FACTEUR_PROMENADE).catch(() => undefined);
     this.ctx.message(t("trois.tempsLimite", { max: FACTEUR_PROMENADE }));
@@ -1084,6 +1135,84 @@ export class Vue3D {
     }
   }
 
+  /**
+   * Assauts autour de la caméra (0.42.0), toutes les deux secondes. Un assaut qui vient d'avoir lieu près d'ici se rejoue aussitôt ;
+   * un plus ancien (deux jours au plus) se propose : R pour le revoir.
+   */
+  private async boucleAssauts(): Promise<void> {
+    while (this.ouverte) {
+      const p = this.camera.position;
+      const cx = Math.floor(p.x / this.relief.m);
+      const cz = Math.floor(p.z / this.relief.m);
+      const assauts = await connexion.invoke<AssautJson[]>("Assauts", cx, cz, 2).catch(() => null);
+      if (assauts && this.ouverte) {
+        const maintenant = this.secondesMonde();
+        for (const a of assauts.sort((x, y) => x.secondes - y.secondes)) {
+          if (this.assautsConnus.has(a.id)) continue;
+          this.assautsConnus.add(a.id);
+          this.aRevoir = a;
+          if (!this.foule.rejeu && maintenant - a.secondes < 2 * 3600) void this.lancerRejeu(a);
+          else if (!this.foule.rejeu) this.ctx.message(t("trois.combat.aRevoir", { il: duree(maintenant - a.secondes) }));
+        }
+      }
+      for (let k = 0; k < 20 && this.ouverte; k++) await new Promise((r) => window.setTimeout(r, 100));
+    }
+  }
+
+  /** Met en scène un assaut : le monde se met en pause le temps du rejeu, puis reprend à sa vitesse. */
+  private async lancerRejeu(a: AssautJson): Promise<void> {
+    const places = new Map<number, { x: number; z: number }>();
+    const presents: number[] = [];
+    const [cx, cz] = this.relief.camp(a.x, a.y);
+    for (const h of this.foule.tous()) {
+      places.set(h.id, { x: h.pied.x, z: h.pied.z });
+      // Ceux du camp attaqué (à moins de 80 m de son centre) qui ne se battent pas fuient.
+      if (Math.hypot(h.pied.x - cx, h.pied.z - cz) < 80) presents.push(h.id);
+    }
+    this.foule.rejeu = new Rejeu(a, this.relief, places, presents);
+    this.foule.tRejeu = 0;
+    this.cameraCombat = true;
+    this.ctx.message(t("trois.combat.debut"));
+    const h = await connexion.invoke<HorlogeJson>("Horloge").catch(() => null);
+    if (h && h.facteur > 0 && !h.saut && !h.objectif) {
+      this.facteurApresRejeu = h.facteur;
+      await connexion.invoke("ChoisirFacteur", 0).catch(() => undefined);
+    }
+  }
+
+  private avancerRejeu(dt: number): void {
+    const r = this.foule.rejeu;
+    if (!r) return;
+    this.foule.tRejeu += dt * this.vitesseRejeu;
+    if (this.foule.tRejeu < r.duree) return;
+    this.foule.rejeu = null;
+    this.ctx.message(t("trois.combat.fin"));
+    const f = this.facteurApresRejeu;
+    this.facteurApresRejeu = null;
+    if (f) void connexion.invoke("ChoisirFacteur", f).catch(() => undefined);
+  }
+
+  /**
+   * Caméra de combat (F1) : d'abord un plan d'ensemble à hauteur d'homme, depuis le bord du camp, puis elle se pose sur le duel en
+   * cours. Sans ralenti sur une mort. C ou un déplacement : caméra libre.
+   */
+  private filmerCombat(dt: number): void {
+    const r = this.foule.rejeu;
+    if (!r || !this.cameraCombat || this.suivi) return;
+    const f = r.foyer(this.foule.tRejeu);
+    const angle = unite(hacher(r.assaut.id, 41)) * Math.PI * 2 + this.foule.tRejeu * 0.01;
+    const loin = f.large ? 24 : 7.5;
+    const x = f.x + Math.cos(angle) * loin;
+    const z = f.z + Math.sin(angle) * loin;
+    const sol = Math.max(this.relief.hauteur(x, z), 0);
+    const vise = new THREE.Vector3(x, sol + (f.large ? 4 : 1.7), z);
+    const p = this.camera.position;
+    if (p.distanceTo(vise) > 300) p.copy(vise);
+    else p.lerp(vise, Math.min(1, dt * 1.2));
+    p.y = Math.max(p.y, Math.max(this.relief.hauteur(p.x, p.z), 0) + 1.2);
+    this.regarderVers(new THREE.Vector3(f.x, Math.max(this.relief.hauteur(f.x, f.z), 0) + 1, f.z));
+  }
+
   /** Huttes, champs et bêtes autour de la caméra, toutes les trois secondes (ils changent lentement). */
   private async boucleCamp(): Promise<void> {
     while (this.ouverte) {
@@ -1212,6 +1341,7 @@ export class Vue3D {
     this.nature.mettreAJour(p, 3);
     this.sol.mettreAJour(p, 2);
     this.foule.interlocuteur = echange.humain;
+    this.avancerRejeu(dt);
     this.foule.animer(dt, secondes, p);
     if (this.tapis) this.mettreAJourTapis(p, dt);
     this.suivreImage(dt);
@@ -1234,6 +1364,7 @@ export class Vue3D {
         this.ombresAFaire = 2;
       }
     }
+    this.filmerCombat(dt);
     this.camera.rotation.set(this.tangage, this.lacet, 0, "YXZ");
     this.camera.updateMatrixWorld();
     if (++this.imagesOmbres % 30 === 1) this.ombrer();

@@ -67,9 +67,6 @@ public sealed partial class MondeSimule
 
 public sealed partial class MondeSimule
 {
-    /// <summary>Troupes arrivées près d'un camp ennemi depuis le début (pour « Aller jusqu'au prochain assaut »).</summary>
-    private long _troupesAuxPortes;
-
     /// <summary>Troupes parties ou arrivées dans l'heure : les alertes le disent (0.42.0). Ne change rien au monde.</summary>
     private void SignalerTroupes()
     {
@@ -77,7 +74,6 @@ public sealed partial class MondeSimule
         if (troupes.Count == 0) return;
         foreach (var t in troupes)
         {
-            if (t.AuxPortes) _troupesAuxPortes++;
             _veille.Troupe(t, _humains, _communautes);
         }
         troupes.Clear();

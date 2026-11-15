@@ -1094,6 +1094,9 @@ public sealed partial class Comportement
     /// <summary>Déroulés des derniers assauts, pour la vue 3D (0.42.0) : gardés deux jours, en mémoire seulement.</summary>
     public List<AssautVu> AssautsVus { get; } = [];
 
+    /// <summary>Assauts livrés depuis le chargement du monde (0.42.0, pour « Aller jusqu'au prochain assaut »).</summary>
+    public long AssautsLivres { get; private set; }
+
     /// <summary>Troupes parties ou arrivées depuis la dernière lecture (0.42.0, pour les alertes).</summary>
     public List<TroupeSignalee> Troupes { get; } = [];
 
@@ -1380,6 +1383,7 @@ public sealed partial class Comportement
         Social!.Ensanglanter(c, cible, mortsAssaillants, mortsDefenseurs, id, maintenant);
         vu.EvenementId = id;
         AssautsVus.Add(vu);
+        AssautsLivres++;
         Rentrer(c, raid, maintenant);
     }
 }

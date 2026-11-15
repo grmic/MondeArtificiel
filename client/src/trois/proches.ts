@@ -1,12 +1,13 @@
 import * as THREE from "three/webgpu";
 import { hacher, lisser, unite } from "./bruit";
-import { Corps, cleDe, formeDe } from "./corps";
+import { Corps, PO, cleDe, formeDe } from "./corps";
 import { A, type Corps as Etat, type Foule } from "./foule";
 import { TeteDetaillee, type Expression } from "./tete";
 import { baseHumaine, construireReel } from "./humain";
 import { chargerVisages, couleurs, visageConnu, type Visage } from "../visage";
 import { echange } from "../dialogue";
 import { Animateur, mainVersPoint, osEn, type Situation, type SolLocal } from "./pose";
+import { ARME, Armes3D, type ArmeEnMain } from "./combat";
 
 /** Réglage des corps détaillés selon la Qualité : jusqu'où, et combien à la fois (proposition G1). */
 export interface ReglageProches {
@@ -72,6 +73,9 @@ function aligner(hautDe: THREE.Vector3, avantDe: THREE.Vector3, hautVers: THREE.
  */
 export class CorpsProches {
   readonly groupe = new THREE.Group();
+  /** Armes tenues (0.42.0). */
+  private readonly armes = new Armes3D();
+  private readonly enMain: ArmeEnMain[] = [];
   private readonly corps = new Map<number, Corps>();
   private readonly materiau = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, metalness: 0 });
   reglage: ReglageProches = { portee: 90, nombre: 50, visages: 8, nombreVisages: 8, reels: 16, porteeReels: 30 };
@@ -88,7 +92,9 @@ export class CorpsProches {
   /** Ce que chacun regarde, et quand il en change. */
   private readonly regards = new Map<number, { id: number; jusqua: number; vus: number[] }>();
 
-  constructor(private readonly foule: Foule) {}
+  constructor(private readonly foule: Foule) {
+    this.groupe.add(this.armes.groupe);
+  }
 
   /** Couleurs de peau et de cheveux du portrait, quand le visage est connu (les mêmes qu'à la fiche). */
   private couleursDe(c: Etat): [THREE.Color, THREE.Color] {
@@ -100,6 +106,7 @@ export class CorpsProches {
   }
 
   mettreAJour(camera: THREE.Vector3, temps: number): void {
+    this.enMain.length = 0;
     // Les plus proches, dans la portée.
     const candidats: { c: ReturnType<Foule["placement"]> & { id: number }; d: number; corps: Etat }[] = [];
     for (const c of this.foule.liste) {
@@ -187,7 +194,7 @@ export class CorpsProches {
       const enfant = enfants.get(s.id);
       const mere = c.posture === "porte" ? this.corps.get(s.mere) : undefined;
       const etatMere = mere ? [...this.foule.liste].find((e) => e.s.id === s.mere) : undefined;
-      const dort = c.posture === "couche" && (s.activite === 1 || s.activite === 7);
+      const dort = (c.posture === "couche" && (s.activite === 1 || s.activite === 7)) || c.role?.mort === true;
       const sit: Situation = {
         posture: c.posture, id: s.id, age: s.age, femme: s.femme, voute: formeDe(s, c.peau, c.cheveux).voute, boite: (s.etat & 8) !== 0,
         activite: s.activite, phase: c.phase, vitesse: c.vitesse, endurance: s.endurance, reserves: s.reserves,
@@ -200,10 +207,13 @@ export class CorpsProches {
         humeur: s.humeur, nevrosisme: s.nevrosisme, extraversion: s.extraversion,
         parle: c.parle, converse: c.interlocuteur > 0 && c.posture !== "enlace",
         enlace: c.posture === "enlace" && c.partenaire ? (s.id < c.partenaire ? 1 : -1) : 0,
+        combat: c.posture === "combat" && c.role?.geste ? { geste: c.role.geste, u: c.role.u, arme: c.role.arme, mort: c.role.mort } : null,
       };
       // Ce qu'il regarde (E1) : l'Entité qui lui parle, sinon tour à tour les gens proches, sa mère, son enfant.
       anim.ecoute = c.ecoute > 0.3;
-      anim.regard = c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, c.interlocuteur, places, pl, temps, arrivants);
+      // En combat (0.42.0), on ne quitte pas l'adversaire des yeux.
+      const adversaire = c.role?.face ? this.foule.position(c.role.face) : null;
+      anim.regard = adversaire && !dort ? adversaire : c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, c.interlocuteur, places, pl, temps, arrivants);
       // Au sein, elle regarde son enfant.
       const auSein = sit.allaite && enfant ? this.corps.get(enfant.s.id) : undefined;
       if (auSein && c.ecoute <= 0.3) anim.regard = auSein.maillage.localToWorld(osEn(auSein, "tete", new THREE.Vector3()));
@@ -232,6 +242,7 @@ export class CorpsProches {
       }
       m.updateMatrixWorld();
       anim.animer(corps, sit, temps, sol);
+      this.armeEnMain(c, corps);
       if (c.posture === "porte" && mere && sit.porteur !== "couche") {
         // Seul l'enfant porté bouge après l'animation : les autres squelettes sont déjà à jour.
         this.placerDansLesBras(corps, h, mere, places.get(s.mere)?.h ?? 1.6, s.age, sit.porteur ?? "debout");
@@ -244,6 +255,23 @@ export class CorpsProches {
       } else if (tetesVoulues.has(pl.id)) this.poserTete(c, corps, peau(c), cheveux(c), anim.regard, temps, tetesFaites < 1 ? () => tetesFaites++ : null);
     }
     for (const id of this.animateurs.keys()) if (!this.corps.has(id)) this.animateurs.delete(id);
+    this.armes.poser(this.enMain);
+  }
+
+  /**
+   * L'arme qu'il a en main (0.42.0) : celle du combat rejoué, sinon l'arme taillée qu'il porte toujours (épieu, lance, hache),
+   * tenue quand il est debout ou marche. Un mort l'a lâchée.
+   */
+  private armeEnMain(c: Etat, corps: Corps): void {
+    const combat = c.posture === "combat" && c.role;
+    const arme = combat ? (c.role!.mort || c.role!.geste === "chute" || (c.role!.geste === "lancer" && c.role!.u > 0.5) ? 0 : c.role!.arme)
+      : c.posture === "debout" || c.posture === "marche" ? (c.s.etat >> 11) & 7 : 0;
+    if (arme === ARME.Poings || corps.idx[PO.mainD] < 0) return;
+    const m = corps.maillage;
+    const poing = m.localToWorld(osEn(corps, "mainD", new THREE.Vector3()));
+    const coude = m.localToWorld(osEn(corps, "avantBrasD", new THREE.Vector3()));
+    const cap = m.rotation.y;
+    this.enMain.push({ arme, poing, coude, droite: new THREE.Vector3(Math.cos(cap), 0, -Math.sin(cap)) });
   }
 
   /** Change de temps en temps ce qu'un humain regarde : quelqu'un de proche (sa mère, son enfant d'abord), ou rien. */
@@ -391,7 +419,7 @@ export class CorpsProches {
 
   /** Visage du corps réaliste : expressions, clignements, regard (vers la caméra quand il écoute l'Entité). */
   private animerVisage(c: Etat, corps: Corps, regard: THREE.Vector3 | null, temps: number): void {
-    const dort = c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7);
+    const dort = (c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7)) || c.role?.mort === true;
     corps.matriceTete(this.matrice);
     corps.anime!.poser(corps.maillage, corps.os, this.matrice, this.expressionsDuMoment(c, temps), regard, dort, temps);
   }
@@ -416,7 +444,7 @@ export class CorpsProches {
       return;
     }
     corps.teteSimple(false);
-    const dort = c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7);
+    const dort = (c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7)) || c.role?.mort === true;
     corps.matriceTete(this.matrice);
     tete.poser(this.matrice, this.expressionsDuMoment(c, temps), regard, dort, temps);
   }
