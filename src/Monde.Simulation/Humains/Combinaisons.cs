@@ -18,7 +18,7 @@ namespace Monde.Simulation.Humains;
 public sealed partial class Comportement
 {
     /// <summary>Besoins auxquels une chose façonnée peut répondre.</summary>
-    private static readonly Fonction[] FonctionsUtiles = [Fonction.Chasser, Fonction.Couper, Fonction.Contenir, Fonction.Pecher];
+    private static readonly Fonction[] FonctionsUtiles = [Fonction.Chasser, Fonction.Couper, Fonction.Contenir, Fonction.Pecher, Fonction.Chausser];
 
     /// <summary>
     /// Multiplicateur de la venue des idées, choisi par le joueur (« Esprits fertiles », 1 : le monde tel quel). Ce n'est pas une
@@ -85,6 +85,8 @@ public sealed partial class Comportement
         if (corde is not null) J(Jointure.Bouts, Remarque("ressort"));
         J(Jointure.Enduire, Effet_(Effet.Modelage) ?? Par(s => s.Effet == Effet.Transformation && s.Geste == Geste.Couvrir));
         if (corde is not null) J(Jointure.Coudre, Effet_(Effet.Percage));
+        // Nouer une pièce plate autour de soi : qui sait tordre une corde, ou qui s'est déjà couvert d'une peau, y pense (0.42.6).
+        J(Jointure.Lacer, corde ?? Par(s => s.Effet == Effet.Couvert && s.A == Matiere.Peau));
         // Ce qui revient d'un coup, ou un crochet qui retient : de quoi pousser une autre chose.
         foreach (var s in h.Savoirs)
         {
@@ -140,7 +142,7 @@ public sealed partial class Comportement
     /// <summary>Ce que vaut, pour ce besoin, le meilleur de ce qu'il porte ou sait faire.</summary>
     private static double Meilleur(Humain h, Fonction f)
     {
-        var v = 0.0;
+        var v = f == Fonction.Chausser && h.Chaussures is { } ch ? Facons.Valeur(f, ch) : 0.0;
         foreach (var o in h.Objets)
             v = Math.Max(v, f switch
             {
@@ -277,6 +279,10 @@ public sealed partial class Comportement
                     break;
                 case Jointure.Coudre:
                     a = Piece(t => t.A(Forme.Plat) && t.Souplesse >= 0.4);
+                    b = Piece(t => t.A(Forme.Long) && t.Souplesse >= 0.8);
+                    break;
+                case Jointure.Lacer:
+                    a = Piece(t => t.A(Forme.Plat) && t.Souplesse >= 0.3 && t.Masse <= 4);
                     b = Piece(t => t.A(Forme.Long) && t.Souplesse >= 0.8);
                     break;
                 default:
@@ -427,7 +433,14 @@ public sealed partial class Comportement
         ConsommerPour(h, f);
         var savoir = h.Savoirs.Find(s => s.Effet == Effet.Facture && s.Pieces == pieces);
         var qualite = Math.Clamp(0.3 + 0.5 * AdressePour(h, savoir) * (0.6 + 0.4 * alea.Reel()), 0, 1);
-        Prendre(h, new Objet(Matiere.Facture, qualite, 1, Pieces: pieces));
+        var objet = new Objet(Matiere.Facture, qualite, 1, Pieces: pieces);
+        // Ce qui se noue aux pieds se porte aux pieds, à la place d'une paire moins bonne ou usée (0.42.6).
+        if (fonction == Fonction.Chausser)
+        {
+            if (h.Chaussures is null || Facons.Valeur(Fonction.Chausser, objet) >= Facons.Valeur(Fonction.Chausser, h.Chaussures)) h.Chaussures = objet;
+            return;
+        }
+        Prendre(h, objet);
     }
 
     /// <summary>La chose a servi : le savoir qui l'a faite gagne en confiance.</summary>
@@ -456,7 +469,7 @@ public sealed partial class Comportement
             if (v > valeur) (meilleur, facture, valeur) = (s, x.Facture, v);
         }
         if (meilleur is null || facture is null) return false;
-        var porte = 0.0;
+        var porte = f == Fonction.Chausser && h.Chaussures is { } ch ? Facons.Valeur(f, ch) : 0.0;
         foreach (var o in h.Objets)
             porte = Math.Max(porte, f switch { Fonction.Chasser => Lois.Chasse(o), Fonction.Couper => Lois.Coupe(o), _ => Facons.Valeur(f, o) });
         if (porte >= 0.8 * Facons.Valeur(f, Facons.Calculer(facture).Traits)) return false;

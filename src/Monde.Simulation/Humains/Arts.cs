@@ -267,10 +267,19 @@ public sealed partial class Comportement
         {
             if (pare is not null && APortee(d, Matiere.Ocre))
             {
+                var peint = false;
                 if (Humains.Arts.Connait(d, Effet.Ocre))
+                {
                     Retenir(d, Geste.SeCouvrir, Matiere.Ocre, Matiere.Aucune, Effet.Ocre, 0, Symptome.Aucun, OrigineSavoir.Essai, 0, tous);
+                    peint = true;
+                }
                 else if (alea.Reel() < 0.1 * (0.3 + Humains.Arts.Aptitude(d)) * (d.EstEnfant(_maintenant) ? 1.8 : 1))
+                {
                     Retenir(d, Geste.SeCouvrir, Matiere.Ocre, Matiere.Aucune, Effet.Ocre, 0, Symptome.Aucun, OrigineSavoir.Imitation, pare.Id, tous);
+                    peint = true;
+                }
+                // Le corps reste peint après la danse (0.42.6), et cela se voit.
+                if (peint && AvecLaMatiere) Enduire(d, Matiere.Ocre, parure: true);
             }
             d.Peur = Math.Max(0, d.Peur - 5);
             d.Fatigue = Math.Min(100, d.Fatigue + 3);

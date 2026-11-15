@@ -308,6 +308,8 @@ public enum Effet : byte
     /// comptent) : de quoi prévoir. Sa série et ce qu'il en estime sont dans ses pièces (voir <see cref="Comportement.LireRegularite"/>).
     /// </summary>
     Regularite = 70,
+    /// <summary>La boue ou l'ocre étalée sur la peau la garde du soleil et des piqûres (0.42.6).</summary>
+    Enduit = 71,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -369,7 +371,7 @@ public sealed record Objet(Matiere Matiere, double Qualite, double Usure, bool P
 /// <param name="Coupe">Force à la coupe du meilleur outil qu'il a en main (voir <see cref="Lois.Coupe"/>).</param>
 /// <param name="Art">Aptitude artistique de celui qui fait le geste (0 à 1) : l'oreille, l'œil.</param>
 public readonly record struct ContexteGeste(bool FeuProche, bool EauProche, double Sec, Biome Biome, double Adresse, double Ingeniosite,
-    int FeuxReussis = 0, double Coupe = 0, double Art = 0);
+    int FeuxReussis = 0, double Coupe = 0, double Art = 0, bool AvecLaMatiere = false);
 
 /// <summary>Résultat d'un geste : l'effet constaté, le produit éventuel et sa qualité.</summary>
 public readonly record struct Resultat(Effet Effet, Matiere Produit, double Qualite);
@@ -409,7 +411,7 @@ public static class Physique
             [Matiere.Feu, Matiere.Brandon, Matiere.PorteFeu, Matiere.Branche, Matiere.Galet]),
         new(Geste.Approcher, "approcher", "de", [Matiere.Aucune, Matiere.BoisSec, Matiere.Branche, Matiere.BatonPointu, Matiere.Carcasse, Matiere.Argile,
             Matiere.Fibres, Matiere.Corde], [Matiere.Feu]),
-        new(Geste.SeCouvrir, "se couvrir de", null, [Matiere.Peau, Matiere.GrandesFeuilles, Matiere.HerbeSeche, Matiere.Fibres, Matiere.Ocre], []),
+        new(Geste.SeCouvrir, "se couvrir de", null, [Matiere.Peau, Matiere.GrandesFeuilles, Matiere.HerbeSeche, Matiere.Fibres, Matiere.Ocre, Matiere.Argile], []),
         new(Geste.Remplir, "remplir", "de", [Matiere.Calebasse, Matiere.Peau, Matiere.Argile], [Matiere.Eau]),
         new(Geste.Fouir, "fouir la terre avec", null, [Matiere.Branche, Matiere.BoisSec, Matiere.BatonPointu, Matiere.Epieu, Matiere.Galet, Matiere.Eclat], []),
         new(Geste.Manger, "manger", null, [Matiere.Plante], []),
@@ -534,6 +536,8 @@ public static class Physique
                     Matiere.GrandesFeuilles => new(Effet.Couvert, Matiere.Aucune, 0.2),
                     // L'ocre écrasée teint la peau de rouge (son usage remonte à 300 000 ans au moins : Watts et al., 2016).
                     Matiere.Ocre => new(Effet.Ocre, Matiere.Aucune, 1),
+                    // La boue étalée sur la peau sèche en croûte : elle garde du soleil et des moustiques (0.42.6).
+                    Matiere.Argile when c.AvecLaMatiere => new(Effet.Enduit, Matiere.Aucune, 1),
                     _ => default,
                 };
 
@@ -662,6 +666,7 @@ public static class Physique
         Effet.Flamme => new Recit("savoir.Flamme", ("a", Nom(s.A)), ("b", Nom(s.B))),
         Effet.Pointe => new Recit("savoir.Pointe", ("b", Nom(s.B))),
         Effet.Couvert => Seul(s.A == Matiere.Peau ? "savoir.Couvert.peau" : "savoir.Couvert"),
+        Effet.Enduit => Seul(s.A == Matiere.Ocre ? "savoir.Enduit.ocre" : "savoir.Enduit"),
         Effet.EauPortee when s.A == Matiere.Peau => Seul("savoir.EauPortee.peau"),
         Effet.Tubercules or Effet.Chasse or Effet.Roule or Effet.Flotte => new Recit($"savoir.{s.Effet}", ("a", Nom(s.A))),
         Effet.Soulagement => new Recit("savoir.Soulagement", ("plante", plante ?? Seul("savoir.cettePlante")), ("mal", Mal(s.Symptome))),

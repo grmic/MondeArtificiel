@@ -10,12 +10,13 @@ namespace Monde.Serveur;
 /// l'ordre id, x, y, versX, versY, avance (millièmes), parSeconde (millionièmes), activité, état, âge (dixièmes d'année),
 /// femme (1/0), teint (millièmes), humeur, peur, communauté, mère ; depuis la 0.41.1 : réserves, endurance (millièmes), taille
 /// (centièmes d'écart), enfants mis au monde, matière du vêtement (0 : nu), usure du vêtement (millièmes) ; depuis la 0.41.8 : froid,
-/// faim, fatigue, santé (0 à 100), névrosisme et extraversion (millièmes) ; depuis le suivi 3D cohérent : aisance dans l'eau (millièmes). <paramref name="Secondes"/> : instant du dernier pas ;
+/// faim, fatigue, santé (0 à 100), névrosisme et extraversion (millièmes) ; depuis le suivi 3D cohérent : aisance dans l'eau (millièmes) ; depuis la 0.42.6 : matière de la semelle (0 : pieds nus) et de l'enduit de la peau (0 : rien, 11 boue,
+/// 18 ocre). <paramref name="Secondes"/> : instant du dernier pas ;
 /// <paramref name="Facteur"/> : vitesse réellement atteinte (secondes du monde par seconde réelle).
 /// </summary>
 public sealed record SceneDto(long Secondes, double Facteur, int[] Humains)
 {
-    public const int ChampsParHumain = 29;
+    public const int ChampsParHumain = 31;
 
     /// <summary>Rayon le plus grand qu'on peut demander, en cases.</summary>
     public const int RayonMax = 64;
@@ -56,6 +57,8 @@ public sealed record SceneDto(long Secondes, double Facteur, int[] Humains)
             n[k++] = (int)Math.Round(h.Nevrosisme * 1000);
             n[k++] = (int)Math.Round(h.Extraversion * 1000);
             n[k++] = (int)Math.Round(Math.Clamp(h.Nage, 0, 1) * 1000);
+            n[k++] = (int)h.Chaussures;
+            n[k++] = (int)h.Enduit;
         }
         return new SceneDto(secondes, service.FacteurAtteint, n);
     }

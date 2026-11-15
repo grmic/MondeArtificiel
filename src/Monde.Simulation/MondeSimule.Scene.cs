@@ -27,10 +27,13 @@ namespace Monde.Simulation;
 /// <param name="Nevrosisme">Trait Névrosisme, 0 à 1 (0.41.8 : l'anxieux bouge plus, se replie plus vite).</param>
 /// <param name="Extraversion">Trait Extraversion, 0 à 1 (0.41.8 : l'extraverti prend plus de place, parle avec les mains).</param>
 /// <param name="Nage">Aisance dans l'eau, 0 à 1 (suivi 3D : brasse ample et régulière, ou nage du chien de qui sait à peine nager).</param>
+/// <param name="Chaussures">Matière de la semelle nouée aux pieds (<see cref="Matiere.Aucune"/> : pieds nus) (0.42.6).</param>
+/// <param name="Enduit">Ce dont la peau est enduite : boue (argile) ou ocre (<see cref="Matiere.Aucune"/> : rien) (0.42.6).</param>
 public readonly record struct HumainScene(int Id, int X, int Y, int VersX, int VersY, double Avance, double ParSeconde,
     Activite Activite, int Etat, double Age, bool Femme, double Teint, int Humeur, double Peur, int Communaute, int Mere,
     double Reserves = 50, double Endurance = 0.5, double Taille = 0, int Enfants = 0, Matiere Vetement = Matiere.Aucune, double Usure = 0,
-    double Froid = 0, double Faim = 0, double Fatigue = 0, double Sante = 100, double Nevrosisme = 0.5, double Extraversion = 0.5, double Nage = 0);
+    double Froid = 0, double Faim = 0, double Fatigue = 0, double Sante = 100, double Nevrosisme = 0.5, double Extraversion = 0.5, double Nage = 0,
+    Matiere Chaussures = Matiere.Aucune, Matiere Enduit = Matiere.Aucune);
 
 /// <summary>Une hutte vue en 3D (0.41.1).</summary>
 public readonly record struct HutteScene(int Id, int X, int Y, double Solidite, bool Enduite);
@@ -136,7 +139,9 @@ public sealed partial class MondeSimule
                     h.AgeEnAnnees(maintenant), h.Sexe == Sexe.Femme, h.Apparence.Teint, humeur, h.Peur, h.CommunauteId, h.MereId,
                     h.Reserves, h.Personnalite.Endurance, h.Apparence.Taille, enfants.GetValueOrDefault(h.Id),
                     h.Vetement?.Matiere ?? Matiere.Aucune, h.Vetement?.Usure ?? 0, h.Froid, h.Faim, h.Fatigue, h.Sante,
-                    h.Personnalite.Nevrosisme, h.Personnalite.Extraversion, h.Nage));
+                    h.Personnalite.Nevrosisme, h.Personnalite.Extraversion, h.Nage,
+                    h.Chaussures is { } ch && Facons.LireObjet(ch.Pieces) is { } fc ? fc.Facture.Principale : Matiere.Aucune,
+                    h.Enduit != Matiere.Aucune && h.EnduitJusqua > maintenant ? h.Enduit : Matiere.Aucune));
             }
             return (maintenant, liste);
         }

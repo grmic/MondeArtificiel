@@ -66,7 +66,7 @@ public sealed partial class Comportement
     private ContexteGeste Contexte(Humain h, Savoir? s = null) =>
         new(FeuIci(h), EauDouceAPortee(h.X, h.Y), Sec(h), carte.BiomeEn(h.X, h.Y), AdressePour(h, s), Ingeniosite(h),
             s is null ? 0 : h.Savoirs.Where(x => x.Effet == Effet.Flamme && x.Geste == s.Geste && x.A == s.A && x.B == s.B).Sum(x => x.Succes),
-            h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe), Humains.Arts.Aptitude(h));
+            h.Objets.Count == 0 ? 0 : h.Objets.Max(Lois.Coupe), Humains.Arts.Aptitude(h), AvecLaMatiere);
 
     private bool VolcanProche(int x, int y) =>
         Catastrophes?.Geologie.Volcans.Any(v => Distance(v.X, v.Y, x, y) <= 25) == true;
@@ -208,7 +208,10 @@ public sealed partial class Comportement
     {
         // Qui sait emporter le feu sur un brandon voit tout de suite ce que vaut une braise qui dure.
         Effet.PorteFeu => h.Sait(Effet.Brandon),
-        Effet.Couvert or Effet.Abri or Effet.Chaleur or Effet.Flamme or Effet.Foyer => h.Froid > 15 || _temperature < 14,
+        // Se couvrir répond aussi à la peau brûlée de soleil ; s'enduire, au soleil et aux piqûres (0.42.6).
+        Effet.Couvert => h.Froid > 15 || _temperature < 14 || h.CoupDeSoleil > 25,
+        Effet.Enduit => h.CoupDeSoleil > 25 || h.Piqures > 25,
+        Effet.Abri or Effet.Chaleur or Effet.Flamme or Effet.Foyer => h.Froid > 15 || _temperature < 14,
         Effet.Tubercules or Effet.Decoupe or Effet.Chasse or Effet.Cuisson => h.Faim > 30,
         Effet.EauPortee => h.Soif > 30,
         _ => false,
@@ -237,6 +240,10 @@ public sealed partial class Comportement
                 Tour.Differer(() => Installations.Allumer(x, y, 1, le, id, evenement, degage));
                 break;
             }
+            case Effet.Ocre or Effet.Enduit when g == Geste.SeCouvrir && AvecLaMatiere:
+                // La peau reste rouge d'ocre, ou couverte de boue, un jour ou deux (0.42.6).
+                Enduire(h, a, parure: r.Effet == Effet.Ocre && h.CoupDeSoleil < 25 && h.Piqures < 25);
+                break;
             case Effet.Foyer:
             {
                 // Le feu porté (brandon ou mèche qui couve) posé sous le bois devient un foyer ; le bois ajouté nourrit le feu
@@ -485,6 +492,7 @@ public sealed partial class Comportement
             Effet.Pansement => new Recit("ing.essai.Pansement", ("h", h)),
             Effet.Rythme => new Recit("ing.essai.Rythme", ("h", h), ("a", Physique.Nom(s.A)), ("b", Physique.Nom(s.B))),
             Effet.Ocre => new Recit("ing.essai.Ocre", ("h", h)),
+            Effet.Enduit => new Recit("ing.essai.Enduit", ("h", h)),
             Effet.Chant => new Recit("ing.essai.Chant", ("h", h)),
             Effet.Danse => new Recit("ing.essai.Danse", ("h", h)),
             Effet.Peinture => new Recit("ing.essai.Peinture", ("h", h)),
@@ -521,6 +529,7 @@ public sealed partial class Comportement
         Effet.Chant => "ing.question.Chant",
         Effet.Danse => "ing.question.Danse",
         Effet.Ocre => "ing.question.Ocre",
+        Effet.Enduit => "ing.question.Enduit",
         Effet.Peinture => "ing.question.Peinture",
         Effet.MainsPropres or Effet.Latrines or Effet.EauVive or Effet.ViandeSaine => "ing.question.MainsPropres",
         Effet.Fumage => "ing.question.Fumage",

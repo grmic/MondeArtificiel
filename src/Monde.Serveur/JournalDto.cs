@@ -282,7 +282,7 @@ public sealed record FicheDto(
                 Trait("purete", p.Moral.Fondements.Purete),
             ],
             Decrire(h, maintenant),
-            SavoirsDto.Depuis(h, humains, monde.Flore),
+            SavoirsDto.Depuis(h, humains, monde.Flore, maintenant),
             ParolesEntite.Recues(h, humains, service, maintenant),
             new RegardDto(Math.Round(h.Karma, 1), Lib.Karma(h.Karma), (int)Math.Round(h.Croyance), Lib.Croyance(h.Croyance),
                 h.CroyanceSigneLe > 0 ? Date(h.CroyanceSigneLe) : null,

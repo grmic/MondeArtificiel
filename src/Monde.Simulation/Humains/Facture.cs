@@ -47,6 +47,8 @@ public enum Jointure : byte
     Coudre = 6,
     /// <summary>La première, petite et crochue, pendue au bout de la seconde, longue.</summary>
     Ligne = 7,
+    /// <summary>La seconde (un lien) passée autour de la première, plate, et nouée : la pièce tient contre le corps (0.42.6).</summary>
+    Lacer = 8,
 }
 
 /// <summary>À quoi sert une chose. Ce sont des besoins du corps (manger, boire, couper), pas des objets.</summary>
@@ -61,6 +63,8 @@ public enum Fonction : byte
     Contenir = 3,
     /// <summary>Prendre du poisson.</summary>
     Pecher = 4,
+    /// <summary>Protéger la plante des pieds du sol (pierres, sable brûlant, épines) (0.42.6).</summary>
+    Chausser = 5,
 }
 
 /// <summary>
@@ -73,8 +77,9 @@ public enum Fonction : byte
 /// <param name="Contenance">Volume qu'on peut y mettre, en litres.</param>
 /// <param name="Tension">Énergie gardée dans une pièce tenue pliée, en joules.</param>
 /// <param name="Vitesse">Vitesse que la chose donne à ce qu'elle lance, en m/s (0 : rien).</param>
+/// <param name="Attache">Tenue d'une pièce nouée contre le corps (0 : rien ne la tient), voir <see cref="Jointure.Lacer"/>.</param>
 public readonly record struct Traits(Forme Forme, double Durete, double Masse, double Densite, double Lien, double Resistance,
-    double Longueur, double Souplesse, double Fil, double Etanche, double Contenance, double Tension = 0, double Vitesse = 0)
+    double Longueur, double Souplesse, double Fil, double Etanche, double Contenance, double Tension = 0, double Vitesse = 0, double Attache = 0)
 {
     public bool A(Forme f) => (Forme & f) != 0;
 }
@@ -186,7 +191,7 @@ public abstract record Facture
         or Matiere.Plante or Matiere.Assemblage or Matiere.Facture or Matiere.Brandon or Matiere.PorteFeu or Matiere.Minerai);
 
     private const string LettresFacons = "AFECTPNDR";
-    private const string LettresJointures = "btkpeol";
+    private const string LettresJointures = "btkpeoln";
 
     public static char Lettre(Facon f) => LettresFacons[(int)f - 1];
     public static char Lettre(Jointure j) => LettresJointures[(int)j - 1];
@@ -476,6 +481,13 @@ public static class Facons
                 if (!a.A(Forme.Crochet) || a.Longueur > 0.4) return Rate("fac.r.pasUnCrochet");
                 if (!b.A(Forme.Long) || b.Souplesse < 0.8 || b.Lien < 0.3) return Rate("fac.r.pasUnFil");
                 return Ok(a with { Masse = masse, Longueur = b.Longueur, Lien = b.Lien });
+            case Jointure.Lacer:
+                // Une pièce plate et souple, nouée par un lien qui fait le tour : elle tient contre le pied (ou le corps) quand on marche.
+                if (!a.A(Forme.Plat)) return Rate("fac.r.rienALacer");
+                if (a.Souplesse < 0.3) return Rate("fac.r.tropRaide");
+                if (a.Masse > 4) return Rate("fac.r.tropLourd");
+                if (!b.A(Forme.Long) || b.Souplesse < 0.8 || b.Lien < 0.3) return Rate("fac.r.pasUnLien");
+                return Ok(a with { Masse = masse, Attache = b.Lien });
             default:
                 return Rate("fac.r.rien");
         }
@@ -516,6 +528,28 @@ public static class Facons
     public static double Peche(Traits t) =>
         t.A(Forme.Crochet) && t.Lien > 0 && t.Longueur >= 1 ? (0.5 + 0.5 * Math.Min(1, t.Durete / 0.5)) * (t.A(Forme.Pointu) ? 1.3 : 1) : 0;
 
+    /// <summary>
+    /// Ce que la chose épargne à la plante des pieds, de 0 à 0,95 : il faut une semelle plate et souple, tenue par un lien. Une peau
+    /// ou une natte tressée protègent bien, l'écorce moins, une feuille presque pas. Les plus anciennes sandales connues sont des
+    /// nattes d'écorce tressée liées au pied (Fort Rock, Oregon, vers 10 000 ans ; Connolly et al., 2016) ; la marche pieds nus
+    /// endurcit la plante sans lui ôter sa sensibilité (Holowka et al., 2019) : la semelle compte surtout pour un pied tendre.
+    /// </summary>
+    public static double Chaussure(Traits t)
+    {
+        if (t.Attache <= 0 || !t.A(Forme.Plat) || t.Souplesse < 0.3) return 0;
+        return Math.Clamp(0.25 + 1.2 * t.Lien + 0.015 * t.Resistance + t.Durete + 0.2 * t.Etanche, 0.1, 0.95) * Math.Min(1, 0.5 + t.Attache);
+    }
+
+    /// <summary>Jours de marche que tient une semelle de cette matière avant d'être usée (ordres de grandeur).</summary>
+    public static double JoursDeMarche(Matiere principale) => principale switch
+    {
+        Matiere.Peau => 120,
+        Matiere.Fibres or Matiere.Corde or Matiere.Roseau => 45,
+        Matiere.Ecorce => 12,
+        Matiere.GrandesFeuilles or Matiere.HerbeSeche => 2,
+        _ => 20,
+    };
+
     /// <summary>Ce que vaut la chose pour ce besoin (0 : elle n'y sert pas).</summary>
     public static double Valeur(Fonction f, Traits t) => f switch
     {
@@ -523,6 +557,7 @@ public static class Facons
         Fonction.Couper => Coupe(t),
         Fonction.Contenir => Eau(t) >= 0.5 ? Math.Log(1 + Eau(t)) : 0,
         Fonction.Pecher => Peche(t),
+        Fonction.Chausser => Chaussure(t),
         _ => 0,
     };
 
@@ -614,6 +649,7 @@ public static class Facons
             Jointe { J: Jointure.Bouts } => "arcNu",
             Jointe { J: Jointure.Ligne } => "ligne",
             Jointe { J: Jointure.Coudre } => "outre",
+            Jointe { J: Jointure.Lacer } when Chaussure(t) > 0 => "sandale",
             _ when Eau(t) > 0 && Tresse(f) => "panierEnduit",
             _ when t.A(Forme.Creux) && t.Etanche < 0.3 && t.Contenance > 1 => "panier",
             _ when Eau(t) > 0 => "recipient",

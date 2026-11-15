@@ -10,8 +10,23 @@ public sealed record SavoirDto(string Texte, int Confiance, string Origine, int 
     IReadOnlyList<NommeDto>? Eleves = null);
 
 /// <summary>Savoirs, objets portés, vêtement et aisance dans l'eau d'un humain.</summary>
-public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<string> Objets, string? Vetement, int Nage)
+/// <param name="Corps">Depuis la 0.42.6 : ses pieds (chaussés ou nus, plante endurcie ou tendre), l'enduit de sa peau, ce qui le gêne.</param>
+public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<string> Objets, string? Vetement, int Nage, IReadOnlyList<string>? Corps = null)
 {
+    /// <summary>Ce que montre son corps : pieds, enduit, gênes (rien pour un humain d'avant la 0.42.6 qui n'a rien vécu de cela).</summary>
+    private static List<string> Corps_(Humain h, long maintenant)
+    {
+        var l = new List<string>();
+        if (h.Chaussures is { } c) l.Add(L.T("fiche.corps.chausse", ("objet", NomObjet(c) + Etat(c))));
+        else if (h.Cal >= 0) l.Add(L.T(h.Cal >= 0.5 ? "fiche.corps.piedsDurs" : "fiche.corps.piedsTendres"));
+        if (h.Enduit != Matiere.Aucune && h.EnduitJusqua > maintenant)
+            l.Add(L.T(h.Enduit == Matiere.Ocre ? (h.EnduitPare ? "fiche.corps.ocre.parure" : "fiche.corps.ocre") : "fiche.corps.boue"));
+        if (h.Pieds >= 40) l.Add(L.T("fiche.corps.gene.pieds"));
+        if (h.CoupDeSoleil >= 40) l.Add(L.T("fiche.corps.gene.soleil"));
+        if (h.Piqures >= 40) l.Add(L.T("fiche.corps.gene.piqures"));
+        return l;
+    }
+
     public static string Origine(OrigineSavoir o) => o switch
     {
         OrigineSavoir.Observation or OrigineSavoir.Reflexion or OrigineSavoir.Imitation or OrigineSavoir.Entite => L.T($"origineSavoir.{o}"),
@@ -20,7 +35,7 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
 
     private static string Etat(Objet o) => o.Usure <= 0.4 ? L.T("objet.use") : o.Qualite >= 0.7 ? L.T("objet.bienFait") : "";
 
-    public static SavoirsDto Depuis(Humain h, IReadOnlyList<Humain> humains, Flore flore)
+    public static SavoirsDto Depuis(Humain h, IReadOnlyList<Humain> humains, Flore flore, long maintenant = 0)
     {
         string? Nom(int i) => i >= 1 && i <= humains.Count ? humains[i - 1].Nom : null;
         List<NommeDto> Eleves(Savoir s) => humains
@@ -37,7 +52,7 @@ public sealed record SavoirsDto(IReadOnlyList<SavoirDto> Savoirs, IReadOnlyList<
                 : NomObjet(o) + (o.Plein ? o.Matiere switch { Matiere.Calebasse or Matiere.Facture => L.T("objet.pleineDEau"), Matiere.Peau => L.T("objet.outrePleine"), _ => "" } : "")
                   + Etat(o)).ToList(),
             h.Vetement is { } v ? (v.Matiere == Matiere.Peau ? L.T("vetement.peau") : L.T("vetement.feuilles")) + Etat(v) : null,
-            (int)Math.Round(100 * h.Nage));
+            (int)Math.Round(100 * h.Nage), Corps_(h, maintenant));
     }
 
     /// <summary>Nom d'un objet porté ; un objet assemblé est décrit par ses pièces.</summary>

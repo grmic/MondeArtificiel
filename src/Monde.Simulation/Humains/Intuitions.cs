@@ -47,7 +47,8 @@ public sealed partial class Comportement
         Span<Matiere> possibles = stackalloc Matiere[liste.Length];
         var n = 0;
         foreach (var m in liste)
-            if (Analogue(ancienne, m) && APortee(h, m)) possibles[n++] = m;
+            // La boue sur la peau n'existe que dans les mondes de la matière (0.42.6) : les vieux mondes gardent leur histoire.
+            if (Analogue(ancienne, m) && APortee(h, m) && (AvecLaMatiere || m != Matiere.Argile || depart.Geste != Geste.SeCouvrir)) possibles[n++] = m;
         if (n == 0) return false;
         var nouvelle = possibles[alea.Entier(n)];
         var (a, b) = surA ? (nouvelle, depart.B) : (depart.A, nouvelle);

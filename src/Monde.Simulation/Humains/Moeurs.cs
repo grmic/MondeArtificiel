@@ -108,6 +108,8 @@ public sealed partial class VieSociale
                 Noter(maintenant, TypeEvenement.Communaute, figure, null, texte, c.AffaireMoeursId, communaute: c.Id);
             }
 
+            if (Generation >= 2) Parures(c, adultes, figure, maintenant);
+
             var abondance = c.Abondance;
             c.Ideal = Attirance.Deriver(c.Ideal, adultes, adultes.Contains(figure) ? figure : null, c.Disette, abondance);
             var note = NoteIdeal(c.Ideal.Corpulence, c.IdealNote);
@@ -120,6 +122,45 @@ public sealed partial class VieSociale
                 _ => new Recit("j.ideal.moyen", ("c", c)),
             }, c.Disette ? c.DisetteEvenementId : 0, communaute: c.Id);
             c.IdealNote = note;
+        }
+    }
+
+    /// <summary>
+    /// Chaque semaine (0.42.6) : quand la plupart des adultes d'une communauté vont le corps peint d'ocre, la peinture devient son
+    /// signe ; quand presque tous vont couverts depuis longtemps, une communauté attachée à la pureté et à l'ordre (fondements
+    /// moraux de Haidt) peut tenir pour inconvenant de rester nu. Rien ne l'impose : c'est ce que font ses membres qui en décide.
+    /// Le signe se perd quand plus personne ne se peint, la pudeur quand presque plus personne ne se couvre.
+    /// </summary>
+    private void Parures(Communaute c, List<Humain> adultes, Humain figure, long maintenant)
+    {
+        if (adultes.Count < 3) return;
+        var peints = adultes.Count(h => h.Enduit == Matiere.Ocre && h.EnduitJusqua > maintenant);
+        var couverts = adultes.Count(h => h.Vetement is not null);
+        var partPeints = (double)peints / adultes.Count;
+        var partCouverts = (double)couverts / adultes.Count;
+        if (c.SigneDuCorpsLe == 0 && partPeints >= 0.6)
+        {
+            c.SigneDuCorpsLe = maintenant;
+            Noter(maintenant, TypeEvenement.Communaute, figure, null, new Recit("j.parure.signe", ("c", c)), communaute: c.Id);
+        }
+        else if (c.SigneDuCorpsLe > 0 && partPeints < 0.1)
+        {
+            c.SigneDuCorpsLe = 0;
+            Noter(maintenant, TypeEvenement.Communaute, figure, null, new Recit("j.parure.finSigne", ("c", c)), communaute: c.Id);
+        }
+        if (c.PudeurLe == 0 && partCouverts >= 0.8 && maintenant - c.FondeeLe >= 2 * Calendrier.SecondesParAn)
+        {
+            var purete = adultes.Average(h => (h.Personnalite.Moral.Fondements.Purete + h.Personnalite.Moral.Fondements.Autorite) / 2);
+            if (purete > 0.5 && alea.Reel() < 0.01 * (purete - 0.5) / 0.5)
+            {
+                c.PudeurLe = maintenant;
+                Noter(maintenant, TypeEvenement.Communaute, figure, null, new Recit("j.parure.pudeur", ("c", c)), communaute: c.Id);
+            }
+        }
+        else if (c.PudeurLe > 0 && partCouverts < 0.3)
+        {
+            c.PudeurLe = 0;
+            Noter(maintenant, TypeEvenement.Communaute, figure, null, new Recit("j.parure.finPudeur", ("c", c)), communaute: c.Id);
         }
     }
 

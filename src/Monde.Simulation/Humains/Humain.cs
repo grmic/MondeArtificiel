@@ -613,6 +613,32 @@ public sealed class Humain
     /// <summary>Ce dont il est couvert (peau, feuilles), ou null s'il est nu.</summary>
     public Objet? Vetement { get; set; }
 
+    /// <summary>Ce qu'il a aux pieds (une chose façonnée pour <see cref="Fonction.Chausser"/>), ou null s'il va pieds nus (0.42.6).</summary>
+    public Objet? Chaussures { get; set; }
+
+    /// <summary>
+    /// Plante des pieds endurcie par la marche pieds nus, de 0 (pied tendre d'enfant ou de chaussé) à 1 ; −1 : pas encore
+    /// estimée (un humain d'avant la 0.42.6).
+    /// </summary>
+    public double Cal { get; set; } = -1;
+
+    /// <summary>Pieds meurtris, écorchés ou piqués d'épines (0 à 100).</summary>
+    public double Pieds { get; set; }
+
+    /// <summary>Peau brûlée par le soleil (0 à 100).</summary>
+    public double CoupDeSoleil { get; set; }
+
+    /// <summary>Piqûres d'insectes qui démangent (0 à 100).</summary>
+    public double Piqures { get; set; }
+
+    /// <summary>Ce dont sa peau est enduite (boue d'argile, ocre), ou Aucune ; jusqu'à quand cela tient.</summary>
+    public Matiere Enduit { get; set; }
+
+    public long EnduitJusqua { get; set; }
+
+    /// <summary>Vrai si l'enduit est une parure (le corps peint pour être vu), et non une protection.</summary>
+    public bool EnduitPare { get; set; }
+
     /// <summary>Aisance dans l'eau, de 0 (ne sait pas nager) à 1, acquise en nageant.</summary>
     public double Nage { get; set; }
 

@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 60;
+    public const int VersionSchema = 61;
 
     private readonly string _connexion;
 
@@ -644,6 +644,8 @@ public sealed partial class DepotMonde
         if (actuelle < 59) MigrerVersion59(connexion, transaction);
         // Version 60 : suivis ★ et alertes dans la base du monde (0.40.0).
         if (actuelle < 60) MigrerVersion60(connexion, transaction);
+        // Version 61 : signe du corps peint et pudeur des communautés (0.42.6).
+        if (actuelle < 61) MigrerVersion61(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -906,7 +908,8 @@ public sealed partial class DepotMonde
                    installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
                    soumission_evenement, paix_evenement, heritiere, projet,
                    ideal_taille, ideal_teint, ideal_corpulence, ideal_note, tolerance_moeurs, usage_moeurs, affaire_moeurs,
-                   incendies_souvenus, idee_reserve, idee_reserve_le, idee_reserve_evenement, partages_reserve, vols_reserve, vol_reserve_evenement
+                   incendies_souvenus, idee_reserve, idee_reserve_le, idee_reserve_evenement, partages_reserve, vols_reserve, vol_reserve_evenement,
+                   signe_corps_le, pudeur_le
             FROM communautes ORDER BY id;
             """;
         var communautes = new List<Communaute>();
@@ -941,6 +944,7 @@ public sealed partial class DepotMonde
                     IncendiesSouvenus = LireNumeros(l.GetString(47)),
                     IdeeReserve = (IdeeReserve)l.GetInt32(48), IdeeReserveLe = l.GetInt64(49), IdeeReserveEvenementId = l.GetInt64(50),
                     PartagesReserve = l.GetDouble(51), VolsReserve = l.GetDouble(52), VolReserveEvenementId = l.GetInt64(53),
+                    SigneDuCorpsLe = l.GetInt64(54), PudeurLe = l.GetInt64(55),
                 });
             }
         }
@@ -1421,13 +1425,15 @@ public sealed partial class DepotMonde
                 disettes_surmontees, installation_evenement, territoire, bellicisme, raid, dernier_raid_le, soumise_a, soumise_le,
                 soumission_evenement, paix_evenement, heritiere, projet,
                 ideal_taille, ideal_teint, ideal_corpulence, ideal_note, tolerance_moeurs, usage_moeurs, affaire_moeurs,
-                incendies_souvenus, idee_reserve, idee_reserve_le, idee_reserve_evenement, partages_reserve, vols_reserve, vol_reserve_evenement)
+                incendies_souvenus, idee_reserve, idee_reserve_le, idee_reserve_evenement, partages_reserve, vols_reserve, vol_reserve_evenement,
+                signe_corps_le, pudeur_le)
             VALUES ($i, $n, $f, $d, $g, $cx, $cy, $r, $a, $di, $dx, $dy, $to, $u, $da, $de, $np, $s, $sc, $ep, $lx, $o, $fv, $fd, $fe,
                 $fi, $al, $mi, $ds, $ie, $te, $be, $ra, $dr, $sa, $sl, $se, $pe, $he, $pr, $it, $iq, $ic, $in, $tm, $um, $am,
-                $is, $ir, $irl, $ire, $pres, $vres, $vre);
+                $is, $ir, $irl, $ire, $pres, $vres, $vre, $scl, $pud);
             """, "$i", "$n", "$f", "$d", "$g", "$cx", "$cy", "$r", "$a", "$di", "$dx", "$dy", "$to", "$u", "$da", "$de", "$np", "$s",
             "$sc", "$ep", "$lx", "$o", "$fv", "$fd", "$fe", "$fi", "$al", "$mi", "$ds", "$ie", "$te", "$be", "$ra", "$dr", "$sa", "$sl",
-            "$se", "$pe", "$he", "$pr", "$it", "$iq", "$ic", "$in", "$tm", "$um", "$am", "$is", "$ir", "$irl", "$ire", "$pres", "$vres", "$vre");
+            "$se", "$pe", "$he", "$pr", "$it", "$iq", "$ic", "$in", "$tm", "$um", "$am", "$is", "$ir", "$irl", "$ire", "$pres", "$vres", "$vre",
+            "$scl", "$pud");
         foreach (var c in communautes)
         {
             Lancer(commande, c.Id, c.Nom, c.FondeeLe, c.DisperseeLe is { } d ? d : DBNull.Value, c.FigureId,
@@ -1443,7 +1449,7 @@ public sealed partial class DepotMonde
                 c.Ideal.Taille, c.Ideal.Teint, c.Ideal.Corpulence, c.IdealNote,
                 c.ToleranceMoeurs < 0 ? DBNull.Value : c.ToleranceMoeurs, (int)c.UsageMoeurs, c.AffaireMoeursId,
                 string.Join(',', c.IncendiesSouvenus), (int)c.IdeeReserve, c.IdeeReserveLe, c.IdeeReserveEvenementId,
-                c.PartagesReserve, c.VolsReserve, c.VolReserveEvenementId);
+                c.PartagesReserve, c.VolsReserve, c.VolReserveEvenementId, c.SigneDuCorpsLe, c.PudeurLe);
         }
         EnregistrerNoms(connexion, transaction, communautes);
     }

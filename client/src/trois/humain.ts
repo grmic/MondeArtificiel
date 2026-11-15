@@ -1,7 +1,7 @@
 import * as THREE from "three/webgpu";
 import { attribute, float, mix, texture, uv, vec2 } from "three/tsl";
 import { hacher, lisser, unite } from "./bruit";
-import { DOIGTS, OS, OS_FINS, PO, POSE_OS, type Construit, type Forme, type NomOs, type Proportions } from "./corps";
+import { DOIGTS, OS, OS_FINS, PO, POSE_OS, couleurSemelle, teindre, type Construit, type Forme, type NomOs, type Proportions } from "./corps";
 import { couleurs, type Rgb, type Visage } from "../visage";
 
 /**
@@ -679,7 +679,10 @@ export function construireReel(b: BaseHumaine, f: Forme, v: Visage | null, id: n
 
   // 4. Couleurs : peau, lèvres, aréoles ; poils (cheveux, sourcils, barbe, pubis).
   const c = v ? couleurs(v) : null;
-  const peau = c ? rgbLin(c.peau) : f.peau.clone();
+  // Le portrait donne la peau d'origine ; l'enduit (ocre, boue) la teinte encore (0.42.6). Sans portrait, la forme l'a déjà teinte.
+  const peau = c ? teindre(rgbLin(c.peau), f.enduit) : f.peau.clone();
+  const semelle = f.chaussures ? couleurSemelle(f.chaussures) : null;
+  const hSemelle = A.piedG.y * 0.32;
   const cheveux = c ? rgbLin(c.cheveux) : f.cheveux.clone();
   const levres = c ? rgbLin(c.levres) : peau.clone().lerp(new THREE.Color(0.32, 0.07, 0.07), 0.3);
   const aureole = peau.clone().lerp(new THREE.Color(0.24, 0.1, 0.07), 0.4);
@@ -693,6 +696,11 @@ export function construireReel(b: BaseHumaine, f: Forme, v: Visage | null, id: n
     tmp.copy(peau);
     if (b.levres[k] > 0) tmp.lerp(levres, clamp(b.levres[k] * 1.6, 0, 0.85));
     if (b.areoles[k] > 0 && f.age > 9) tmp.lerp(aureole, clamp(b.areoles[k] * 1.5, 0, 1) * (f.femme ? lisser(9, 15, f.age) : 0.6));
+    // Sandales : la semelle sous le pied, et des liens qui montent à la cheville.
+    if (semelle) {
+      const y = P[3 * k + 1];
+      if (y < hSemelle || (y < A.piedG.y && Math.abs(Math.sin(P[3 * k + 2] * 160)) > 0.86)) tmp.copy(semelle);
+    }
     couleur[3 * k] = tmp.r;
     couleur[3 * k + 1] = tmp.g;
     couleur[3 * k + 2] = tmp.b;

@@ -52,6 +52,8 @@ public static class Marche
         if (h.Sante < 60) v *= 0.4 + 0.6 * h.Sante / 60;
         if (h.Fatigue > 60) v *= 1 - (h.Fatigue - 60) / 100;
         if (Math.Max(h.Faim, h.Soif) > 85) v *= 0.9;
+        // Des pieds meurtris font marcher à petits pas (0.42.6).
+        if (h.Pieds > 40) v *= 1 - 0.35 * Math.Min(1, (h.Pieds - 40) / 60);
         if (h.EnceinteDepuis is { } debut && maintenant - debut > 180 * Temps.Calendrier.SecondesParJour) v *= 0.9;
         if (h.BebePorteLe >= maintenant - MondeSimule.SecondesParPas) v *= 0.93;
         if (h.Activite == Activite.Fuir) v *= 1.3 + 0.4 * Math.Min(1, h.Sante / 100);

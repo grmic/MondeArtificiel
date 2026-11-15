@@ -132,7 +132,10 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         partenaire = h.EstEnfant(maintenant) ? Gardien(h, tous, maintenant) : Vivant(tous, h.PartenaireId);
         var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId))
                               || AmiAuMemeEndroit(h, tous);
-        Metaboliser(h, chaleurPartagee, maintenant, PasARattraper(h));
+        var pas = PasARattraper(h);
+        Metaboliser(h, chaleurPartagee, maintenant, pas);
+        // Pieds, soleil, piqûres (0.42.6).
+        if (AvecLaMatiere && h.EstVivant) Inconforts(h, maintenant, pas);
         return h.EstVivant;
     }
 
@@ -834,6 +837,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (!abattu && !ailleurs && AllerVoirLeFeu(h)) return;
         if (!ailleurs && ApporterViande(h, tous)) return;
         if (DemanderUnOuvrage(h, tous)) return;
+        if (SoulagerSonCorps(h, tous)) return;
         if (Outiller(h, tous)) return;
         if (Assembler(h, tous)) return;
         if (OutillerParFacons(h, tous)) return;

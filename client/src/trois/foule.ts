@@ -2,6 +2,7 @@ import * as THREE from "three/webgpu";
 import { hacher, unite } from "./bruit";
 import type { Relief } from "./relief";
 import { etreAvecLesAutres } from "./social";
+import { teindre } from "./corps";
 import type { Rejeu, Role } from "./combat";
 
 /** Activités, dans l'ordre de l'énumération Activite du serveur (pour les textes « activite.X »). */
@@ -47,11 +48,14 @@ export interface HumainScene {
   extraversion: number;
   /** Aisance dans l'eau (0 à 1) : brasse de qui sait nager, nage du chien de qui sait à peine. */
   nage: number;
+  /** 0.42.6 : matière de la semelle nouée aux pieds (0 : pieds nus) et de l'enduit de la peau (0 rien, 11 boue, 18 ocre). */
+  chaussures: number;
+  enduit: number;
   /** Essais (?debug3d) : un figurant posé à un endroit précis, dans une posture donnée. */
   figurant?: { x: number; z: number; cap: number; posture: Posture };
 }
 
-export const CHAMPS = 29;
+export const CHAMPS = 31;
 
 export function lireScene(n: number[]): HumainScene[] {
   const liste: HumainScene[] = [];
@@ -62,7 +66,7 @@ export function lireScene(n: number[]): HumainScene[] {
       peur: n[k + 13], communaute: n[k + 14], mere: n[k + 15], reserves: n[k + 16], endurance: n[k + 17] / 1000, tailleEcart: n[k + 18] / 100,
       enfants: n[k + 19], vetement: n[k + 20], usure: n[k + 21] / 1000,
       froid: n[k + 22], faim: n[k + 23], fatigue: n[k + 24], sante: n[k + 25], nevrosisme: n[k + 26] / 1000, extraversion: n[k + 27] / 1000,
-      nage: n[k + 28] / 1000,
+      nage: n[k + 28] / 1000, chaussures: n[k + 29], enduit: n[k + 30],
     });
   }
   return liste;
@@ -83,6 +87,9 @@ export interface Corps {
   vu: number;
   peau: THREE.Color;
   cheveux: THREE.Color;
+  /** Peau telle qu'on la voit (teinte d'ocre ou de boue), et l'enduit pour lequel elle a été calculée. */
+  peauVue?: THREE.Color;
+  enduitVu?: number;
   /** Chemin en cours (case de départ et d'arrivée) et où il en était au dernier pas du monde (0.41.2). */
   chemin: string;
   avancePrec: number;
@@ -818,13 +825,18 @@ export class Foule {
       // Buste : plié vers l'avant à partir des hanches.
       buste.copy(racine).multiply(t.makeTranslation(0, 0.5, 0)).multiply(r.makeRotationX(flexion)).multiply(t.makeTranslation(0, -0.5, 0));
       const large = s.femme ? 1.0 : 1.12;
-      poser(0, m.copy(buste).multiply(t.makeScale(large, 1, 0.75)), c.peau);
-      poser(1, m.copy(buste).multiply(t.makeTranslation(0, 0.935, 0)).multiply(r.makeScale(tetePlus, tetePlus, tetePlus)), c.peau);
+      if (c.enduitVu !== s.enduit || !c.peauVue) {
+        c.peauVue = teindre(c.peau, s.enduit);
+        c.enduitVu = s.enduit;
+      }
+      const peau = c.peauVue;
+      poser(0, m.copy(buste).multiply(t.makeScale(large, 1, 0.75)), peau);
+      poser(1, m.copy(buste).multiply(t.makeTranslation(0, 0.935, 0)).multiply(r.makeScale(tetePlus, tetePlus, tetePlus)), peau);
       poser(2, m.copy(buste).multiply(t.makeTranslation(0, 0.94, -0.004)).multiply(r.makeScale(tetePlus, tetePlus, tetePlus)), c.cheveux);
-      poser(3, m.copy(racine).multiply(t.makeTranslation(0.05, 0.5, 0)).multiply(r.makeRotationX(jambes[0])), c.peau);
-      poser(4, m.copy(racine).multiply(t.makeTranslation(-0.05, 0.5, 0)).multiply(r.makeRotationX(jambes[1])), c.peau);
-      poser(5, m.copy(buste).multiply(t.makeTranslation(0.11 * large, 0.84, 0)).multiply(r.makeRotationX(bras[0])).multiply(t.makeRotationZ(0.06)), c.peau);
-      poser(6, m.copy(buste).multiply(t.makeTranslation(-0.11 * large, 0.84, 0)).multiply(r.makeRotationX(bras[1])).multiply(t.makeRotationZ(-0.06)), c.peau);
+      poser(3, m.copy(racine).multiply(t.makeTranslation(0.05, 0.5, 0)).multiply(r.makeRotationX(jambes[0])), peau);
+      poser(4, m.copy(racine).multiply(t.makeTranslation(-0.05, 0.5, 0)).multiply(r.makeRotationX(jambes[1])), peau);
+      poser(5, m.copy(buste).multiply(t.makeTranslation(0.11 * large, 0.84, 0)).multiply(r.makeRotationX(bras[0])).multiply(t.makeRotationZ(0.06)), peau);
+      poser(6, m.copy(buste).multiply(t.makeTranslation(-0.11 * large, 0.84, 0)).multiply(r.makeRotationX(bras[1])).multiply(t.makeRotationZ(-0.06)), peau);
       n++;
     }
     this.points.count = np;

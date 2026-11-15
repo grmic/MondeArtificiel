@@ -167,6 +167,8 @@ interface Savoirs {
   objets: string[];
   vetement: string | null;
   nage: number;
+  /** 0.42.6 : pieds, enduit de la peau, gênes (absent d'un serveur plus ancien). */
+  corps?: string[];
 }
 
 interface Choix {
@@ -682,6 +684,7 @@ export class PanneauFiche {
     p.append(s.vetement ? t("fiche.vetu", { g, vetement: s.vetement }) : t("fiche.nu", { g }));
     if (s.objets.length > 0) p.append(" · " + t("fiche.porte", { objets: s.objets.join(t("commun.virgule")) }));
     if (s.nage > 0) p.append(" · " + t("fiche.nage", { v: s.nage }));
+    for (const c of s.corps ?? []) p.append(" · " + c);
     corps.append(p);
     const ul = el("ul", "liste");
     for (const x of s.savoirs) {

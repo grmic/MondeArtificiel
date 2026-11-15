@@ -216,6 +216,12 @@ public sealed class Communaute
     /// <summary>Dernière fois que le groupe est resté pour ses champs malgré la disette (événement du journal, non enregistré).</summary>
     public long ResteEvenementId { get; set; }
 
+    /// <summary>Depuis quand se peindre le corps d'ocre est le signe de la communauté (0 : ce n'en est pas un) (0.42.6).</summary>
+    public long SigneDuCorpsLe { get; set; }
+
+    /// <summary>Depuis quand la communauté tient pour inconvenant de rester nu (0 : elle ne s'en soucie pas) (0.42.6).</summary>
+    public long PudeurLe { get; set; }
+
     /// <summary>Dernier vol dans une réserve (événement du journal), cause possible de l'idée de la réserve à soi.</summary>
     public long VolReserveEvenementId { get; set; }
 

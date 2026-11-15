@@ -36,6 +36,9 @@ export interface Forme {
   /** Matière du vêtement (0 : nu) et son état (1 neuf). */
   vetement: number;
   usure: number;
+  /** 0.42.6 : matière de la semelle nouée aux pieds (0 : pieds nus) ; enduit de la peau (0 rien, 11 boue, 18 ocre). */
+  chaussures: number;
+  enduit: number;
   peau: THREE.Color;
   cheveux: THREE.Color;
   cheveuxLongs: boolean;
@@ -44,6 +47,26 @@ export interface Forme {
 }
 
 const PEAU_MATIERE = 24;
+const ARGILE = 11;
+const OCRE = 18;
+const TEINTE_OCRE = new THREE.Color(0.5, 0.11, 0.045);
+const TEINTE_BOUE = new THREE.Color(0.3, 0.25, 0.18);
+
+/**
+ * La peau telle qu'on la voit, enduite (0.42.6) : l'ocre la rougit franchement, la boue séchée la grise et la ternit. Sans enduit,
+ * la couleur d'origine (même objet).
+ */
+export function teindre(peau: THREE.Color, enduit: number): THREE.Color {
+  if (enduit === OCRE) return peau.clone().lerp(TEINTE_OCRE, 0.62);
+  if (enduit === ARGILE) return peau.clone().lerp(TEINTE_BOUE, 0.58);
+  return peau;
+}
+
+/** Couleur d'une semelle selon sa matière (peau tannée, fibres, écorce, feuilles). */
+export function couleurSemelle(matiere: number): THREE.Color {
+  return matiere === PEAU_MATIERE ? new THREE.Color(0.2, 0.11, 0.05) : matiere === ECORCE ? new THREE.Color(0.17, 0.11, 0.07)
+    : matiere === FEUILLES ? new THREE.Color(0.1, 0.17, 0.05) : new THREE.Color(0.32, 0.25, 0.12);
+}
 const FIBRES = 8;
 const FEUILLES = 7;
 const ECORCE = 34;
@@ -76,7 +99,7 @@ export function formeDe(s: HumainScene, peau: THREE.Color, cheveux: THREE.Color)
   return {
     age, femme, puberte, musculature, graisse, maigreur, poitrine, ptose,
     grossesse: s.etat & 2 ? 1 : 0,
-    vetement, usure: s.usure, peau, cheveux,
+    vetement, usure: s.usure, peau: teindre(peau, s.enduit), cheveux, chaussures: s.chaussures, enduit: s.enduit,
     cheveuxLongs: unite(hacher(s.id, 65)) < (femme ? 0.75 : 0.3),
     voute: lisser(58, 85, age),
   };
@@ -86,7 +109,7 @@ export function formeDe(s: HumainScene, peau: THREE.Color, cheveux: THREE.Color)
 export function cleDe(f: Forme): string {
   const r = (v: number, pas: number) => Math.round(v / pas);
   return [r(f.age < 18 ? f.age : 18 + (f.age - 18) / 4, 0.5), f.femme ? 1 : 0, r(f.musculature, 0.1), r(f.graisse, 0.1), r(f.maigreur, 0.1),
-    r(f.poitrine, 0.08), r(f.ptose, 0.1), f.grossesse, f.vetement, r(f.usure, 0.25), r(f.voute, 0.2), f.peau.getHexString(), f.cheveux.getHexString()].join(",");
+    r(f.poitrine, 0.08), r(f.ptose, 0.1), f.grossesse, f.vetement, r(f.usure, 0.25), r(f.voute, 0.2), f.peau.getHexString(), f.cheveux.getHexString(), f.chaussures, f.enduit].join(",");
 }
 
 // Os du squelette.
@@ -570,6 +593,7 @@ export function construire(f: Forme): Construit {
       },
     });
     const pied = 0.15 * (0.85 + 0.15 * (1 - enfant));
+    const semelle = f.chaussures ? couleurSemelle(f.chaussures) : null;
     tube(m, {
       depart: new THREE.Vector3(x - cote * 0.006, p.cheville * 0.45, -0.035), axe: new THREE.Vector3(0, -0.12, 1), longueur: pied,
       anneaux: 11, cotes: 12, avant: new THREE.Vector3(0, 1, 0),
@@ -581,7 +605,8 @@ export function construire(f: Forme): Construit {
       deformer: (q, t) => {
         if (t > 0.75 && (q.x - x) * cote < 0) q.z += 0.008 * (t - 0.75) / 0.25;
       },
-      couleur: () => peau,
+      // Une semelle nouée (0.42.6) : le dessous du pied et deux liens croisés sur le dessus.
+      couleur: (q, t) => (semelle && (q.y < p.cheville * 0.2 || Math.abs(t - 0.35) < 0.06 || Math.abs(t - 0.6) < 0.05) ? semelle : peau),
       liens: () => [[pd, 1]],
     });
   }
