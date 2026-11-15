@@ -1,6 +1,7 @@
 import * as THREE from "three/webgpu";
 import { hacher, lisser, unite } from "./bruit";
 import { DOIGTS, PO, POSE_OS, type Corps, type NomPose } from "./corps";
+import { ACCELERATION_MAX, SAIT_NAGER } from "./foule";
 
 /**
  * Postures vivantes (0.41.7, propositions A1 B1 C1 D1 E1 G1 validées par zem le 15/11) : chaque humain proche est posé d'après
@@ -272,6 +273,8 @@ export interface Situation {
   parle: number;
   /** H1 : il est en conversation (qu'il parle ou écoute). */
   converse: boolean;
+  /** Aisance dans l'eau (0 à 1) : brasse ou nage du chien (D1). */
+  nage?: number;
   /** Enlacé avec son partenaire : +1 ou −1 (de quel côté il se couche, pour que les deux têtes soient du même côté), 0 sinon. */
   enlace: number;
   /** 0.42.0 : geste de combat du rejeu d'un assaut (voir combat.ts), où il en est (0 à 1) et l'arme en main ; mort : plus de souffle. */
@@ -371,6 +374,19 @@ function onde(t: number, g: number, f: number): number {
 }
 
 /** Bosse d'une part de cycle (0-1) centrée sur `c`, de largeur `l` (cycle refermé). */
+/** Valeur sur un cycle (u de 0 à 1) donnée par des clés [instant, valeur] croissantes, passages adoucis entre deux clés. */
+function cles(u: number, k: [number, number][]): number {
+  for (let i = 1; i < k.length; i++) {
+    if (u <= k[i][0]) {
+      const [t0, v0] = k[i - 1];
+      const [t1, v1] = k[i];
+      const x = t1 > t0 ? (u - t0) / (t1 - t0) : 1;
+      return v0 + (v1 - v0) * x * x * (3 - 2 * x);
+    }
+  }
+  return k[k.length - 1][1];
+}
+
 function bosse(p: number, c: number, l: number): number {
   let d = p - c;
   d -= Math.round(d);
@@ -514,7 +530,7 @@ export class Animateur {
    * finale (rotations canoniques posées sur le corps, appuis et cinématique inverse faits).
    */
   animer(corps: Corps, s: Situation, t: number, sol: SolLocal | null): void {
-    const dt = this.derniere < 0 ? 0 : Math.min(0.1, t - this.derniere);
+    const dt = this.derniere < 0 ? 0 : Math.min(0.1 * ACCELERATION_MAX, t - this.derniere);
     if (this.derniere < 0) this.prochainGeste = t + 6 + 30 * unite(hacher(this.id, 73));
     this.derniere = t;
     // Effort : la marche essouffle un peu, le repos calme (≈ une minute).
@@ -1354,22 +1370,71 @@ export class Animateur {
     p.plantes = [1, 1];
   }
 
-  // ——— Nage (brasse simple) ———
+  // ——— Nage (D1) ———
+  // Brasse tête hors de l'eau, en quatre temps sur un cycle (`phase`, un tour par mouvement) : traction des bras, ramené des mains
+  // sous le menton avec les jambes qui se replient, coup de pied en fouet pendant que les bras repartent devant, glisse.
+  // Qui sait à peine nager fait la nage du chien : buste redressé, bras qui battent sous l'eau tour à tour, jambes en pédalage.
 
   private nage(p: Pose, s: Situation): void {
-    p.coucher(Math.PI / 2 - 0.25, 0);
     p.libre = true;
     p.plantes = [0, 0];
-    const a = Math.sin(s.phase * 1.5);
-    for (const c of COTES) {
-      p.epaule(c, 2.4 + 0.4 * a, 0.5 - 0.4 * a, 0.3);
-      p.coude(c, 0.4 + 0.5 * Math.max(0, -a), 0.6);
-      p.hanche(c, 0.25 + 0.25 * Math.max(0, -a), 0.25 + 0.2 * a, 0.3);
-      p.genou(c, 0.3 + 0.7 * Math.max(0, -a));
-      p.cheville(c, -0.5);
+    const aise = s.nage ?? 0;
+    if (aise < SAIT_NAGER) {
+      this.nageDuChien(p, s, aise);
+      return;
     }
-    p.colonne("cou", -0.7);
-    p.colonne("tete", -0.25);
+    const u = (((s.phase / (Math.PI * 2)) % 1) + 1) % 1;
+    // Ampleur : le bon nageur s'allonge davantage.
+    const ample = 0.8 + 0.2 * aise;
+    // Les bras : allongés devant (flexion ≈ 2,9) → écartés jusqu'aux épaules en tirant → mains sous le menton → relancés devant.
+    const flexion = cles(u, [[0, 2.9], [0.12, 2.85], [0.4, 1.75], [0.55, 1.75], [0.75, 2.9], [1, 2.9]]);
+    const abduction = cles(u, [[0, 0.15], [0.12, 0.25], [0.4, 0.95 * ample], [0.55, 0.3], [0.75, 0.12], [1, 0.15]]);
+    const coude = cles(u, [[0, 0.05], [0.12, 0.15], [0.4, 1.1], [0.55, 1.9], [0.75, 0.15], [1, 0.05]]);
+    const rot = cles(u, [[0, 0], [0.4, 0.6], [0.55, 0.9], [0.75, 0], [1, 0]]);
+    // Les jambes : allongées pendant la traction, repliées talons vers les fesses, puis le fouet qui les rassemble.
+    const hanche = cles(u, [[0, 0], [0.4, 0.05], [0.6, 0.85 * ample], [0.78, 0.1], [0.9, 0], [1, 0]]);
+    const genou = cles(u, [[0, 0.05], [0.4, 0.15], [0.6, 2.0], [0.78, 0.4], [0.9, 0.05], [1, 0.05]]);
+    const ecart = cles(u, [[0, 0.04], [0.4, 0.08], [0.6, 0.32], [0.72, 0.4], [0.86, 0.05], [1, 0.04]]);
+    const pied = cles(u, [[0, -0.7], [0.5, -0.4], [0.62, 0.35], [0.75, 0.2], [0.86, -0.7], [1, -0.7]]);
+    for (const c of COTES) {
+      p.epaule(c, flexion, abduction, rot);
+      p.coude(c, coude, 0.8);
+      p.poignet(c, 0.25 * Math.sin(u * Math.PI * 2));
+      p.main(c, 0.15, 0.2, 0.02);
+      p.hanche(c, hanche, ecart, 0.45 * Math.min(1, genou));
+      p.genou(c, genou);
+      p.cheville(c, pied, -0.25);
+    }
+    // Le buste se soulève pendant la traction (on respire), s'allonge pendant la glisse ; la tête reste hors de l'eau.
+    const souleve = cles(u, [[0, 0], [0.3, 0.12], [0.5, 0.3], [0.7, 0.1], [1, 0]]);
+    p.coucher(Math.PI / 2 - 0.22 - souleve, 0);
+    p.racine.y = 0.05 * souleve;
+    p.colonne("poitrine", -0.05 - 0.1 * souleve);
+    p.colonne("cou", -0.65 - 0.2 * souleve);
+    p.colonne("tete", -0.3);
+  }
+
+  private nageDuChien(p: Pose, s: Situation, aise: number): void {
+    // Celui qui ne sait pas nager se débat davantage : gestes plus amples et moins réguliers.
+    const panique = 1 - aise / SAIT_NAGER;
+    const a = s.phase;
+    const tremble = 0.12 * panique * Math.sin(a * 2.7 + this.id);
+    p.coucher(Math.PI / 2 - 0.75 - 0.2 * panique, 0.08 * Math.sin(a));
+    for (const c of COTES) {
+      const phi = a + (c === "G" ? 0 : Math.PI);
+      p.epaule(c, 1.35 + 0.45 * Math.sin(phi) + tremble, 0.25 + 0.1 * panique, 0.2);
+      p.coude(c, 0.9 + 0.5 * Math.cos(phi), 0.3);
+      p.poignet(c, 0.4 + 0.3 * Math.sin(phi));
+      p.main(c, 0.35, 0.3, 0.03);
+      // Pédalage, jambes opposées aux bras.
+      p.hanche(c, 0.65 + 0.4 * Math.sin(phi + Math.PI / 2), 0.15, 0.1);
+      p.genou(c, 1.0 + 0.6 * Math.sin(phi + Math.PI));
+      p.cheville(c, -0.3);
+    }
+    p.racine.y = 0.04 * Math.sin(a * 2);
+    p.colonne("poitrine", 0.05);
+    p.colonne("cou", -0.95 - 0.1 * panique);
+    p.colonne("tete", -0.35 + 0.1 * Math.sin(a * 1.3) * panique);
   }
 
   // ——— Enfant porté (D1) ———

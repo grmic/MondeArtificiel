@@ -45,11 +45,13 @@ export interface HumainScene {
   sante: number;
   nevrosisme: number;
   extraversion: number;
+  /** Aisance dans l'eau (0 à 1) : brasse de qui sait nager, nage du chien de qui sait à peine. */
+  nage: number;
   /** Essais (?debug3d) : un figurant posé à un endroit précis, dans une posture donnée. */
   figurant?: { x: number; z: number; cap: number; posture: Posture };
 }
 
-export const CHAMPS = 28;
+export const CHAMPS = 29;
 
 export function lireScene(n: number[]): HumainScene[] {
   const liste: HumainScene[] = [];
@@ -60,6 +62,7 @@ export function lireScene(n: number[]): HumainScene[] {
       peur: n[k + 13], communaute: n[k + 14], mere: n[k + 15], reserves: n[k + 16], endurance: n[k + 17] / 1000, tailleEcart: n[k + 18] / 100,
       enfants: n[k + 19], vetement: n[k + 20], usure: n[k + 21] / 1000,
       froid: n[k + 22], faim: n[k + 23], fatigue: n[k + 24], sante: n[k + 25], nevrosisme: n[k + 26] / 1000, extraversion: n[k + 27] / 1000,
+      nage: n[k + 28] / 1000,
     });
   }
   return liste;
@@ -97,6 +100,11 @@ export interface Corps {
   ecoute: number;
   /** 0.42.0 : ce que le rejeu d'un assaut lui fait faire (ou, mort, comment il gît), sinon null. */
   role: Role | null;
+  /** Ce qu'il fait dans sa case (C1) : ses arrêts déjà posés sur la terre ferme, et le trajet d'une case à l'autre (détour). */
+  arrets?: { cle: string; j: number[]; x: number[]; z: number[] };
+  trajet?: { cle: string; points: [number, number][]; longueurs: number[] };
+  /** Sa place autour du camp, voulue (vx, vz) et posée sur la terre ferme (x, z). */
+  place?: { vx: number; vz: number; x: number; z: number };
 }
 
 /**
@@ -200,6 +208,83 @@ function decalage(s: HumainScene, secondes: number, auFeu: boolean): [number, nu
   return [Math.cos(a) * rayon, Math.sin(a) * rayon];
 }
 
+
+// ——— Ce qu'il fait dans sa case (C1, suivi 3D cohérent) ———
+// La simulation ne connaît que la case (800 m). Tant qu'il y reste, la vue lui donne un itinéraire tiré de son id et de l'heure
+// (tout le monde voit la même chose, rien n'est demandé au serveur) : cueillir de touffe en touffe, pister puis guetter, explorer.
+
+/** Profondeur d'eau (m) en un point, 0 au sec. */
+export function profondeur(rel: Relief, x: number, z: number): number {
+  const s = rel.surface(x, z);
+  return Number.isNaN(s.eau) ? 0 : s.eau - s.sol;
+}
+
+/** Pente du sol (m par m), mesurée sur quelques mètres. */
+function pente(rel: Relief, x: number, z: number): number {
+  const e = 1.5;
+  return Math.hypot(rel.hauteur(x + e, z) - rel.hauteur(x - e, z), rel.hauteur(x, z + e) - rel.hauteur(x, z - e)) / (2 * e);
+}
+
+/**
+ * Le point praticable le plus proche de (x, z) : pas plus d'eau que `eauAdmise` (m), pas une pente de falaise (au-delà de 35°,
+ * on ne se tient plus debout sans les mains). Cherché en spirale jusqu'à 200 m ; sinon le point tel quel.
+ */
+export function aPiedSec(rel: Relief, x: number, z: number, eauAdmise: number, graine: number): [number, number] {
+  const bon = (px: number, pz: number) => profondeur(rel, px, pz) <= eauAdmise && pente(rel, px, pz) < 0.7;
+  if (bon(x, z)) return [x, z];
+  for (let r = 6; r <= 200; r *= 1.35) {
+    const depart = unite(hacher(graine, Math.round(r), 191)) * Math.PI * 2;
+    for (let k = 0; k < 10; k++) {
+      const a = depart + (k / 10) * Math.PI * 2;
+      const px = x + Math.cos(a) * r;
+      const pz = z + Math.sin(a) * r;
+      if (bon(px, pz)) return [px, pz];
+    }
+  }
+  return [x, z];
+}
+
+/**
+ * Manière de faire de chaque activité qui fait bouger dans la case : à quelle distance du camp, pas entre deux arrêts (m), arrêt
+ * moyen (s), allure (m/s). Ordres de grandeur : cueillette des Hadza et des !Kung, de buisson en buisson avec des arrêts de quelques
+ * minutes (Hawkes et al. 1991 ; Lee 1979) ; chasse à l'approche lente, entrecoupée d'affûts (Marlowe 2010) ; pêche postée au bord.
+ * Chacun a sa façon (×0,7 à ×1,4), tirée de son id.
+ */
+interface Maniere { loin: [number, number]; pas: [number, number]; arret: [number, number]; allure: [number, number]; eau: number }
+function maniere(activite: number): Maniere | null {
+  switch (activite) {
+    case A.Cueillir:
+    case A.ChercherNourriture:
+      return { loin: [40, 220], pas: [5, 25], arret: [60, 300], allure: [0.5, 0.9], eau: 0.05 };
+    case A.Cultiver:
+      return { loin: [20, 90], pas: [2, 8], arret: [90, 400], allure: [0.4, 0.7], eau: 0.05 };
+    case A.Chasser:
+      return { loin: [120, 320], pas: [15, 70], arret: [30, 300], allure: [0.35, 0.8], eau: 0.05 };
+    case A.Pecher:
+      // Au bord de l'eau, dans l'eau jusqu'aux genoux au plus.
+      return { loin: [30, 200], pas: [3, 12], arret: [300, 900], allure: [0.4, 0.7], eau: 0.4 };
+    case A.Explorer:
+      return { loin: [60, 300], pas: [40, 120], arret: [10, 60], allure: [0.9, 1.3], eau: 0.05 };
+    default:
+      return null;
+  }
+}
+
+function entre([a, b]: [number, number], u: number): number {
+  return a + (b - a) * u;
+}
+
+/** Arrêt n° j de son itinéraire (avant de le poser sur la terre ferme). */
+function arretBrut(id: number, j: number, cx: number, cz: number, rayon: number, pas: number): [number, number] {
+  const w = pas / Math.max(rayon, 1);
+  const f = (k: number) => unite(hacher(id, k, 197)) * Math.PI * 2;
+  const x = cx + rayon * (0.7 * Math.sin(w * j + f(1)) + 0.3 * Math.sin(2.3 * w * j + f(2)));
+  const z = cz + rayon * (0.7 * Math.cos(1.1 * w * j + f(3)) + 0.3 * Math.sin(1.7 * w * j + f(4)));
+  const jx = (unite(hacher(id, j, 199)) - 0.5) * pas * 0.6;
+  const jz = (unite(hacher(id, j, 211)) - 0.5) * pas * 0.6;
+  return [x + jx, z + jz];
+}
+
 /** Place qu'occupe au sol un corps arrêté (rayon, m) : couché, il lui faut sa longueur. */
 function emprise(c: Corps): number {
   // D'après ce que fait l'humain dans la simulation, pas d'après la posture affichée : sinon celui qu'on écarte se met à marcher,
@@ -273,7 +358,32 @@ function ecarter(cibles: Map<Corps, [number, number, boolean]>): void {
   }
 }
 
+interface Trajet { cle: string; points: [number, number][]; longueurs: number[] }
+
+/** Point du trajet à la part `f` (0 à 1) de sa longueur, et la direction (unitaire) du segment. */
+function surTrajet(t: Trajet, f: number): [number, number, number, number] {
+  const total = t.longueurs[t.longueurs.length - 1];
+  const d = f * total;
+  let k = 1;
+  while (k < t.points.length - 1 && t.longueurs[k] < d) k++;
+  const [x0, z0] = t.points[k - 1];
+  const [x1, z1] = t.points[k];
+  const l = t.longueurs[k] - t.longueurs[k - 1] || 1;
+  const g = Math.max(0, Math.min(1, (d - t.longueurs[k - 1]) / l));
+  return [x0 + (x1 - x0) * g, z0 + (z1 - z0) * g, (x1 - x0) / l, (z1 - z0) / l];
+}
+
 const NOMBRE_MAX = 700;
+
+/** Foulées par seconde au plus à l'écran (un coureur rapide en fait un peu plus de trois). */
+const CADENCE_MAX = 3.5;
+/** Aisance dans l'eau à partir de laquelle on nage la brasse plutôt que comme un chien. */
+export const SAIT_NAGER = 0.35;
+/** Accélération des gestes en film accéléré (A1), au plus ×10 : au-delà, souffle et gestes deviendraient un tremblement. */
+export const ACCELERATION_MAX = 10;
+export function accelere(facteur: number): number {
+  return Math.max(1, Math.min(ACCELERATION_MAX, facteur));
+}
 
 /**
  * Les humains vus en 3D, en silhouettes (0.41.0) : taille selon l'âge et le sexe, teint, posture selon ce qu'ils font (marcher, dormir,
@@ -297,8 +407,10 @@ export class Foule {
   /** Feux de camp (H1) : où ils sont (m) et sur quelles cases. */
   feux: { x: number; z: number }[] = [];
   private feuxCases = new Set<string>();
-  /** Secondes réelles écoulées (tours de parole). */
+  /** Temps des gestes écoulé (tours de parole) : secondes réelles, accélérées comme le monde (A1). */
   private horloge = 0;
+  /** Vitesse du monde atteinte (secondes du monde par seconde réelle), donnée par la vue à chaque image. */
+  facteur = 1;
   definirFeux(feux: { x: number; y: number }[]): void {
     this.feuxCases = new Set(feux.map((f) => `${f.x},${f.y}`));
     this.feux = feux.map((f) => {
@@ -394,7 +506,7 @@ export class Foule {
     }
   }
 
-  /** Position visée d'un humain à l'instant `secondes` du monde. */
+  /** Position visée d'un humain à l'instant `secondes` du monde, et s'il est en route. */
   private cible(c: Corps, secondes: number): [number, number, boolean] {
     const s = c.s;
     const [ax, az] = this.relief.camp(s.x, s.y);
@@ -403,23 +515,121 @@ export class Foule {
       const parSeconde = c.bloque ? 0 : s.parSeconde;
       const f = Math.min(0.985, s.avance + parSeconde * Math.max(0, secondes - this.secondesScene));
       const lateral = (unite(hacher(s.id, 13)) - 0.5) * 6;
-      const dx = bx - ax;
-      const dz = bz - az;
-      const l = Math.hypot(dx, dz) || 1;
-      return [ax + dx * f - (dz / l) * lateral, az + dz * f + (dx / l) * lateral, parSeconde > 0 && f < 0.985];
+      const [x, z, dx, dz] = surTrajet(this.trajet(c, ax, az, bx, bz), f);
+      return [x - dz * lateral, z + dx * lateral, parSeconde > 0 && f < 0.985];
     }
     if (c.partenaire) {
       // À l'écart du camp (douze à vingt mètres), l'un contre l'autre.
       const bas = Math.min(s.id, c.partenaire);
       const angle = unite(hacher(bas, 23)) * Math.PI * 2;
       const r = 12 + 8 * unite(hacher(bas, 29));
-      const px = ax + Math.cos(angle) * r;
-      const pz = az + Math.sin(angle) * r;
+      const [px, pz] = this.aSec(c, ax + Math.cos(angle) * r, az + Math.sin(angle) * r, 0.05, bas);
       const cote = s.id === bas ? -0.23 : 0.23;
       return [px - Math.sin(angle) * cote, pz + Math.cos(angle) * cote, false];
     }
+    const m = maniere(s.activite);
+    if (m) return this.itineraire(c, m, ax, az, secondes);
     const [ox, oz] = decalage(s, secondes, this.feuxCases.has(`${s.x},${s.y}`));
-    return [ax + ox, az + oz, false];
+    const [x, z] = this.aSec(c, ax + ox, az + oz, 0.05, s.id);
+    return [x, z, false];
+  }
+
+  /**
+   * Sa place, posée sur la terre ferme. La place voulue ne bouge que lentement (dérive autour du camp) : le résultat est gardé tant
+   * qu'elle reste à moins de trois mètres de celle qu'on a cherchée, et suit son mouvement.
+   */
+  private aSec(c: Corps, x: number, z: number, eau: number, graine: number): [number, number] {
+    const p = c.place;
+    if (p && Math.hypot(x - p.vx, z - p.vz) < 3) return [p.x + x - p.vx, p.z + z - p.vz];
+    const [sx, sz] = aPiedSec(this.relief, x, z, eau, graine);
+    c.place = { vx: x, vz: z, x: sx, z: sz };
+    return [sx, sz];
+  }
+
+  /**
+   * Le chemin d'un camp à l'autre (C1, D1) : tout droit, sauf si l'eau y est plus profonde qu'à mi-corps ; on passe alors par un
+   * détour à pied sec s'il y en a un à moins de 600 m (un lac se contourne, une rivière trop large se traverse à la nage).
+   */
+  private trajet(c: Corps, ax: number, az: number, bx: number, bz: number): Trajet {
+    const cle = `${ax},${az},${bx},${bz}`;
+    if (c.trajet?.cle === cle) return c.trajet;
+    const rel = this.relief;
+    const profond = Math.max(0.45, 0.55 * stature(c.s.age, c.s.femme, c.s.tailleEcart));
+    const passe = (x0: number, z0: number, x1: number, z1: number) => {
+      const n = Math.max(4, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 40));
+      for (let k = 1; k < n; k++) if (profondeur(rel, x0 + ((x1 - x0) * k) / n, z0 + ((z1 - z0) * k) / n) > profond) return false;
+      return true;
+    };
+    let points: [number, number][] = [[ax, az], [bx, bz]];
+    if (!passe(ax, az, bx, bz)) {
+      const l = Math.hypot(bx - ax, bz - az) || 1;
+      const [nx, nz] = [-(bz - az) / l, (bx - ax) / l];
+      const [mx, mz] = [(ax + bx) / 2, (az + bz) / 2];
+      cherche: for (const d of [80, 160, 280, 420, 600]) {
+        for (const sg of unite(hacher(c.s.id, 227)) < 0.5 ? [1, -1] : [-1, 1]) {
+          const px = mx + nx * d * sg;
+          const pz = mz + nz * d * sg;
+          if (profondeur(rel, px, pz) <= profond && passe(ax, az, px, pz) && passe(px, pz, bx, bz)) {
+            points = [[ax, az], [px, pz], [bx, bz]];
+            break cherche;
+          }
+        }
+      }
+    }
+    const longueurs = [0];
+    for (let k = 1; k < points.length; k++) {
+      longueurs.push(longueurs[k - 1] + Math.hypot(points[k][0] - points[k - 1][0], points[k][1] - points[k - 1][1]));
+    }
+    c.trajet = { cle, points, longueurs };
+    return c.trajet;
+  }
+
+  /**
+   * Itinéraire dans la case (C1) : il va d'arrêt en arrêt à son allure, s'y arrête le temps de cueillir, de guetter ou de pêcher.
+   * Chaque arrêt est posé une fois sur la terre ferme (gardé tant qu'il fait la même chose sur la même case).
+   */
+  private itineraire(c: Corps, m: Maniere, ax: number, az: number, secondes: number): [number, number, boolean] {
+    const s = c.s;
+    const u = (k: number) => unite(hacher(s.id, k, 223));
+    const facon = 0.7 + 0.7 * u(1);
+    const angle = u(2) * Math.PI * 2;
+    const loin = entre(m.loin, u(3));
+    const cx = ax + Math.cos(angle) * loin;
+    const cz = az + Math.sin(angle) * loin;
+    const rayon = Math.max(12, loin * 0.45);
+    const pas = entre(m.pas, u(4));
+    // Les petits vont moins vite ; l'endurant un peu plus.
+    const allure = entre(m.allure, u(6)) * (0.85 + 0.3 * s.endurance) * (s.age < 10 ? 0.6 + 0.04 * s.age : 1);
+    const duree = entre(m.arret, u(5)) * facon + pas / allure;
+    const temps = secondes + u(7) * duree;
+    const j = Math.floor(temps / duree);
+    const dans = temps - j * duree;
+    const cle = `${s.activite},${s.x},${s.y}`;
+    if (c.arrets?.cle !== cle) c.arrets = { cle, j: [], x: [], z: [] };
+    const arret = (k: number): [number, number] => {
+      const a = c.arrets!;
+      const i = a.j.indexOf(k);
+      if (i >= 0) return [a.x[i], a.z[i]];
+      const [bx, bz] = arretBrut(s.id, k, cx, cz, rayon, pas);
+      const [x, z] = aPiedSec(this.relief, bx, bz, m.eau, s.id + k);
+      a.j.push(k);
+      a.x.push(x);
+      a.z.push(z);
+      if (a.j.length > 4) {
+        a.j.shift();
+        a.x.shift();
+        a.z.shift();
+      }
+      return [x, z];
+    };
+    const [x0, z0] = arret(j - 1);
+    const [x1, z1] = arret(j);
+    const marche = Math.hypot(x1 - x0, z1 - z0) / allure;
+    if (dans < marche) {
+      const f = dans / marche;
+      return [x0 + (x1 - x0) * f, z0 + (z1 - z0) * f, true];
+    }
+    return [x1, z1, false];
   }
 
   /** 0.42.0 : l'assaut rejoué en ce moment et où il en est (s), et où gisent les morts des assauts déjà vus. */
@@ -465,8 +675,9 @@ export class Foule {
       const dx = tx - c.x;
       const dz = tz - c.z;
       const d = Math.hypot(dx, dz);
-      // En combat, on suit le rejeu de près : on court, on recule d'un pas, on tombe là où l'on est.
-      const k = Math.min(1, dt * (c.role ? (c.role.court ? 5 : 4) : 1.5));
+      // En combat, on suit le rejeu de près : on court, on recule d'un pas, on tombe là où l'on est. Sinon, plus le monde va vite,
+      // plus le corps colle à sa place (il traînerait loin derrière en film accéléré).
+      const k = Math.min(1, dt * (c.role ? (c.role.court ? 5 : 4) : 1.5 * Math.sqrt(Math.max(1, this.facteur))));
       c.x += dx * k;
       c.z += dz * k;
       const pas = d * k;
@@ -484,11 +695,15 @@ export class Foule {
       }
       c.ecoute += ((ecoute ? 1 : 0) - c.ecoute) * Math.min(1, dt * 3);
       c.taille = stature(s.age, s.femme, s.tailleEcart);
-      // Les jambes avancent avec le sol parcouru : une foulée (deux pas) fait environ 0,8 fois la taille.
-      if (c.enMarche) c.phase += Math.min(dt * 12, (pas * Math.PI * 2) / (0.82 * c.taille));
+      // Les jambes avancent avec le sol parcouru (une foulée, deux pas, fait environ 0,8 fois la taille), en film accéléré quand le monde va vite (A1), jusqu'à CADENCE_MAX foulées par
+      // seconde : au-delà, l'œil ne suit plus (quelques images par foulée).
+      if (c.enMarche) c.phase += Math.min(dt * Math.PI * 2 * CADENCE_MAX, (pas * Math.PI * 2) / (0.82 * c.taille));
       const surf = rel.surface(c.x, c.z);
-      const eau = !Number.isNaN(surf.eau) && surf.eau - surf.sol > 1.1;
-      if (eau) c.phase += dt * Math.min(6, 1 + c.vitesse * 3);
+      // On marche dans l'eau jusqu'à la poitrine (D1) ; plus profond, on nage. Un enfant nage donc plus tôt qu'un adulte.
+      const fond = Number.isNaN(surf.eau) ? 0 : surf.eau - surf.sol;
+      const eau = fond > Math.max(0.35, 0.7 * c.taille);
+      // Brasse de 0,5 à 0,8 cycle par seconde selon l'aisance (nageurs de loisir), nage du chien plus rapide et désordonnée.
+      if (eau) c.phase += dt * accelere(this.facteur) * Math.PI * 2 * (s.nage >= SAIT_NAGER ? 0.5 + 0.3 * s.nage : 1.3 + 0.4 * unite(hacher(s.id, 229)));
       c.posture = c.role?.geste ? "combat" : c.role ? (c.enMarche ? "marche" : "debout") : s.figurant?.posture ?? posture(s, c.enMarche, eau && !(s.etat & 16));
       if (s.figurant && !c.role) {
         c.cap = s.figurant.cap;
@@ -504,8 +719,9 @@ export class Foule {
         }
       }
     }
-    this.horloge += dt;
-    etreAvecLesAutres(this.corps.values(), this.feux, dt, this.horloge);
+    const dtGestes = dt * accelere(this.facteur);
+    this.horloge += dtGestes;
+    etreAvecLesAutres(this.corps.values(), this.feux, dtGestes, this.horloge);
     this.dessiner(camera, secondes);
   }
 

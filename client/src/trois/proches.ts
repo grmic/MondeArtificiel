@@ -204,7 +204,7 @@ export class CorpsProches {
         // F1 (0.41.8) : ce que vit l'humain ; la maladie pèse d'autant plus que la santé est basse.
         froid: lisser(15, 70, s.froid), faim: s.faim / 100, fatigue: s.fatigue / 100, peur: lisser(10, 70, s.peur),
         malade: s.etat & 1 ? 0.6 + 0.4 * (1 - s.sante / 100) : lisser(60, 25, s.sante), enceinte: (s.etat & 2) !== 0,
-        humeur: s.humeur, nevrosisme: s.nevrosisme, extraversion: s.extraversion,
+        humeur: s.humeur, nevrosisme: s.nevrosisme, extraversion: s.extraversion, nage: s.nage,
         parle: c.parle, converse: c.interlocuteur > 0 && c.posture !== "enlace",
         enlace: c.posture === "enlace" && c.partenaire ? (s.id < c.partenaire ? 1 : -1) : 0,
         combat: c.posture === "combat" && c.role?.geste ? { geste: c.role.geste, u: c.role.u, arme: c.role.arme, mort: c.role.mort } : null,

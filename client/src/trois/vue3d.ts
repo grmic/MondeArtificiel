@@ -13,7 +13,7 @@ import { nombre, t } from "../langue";
 import { Bruit, hacher, unite } from "./bruit";
 import { Ciel, type ReglageNuages } from "./ciel";
 import { Camp3D, type CampJson } from "./camp";
-import { ACTIVITES, Feux3D, Foule, lireScene } from "./foule";
+import { ACTIVITES, Feux3D, Foule, accelere, lireScene } from "./foule";
 import { MiniCarte } from "./minicarte";
 import { Nature3D } from "./nature3d";
 import { Sol3D } from "./sol3d";
@@ -92,8 +92,11 @@ const QUALITES: Record<Qualite, ReglageQualite> = {
   ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, reels: 70, porteeReels: 120, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true, nuages: { pas: 40, pasLumiere: 5, reduction: 3 }, lissage: "traa", rayons: true, reflets: 0.7, resReflets: 1 },
 };
 
-/** Vitesse la plus haute en promenade (proposition E1) : au-delà, les humains sauteraient d'une case à l'autre. */
-export const FACTEUR_PROMENADE = 10;
+/**
+ * Vitesse la plus haute en promenade (×60 : une minute pour une heure du monde). Les humains y vont en film accéléré (A1) ; au-delà, ils
+ * changeraient de case toutes les quelques secondes.
+ */
+export const FACTEUR_PROMENADE = 60;
 const HAUTEUR_YEUX = 1.62;
 /** Multiplicateurs de vitesse de déplacement (0.41.1 ; ×0,05 en 0.41.3) : touches 1 à 7, ou + et −. Maj multiplie encore par 6. */
 const ALLURES = [0.05, 0.25, 1, 4, 16, 64, 256];
@@ -214,6 +217,8 @@ export class Vue3D {
   private secondesScene = 0;
   private recuA = performance.now();
   private facteur = 0;
+  /** Temps des gestes des humains (s), accéléré comme le monde. */
+  private tempsGestes = 0;
   private facteurAvant: number | null = null;
   private viser: number | null = null;
   /** 0.42.0 : assauts déjà vus ou proposés, celui qu'on peut revoir (R), vitesse du rejeu, caméra de combat, vitesse du monde à rendre. */
@@ -1342,10 +1347,13 @@ export class Vue3D {
     this.sol.mettreAJour(p, 2);
     this.foule.interlocuteur = echange.humain;
     this.avancerRejeu(dt);
+    this.foule.facteur = this.facteur;
     this.foule.animer(dt, secondes, p);
+    // Les gestes (souffle, regard, passage d'une posture à l'autre) vont au rythme du monde, en film accéléré (A1).
+    this.tempsGestes += dt * accelere(this.facteur);
     if (this.tapis) this.mettreAJourTapis(p, dt);
     this.suivreImage(dt);
-    this.proches.mettreAJour(p, maintenant / 1000);
+    this.proches.mettreAJour(p, this.tempsGestes);
     this.camp.animer(p, secondes, maintenant / 1000);
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
     this.mer.position.set(p.x, 0, p.z);
