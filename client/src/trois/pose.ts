@@ -1505,8 +1505,12 @@ export function poser(corps: Corps, p: Pose, sol: SolLocal | null): void {
     // Descente : le plus bas des appuis qui portent touche le sol. Pieds posés : celui du sol le plus bas décide (l'autre plie).
     let bas = Infinity;
     const piedBas = [Infinity, Infinity];
+    // Couché, seul le tronc (tête, dos, flancs, ventre, bassin) porte : un genou ou un coude un peu bas soulevait tout le corps,
+    // qui flottait au-dessus du sol.
+    const couche = (p.appuis & APPUI_CORPS) !== 0;
     for (const a of corps.appuis) {
       const os = corps.os[a.os];
+      if (couche && a.famille === 3 && !estTronc(corps, a.os)) continue;
       V.copy(a.point).applyMatrix4(os.matrixWorld);
       const d = V.y - solEn(sol, V.x, V.z);
       if (a.famille === 0) {
@@ -1530,8 +1534,13 @@ export function poser(corps: Corps, p: Pose, sol: SolLocal | null): void {
   // Mains : vers leurs cibles, et jamais sous le sol.
   for (let k = 0; k < 2; k++) {
     mainVers(corps, p, k, sol);
-    if (!p.libre) mainHorsDuSol(corps, k, sol);
+    // Couché, on ne relève pas la main au-dessus du sol : l'IK pliait le coude et dressait l'avant-bras en l'air.
+    if (!p.libre && !(p.appuis & APPUI_CORPS)) mainHorsDuSol(corps, k, sol);
   }
+}
+
+function estTronc(corps: Corps, os: number): boolean {
+  return os === corps.idx[PO.bassin] || os === corps.idx[PO.ventre] || os === corps.idx[PO.poitrine] || os === corps.idx[PO.tete];
 }
 
 function mainHorsDuSol(corps: Corps, k: number, sol: SolLocal | null): void {
