@@ -267,6 +267,7 @@ export class Vue3D {
     this.feux = new Feux3D(this.relief);
     this.proches = new CorpsProches(this.foule);
     this.camp = new Camp3D(this.relief);
+    if (renderer.reversedDepthBuffer) this.camp.inverserDecalage();
     // La mer : des anneaux autour de la caméra, fins près d'elle (houle), larges jusqu'à l'horizon.
     const plan = maillageMer();
     this.mer = new THREE.Mesh(plan, eauMer);
@@ -301,9 +302,35 @@ export class Vue3D {
   }
 
   static async creer(hote: HTMLElement, ctx: Contexte): Promise<Vue3D> {
-    const forcerWebGL = new URLSearchParams(location.search).has("webgl");
-    const renderer = new THREE.WebGPURenderer({ antialias: true, logarithmicDepthBuffer: !new URLSearchParams(location.search).has("profondeurlineaire"), forceWebGL: forcerWebGL });
+    const params = new URLSearchParams(location.search);
+    const lineaire = params.has("profondeurlineaire");
+    // ?profondeurlog : ancienne profondeur logarithmique, pour comparer (touche I).
+    const log = params.has("profondeurlog");
+    // Carte graphique (correctif 0.41.8, RTX 3060) : sur un portable à deux cartes (Optimus), demander la carte puissante ; sinon le
+    // navigateur peut prendre la carte intégrée du processeur, cinq fois plus lente. Le nom de la carte retenue s'affiche (touche I).
+    let adaptateur: GPUAdapter | null = null;
+    if (!params.has("webgl") && "gpu" in navigator) {
+      adaptateur = await navigator.gpu.requestAdapter({ powerPreference: "high-performance", featureLevel: "compatibility" } as GPURequestAdapterOptions).catch(() => null);
+    }
+    const webgpu = adaptateur !== null;
+    // Profondeur (même correctif) : la profondeur logarithmique écrit la profondeur depuis chaque pixel, ce qui prive la carte du
+    // test de profondeur anticipé (early-Z) : chaque feuille cachée derrière une autre est calculée en entier. En WebGPU, la
+    // profondeur inversée en nombres à virgule (32 bits) garde la même netteté de 1 cm à l'horizon sans ce coût. En WebGL 2, la
+    // toile n'a qu'une profondeur de 24 bits : on garde la logarithmique.
+    let canvas: HTMLCanvasElement | undefined;
+    let context: WebGL2RenderingContext | undefined;
+    if (!webgpu) {
+      canvas = document.createElement("canvas");
+      context = canvas.getContext("webgl2", { antialias: true, alpha: true, depth: true, stencil: false, powerPreference: "high-performance" }) ?? undefined;
+      if (!context) canvas = undefined;
+    }
+    const renderer = new THREE.WebGPURenderer({
+      antialias: true, forceWebGL: !webgpu, powerPreference: "high-performance", canvas, context,
+      reversedDepthBuffer: webgpu && !lineaire && !log, logarithmicDepthBuffer: (!webgpu || log) && !lineaire,
+    } as ConstructorParameters<typeof THREE.WebGPURenderer>[0]);
     await renderer.init();
+    Vue3D.nomCarte = Vue3D.lireCarte(renderer, adaptateur);
+    Vue3D.adaptateur = adaptateur;
     // Rendu des tons « AgX » (comme un film ou un capteur : les fortes lumières passent au blanc sans virer) ; l'exposition suit la lumière.
     renderer.toneMapping = THREE.AgXToneMapping;
     renderer.toneMappingExposure = 1;
@@ -317,6 +344,27 @@ export class Vue3D {
     // Pour les essais automatiques : ?debug3d expose la vue dans la console.
     if (new URLSearchParams(location.search).has("debug3d")) Object.assign(window, { vue3d: vue, THREE3: THREE });
     return vue;
+  }
+
+  /** Nom de la carte graphique utilisée (touche I), ou chaîne vide si le navigateur le cache. */
+  private static nomCarte = "";
+  /** Adaptateur demandé pour choisir la carte : gardé en vie tant que la page vit. */
+  static adaptateur: GPUAdapter | null = null;
+
+  private static lireCarte(renderer: THREE.WebGPURenderer, adaptateur: GPUAdapter | null): string {
+    try {
+      const backend = renderer.backend as { isWebGPUBackend?: boolean; gl?: WebGL2RenderingContext };
+      if (backend.isWebGPUBackend && adaptateur) {
+        const i = (adaptateur as GPUAdapter & { info?: { vendor?: string; architecture?: string; description?: string } }).info;
+        return [i?.description || "", i?.vendor || "", i?.architecture || ""].filter((x) => x).join(" · ");
+      }
+      const gl = backend.gl;
+      if (!gl) return "";
+      const ext = gl.getExtension("WEBGL_debug_renderer_info");
+      return String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? "");
+    } catch {
+      return "";
+    }
   }
 
   /** Moteur de rendu effectivement utilisé. */
@@ -1235,12 +1283,14 @@ export class Vue3D {
       triangles: nombre(Math.round((info.triangles ?? 0) / 1000)),
       qualite: t(`trois.qualite.${this.qualite}`),
       moteur: this.moteur,
+      carte: Vue3D.nomCarte || "?",
     });
   }
 
   private ecran(p: THREE.Vector3): { x: number; y: number } | null {
+    // Derrière la caméra : rien (test en repère de la caméra, valable aussi avec la profondeur inversée).
+    if (p.clone().applyMatrix4(this.camera.matrixWorldInverse).z >= -this.camera.near) return null;
     const v = p.clone().project(this.camera);
-    if (v.z < -1 || v.z > 1) return null;
     const r = this.renderer.domElement.getBoundingClientRect();
     return { x: r.left + ((v.x + 1) / 2) * r.width, y: r.top + ((1 - v.y) / 2) * r.height };
   }

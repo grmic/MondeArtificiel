@@ -127,6 +127,13 @@ export class Camp3D {
   private readonly entrees: THREE.InstancedMesh;
   private readonly plantes: THREE.InstancedMesh;
   private readonly sols: THREE.Mesh;
+
+  /** Profondeur inversée (WebGPU) : le décalage qui garde les sols du camp au-dessus du relief change de signe. */
+  inverserDecalage(): void {
+    const m = this.sols.material as THREE.Material;
+    m.polygonOffsetFactor = -m.polygonOffsetFactor;
+    m.needsUpdate = true;
+  }
   private readonly piquets: THREE.InstancedMesh;
   private readonly gabarits = gabarits();
   private readonly corpsBetes: THREE.InstancedMesh[];
