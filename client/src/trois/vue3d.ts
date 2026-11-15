@@ -940,10 +940,16 @@ export class Vue3D {
         yeux.copy(this.visage.yeux);
         face.copy(this.visage.face);
       }
-      const dir = face.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), s.angle);
-      dir.multiplyScalar(Math.cos(s.hauteur)).add(new THREE.Vector3(0, Math.sin(s.hauteur), 0)).normalize();
-      // Visage tourné vers le sol (à plat ventre, à la nage) : on reste au-dessus.
-      if (dir.y < -0.2) dir.setY(-0.2).normalize();
+      // Cap horizontal de la caméra : celui du visage, ou, s'il regarde le ciel (couché sur le dos), celui du corps. Sans cela la
+      // caméra se plaçait à la verticale du visage, où le moindre souffle faisait tourner la vue d'un bord à l'autre.
+      const plat = Math.hypot(face.x, face.z);
+      const w = Math.min(1, Math.max(0, (plat - 0.15) / 0.35));
+      const cx = Math.sin(cap) * (1 - w) + (plat > 1e-6 ? face.x / plat : 0) * w;
+      const cz = Math.cos(cap) * (1 - w) + (plat > 1e-6 ? face.z / plat : 0) * w;
+      const a = Math.atan2(cx, cz) + s.angle;
+      // Hauteur : celle du visage, bornée (jamais à la verticale), plus ce que l'on a choisi en glissant.
+      const el = Math.max(-0.35, Math.min(1.15, Math.max(-0.2, Math.min(0.9, Math.atan2(face.y, plat))) + s.hauteur));
+      const dir = new THREE.Vector3(Math.sin(a) * Math.cos(el), Math.sin(el), Math.cos(a) * Math.cos(el));
       const cible = yeux.clone().addScaledVector(dir, s.distance);
       const plancher = Math.max(this.relief.hauteur(cible.x, cible.z), 0) + 0.05;
       if (cible.y < plancher) cible.y = plancher;
