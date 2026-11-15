@@ -82,6 +82,8 @@ public sealed class Raid
     public List<int> Guerriers { get; set; } = [];
     public bool Retour { get; set; }
     public long RetourDepuis { get; set; }
+    /// <summary>Ce qui a déjà été signalé aux alertes (0.42.0) : 1 le départ, 2 l'arrivée près du camp. Ne change rien au raid.</summary>
+    public byte Signale { get; set; }
 
     public Raid Copier()
     {
@@ -1089,6 +1091,21 @@ public sealed partial class Comportement
 {
     private readonly Dictionary<int, (Communaute Groupe, Raid Raid)> _raids = [];
 
+    /// <summary>Déroulés des derniers assauts, pour la vue 3D (0.42.0) : gardés deux jours, en mémoire seulement.</summary>
+    public List<AssautVu> AssautsVus { get; } = [];
+
+    /// <summary>Troupes parties ou arrivées depuis la dernière lecture (0.42.0, pour les alertes).</summary>
+    public List<TroupeSignalee> Troupes { get; } = [];
+
+    /// <summary>Note le départ d'une troupe, puis son arrivée près du camp visé, une fois chacun. Ne tire aucun hasard.</summary>
+    private void Signaler(Communaute c, Communaute cible, Raid raid, bool auxPortes, long maintenant)
+    {
+        var etape = (byte)(auxPortes ? 2 : 1);
+        if (raid.Signale >= etape) return;
+        raid.Signale = etape;
+        Troupes.Add(new TroupeSignalee(auxPortes, c.Id, cible.Id, raid.Guerriers[0], raid.Guerriers.Count, raid.EvenementId, maintenant));
+    }
+
     private static string Minuscule(string nom) => char.ToLowerInvariant(nom[0]) + nom[1..];
 
     /// <summary>
@@ -1098,6 +1115,7 @@ public sealed partial class Comportement
     public void Raids(List<Humain> humains, long maintenant)
     {
         _raids.Clear();
+        AssautsVus.RemoveAll(a => maintenant - a.Secondes > AssautVu.Duree);
         if (Social is null) return;
         var heure = Calendrier.Decomposer(maintenant).Heure;
         foreach (var c in Social.Communautes)
@@ -1132,11 +1150,13 @@ public sealed partial class Comportement
             }
             else
             {
+                Signaler(c, cible, raid, auxPortes: false, maintenant);
                 // Le camp visé : là où vit le membre le plus proche du centre du groupe ennemi.
                 var camp = humains.Vivants().Where(h => h.EstVivant && h.CommunauteId == cible.Id && !h.EstEnfant(maintenant))
                     .MinBy(h => (Distance(h.X, h.Y, cible.CentreX, cible.CentreY), h.Id));
                 if (camp is not null) (raid.X, raid.Y) = (camp.X, camp.Y);
                 var arrives = raid.Guerriers.Count(id => Distance(humains[id - 1].X, humains[id - 1].Y, raid.X, raid.Y) <= 3);
+                if (arrives >= Math.Max(2, (int)Math.Ceiling(raid.Guerriers.Count * 0.6))) Signaler(c, cible, raid, auxPortes: true, maintenant);
                 if (arrives >= Math.Max(2, (int)Math.Ceiling(raid.Guerriers.Count * 0.6)) && heure is >= 4 and <= 6)
                 {
                     Assaut(c, cible, raid, humains, maintenant);
@@ -1260,6 +1280,12 @@ public sealed partial class Comportement
         foreach (var d in defenseurs) armes[d.Id] = ChoisirArme(d, prepare: d.Activite == Activite.Dormir ? 0.3 : 0.7);
         var blesses = new List<Humain>();
         var enlevees = new List<(Humain Captive, Humain Ravisseur)>();
+        var vu = new AssautVu
+        {
+            Secondes = maintenant, X = raid.X, Y = raid.Y, Assaillants = c.Id, Cible = cible.Id,
+            Troupe = [.. assaillants.Select(h => h.Id)], Defenseurs = [.. defenseurs.Select(h => h.Id)],
+            Endormis = [.. defenseurs.Where(h => h.Activite == Activite.Dormir).Select(h => h.Id)],
+        };
         foreach (var a in assaillants.OrderBy(_ => alea.Reel()).ToList())
         {
             var debout = defenseurs.Vivants().Where(d => d.EstVivant && tues.All(t => t.Victime != d) && enlevees.All(e => e.Captive != d)).ToList();
@@ -1274,18 +1300,21 @@ public sealed partial class Comportement
             var pTuer = Math.Min(exterminer ? 0.8 : 0.6, 0.22 * surprise * 2 * fa / (fa + fd) * Puissance(armes[a.Id]) * (exterminer ? 1.5 : 1));
             var pMourir = Math.Min(0.5, 0.12 / surprise * nombre * 2 * fd / (fa + fd) * Puissance(armes[d.Id]));
             var u = alea.Reel();
-            if (u < pTuer && d.Sexe == Sexe.Femme && !exterminer && alea.Reel() < ChanceDEnlever(a, d, maintenant)) enlevees.Add((d, a));
-            else if (u < pTuer) tues.Add((d, a, armes[a.Id]));
-            else if (u < pTuer + pMourir) tues.Add((a, d, armes[d.Id]));
+            var issue = IssueDuel.Rien;
+            if (u < pTuer && d.Sexe == Sexe.Femme && !exterminer && alea.Reel() < ChanceDEnlever(a, d, maintenant)) { enlevees.Add((d, a)); issue = IssueDuel.Enlevee; }
+            else if (u < pTuer) { tues.Add((d, a, armes[a.Id])); issue = IssueDuel.DefenseurTue; }
+            else if (u < pTuer + pMourir) { tues.Add((a, d, armes[d.Id])); issue = IssueDuel.AssaillantTue; }
             else if (u < pTuer + pMourir + 0.3)
             {
                 var blesse = alea.Reel() < fa / (fa + fd) ? d : a;
+                issue = blesse == d ? IssueDuel.DefenseurBlesse : IssueDuel.AssaillantBlesse;
                 var frappeur = blesse == d ? a : d;
                 var coup = (15 + 25 * alea.Reel()) * (0.6 + 0.4 * Puissance(armes[frappeur.Id]));
                 blesse.Sante -= coup;
                 Medecine.Blesser(blesse, coup, maintenant, OrigineBlessure.Guerre);
                 blesses.Add(blesse);
             }
+            vu.Duels.Add(new DuelAssaut(a.Id, d.Id, armes[a.Id], armes[d.Id], issue));
         }
 
         var mortsAssaillants = tues.Count(t => t.Victime.CommunauteId != cible.Id);
@@ -1319,6 +1348,7 @@ public sealed partial class Comportement
         foreach (var (captive, ravisseur) in enlevees) Enlever(captive, ravisseur, c, cible, id, humains, maintenant);
         foreach (var b in touches.Vivants().Where(b => b.Sante <= 0 && b.EstVivant))
         {
+            vu.MortsDeBlessures.Add(b.Id);
             Tuer(b, maintenant, CauseDeMort.Guerre, new Recit("guerre.mort.blessures", ("v", b), ("age", AgeEnMots(b, maintenant)), ("c", c), ("cible", cible)), id);
         }
         // Ce que chacun en garde au fond de lui : le tueur, sa fierté ou son remords ; les attaqués, la peur qu'ils reviennent.
@@ -1348,6 +1378,8 @@ public sealed partial class Comportement
         // Même sans mort, l'attaque offense tout le groupe attaqué.
         if (tues.Count == 0 && enlevees.Count == 0) Social!.Offenser(assaillants[0], defenseurs[0], 5, id, humains, maintenant);
         Social!.Ensanglanter(c, cible, mortsAssaillants, mortsDefenseurs, id, maintenant);
+        vu.EvenementId = id;
+        AssautsVus.Add(vu);
         Rentrer(c, raid, maintenant);
     }
 }

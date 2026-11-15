@@ -10,6 +10,8 @@ public enum TypeObjectif : byte
     Mort = 2,
     /// <summary>La prochaine alerte sur un suivi ★ (0.40.0).</summary>
     AlerteSuivi = 3,
+    /// <summary>Le prochain assaut : une troupe arrive près du camp qu'elle attaquera à l'aube (0.42.0).</summary>
+    ProchainAssaut = 4,
 }
 
 /// <summary>

@@ -91,6 +91,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
                 "naissance" => Objectif.Evenement(TypeObjectif.Naissance, maintenant),
                 "mort" => Objectif.Evenement(TypeObjectif.Mort, maintenant),
                 "alerte" => Objectif.Evenement(TypeObjectif.AlerteSuivi, maintenant),
+                "assaut" => Objectif.Evenement(TypeObjectif.ProchainAssaut, maintenant),
                 _ => throw new HubException(L.T("erreur.objectif")),
             };
             monde.FixerObjectif(objectif);
@@ -923,6 +924,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     /// <summary>Huttes, champs et bêtes autour d'une case, pour la vue 3D (0.41.1).</summary>
     public CampDto Camp(int x, int y, int rayon) => CampDto.Depuis(service.Monde, x, y, rayon);
+
+    /// <summary>Assauts des deux derniers jours autour de la caméra, pour les rejouer dans la vue 3D (0.42.0).</summary>
+    public AssautDto[] Assauts(int x, int y, int rayon) => AssautDto.Depuis(service.Monde, x, y, rayon);
 
     /// <summary>Températures du jour sur chaque case, pour la neige de la vue 3D.</summary>
     public TemperaturesDto Temperatures() => TemperaturesDto.Depuis(service.Monde);

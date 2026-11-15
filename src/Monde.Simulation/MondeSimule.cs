@@ -749,6 +749,7 @@ public sealed partial class MondeSimule
         var nombreAvant = _humains.Count;
         var vivantsAvant = objectif?.Type == TypeObjectif.Mort ? _humains.Vivants().Count(h => h.EstVivant) : 0;
         var alertesAvant = _veille.Produites;
+        var troupesAvant = _troupesAuxPortes;
 
         var pas = 0;
         var evenement = false;
@@ -797,6 +798,7 @@ public sealed partial class MondeSimule
                     // Les naissances du pas sont vivantes : on compare aux vivants d'avant, nouveau-nés compris.
                     TypeObjectif.Mort => _humains.Vivants().Count(h => h.EstVivant) < vivantsAvant + (_humains.Count - nombreAvant),
                     TypeObjectif.AlerteSuivi => _veille.Produites > alertesAvant,
+                    TypeObjectif.ProchainAssaut => _troupesAuxPortes > troupesAvant,
                     _ => false,
                 };
                 if (evenement)
@@ -848,6 +850,7 @@ public sealed partial class MondeSimule
             _catastrophes.Heure(_humains, _secondes);
             _catastrophes.FeuxDeCamp(_installations, _humains, _secondes);
             _comportement.Raids(_humains, _secondes);
+            SignalerTroupes();
         }
 
         // Toutes les heures, chacun marque les terres de son groupe ; au début de chaque saison, l'histoire des groupes est archivée.

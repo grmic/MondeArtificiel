@@ -155,6 +155,20 @@ public sealed class GuerresTests
         // Les morts du combat sont reliés à la guerre et à leur tueur.
         Assert.Equal(guerre.MortsA + guerre.MortsB, tous.Count(h => h.CauseDeMort == CauseDeMort.Guerre));
         Assert.All(tous.Where(h => h.CauseDeMort == CauseDeMort.Guerre), h => Assert.NotEqual(0, h.MeurtrierId));
+
+        // 0.42.0 : la troupe arrivée est signalée (départ puis arrivée), et le déroulé de l'assaut est gardé pour la vue 3D.
+        Assert.Equal([false, true], comportement.Troupes.Select(x => x.AuxPortes));
+        Assert.All(comportement.Troupes, x => Assert.Equal((a.Id, b.Id, raid.Guerriers[0]), (x.Communaute, x.Cible, x.Chef)));
+        var vu = Assert.Single(comportement.AssautsVus);
+        Assert.Equal((assaut.Id, aube, a.Id, b.Id), (vu.EvenementId, vu.Secondes, vu.Assaillants, vu.Cible));
+        Assert.Equal(raid.Guerriers.Count, vu.Troupe.Length);
+        Assert.InRange(vu.Duels.Count, 1, vu.Troupe.Length);
+        Assert.All(vu.Duels, d => Assert.Contains(d.Assaillant, vu.Troupe));
+        Assert.All(vu.Duels, d => Assert.Contains(d.Defenseur, vu.Defenseurs));
+        Assert.Equal(tous.Where(h => h.CauseDeMort == CauseDeMort.Guerre).Select(h => h.Id).Order(), vu.Morts().Order());
+        // Gardé deux jours, puis oublié.
+        comportement.Raids(tous, aube + AssautVu.Duree + Calendrier.SecondesParHeure);
+        Assert.Empty(comportement.AssautsVus);
     }
 
     [Fact]

@@ -43,6 +43,11 @@ public enum SorteAlerte : byte
     Catastrophe = 16,
     /// <summary>Une première fois pour le groupe.</summary>
     PremiereFois = 17,
+
+    /// <summary>Une troupe part en raid (0.42.0) : toutes les guerres, suivies ou non.</summary>
+    TroupeEnMarche = 18,
+    /// <summary>Une troupe attend l'aube près du camp qu'elle va attaquer (0.42.0) : toutes les guerres.</summary>
+    TroupeAuxPortes = 19,
 }
 
 /// <summary>Une alerte : ce qui est arrivé à un suivi, la ligne du journal qui le dit (0 : aucune) ou un texte à elle.</summary>
@@ -62,6 +67,7 @@ public sealed class ReglesAlertes
         var r = new ReglesAlertes();
         r.Pause[(int)SorteAlerte.Mort] = true;
         r.Pause[(int)SorteAlerte.Guerre] = true;
+        r.Pause[(int)SorteAlerte.TroupeAuxPortes] = true;
         return r;
     }
 
@@ -126,6 +132,22 @@ internal sealed class Veille
         _alertes.Add(new AlerteSuivi(maintenant, sorte, humain, communaute, evenement, texte, pause));
         Produites++;
         if (pause) PauseDemandee = true;
+    }
+
+    /// <summary>
+    /// Une troupe part en raid, ou arrive près du camp visé (0.42.0) : on prévient pour toutes les guerres, même sans suivi.
+    /// L'alerte porte le chef de la troupe (pour « Aller voir ») et la communauté qui attaque.
+    /// </summary>
+    public void Troupe(TroupeSignalee t, IReadOnlyList<Humain> tous, IReadOnlyList<Communaute> groupes)
+    {
+        if (t.Chef <= 0 || t.Chef > tous.Count) return;
+        var c = groupes.FirstOrDefault(g => g.Id == t.Communaute);
+        var cible = groupes.FirstOrDefault(g => g.Id == t.Cible);
+        if (c is null || cible is null) return;
+        var sorte = t.AuxPortes ? SorteAlerte.TroupeAuxPortes : SorteAlerte.TroupeEnMarche;
+        var texte = new Recit(t.AuxPortes ? "alerte.troupe.portes" : "alerte.troupe.marche",
+            ("c", c), ("cible", cible), ("chef", tous[t.Chef - 1]), ("n", Math.Max(0, t.Guerriers - 1)));
+        Alerter(t.Secondes, sorte, t.Chef, c.Id, t.EvenementId, texte);
     }
 
     private static readonly HashSet<string> ClesGroupe =

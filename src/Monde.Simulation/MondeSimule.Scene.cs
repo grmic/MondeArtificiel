@@ -71,9 +71,13 @@ public sealed partial class MondeSimule
                 var age = e.AgeEnAnnees(maintenant);
                 if (!plusJeune.TryGetValue(e.MereId, out var a) || age < a) plusJeune[e.MereId] = age;
             }
+            // Les morts d'un assaut récent restent couchés là où ils sont tombés (0.42.0), pour que la vue 3D puisse rejouer l'assaut.
+            var gisants = new HashSet<int>();
+            foreach (var assaut in _comportement.AssautsVus)
+                if (Math.Abs(assaut.X - x) <= rayon && Math.Abs(assaut.Y - y) <= rayon) gisants.UnionWith(assaut.Morts());
             foreach (var h in _humains)
             {
-                if (!h.EstVivant || Math.Abs(h.X - x) > rayon || Math.Abs(h.Y - y) > rayon) continue;
+                if (!h.EstVivant && !gisants.Contains(h.Id) || Math.Abs(h.X - x) > rayon || Math.Abs(h.Y - y) > rayon) continue;
                 int versX = -1, versY = -1;
                 double avance = 0, parSeconde = 0;
                 if (!SurPlace.Contains(h.Activite))
@@ -111,7 +115,11 @@ public sealed partial class MondeSimule
                     | (h.Activite == Activite.PorteParSaMere ? 32 : 0)
                     | (h.Sexe == Sexe.Femme && plusJeune.TryGetValue(h.Id, out var cadet) && cadet < 2.5 ? 64 : 0)
                     | (h.Objets.Any(o => o.Matiere == Matiere.Epieu) ? 128 : 0)
-                    | (h.PartDesChamps > 1 / 3.0 ? 256 : 0);
+                    | (h.PartDesChamps > 1 / 3.0 ? 256 : 0)
+                    // 0.42.0 : plaie ouverte, blessure grave (au moins 20 de santé perdue d'un coup), arme taillée portée (3 bits).
+                    | (h.EstVivant && Medecine.PlaieOuverte(h, maintenant) ? 512 : 0)
+                    | (h.EstVivant && h.BlessureGrave >= 20 && Medecine.PlaieOuverte(h, maintenant) ? 1024 : 0)
+                    | (int)ArmePortee(h) << 11;
                 var humeur = h switch
                 {
                     { EstDeprime: true } => 7,
@@ -123,7 +131,7 @@ public sealed partial class MondeSimule
                     { Humeur: > 25 } => 1,
                     _ => 0,
                 };
-                liste.Add(new HumainScene(h.Id, h.X, h.Y, versX, versY, avance, parSeconde, h.Activite, etat,
+                liste.Add(new HumainScene(h.Id, h.X, h.Y, versX, versY, avance, parSeconde, h.EstVivant ? h.Activite : Activite.Mort, etat,
                     h.AgeEnAnnees(maintenant), h.Sexe == Sexe.Femme, h.Apparence.Teint, humeur, h.Peur, h.CommunauteId, h.MereId,
                     h.Reserves, h.Personnalite.Endurance, h.Apparence.Taille, enfants.GetValueOrDefault(h.Id),
                     h.Vetement?.Matiere ?? Matiere.Aucune, h.Vetement?.Usure ?? 0, h.Froid, h.Faim, h.Fatigue, h.Sante,
@@ -131,6 +139,18 @@ public sealed partial class MondeSimule
             }
             return (maintenant, liste);
         }
+    }
+
+    /// <summary>L'arme taillée qu'un humain porte toujours sur lui (lance, hache, épieu), ou les poings (0.42.0).</summary>
+    private static Arme ArmePortee(Humain h)
+    {
+        foreach (var o in h.Objets)
+        {
+            if (o.Matiere != Matiere.Assemblage || Assemblage.Lire(o.Pieces) is not { } a) continue;
+            if (a.Montage == Montage.Bout && (Lois.De(a.Tete).Forme & Forme.Pointu) != 0) return Arme.Lance;
+            if (a.Montage == Montage.Travers) return Arme.Hache;
+        }
+        return h.Porte(Matiere.Epieu) ? Arme.Epieu : Arme.Poings;
     }
 
     /// <summary>

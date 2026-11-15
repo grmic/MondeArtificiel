@@ -102,3 +102,20 @@ public sealed record CampDto(int[] Huttes, int[] Champs, int[] Betes)
             [.. betes.SelectMany(b => new[] { b.Id, b.X, b.Y, b.Forme, (int)Math.Round(b.Poids), b.Nombre, b.Gardees ? 1 : 0 })]);
     }
 }
+
+/// <summary>
+/// Le déroulé d'un assaut pour la vue 3D (0.42.0). <paramref name="Duels"/> par 5 : assaillant, défenseur, arme de l'assaillant,
+/// arme du défenseur, issue (voir <see cref="IssueDuel"/>), dans l'ordre où ils ont eu lieu. <paramref name="Secondes"/> : instant de
+/// l'assaut ; <paramref name="X"/>, <paramref name="Y"/> : camp attaqué.
+/// </summary>
+public sealed record AssautDto(long Id, long Secondes, int X, int Y, int Assaillants, int Cible, int[] Troupe, int[] Defenseurs,
+    int[] Endormis, int[] Duels, int[] MortsDeBlessures)
+{
+    public static AssautDto[] Depuis(MondeSimule monde, int x, int y, int rayon) =>
+    [
+        .. monde.Assauts(x, y, Math.Clamp(rayon, 0, SceneDto.RayonMax)).Select(a => new AssautDto(a.EvenementId, a.Secondes, a.X, a.Y,
+            a.Assaillants, a.Cible, a.Troupe, a.Defenseurs, a.Endormis,
+            [.. a.Duels.SelectMany(d => new[] { d.Assaillant, d.Defenseur, (int)d.ArmeAssaillant, (int)d.ArmeDefenseur, (int)d.Issue })],
+            [.. a.MortsDeBlessures])),
+    ];
+}
