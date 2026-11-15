@@ -62,6 +62,21 @@ export class Ciel {
   private readonly materiauCiel: THREE.MeshBasicNodeMaterial;
   /** Nuages en volume (0.41.6) : calculés à part, en petite image, avant chaque image. */
   private nuagesImage: THREE.RenderTarget | null = null;
+  /**
+   * Accumulation (0.41.6) : les nuages calculés à l'image précédente, relus là où la même direction tombait alors, se mêlent
+   * à ceux de l'image courante. Le grain des départs tirés au hasard et les marches de l'image réduite se fondent ainsi en
+   * quelques images (sinon : bords crénelés et grumeleux). Deux images qui alternent : on lit l'une en écrivant l'autre.
+   */
+  private nuagesAvant: THREE.RenderTarget | null = null;
+  private texAvant: THREE.TextureNode | null = null;
+  private texNuages: THREE.TextureNode | null = null;
+  private readonly uCamAvant = uniform(new THREE.Matrix4());
+  private readonly uOuvertureAvant = uniform(new THREE.Vector2(1, 1));
+  /** Décalage du rayon dans son bloc de pixels (une fraction de pixel de l'image réduite, change à chaque image). */
+  private readonly uDecalage = uniform(new THREE.Vector2());
+  /** 0 : oublier l'image précédente (premier calcul, saut de caméra). */
+  private readonly uGarder = uniform(0);
+  private imageNuages = 0;
   private nuagesQuad: THREE.QuadMesh | null = null;
   private reduction = 4;
   private readonly uOeil = uniform(new THREE.Vector3());
@@ -188,24 +203,47 @@ export class Ciel {
     // Calculés une fois et lus deux fois (couleur et masque des rayons) : une variable du shader.
     (this.nuagesQuad?.material as THREE.Material | undefined)?.dispose();
     this.nuagesImage?.dispose();
+    this.nuagesAvant?.dispose();
     this.nuagesQuad = null;
     this.nuagesImage = null;
+    this.nuagesAvant = null;
+    this.texAvant = null;
+    this.texNuages = null;
     let source: THREE.Node<"vec4">;
     if (volume) {
       // Les cumulus coûtent cher : on les calcule sur une petite image (un rayon par bloc de pixels), lue ensuite par le ciel.
       this.reduction = volume.reduction;
-      this.nuagesImage = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
-      this.nuagesImage.texture.minFilter = THREE.LinearFilter;
-      this.nuagesImage.texture.magFilter = THREE.LinearFilter;
+      const cible = () => {
+        const c = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+        c.texture.minFilter = THREE.LinearFilter;
+        c.texture.magFilter = THREE.LinearFilter;
+        c.texture.generateMipmaps = false;
+        return c;
+      };
+      this.nuagesImage = cible();
+      this.nuagesAvant = cible();
       const quad = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
       quad.blending = THREE.NoBlending;
       // Direction du regard pour ce pixel, depuis l'ouverture de la caméra (l'inverse de la projection perd sa précision avec un
       // plan proche à 1 cm et un lointain à 900 km).
-      const vue = vec3(screenUV.x.mul(2).sub(1).mul(this.uOuverture.x), screenUV.y.mul(-2).add(1).mul(this.uOuverture.y), -1);
+      const uvq = screenUV.add(this.uDecalage);
+      const vue = vec3(uvq.x.mul(2).sub(1).mul(this.uOuverture.x), uvq.y.mul(-2).add(1).mul(this.uOuverture.y), -1);
       const dq = normalize(this.uCamMonde.mul(vec4(vue, 0)).xyz);
-      quad.colorNode = this.nuages.volume(this.uOeil, dq, volume.pas, volume.pasLumiere);
+      const neuf = this.nuages.volume(this.uOeil, dq, volume.pas, volume.pasLumiere);
+      // Où cette direction tombait sur l'image précédente (les nuages sont loin : seule la rotation compte).
+      const v = this.uCamAvant.mul(vec4(dq, 0)).xyz;
+      const devant = max(v.z.negate(), 0.0001);
+      const ndc = v.xy.div(devant).div(this.uOuvertureAvant);
+      const uvAvant = vec2(ndc.x.mul(0.5).add(0.5), ndc.y.mul(-0.5).add(0.5));
+      this.texAvant = texture(this.nuagesAvant.texture, uvAvant);
+      const dedans = select(v.z.lessThan(0), 1, 0)
+        .mul(select(uvAvant.x.greaterThan(0.001), 1, 0)).mul(select(uvAvant.x.lessThan(0.999), 1, 0))
+        .mul(select(uvAvant.y.greaterThan(0.001), 1, 0)).mul(select(uvAvant.y.lessThan(0.999), 1, 0));
+      quad.colorNode = mix(neuf, this.texAvant, dedans.mul(this.uGarder).mul(0.88));
       this.nuagesQuad = new THREE.QuadMesh(quad);
-      source = texture(this.nuagesImage.texture, screenUV);
+      this.texNuages = texture(this.nuagesImage.texture, screenUV);
+      source = this.texNuages;
+      this.uGarder.value = 0;
     } else source = this.nuages.nappe(d, this.uNuageClair, this.uNuageOmbre);
     const n = source.toVar();
     materiau.colorNode = Fn(() => {
@@ -227,19 +265,44 @@ export class Ciel {
 
   /** Avant chaque image : les nuages en volume, sur leur petite image, vus de la caméra. */
   rendreNuages(renderer: THREE.WebGPURenderer, camera: THREE.PerspectiveCamera): void {
-    if (!this.nuagesImage || !this.nuagesQuad) return;
+    if (!this.nuagesImage || !this.nuagesAvant || !this.nuagesQuad || !this.texAvant || !this.texNuages) return;
+    // L'image écrite à l'image précédente devient celle qu'on relit.
+    [this.nuagesImage, this.nuagesAvant] = [this.nuagesAvant, this.nuagesImage];
     renderer.getDrawingBufferSize(this.taille);
     const l = Math.max(1, Math.ceil(this.taille.x / this.reduction));
     const h = Math.max(1, Math.ceil(this.taille.y / this.reduction));
-    if (this.nuagesImage.width !== l || this.nuagesImage.height !== h) this.nuagesImage.setSize(l, h);
+    if (this.nuagesImage.width !== l || this.nuagesImage.height !== h) {
+      this.nuagesImage.setSize(l, h);
+      this.nuagesAvant.setSize(l, h);
+      this.uGarder.value = 0;
+    }
+    // Caméra et ouverture de l'image précédente (inverse de la rotation seule), avant de prendre les nouvelles.
+    this.uCamAvant.value.copy(this.uCamMonde.value).setPosition(0, 0, 0).invert();
+    this.uOuvertureAvant.value.copy(this.uOuverture.value);
+    // Un grand saut de la caméra : l'image précédente ne vaut plus rien.
+    if (this.uOeil.value.distanceToSquared(camera.position) > 200 * 200) this.uGarder.value = 0;
     this.uOeil.value.copy(camera.position);
     this.uCamMonde.value.copy(camera.matrixWorld);
     const ty = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / camera.zoom;
     this.uOuverture.value.set(ty * camera.aspect, ty);
+    // Suite de Halton (2, 3) : le rayon parcourt tout son bloc de pixels en quelques images.
+    const k = (this.imageNuages++ % 16) + 1;
+    const halton = (n: number, b: number) => {
+      let f = 1, r = 0;
+      for (let i = n; i > 0; i = Math.floor(i / b)) {
+        f /= b;
+        r += f * (i % b);
+      }
+      return r;
+    };
+    this.uDecalage.value.set((halton(k, 2) - 0.5) / l, (halton(k, 3) - 0.5) / h);
+    this.texAvant.value = this.nuagesAvant.texture;
+    this.texNuages.value = this.nuagesImage.texture;
     const avant = renderer.getRenderTarget();
     renderer.setRenderTarget(this.nuagesImage);
     this.nuagesQuad.render(renderer);
     renderer.setRenderTarget(avant);
+    this.uGarder.value = 1;
   }
 
   /** Lumière du soleil après la traversée de l'air (pour les rayons). */
