@@ -191,7 +191,9 @@ function decalage(s: HumainScene, secondes: number, auFeu: boolean): [number, nu
 
 /** Place qu'occupe au sol un corps arrêté (rayon, m) : couché, il lui faut sa longueur. */
 function emprise(c: Corps): number {
-  switch (c.posture) {
+  // D'après ce que fait l'humain dans la simulation, pas d'après la posture affichée : sinon celui qu'on écarte se met à marcher,
+  // perd sa place, revient, et ainsi de suite (il se lève et se recouche sans fin).
+  switch (posture(c.s, false, false)) {
     case "couche":
       return 0.62 * c.taille + 0.05;
     case "assis":
@@ -212,7 +214,7 @@ function emprise(c: Corps): number {
 function ecarter(cibles: Map<Corps, [number, number, boolean]>): void {
   const arretes: { c: Corps; t: [number, number, boolean]; r: number }[] = [];
   for (const [c, t] of cibles) {
-    const r = t[2] || c.enMarche ? 0 : emprise(c);
+    const r = t[2] || c.s.versX >= 0 ? 0 : emprise(c);
     if (r > 0) arretes.push({ c, t, r });
   }
   if (arretes.length < 2) return;
