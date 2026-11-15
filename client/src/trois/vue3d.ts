@@ -26,6 +26,8 @@ import { Terrain3D } from "./tuiles";
 import { Eau, maillageMer } from "./eau3d";
 import { Matieres, Vent } from "./matieres";
 import { Rejeu, type AssautJson } from "./combat";
+import { BOUTON, Manette, nomBouton, type EtatManette, type Famille } from "./manette";
+import { decrireFacteur } from "../horloge";
 
 /** Ce que la vue 3D demande au reste du client. */
 export interface Contexte {
@@ -65,6 +67,9 @@ function duree(secondes: number): string {
   const h = Math.max(1, Math.round(secondes / 3600));
   return h < 24 ? t("trois.combat.heures", { n: h }) : t("trois.combat.jours", { n: Math.round(h / 24) });
 }
+
+/** Vitesses du temps proposées à la manette (croix gauche/droite), jusqu'à la vitesse de promenade. */
+const VITESSES_MANETTE = [1, 2, 5, 10, 20, 30, 60];
 
 /** Vitesses du rejeu d'un assaut (touche V). */
 const VITESSES_REJEU = [0.5, 1, 2, 4];
@@ -262,6 +267,19 @@ export class Vue3D {
   private allure = 2;
   private readonly mini: MiniCarte;
   private miniA = 0;
+  /**
+   * Manette (0.42.5) : sticks et gâchettes ajoutés au clavier à chaque image ; L3 fait courir jusqu'à ce que le stick revienne au
+   * centre ; B deux fois de suite (hors suivi) revient à la carte ; humains déjà vus avec RB (LB revient en arrière).
+   */
+  private readonly manette = new Manette((f, branchee) => this.surManette(f, branchee));
+  private readonly pad = { avant: 0, cote: 0, monte: 0 };
+  private courir = false;
+  private quitterArme = 0;
+  private readonly voisinsVus: number[] = [];
+  private readonly ronde = new Set<number>();
+  private facteurPause: number | null = null;
+  private aideManette: HTMLElement | null = null;
+  private readonly surJournal = (evts: { type: string; humain: number; autre: number; origine: string }[]) => this.vibrerSiEntite(evts);
   private readonly surTouche = (e: KeyboardEvent) => this.toucher(e, true);
   private readonly surRelache = (e: KeyboardEvent) => this.toucher(e, false);
   private readonly surHorloge = (h: HorlogeJson) => void this.surveillerVitesse(h);
@@ -435,6 +453,7 @@ export class Vue3D {
         <button type="button" data-action="fiche" hidden></button>
         <button type="button" data-action="suivre" hidden></button>
         <button type="button" data-action="portrait" hidden></button>
+        <button type="button" data-action="manette" hidden>🎮 ${t("trois.manette.bouton")}</button>
       </form>
       <div class="aide" data-role="aide"></div>
       <div class="etat" data-role="etat"></div>`;
@@ -473,6 +492,7 @@ export class Vue3D {
     });
     q<HTMLButtonElement>('[data-action="suivre"]').addEventListener("click", () => this.basculerSuivi());
     q<HTMLButtonElement>('[data-action="portrait"]').addEventListener("click", () => this.basculerPortrait());
+    q<HTMLButtonElement>('[data-action="manette"]').addEventListener("click", () => this.montrerAideManette(!this.aideManette));
     this.afficherAide();
   }
 
@@ -852,6 +872,8 @@ export class Vue3D {
     window.addEventListener("keyup", this.surRelache);
     window.addEventListener("resize", this.surTaille);
     connexion.on("Horloge", this.surHorloge);
+    connexion.on("Journal", this.surJournal);
+    this.manette.brancher();
     this.cadrer();
     const ficheId = this.ctx.ficheCourante();
     if (ficheId) this.allerVoir(ficheId);
@@ -882,6 +904,11 @@ export class Vue3D {
     window.removeEventListener("keyup", this.surRelache);
     window.removeEventListener("resize", this.surTaille);
     connexion.off("Horloge", this.surHorloge);
+    connexion.off("Journal", this.surJournal);
+    this.manette.debrancher();
+    this.montrerAideManette(false);
+    Object.assign(this.pad, { avant: 0, cote: 0, monte: 0 });
+    this.courir = false;
     for (const m of this.minuteurs) window.clearInterval(m);
     this.minuteurs = [];
     this.touches.clear();
@@ -961,17 +988,7 @@ export class Vue3D {
       this.arreterSuivi();
       return;
     }
-    let id = this.suivi?.id ?? this.ctx.ficheCourante();
-    if (!id) {
-      const avant = new THREE.Vector3();
-      this.camera.getWorldDirection(avant);
-      let meilleur = 60;
-      for (const h of this.foule.tous()) {
-        const v = h.tete.clone().sub(this.camera.position);
-        const d = v.length();
-        if (d < meilleur && v.dot(avant) > d * 0.5) [meilleur, id] = [d, h.id];
-      }
-    }
+    const id = this.suivi?.id ?? this.ctx.ficheCourante() ?? this.humainDevant();
     if (!id) {
       this.ctx.message(t("trois.portraitSansHumain"));
       return;
@@ -983,6 +1000,20 @@ export class Vue3D {
   portraitOuSortir(id: number): void {
     if (this.suivi?.portrait && this.suivi.id === id) this.arreterSuivi();
     else this.portrait(id);
+  }
+
+  /** L'humain le plus proche devant soi (à moins de 60 m, dans un cône d'environ 60° autour du regard), ou null. */
+  private humainDevant(): number | null {
+    const avant = new THREE.Vector3();
+    this.camera.getWorldDirection(avant);
+    let meilleur = 60;
+    let id: number | null = null;
+    for (const h of this.foule.tous()) {
+      const v = h.tete.clone().sub(this.camera.position);
+      const d = v.length();
+      if (d < meilleur && v.dot(avant) > d * 0.5) [meilleur, id] = [d, h.id];
+    }
+    return id;
   }
 
   /** Portrait d'un humain : de face, un peu de côté, à 80 cm. */
@@ -1116,6 +1147,250 @@ export class Vue3D {
     this.regarderVers(tete);
   }
 
+  /** Une manette vient d'être branchée (ou débranchée) : message, bouton d'aide, aide détaillée la toute première fois. */
+  private surManette(f: Famille, branchee: boolean): void {
+    const bouton = this.hud.querySelector<HTMLButtonElement>('[data-action="manette"]');
+    if (bouton) bouton.hidden = !branchee;
+    if (!branchee) {
+      Object.assign(this.pad, { avant: 0, cote: 0, monte: 0 });
+      this.courir = false;
+      this.montrerAideManette(false);
+      this.ctx.message(t("trois.manette.debranchee"));
+      return;
+    }
+    this.ctx.message(t("trois.manette.connectee", { nom: t(`trois.manette.famille.${f}`) }));
+    if (lireStockage("monde.manette.aide") !== "1") {
+      ecrireStockage("monde.manette.aide", "1");
+      this.montrerAideManette(true);
+    }
+  }
+
+  /** Aide de la manette, avec les symboles de la manette branchée (✕ ○ □ △ sur PlayStation, A B X Y sur Xbox). */
+  private montrerAideManette(montrer: boolean): void {
+    this.aideManette?.remove();
+    this.aideManette = null;
+    if (!montrer) return;
+    const f = this.manette.courante ?? "xbox";
+    const b = (k: number) => nomBouton(f, k);
+    const lignes: [string, string][] = [
+      [t("trois.manette.stickGauche"), t("trois.manette.avancer")],
+      [t("trois.manette.stickDroit"), t("trois.manette.regarder")],
+      [b(BOUTON.L3), t("trois.manette.courir")],
+      [b(BOUTON.RT), t("trois.manette.monter")],
+      [b(BOUTON.LT), t("trois.manette.descendre")],
+      [b(BOUTON.A), t("trois.manette.suivre")],
+      [b(BOUTON.B), t("trois.manette.cesser")],
+      [b(BOUTON.X), t("trois.manette.mode")],
+      [b(BOUTON.Y), t("trois.manette.portrait")],
+      [`${b(BOUTON.RB)} / ${b(BOUTON.LB)}`, t("trois.manette.voisins")],
+      ["↑ / ↓", t("trois.manette.allure")],
+      ["← / →", t("trois.manette.temps")],
+      [b(BOUTON.MENU), t("trois.manette.pause")],
+      [b(BOUTON.VUE), t("trois.manette.fiche")],
+      [b(BOUTON.R3), t("trois.manette.combat")],
+    ];
+    const div = document.createElement("div");
+    div.className = "manette3d";
+    const titre = document.createElement("h3");
+    titre.textContent = `🎮 ${t(`trois.manette.famille.${f}`)}`;
+    const table = document.createElement("table");
+    for (const [touche, action] of lignes) {
+      const tr = table.insertRow();
+      const th = document.createElement("th");
+      th.textContent = touche;
+      tr.append(th);
+      tr.insertCell().textContent = action;
+    }
+    const pied = document.createElement("p");
+    pied.textContent = t("trois.manette.fermer");
+    div.append(titre, table, pied);
+    div.addEventListener("click", () => this.montrerAideManette(false));
+    this.hote.append(div);
+    this.aideManette = div;
+  }
+
+  /** À chaque image : la manette s'ajoute au clavier (sticks, gâchettes) et ses boutons agissent comme les touches. */
+  private lireManette(dt: number): void {
+    const e = this.manette.lire();
+    if (!e || document.querySelector("dialog[open]")) {
+      Object.assign(this.pad, { avant: 0, cote: 0, monte: 0 });
+      return;
+    }
+    // L'aide se ferme au premier bouton, sans rien faire d'autre.
+    if (this.aideManette && e.appuis.size > 0) {
+      this.montrerAideManette(false);
+      return;
+    }
+    this.analogiqueManette(e, dt);
+    for (const k of e.appuis) this.boutonManette(k);
+  }
+
+  private analogiqueManette(e: EtatManette, dt: number): void {
+    const bouge = Math.hypot(e.lx, e.ly);
+    if (bouge === 0) this.courir = false;
+    // Se déplacer au stick met fin au suivi et rend la caméra libre pendant un assaut, comme au clavier.
+    if (bouge > 0.5 || (!this.suivi && e.rt + e.lt > 0.5)) {
+      if (this.suivi && bouge > 0.5) this.arreterSuivi();
+      if (this.foule.rejeu && this.cameraCombat) {
+        this.cameraCombat = false;
+        this.ctx.message(t("trois.combat.libre"));
+      }
+    }
+    const s = this.suivi;
+    if (s) {
+      Object.assign(this.pad, { avant: 0, cote: 0, monte: 0 });
+      // Stick droit : tourner autour de lui (et au-dessus ou en dessous) ; gâchettes : plus près (RT) ou plus loin (LT).
+      s.angle -= e.rx * dt * 2.4;
+      if (s.portrait) s.hauteur = Math.max(-0.7, Math.min(1.2, s.hauteur + e.ry * dt * 1.2));
+      else s.hauteur = Math.max(-0.5, Math.min(12, s.hauteur - e.ry * dt * 3));
+      const [min, max] = s.portrait ? [PORTRAIT_MIN, PORTRAIT_MAX] : [0.35, 60];
+      s.distance = Math.max(min, Math.min(max, s.distance * Math.exp((e.lt - e.rt) * dt * 1.5)));
+      return;
+    }
+    this.pad.avant = -e.ly;
+    this.pad.cote = e.lx;
+    this.pad.monte = e.rt - e.lt;
+    this.lacet -= e.rx * dt * 2.4;
+    this.tangage = Math.max(-1.5, Math.min(1.5, this.tangage - e.ry * dt * 1.8));
+  }
+
+  private boutonManette(k: number): void {
+    const f = this.manette.courante ?? "xbox";
+    if (k !== BOUTON.B) this.quitterArme = 0;
+    switch (k) {
+      case BOUTON.A: {
+        const id = this.humainDevant() ?? this.ctx.ficheCourante();
+        if (!id) this.ctx.message(t("trois.manette.personne"));
+        else if (id !== this.suivi?.id) this.suivre(id);
+        return;
+      }
+      case BOUTON.B:
+        if (this.suivi) {
+          this.arreterSuivi();
+          this.quitterArme = 0;
+        } else if (performance.now() - this.quitterArme < 2500) {
+          this.quitterArme = 0;
+          this.ctx.quitter();
+        } else {
+          this.quitterArme = performance.now();
+          this.ctx.message(t("trois.manette.quitter", { b: nomBouton(f, BOUTON.B) }));
+        }
+        return;
+      case BOUTON.X:
+        this.changerMode(this.mode === "vol" ? "marche" : "vol");
+        return;
+      case BOUTON.Y:
+        this.basculerPortrait();
+        return;
+      case BOUTON.RB:
+      case BOUTON.LB:
+        this.voisin(k === BOUTON.RB ? 1 : -1);
+        return;
+      case BOUTON.HAUT:
+      case BOUTON.BAS:
+        this.changerAllure(this.allure + (k === BOUTON.HAUT ? 1 : -1));
+        return;
+      case BOUTON.GAUCHE:
+      case BOUTON.DROITE:
+        void this.changerTemps(k === BOUTON.DROITE ? 1 : -1);
+        return;
+      case BOUTON.MENU:
+        void this.basculerPause();
+        return;
+      case BOUTON.VUE: {
+        const id = this.suivi?.id ?? this.humainDevant();
+        if (id) this.ctx.ouvrirFiche(id);
+        else this.ctx.message(t("trois.manette.personne"));
+        return;
+      }
+      case BOUTON.L3:
+        this.courir = !this.courir;
+        return;
+      case BOUTON.R3:
+        this.cameraCombat = !this.cameraCombat;
+        this.ctx.message(t(this.cameraCombat ? "trois.combat.camera" : "trois.combat.libre"));
+        return;
+    }
+  }
+
+  /**
+   * RB : suivre l'humain le plus proche (de celui qu'on suit, sinon de soi) qu'on n'a pas encore vu dans cette ronde ; LB : revenir
+   * au précédent. Le Portrait est gardé si l'on y est.
+   */
+  private voisin(sens: number): void {
+    const portrait = this.suivi?.portrait ?? false;
+    const aller = (id: number) => (portrait ? this.portrait(id) : this.suivre(id));
+    const present = new Set([...this.foule.tous()].map((h) => h.id));
+    if (sens < 0) {
+      while (this.voisinsVus.length > 0) {
+        const id = this.voisinsVus.pop()!;
+        if (id !== this.suivi?.id && present.has(id)) return aller(id);
+      }
+      this.ctx.message(t("trois.manette.aucunPrecedent"));
+      return;
+    }
+    const ref = (this.suivi ? this.foule.position(this.suivi.id) : null) ?? this.camera.position;
+    const autour = [...this.foule.tous()].filter((h) => h.id !== this.suivi?.id).sort((a, b) => a.tete.distanceTo(ref) - b.tete.distanceTo(ref));
+    if (autour.length === 0) {
+      this.ctx.message(t("trois.manette.personne"));
+      return;
+    }
+    // Tous vus : une nouvelle ronde commence (l'historique pour revenir en arrière est gardé).
+    if (!autour.some((h) => !this.ronde.has(h.id))) this.ronde.clear();
+    const choisi = autour.find((h) => !this.ronde.has(h.id))!;
+    if (this.suivi) {
+      this.ronde.add(this.suivi.id);
+      this.voisinsVus.push(this.suivi.id);
+    }
+    if (this.voisinsVus.length > 60) this.voisinsVus.splice(0, this.voisinsVus.length - 60);
+    this.ronde.add(choisi.id);
+    aller(choisi.id);
+  }
+
+  /** Croix gauche/droite : vitesse du temps, de ×1 à la vitesse de promenade. */
+  private async changerTemps(sens: number): Promise<void> {
+    const h = await connexion.invoke<HorlogeJson>("Horloge").catch(() => null);
+    if (!h) return;
+    if (h.saut || h.objectif) {
+      this.ctx.message(t("trois.manette.tempsOccupe"));
+      return;
+    }
+    let f: number;
+    if (h.facteur === 0) {
+      if (sens < 0) return;
+      f = this.facteurPause ?? 1;
+    } else {
+      f = sens > 0 ? VITESSES_MANETTE.find((v) => v > h.facteur * 1.001) ?? VITESSES_MANETTE.at(-1)! : [...VITESSES_MANETTE].reverse().find((v) => v < h.facteur * 0.999) ?? VITESSES_MANETTE[0];
+    }
+    f = Math.min(f, FACTEUR_PROMENADE);
+    this.facteurPause = null;
+    await connexion.invoke("ChoisirFacteur", f).catch(() => undefined);
+    this.ctx.message(decrireFacteur(f));
+  }
+
+  /** Menu / Options : pause, ou reprise à la vitesse d'avant. */
+  private async basculerPause(): Promise<void> {
+    const h = await connexion.invoke<HorlogeJson>("Horloge").catch(() => null);
+    if (!h || h.saut || h.objectif) return;
+    if (h.facteur > 0) {
+      this.facteurPause = h.facteur;
+      await connexion.invoke("ChoisirFacteur", 0).catch(() => undefined);
+      this.ctx.message(t("trois.manette.enPause"));
+    } else {
+      const f = Math.min(this.facteurPause ?? 1, FACTEUR_PROMENADE);
+      this.facteurPause = null;
+      await connexion.invoke("ChoisirFacteur", f).catch(() => undefined);
+      this.ctx.message(decrireFacteur(f));
+    }
+  }
+
+  /** L'Entité parle à l'humain suivi : vibration douce. */
+  private vibrerSiEntite(evts: { type: string; humain: number; autre: number; origine: string }[]): void {
+    const id = this.suivi?.id;
+    if (id === undefined || !Array.isArray(evts)) return;
+    if (evts.some((e) => e.type === "parole" && e.origine === "entite" && (e.humain === id || e.autre === id))) this.manette.vibrer(0.4, 0.15, 450);
+  }
+
   /** Va près d'un humain : on y est aussitôt, à pied, à quelques mètres, tourné vers lui. */
   allerVoir(id: number): void {
     const v = this.ctx.vivants().find((h) => h.id === id);
@@ -1166,7 +1441,11 @@ export class Vue3D {
           if (this.assautsConnus.has(a.id)) continue;
           this.assautsConnus.add(a.id);
           this.aRevoir = a;
-          if (!this.foule.rejeu && maintenant - a.secondes < 2 * 3600) void this.lancerRejeu(a);
+          if (!this.foule.rejeu && maintenant - a.secondes < 2 * 3600) {
+            // Un assaut commence tout près : la manette tremble un peu plus fort.
+            this.manette.vibrer(0.5, 0.7, 600);
+            void this.lancerRejeu(a);
+          }
           else if (!this.foule.rejeu) this.ctx.message(t("trois.combat.aRevoir", { il: duree(maintenant - a.secondes) }));
         }
       }
@@ -1287,9 +1566,11 @@ export class Vue3D {
 
   private deplacer(dt: number): void {
     const k = this.touches;
-    const rapide = k.has("ShiftLeft") || k.has("ShiftRight");
-    const avant = (k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) - (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0);
-    const cote = (k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0);
+    const rapide = k.has("ShiftLeft") || k.has("ShiftRight") || this.courir;
+    const borne = (v: number) => Math.max(-1, Math.min(1, v));
+    // Clavier et manette s'ajoutent (la manette donne des valeurs fines entre −1 et 1).
+    const avant = borne((k.has("KeyW") || k.has("ArrowUp") ? 1 : 0) - (k.has("KeyS") || k.has("ArrowDown") ? 1 : 0) + this.pad.avant);
+    const cote = borne((k.has("KeyD") ? 1 : 0) - (k.has("KeyA") ? 1 : 0) + this.pad.cote);
     const tourne = (k.has("ArrowLeft") ? 1 : 0) - (k.has("ArrowRight") ? 1 : 0);
     this.lacet += tourne * dt * 1.4;
     const p = this.camera.position;
@@ -1301,7 +1582,7 @@ export class Vue3D {
       const dir = new THREE.Vector3(-Math.sin(this.lacet) * Math.cos(this.tangage), Math.sin(this.tangage), -Math.cos(this.lacet) * Math.cos(this.tangage));
       const droite = new THREE.Vector3(Math.cos(this.lacet), 0, -Math.sin(this.lacet));
       p.addScaledVector(dir, avant * v * dt).addScaledVector(droite, cote * v * dt);
-      const monte = (k.has("KeyE") || k.has("Space") || k.has("PageUp") ? 1 : 0) - (k.has("KeyQ") || k.has("PageDown") ? 1 : 0);
+      const monte = borne((k.has("KeyE") || k.has("Space") || k.has("PageUp") ? 1 : 0) - (k.has("KeyQ") || k.has("PageDown") ? 1 : 0) + this.pad.monte);
       p.y += monte * v * dt;
       const plancher = Math.max(this.relief.hauteur(p.x, p.z), 0) + 1.5;
       if (p.y < plancher) p.y = plancher;
@@ -1336,6 +1617,7 @@ export class Vue3D {
     const maintenant = performance.now();
     const dt = Math.min(0.1, (maintenant - this.dernier) / 1000);
     this.dernier = maintenant;
+    this.lireManette(dt);
     this.deplacer(dt);
     const p = this.camera.position;
     const secondes = this.secondesMonde();

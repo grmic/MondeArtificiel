@@ -537,3 +537,13 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 .minicarte3d .outils { position: absolute; right: 4px; bottom: 4px; display: flex; gap: 3px; }
 .minicarte3d .outils button { min-width: 1.8em; padding: 1px 4px; font-size: 0.85rem; opacity: 0.85; }
 @media (min-width: 1100px) { .hud3d { left: 456px; bottom: 12px; max-width: min(560px, calc(100% - 710px)); } }
+.manette3d {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: min(520px, calc(100% - 32px));
+  max-height: calc(100% - 32px); overflow: auto; padding: 14px 18px; border-radius: 12px;
+  background: rgba(10, 14, 20, 0.88); color: #f2efe6; font-size: 0.9rem; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5); cursor: pointer;
+}
+.manette3d h3 { margin: 0 0 8px; font-size: 1.05rem; }
+.manette3d table { border-collapse: collapse; width: 100%; }
+.manette3d th { text-align: left; padding: 3px 12px 3px 0; white-space: nowrap; color: #ffd98a; font-weight: 600; }
+.manette3d td { padding: 3px 0; }
+.manette3d p { margin: 10px 0 0; opacity: 0.7; font-size: 0.8rem; }
