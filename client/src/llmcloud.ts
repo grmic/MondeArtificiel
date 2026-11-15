@@ -31,6 +31,9 @@ const OU_CREER_CLE: Record<string, string> = {
 export const LUS_PAR_ECHANGE = 8000;
 export const ECRITS_PAR_ECHANGE = 800;
 
+/** Valeur de l'option « Autre… » de la liste des modèles (aucun nom de modèle ne commence par un caractère nul). */
+const AUTRE_MODELE = "\u0000autre";
+
 export const estCloud = (f: string): boolean => CLOUDS.some(([c]) => c === f);
 
 /** Un montant en dollars, lisible. */
@@ -86,7 +89,10 @@ export class FormulaireConnexion {
   private readonly produit = el("input");
   private readonly ligneProduit: HTMLLabelElement;
   private readonly modele = el("input");
-  private readonly modeles = el("datalist");
+  /** Liste déroulante des modèles : un <datalist> ne montrait que ceux qui ressemblent au nom déjà saisi (un seul, souvent). */
+  private readonly choix = el("select");
+  private liste: string[] = [];
+  private demandeListe = 0;
   private readonly contexte = el("select");
   private readonly prixLu = champPrix();
   private readonly prixEcrit = champPrix();
@@ -111,6 +117,7 @@ export class FormulaireConnexion {
     this.fournisseur.addEventListener("change", () => this.changerFournisseur());
     this.adresse.type = "url";
     this.adresse.size = 28;
+    this.adresse.addEventListener("change", () => void this.chargerListe());
     this.produit.inputMode = "numeric";
     this.produit.size = 10;
     this.produit.addEventListener("input", () => {
@@ -118,9 +125,17 @@ export class FormulaireConnexion {
       this.adresse.value = ADRESSES.infomaniak.replace("NUMERO", n || "NUMERO");
     });
     this.ligneProduit = ligne(t("ellm.cloud.produit"), this.produit);
-    this.modeles.id = `listeModeles-${id}`;
-    this.modele.setAttribute("list", this.modeles.id);
+    this.modele.id = `modeleLlm-${id}`;
     this.modele.size = 28;
+    this.choix.addEventListener("change", () => {
+      if (this.choix.value === AUTRE_MODELE) {
+        this.modele.hidden = false;
+        this.modele.focus();
+        return;
+      }
+      this.modele.value = this.choix.value;
+      this.prixDuModele(true);
+    });
     this.modele.placeholder = t("ellm.modeleExemple");
     this.modele.addEventListener("change", () => this.prixDuModele(true));
     for (const n of [8192, 16384, 32768, 65536, 131072]) this.contexte.append(Object.assign(el("option", undefined, nombre(n)), { value: String(n) }));
@@ -148,7 +163,7 @@ export class FormulaireConnexion {
 
     this.racine.append(
       ligne(t("ellm.fournisseur"), this.fournisseur), ligne(t("ellm.adresse"), this.adresse), this.ligneProduit,
-      ligne(t("ellm.modele"), this.modele, this.modeles),
+      ligne(t("ellm.modele"), this.choix, " ", this.modele),
       ligne(t("ellm.contexte"), this.contexte, " " + t("ellm.jetons")), el("p", "discret", t("ellm.contexteAide")),
       this.cloud,
       bouton(t("ellm.tester"), () => void this.tester()), " ", bouton(t("ellm.enregistrer"), () => void this.sauver()),
@@ -168,7 +183,10 @@ export class FormulaireConnexion {
     this.prixEcrit.value = c.prixEcrit ? String(c.prixEcrit) : "";
     const m = /\/ai\/(\d+)\//.exec(c.adresse);
     this.produit.value = m ? m[1] : "";
+    this.liste = this.modelesConnus();
+    this.montrerListe();
     this.majCloud();
+    void this.chargerListe();
   }
 
   /** Nouvelles infos du serveur (clés, dépense) sans toucher à ce qu'on est en train de saisir. */
@@ -195,8 +213,42 @@ export class FormulaireConnexion {
       this.prixEcrit.value = "";
       this.prixDuModele(true);
     }
-    this.modeles.replaceChildren(...this.infos.prix.filter((p) => p.fournisseur === f).map((p) => Object.assign(el("option"), { value: p.modele })));
+    this.liste = this.modelesConnus();
+    this.montrerListe();
     this.majCloud();
+    void this.chargerListe();
+  }
+
+  /** Modèles dont le serveur connaît le prix pour ce service du cloud (rien pour un logiciel local). */
+  private modelesConnus(): string[] {
+    return this.infos.prix.filter((p) => p.fournisseur === this.fournisseur.value).map((p) => p.modele);
+  }
+
+  /** Demande en silence les modèles installés d'un logiciel local (sans appel au cloud, qui attend « Tester »). */
+  private async chargerListe(): Promise<void> {
+    if (estCloud(this.fournisseur.value) || !this.adresse.value.trim()) return;
+    const n = ++this.demandeListe;
+    try {
+      const liste = await connexion.invoke<string[]>("ModelesLlm", this.lire());
+      if (n !== this.demandeListe) return;
+      this.liste = liste;
+      this.montrerListe();
+    } catch {
+      // Logiciel éteint ou adresse fausse : « Tester » dira pourquoi.
+    }
+  }
+
+  /** Remplit la liste déroulante : tous les modèles, le modèle réglé même s'il n'y est pas, et « Autre… » pour en saisir un. */
+  private montrerListe(): void {
+    const actuel = this.modele.value.trim();
+    const noms = [...new Set(this.liste)];
+    if (actuel && !noms.includes(actuel)) noms.unshift(actuel);
+    const option = (valeur: string, texte: string) => Object.assign(el("option", undefined, texte), { value: valeur });
+    this.choix.replaceChildren(...noms.map((m) => option(m, m)), option(AUTRE_MODELE, t("ellm.modeleAutre")));
+    const saisie = noms.length === 0 || !actuel;
+    this.choix.value = saisie ? AUTRE_MODELE : actuel;
+    this.choix.hidden = noms.length === 0;
+    this.modele.hidden = !saisie;
   }
 
   /** Reprend le prix connu du modèle choisi (si on en connaît un). */
@@ -241,10 +293,14 @@ export class FormulaireConnexion {
   private async tester(): Promise<void> {
     this.retour.textContent = t("ellm.test.enCours");
     try {
+      const n = ++this.demandeListe;
       const liste = await connexion.invoke<string[]>("ModelesLlm", this.lire());
-      this.modeles.replaceChildren(...liste.map((m) => Object.assign(el("option"), { value: m })));
       this.retour.textContent = liste.length > 0 ? t("ellm.test.ok", { n: liste.length, liste: liste.slice(0, 40).join(", ") }) : t("ellm.test.aucun");
-      if (!this.modele.value && liste.length > 0) this.modele.value = liste[0];
+      if (!this.modele.value.trim() && liste.length > 0) this.modele.value = liste[0];
+      if (n === this.demandeListe) {
+        this.liste = [...new Set([...liste, ...this.modelesConnus()])];
+        this.montrerListe();
+      }
     } catch (e) {
       this.retour.textContent = message(e);
     }

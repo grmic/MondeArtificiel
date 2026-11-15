@@ -5482,6 +5482,7 @@
   "ellm.fournisseur": "Fournisseur",
   "ellm.adresse": "Adresse",
   "ellm.modele": "Modèle",
+  "ellm.modeleAutre": "Autre… (saisir le nom)",
   "ellm.modeleExemple": "nom du modèle installé",
   "ellm.tester": "Tester et lister les modèles",
   "ellm.enregistrer": "Enregistrer",
