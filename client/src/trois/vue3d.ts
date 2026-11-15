@@ -203,7 +203,7 @@ export class Vue3D {
    * relatif à son cap ; glisser la souris tourne autour de lui, la molette rapproche ou éloigne.
    */
   /** Portrait : yeux et direction du visage lissés. */
-  private visage: { id: number; yeux: THREE.Vector3; face: THREE.Vector3 } | null = null;
+  private visage: { id: number; yeux: THREE.Vector3; face: THREE.Vector3; cap: number | null; parVisage: boolean } | null = null;
   private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number; portrait: boolean } | null = null;
   /** Lumière (0.41.3) : ombres en cascade, chaîne de rendu (occlusion, halo, exposition), exposition courante. */
   private ombres: CSMShadowNode | null = null;
@@ -932,7 +932,7 @@ export class Vue3D {
       // Le souffle, les frissons et les petits gestes font bouger la tête de quelques centimètres : la caméra suit un visage
       // lissé (environ une seconde), sinon elle va et vient à chaque respiration.
       if (!this.visage || this.visage.id !== s.id || this.visage.yeux.distanceTo(yeux) > 1) {
-        this.visage = { id: s.id, yeux: yeux.clone(), face: face.clone() };
+        this.visage = { id: s.id, yeux: yeux.clone(), face: face.clone(), cap: null, parVisage: Math.hypot(face.x, face.z) > 0.5 };
       } else {
         const k = Math.min(1, dt * 1.2);
         this.visage.yeux.lerp(yeux, k);
@@ -940,13 +940,17 @@ export class Vue3D {
         yeux.copy(this.visage.yeux);
         face.copy(this.visage.face);
       }
-      // Cap horizontal de la caméra : celui du visage, ou, s'il regarde le ciel (couché sur le dos), celui du corps. Sans cela la
-      // caméra se plaçait à la verticale du visage, où le moindre souffle faisait tourner la vue d'un bord à l'autre.
+      // Cap horizontal de la caméra : celui du visage s'il regarde à peu près devant lui, sinon (couché sur le dos, il regarde le
+      // ciel) celui du corps, avec une hésitation entre les deux pour ne pas basculer sans cesse, et lissé. Mêler les deux, ou
+      // suivre la petite part horizontale d'un visage tourné vers le ciel, faisait tourner la vue autour de lui.
       const plat = Math.hypot(face.x, face.z);
-      const w = Math.min(1, Math.max(0, (plat - 0.15) / 0.35));
-      const cx = Math.sin(cap) * (1 - w) + (plat > 1e-6 ? face.x / plat : 0) * w;
-      const cz = Math.cos(cap) * (1 - w) + (plat > 1e-6 ? face.z / plat : 0) * w;
-      const a = Math.atan2(cx, cz) + s.angle;
+      const v = this.visage!;
+      if (plat > 0.6) v.parVisage = true;
+      else if (plat < 0.4) v.parVisage = false;
+      const capVoulu = v.parVisage ? Math.atan2(face.x, face.z) : cap;
+      if (v.cap === null) v.cap = capVoulu;
+      else v.cap += Math.atan2(Math.sin(capVoulu - v.cap), Math.cos(capVoulu - v.cap)) * Math.min(1, dt * 0.8);
+      const a = v.cap + s.angle;
       // Hauteur : celle du visage, bornée (jamais à la verticale), plus ce que l'on a choisi en glissant.
       const el = Math.max(-0.35, Math.min(1.15, Math.max(-0.2, Math.min(0.9, Math.atan2(face.y, plat))) + s.hauteur));
       const dir = new THREE.Vector3(Math.sin(a) * Math.cos(el), Math.sin(el), Math.cos(a) * Math.cos(el));
