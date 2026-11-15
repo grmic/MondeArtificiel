@@ -814,7 +814,6 @@ export function construireReel(b: BaseHumaine, f: Forme, v: Visage | null, id: n
   g.setAttribute("seuil", new THREE.Float32BufferAttribute(seuils, 1));
   g.setAttribute("skinIndex", new THREE.Uint16BufferAttribute(osI, 4));
   g.setAttribute("skinWeight", new THREE.Float32BufferAttribute(osW, 4));
-  (g.getAttribute("position") as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
   g.setIndex(pos.length / 3 > 65535 ? new THREE.Uint32BufferAttribute(indices, 1) : new THREE.Uint16BufferAttribute(indices, 1));
   const materiauxListe: THREE.Material[] = [];
   for (const gr of groupes) {

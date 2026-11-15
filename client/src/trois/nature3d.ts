@@ -1,4 +1,5 @@
 import * as THREE from "three/webgpu";
+import { envoyer } from "./envoi";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { hacher, unite } from "./bruit";
 import * as B from "./relief";
@@ -164,7 +165,6 @@ export class Nature3D {
       const m = new THREE.InstancedMesh(g, mat, capacite);
       m.count = 0;
       m.frustumCulled = false;
-      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.setColorAt(0, new THREE.Color(1, 1, 1));
       this.ombrees.push(0);
       let plein = 0;
@@ -345,10 +345,11 @@ export class Nature3D {
     this.maillages.forEach((maillage, s) => {
       maillage.count = comptes[s];
       maillage.position.copy(this.origine);
-      maillage.instanceMatrix.needsUpdate = true;
-      if (maillage.instanceColor) maillage.instanceColor.needsUpdate = true;
+      // Seules les instances utilisées partent vers le GPU (pas toute la réserve).
+      envoyer(maillage.instanceMatrix, comptes[s]);
+      if (maillage.instanceColor) envoyer(maillage.instanceColor, comptes[s]);
       const v = maillage.geometry.getAttribute("vent");
-      if (v) v.needsUpdate = true;
+      if (v) envoyer(v as THREE.BufferAttribute, comptes[s]);
     });
   }
 

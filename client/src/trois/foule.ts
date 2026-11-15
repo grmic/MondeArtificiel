@@ -195,7 +195,6 @@ export class Foule {
       const m = new THREE.InstancedMesh(g, peau, NOMBRE_MAX);
       m.count = 0;
       m.frustumCulled = false;
-      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.setColorAt(0, new THREE.Color());
       this.groupe.add(m);
       return m;

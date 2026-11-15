@@ -156,7 +156,6 @@ export class Camp3D {
     for (const m of [this.branches, this.argile, this.entrees, this.plantes, this.piquets, ...this.corpsBetes, ...this.pattesBetes]) {
       m.count = 0;
       m.frustumCulled = false;
-      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.groupe.add(m);
     }
     for (const m of [this.branches, this.argile, this.plantes, ...this.corpsBetes, ...this.pattesBetes]) m.setColorAt(0, new THREE.Color());
