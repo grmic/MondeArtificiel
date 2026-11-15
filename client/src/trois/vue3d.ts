@@ -202,6 +202,8 @@ export class Vue3D {
    * Suivi automatique (0.41.2) : la caméra reste près d'un humain où qu'il aille. `angle` : d'où on le regarde (0 : de face),
    * relatif à son cap ; glisser la souris tourne autour de lui, la molette rapproche ou éloigne.
    */
+  /** Portrait : yeux et direction du visage lissés. */
+  private visage: { id: number; yeux: THREE.Vector3; face: THREE.Vector3 } | null = null;
   private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number; portrait: boolean } | null = null;
   /** Lumière (0.41.3) : ombres en cascade, chaîne de rendu (occlusion, halo, exposition), exposition courante. */
   private ombres: CSMShadowNode | null = null;
@@ -840,8 +842,15 @@ export class Vue3D {
     this.portrait(id);
   }
 
+  /** Bouton « Portrait 3D » de la fiche : entre en Portrait, ou en sort si l'on y est déjà pour cet humain. */
+  portraitOuSortir(id: number): void {
+    if (this.suivi?.portrait && this.suivi.id === id) this.arreterSuivi();
+    else this.portrait(id);
+  }
+
   /** Portrait d'un humain : de face, un peu de côté, à 80 cm. */
   portrait(id: number): void {
+    this.visage = null;
     if (this.suivi?.id === id) {
       this.suivi.portrait = true;
       this.suivi.angle = 0.25;
@@ -919,6 +928,17 @@ export class Vue3D {
       if (!this.proches.yeux(s.id, yeux, face)) {
         yeux.copy(tete).setY(tete.y + taille * 0.08);
         face.set(Math.sin(cap), 0, Math.cos(cap));
+      }
+      // Le souffle, les frissons et les petits gestes font bouger la tête de quelques centimètres : la caméra suit un visage
+      // lissé (environ une seconde), sinon elle va et vient à chaque respiration.
+      if (!this.visage || this.visage.id !== s.id || this.visage.yeux.distanceTo(yeux) > 1) {
+        this.visage = { id: s.id, yeux: yeux.clone(), face: face.clone() };
+      } else {
+        const k = Math.min(1, dt * 1.2);
+        this.visage.yeux.lerp(yeux, k);
+        this.visage.face.lerp(face, k).normalize();
+        yeux.copy(this.visage.yeux);
+        face.copy(this.visage.face);
       }
       const dir = face.clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), s.angle);
       dir.multiplyScalar(Math.cos(s.hauteur)).add(new THREE.Vector3(0, Math.sin(s.hauteur), 0)).normalize();

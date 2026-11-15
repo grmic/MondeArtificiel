@@ -500,7 +500,7 @@ async function demarrer(): Promise<void> {
       element("#scene").hidden = true;
       infos.textContent = t("trois.ouverte", { moteur: vue3d.moteur });
       const ouverte = vue3d;
-      fiche.portrait3d = (id) => ouverte.portrait(id);
+      fiche.portrait3d = (id) => ouverte.portraitOuSortir(id);
       await vue3d.ouvrir();
     } catch (e) {
       await quitter3d();
