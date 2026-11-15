@@ -1,6 +1,7 @@
 import * as THREE from "three/webgpu";
 import type { Echantillon, Relief } from "./relief";
 import { PERIODE_SOL } from "./matieres";
+import type { CacheRelief, TuileGardee } from "./cacheRelief";
 
 /** Segments par côté de tuile : 33 × 33 points, plus une jupe qui cache les fentes entre tuiles de finesses différentes. */
 const N = 32;
@@ -36,6 +37,8 @@ export class Terrain3D {
   private readonly construits = new Set<Noeud>();
   /** Finesse : plus haut, plus de tuiles fines (Basse 1,2 ; Moyenne 1,8 ; Haute 2,6). */
   facteur = 1.8;
+  /** Tuiles gardées dans le navigateur (0.42.1) : null, tout se calcule. */
+  cache: CacheRelief | null = null;
 
   constructor(
     private readonly relief: Relief,
@@ -129,6 +132,66 @@ export class Terrain3D {
   }
 
   private construire(n: Noeud): void {
+    const pas = n.taille / N;
+    const points = (N + 1) * (N + 1);
+    const jupe = 4 * (N + 1);
+    const t = this.cache?.lire(n.x0, n.z0, n.taille) ?? this.calculer(n);
+    // Positions et coordonnées de texture : x et z se déduisent de la grille, seule la hauteur est gardée.
+    const positions = new Float32Array((points + jupe) * 3);
+    const uvs = new Float32Array((points + jupe) * 2);
+    const ux = ((n.x0 % PERIODE_SOL) + PERIODE_SOL) % PERIODE_SOL;
+    const uz = ((n.z0 % PERIODE_SOL) + PERIODE_SOL) % PERIODE_SOL;
+    const bord = BORD;
+    for (let v = 0; v < points + jupe; v++) {
+      const g = v < points ? v : (bord[v - points] ?? 0); // les 4 derniers points de la jupe ne servent pas
+      const x = (g % (N + 1)) * pas;
+      const z = Math.floor(g / (N + 1)) * pas;
+      positions[v * 3] = x;
+      positions[v * 3 + 1] = t.y[v];
+      positions[v * 3 + 2] = z;
+      uvs[v * 2] = ux + x;
+      uvs[v * 2 + 1] = uz + z;
+    }
+    const geometrie = new THREE.BufferGeometry();
+    geometrie.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometrie.setAttribute("normal", new THREE.BufferAttribute(t.normales, 3));
+    geometrie.setAttribute("color", new THREE.BufferAttribute(t.couleurs, 3));
+    geometrie.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    if (t.poids) {
+      const p0 = new Float32Array((points + jupe) * 4);
+      const p1 = new Float32Array((points + jupe) * 4);
+      for (let v = 0; v < points + jupe; v++) {
+        for (let c = 0; c < 4; c++) {
+          p0[v * 4 + c] = t.poids[v * 8 + c] / 255;
+          p1[v * 4 + c] = t.poids[v * 8 + 4 + c] / 255;
+        }
+      }
+      geometrie.setAttribute("poids0", new THREE.BufferAttribute(p0, 4));
+      geometrie.setAttribute("poids1", new THREE.BufferAttribute(p1, 4));
+      if (t.lointains) geometrie.setAttribute("lointain", new THREE.BufferAttribute(t.lointains, 3));
+    }
+    geometrie.setIndex(INDICES);
+    geometrie.computeBoundingSphere();
+
+    let eauGeo: THREE.BufferGeometry | null = null;
+    if (t.eauPositions && t.eauIndices) {
+      eauGeo = new THREE.BufferGeometry();
+      eauGeo.setAttribute("position", new THREE.BufferAttribute(t.eauPositions, 3));
+      const nb = t.eauPositions.length / 3;
+      const uvEau = new Float32Array(nb * 2);
+      for (let v = 0; v < nb; v++) {
+        uvEau[v * 2] = (n.x0 + t.eauPositions[v * 3]) / 40;
+        uvEau[v * 2 + 1] = (n.z0 + t.eauPositions[v * 3 + 2]) / 40;
+      }
+      eauGeo.setAttribute("uv", new THREE.BufferAttribute(uvEau, 2));
+      eauGeo.setIndex(new THREE.BufferAttribute(t.eauIndices, 1));
+      eauGeo.computeVertexNormals();
+    }
+    this.poser(n, geometrie, eauGeo, t.hMin, t.hMax);
+  }
+
+  /** Calcule une tuile depuis la graine (et la garde dans le navigateur). */
+  private calculer(n: Noeud): TuileGardee {
     const r = this.relief;
     const pas = n.taille / N;
     const cote = N + 3; // une rangée de plus de chaque côté pour les normales
@@ -153,15 +216,11 @@ export class Terrain3D {
     }
     const points = (N + 1) * (N + 1);
     const jupe = 4 * (N + 1);
-    const positions = new Float32Array((points + jupe) * 3);
+    const y = new Float32Array(points + jupe);
     const normales = new Float32Array((points + jupe) * 3);
     const couleurs = new Float32Array((points + jupe) * 3);
-    const uvs = new Float32Array((points + jupe) * 2);
     const couches = this.moyennes ? new Float32Array((points + jupe) * 8) : null;
     const lointains = this.moyennes ? new Float32Array((points + jupe) * 3) : null;
-    // Coordonnées de texture en mètres, ramenées dans une période commune à toutes les échelles du sol (raccord exact, précision gardée).
-    const ux = ((n.x0 % PERIODE_SOL) + PERIODE_SOL) % PERIODE_SOL;
-    const uz = ((n.z0 % PERIODE_SOL) + PERIODE_SOL) % PERIODE_SOL;
     const normale = new THREE.Vector3();
     for (let j = 0; j <= N; j++) {
       for (let i = 0; i <= N; i++) {
@@ -169,9 +228,7 @@ export class Terrain3D {
         const v = j * (N + 1) + i;
         const x = i * pas;
         const z = j * pas;
-        positions[v * 3] = x;
-        positions[v * 3 + 1] = h[k];
-        positions[v * 3 + 2] = z;
+        y[v] = h[k];
         normale.set(h[k - 1] - h[k + 1], 2 * pas, h[k - cote] - h[k + cote]).normalize();
         normales[v * 3] = normale.x;
         normales[v * 3 + 1] = normale.y;
@@ -182,70 +239,27 @@ export class Terrain3D {
         const pente = 1 - normale.y * normale.y > 0 ? Math.sqrt(1 - normale.y * normale.y) : 0;
         if (couches && lointains && this.moyennes) r.couches(n.x0 + x, n.z0 + z, e, pente, this.moyennes, couches, v * 8, couleurs, v * 3, lointains);
         else r.couleur(n.x0 + x, n.z0 + z, e, pente, couleurs, v * 3);
-        uvs[v * 2] = ux + x;
-        uvs[v * 2 + 1] = uz + z;
       }
     }
     // Jupe : les points du bord, abaissés.
-    const bord: number[] = [];
-    for (let i = 0; i <= N; i++) bord.push(i);
-    for (let j = 1; j <= N; j++) bord.push(j * (N + 1) + N);
-    for (let i = N - 1; i >= 0; i--) bord.push(N * (N + 1) + i);
-    for (let j = N - 1; j >= 1; j--) bord.push(j * (N + 1));
     const descente = pas * 2 + 8;
-    bord.forEach((v, s) => {
+    BORD.forEach((v, s) => {
       const w = points + s;
-      positions[w * 3] = positions[v * 3];
-      positions[w * 3 + 1] = positions[v * 3 + 1] - descente;
-      positions[w * 3 + 2] = positions[v * 3 + 2];
+      y[w] = y[v] - descente;
       for (let c = 0; c < 3; c++) {
         normales[w * 3 + c] = normales[v * 3 + c];
         couleurs[w * 3 + c] = couleurs[v * 3 + c];
       }
       if (couches) for (let c = 0; c < 8; c++) couches[w * 8 + c] = couches[v * 8 + c];
       if (lointains) for (let c = 0; c < 3; c++) lointains[w * 3 + c] = lointains[v * 3 + c];
-      uvs[w * 2] = uvs[v * 2];
-      uvs[w * 2 + 1] = uvs[v * 2 + 1];
     });
-    const indices: number[] = [];
-    for (let j = 0; j < N; j++) {
-      for (let i = 0; i < N; i++) {
-        const a = j * (N + 1) + i;
-        const b = a + 1;
-        const c = a + N + 1;
-        const d = c + 1;
-        indices.push(a, c, b, b, c, d);
-      }
-    }
-    const tour = bord.length;
-    for (let s = 0; s < tour; s++) {
-      const a = bord[s];
-      const b = bord[(s + 1) % tour];
-      const a2 = points + s;
-      const b2 = points + ((s + 1) % tour);
-      indices.push(a, b, a2, b, b2, a2, a, a2, b, b, a2, b2);
-    }
-    const geometrie = new THREE.BufferGeometry();
-    geometrie.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geometrie.setAttribute("normal", new THREE.BufferAttribute(normales, 3));
-    geometrie.setAttribute("color", new THREE.BufferAttribute(couleurs, 3));
-    geometrie.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+    let poids: Uint8Array | null = null;
     if (couches) {
-      const p0 = new Float32Array((points + jupe) * 4);
-      const p1 = new Float32Array((points + jupe) * 4);
-      for (let v = 0; v < points + jupe; v++) {
-        p0.set(couches.subarray(v * 8, v * 8 + 4), v * 4);
-        p1.set(couches.subarray(v * 8 + 4, v * 8 + 8), v * 4);
-      }
-      geometrie.setAttribute("poids0", new THREE.BufferAttribute(p0, 4));
-      geometrie.setAttribute("poids1", new THREE.BufferAttribute(p1, 4));
-      if (lointains) geometrie.setAttribute("lointain", new THREE.BufferAttribute(lointains, 3));
+      poids = new Uint8Array(couches.length);
+      for (let k = 0; k < couches.length; k++) poids[k] = Math.round(Math.min(1, Math.max(0, couches[k])) * 255);
     }
-    geometrie.setIndex(indices);
-    geometrie.computeBoundingSphere();
 
     // L'eau douce de la tuile (lacs, rivières) : une nappe là où il y en a, prolongée sous les rives.
-    let eauGeo: THREE.BufferGeometry | null = null;
     const ie: number[] = [];
     const pe: number[] = [];
     const index = new Int32Array(points).fill(-1);
@@ -268,19 +282,18 @@ export class Terrain3D {
         ie.push(ids[0], ids[2], ids[1], ids[1], ids[2], ids[3]);
       }
     }
-    if (ie.length > 0) {
-      eauGeo = new THREE.BufferGeometry();
-      eauGeo.setAttribute("position", new THREE.Float32BufferAttribute(pe, 3));
-      const uvEau = new Float32Array((pe.length / 3) * 2);
-      for (let v = 0; v < pe.length / 3; v++) {
-        uvEau[v * 2] = (n.x0 + pe[v * 3]) / 40;
-        uvEau[v * 2 + 1] = (n.z0 + pe[v * 3 + 2]) / 40;
-      }
-      eauGeo.setAttribute("uv", new THREE.BufferAttribute(uvEau, 2));
-      eauGeo.setIndex(ie);
-      eauGeo.computeVertexNormals();
-    }
+    const tuile: TuileGardee = {
+      y, normales, couleurs, poids, lointains,
+      eauPositions: ie.length > 0 ? new Float32Array(pe) : null,
+      eauIndices: ie.length > 0 ? new Uint16Array(ie) : null,
+      hMin, hMax,
+    };
+    // Tuiles faites avant de connaître les températures (version 0) : couleurs provisoires, pas gardées.
+    if (this.version > 0) this.cache?.garder(n.x0, n.z0, n.taille, tuile);
+    return tuile;
+  }
 
+  private poser(n: Noeud, geometrie: THREE.BufferGeometry, eauGeo: THREE.BufferGeometry | null, hMin: number, hMax: number): void {
     for (const m of [n.maillage, n.eau]) {
       if (!m) continue;
       this.groupe.remove(m);
@@ -310,3 +323,37 @@ export class Terrain3D {
     this.construits.add(n);
   }
 }
+
+/** Points du bord, dans l'ordre du tour (pour la jupe). */
+const BORD: number[] = (() => {
+  const b: number[] = [];
+  for (let i = 0; i <= N; i++) b.push(i);
+  for (let j = 1; j <= N; j++) b.push(j * (N + 1) + N);
+  for (let i = N - 1; i >= 0; i--) b.push(N * (N + 1) + i);
+  for (let j = N - 1; j >= 1; j--) b.push(j * (N + 1));
+  return b;
+})();
+
+/** Triangles d'une tuile, les mêmes pour toutes : la grille, puis la jupe. */
+const INDICES: number[] = (() => {
+  const points = (N + 1) * (N + 1);
+  const indices: number[] = [];
+  for (let j = 0; j < N; j++) {
+    for (let i = 0; i < N; i++) {
+      const a = j * (N + 1) + i;
+      const b = a + 1;
+      const c = a + N + 1;
+      const d = c + 1;
+      indices.push(a, c, b, b, c, d);
+    }
+  }
+  const tour = BORD.length;
+  for (let s = 0; s < tour; s++) {
+    const a = BORD[s];
+    const b = BORD[(s + 1) % tour];
+    const a2 = points + s;
+    const b2 = points + ((s + 1) % tour);
+    indices.push(a, b, a2, b, b2, a2, a, a2, b, b, a2, b2);
+  }
+  return indices;
+})();

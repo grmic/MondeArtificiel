@@ -21,6 +21,7 @@ import { REGLAGES_TAPIS, Tapis, type Lieux } from "./tapis";
 import { CorpsProches } from "./proches";
 import { echange } from "../dialogue";
 import { Relief, type Temperatures, type TerrainVue } from "./relief";
+import { CacheRelief, empreinte } from "./cacheRelief";
 import { Terrain3D } from "./tuiles";
 import { Eau, maillageMer } from "./eau3d";
 import { Matieres, Vent } from "./matieres";
@@ -272,6 +273,7 @@ export class Vue3D {
     private readonly ctx: Contexte,
     terrainVue: TerrainVue | null,
     matieres: Matieres | null,
+    cacheRelief: CacheRelief | null,
   ) {
     this.relief = new Relief(ctx.carte, terrainVue);
     this.ciel = new Ciel(this.scene);
@@ -291,6 +293,7 @@ export class Vue3D {
     const eauDouce = this.eau.materiau(false);
     const eauMer = this.eau.materiau(true);
     this.terrain = new Terrain3D(this.relief, sol, eauDouce, matieres?.moyennes ?? null);
+    this.terrain.cache = cacheRelief;
     this.nature = new Nature3D(this.relief, matieres);
     this.sol = new Sol3D(this.relief, matieres);
     this.foule = new Foule(this.relief);
@@ -370,7 +373,14 @@ export class Vue3D {
       ? { roches: decoder(json.roches), pente: decoder(json.pente), debit: decoder(json.debit), profondeur: decoder(json.profondeur), lits: json.lits }
       : null;
     const matieres = await Matieres.charger();
-    const vue = new Vue3D(hote, renderer, ctx, terrain, matieres);
+    // Relief gardé dans le navigateur (0.42.1) : la clé suit tout ce dont la forme du sol dépend.
+    const c = ctx.carte;
+    const cacheRelief = await CacheRelief.ouvrir(empreinte([
+      c.graine, c.largeur, c.hauteur, c.niveauMer, String(c.kilometresParCase), String(c.metresParUnite), c.biomes, c.altitudes,
+      ...(terrain ? [terrain.roches, terrain.pente, terrain.debit, terrain.profondeur, JSON.stringify(terrain.lits)] : ["-"]),
+      matieres ? "photos" : "couleurs",
+    ]));
+    const vue = new Vue3D(hote, renderer, ctx, terrain, matieres, cacheRelief);
     // Pour les essais automatiques : ?debug3d expose la vue dans la console.
     if (new URLSearchParams(location.search).has("debug3d")) Object.assign(window, { vue3d: vue, THREE3: THREE });
     return vue;
@@ -1254,6 +1264,8 @@ export class Vue3D {
     this.relief.dansSaison = (jourAn % 90) / 90;
     // Les couleurs suivent la saison et la neige : refaites au changement de saison, ou chaque jour s'il gèle quelque part.
     const gel = temp.midi.some((v) => v < 2);
+    // Couleurs gardées avec le relief : une par saison, ou une par jour quand il gèle quelque part (la neige change chaque jour).
+    void this.terrain.cache?.choisirCouleurs(gel ? `g${temp.jour}` : `s${Math.floor(temp.jour / 90)}`);
     if (!premiere && (this.relief.saison !== this.saisonVue || gel)) {
       this.terrain.invalider();
       this.nature.invalider();
