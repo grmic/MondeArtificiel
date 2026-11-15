@@ -66,6 +66,7 @@ public static class Penseur
                 : Choix("p.partenaire.1", "p.partenaire.2", ("a", a)),
             Activite.SAccoupler => P("p.accoupler", ("a", a)),
             Activite.VeillerEnfant => P("p.veillerEnfant", ("a", a)),
+            Activite.Allaiter => Choix("p.allaiter.1", "p.allaiter.2", ("a", a)),
             Activite.SuivreParent => P("p.suivreParent", ("a", a)),
             Activite.Explorer => Choix("p.explorer.1", "p.explorer.2", ("vers", vers)),
             Activite.EviterRival => Choix("p.rival.1", "p.rival.2", ("a", a), ("vers", vers)),

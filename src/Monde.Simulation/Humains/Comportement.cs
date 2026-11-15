@@ -717,6 +717,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             }
         }
 
+        // Une mère au calme donne le sein à l'enfant qu'elle porte (0.41.8).
+        if (valeur < seuil && Allaiter(h, tous, maintenant)) return;
+
         // Ce qu'il sait faire peut répondre au besoin : le feu, une peau, une hutte, un bâton à fouir.
         if (!h.EstPetitEnfant(maintenant) && UtiliserSavoirs(h, besoin, valeur, seuil, tous)) return;
 
@@ -1097,6 +1100,42 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     }
 
     /// <summary>Un petit enfant, près de celui qui veille sur lui, qui a besoin de boire, de manger ou de se réchauffer.</summary>
+    /// <summary>
+    /// Donner le sein (0.41.8). Le lait nourrit déjà le bébé porté à chaque pas (<c>VivreBebe</c>) ; ce geste rend visible le temps
+    /// que la mère y passe. Chez les !Kung, le petit tète environ quatre fois par heure, quelques minutes à chaque fois, et encore
+    /// souvent vers deux ans (Konner et Worthman, 1980) ; ailleurs, un nouveau-né tète 8 à 12 fois par jour, une dizaine de minutes,
+    /// puis de moins en moins (Kent, 2006). Un pas de dix minutes compte ici le temps cumulé de plusieurs tétées : de deux heures
+    /// par jour environ pour un nouveau-né à une demi-heure vers deux ans et demi. Seulement au calme, sur place (on ne s'arrête pas
+    /// en chemin pour cela : en marchant, il tète dans le portage, sans qu'on le voie).
+    /// </summary>
+    private bool Allaiter(Humain h, IReadOnlyList<Humain> tous, long maintenant)
+    {
+        if (h.Sexe != Sexe.Femme || h.DernierAccouchement is not { } dernier || maintenant - dernier > 3 * Calendrier.SecondesParAn) return false;
+        if (h.CibleX >= 0 && h.Activite != Activite.Allaiter) return false;
+        var debut = maintenant - 3 * Calendrier.SecondesParAn;
+        for (var i = tous.Count - 1; i >= 0; i--)
+        {
+            var e = tous[i];
+            if (e.Naissance < debut) break;
+            if (e.MereId != h.Id || !e.EstVivant || Distance(e.X, e.Y, h.X, h.Y) > 0) continue;
+            var age = e.AgeEnAnnees(maintenant);
+            if (age >= 2.5 || (age < 2 && e.Activite is not (Activite.PorteParSaMere or Activite.Dormir))) continue;
+            // Pas de dix minutes par jour éveillé (environ 16 h) : 12 pour un nouveau-né, 3 vers deux ans et demi.
+            var pasParJour = Math.Max(3, 12 - 3.6 * age);
+            // Sans hasard partagé : tiré du numéro de la mère et du pas, pour ne pas changer le reste du monde.
+            var pas = maintenant / MondeSimule.SecondesParPas;
+            var u = (uint)((ulong)(h.Id * 2654435761u) ^ (ulong)pas * 0x9E3779B97F4A7C15UL) * 2246822519u / (double)uint.MaxValue;
+            // Une tétée commencée se poursuit parfois au pas suivant.
+            var p = h.Activite == Activite.Allaiter ? 0.3 : pasParJour / 96;
+            if (u >= p) return false;
+            _autre = e;
+            h.Activite = Activite.Allaiter;
+            h.CibleX = h.CibleY = -1;
+            return true;
+        }
+        return false;
+    }
+
     private (Humain Petit, Activite Besoin)? PetitDansLeBesoin(Humain h, IReadOnlyList<Humain> tous, long maintenant)
     {
         var seuil = 0.3 + 0.4 * (1 - h.Personnalite.Attachement);

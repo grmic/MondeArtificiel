@@ -250,6 +250,8 @@ export interface Situation {
   enfant: number | null;
   /** Porté : posture de sa mère (pour savoir comment il est tenu). */
   porteur: string | null;
+  /** Elle donne le sein à l'enfant qu'elle porte (0.41.8). */
+  allaite?: boolean;
   /** Dort (yeux fermés, respiration lente, pas de gestes). */
   dort: boolean;
   /** Tourné vers l'Entité qui lui parle (0 à 1). */
@@ -440,6 +442,8 @@ export class Animateur {
         return s.age < 0.95 ? "quatre" : "marche";
       case "assis":
         if (s.age < 0.5) return "couche.dos";
+        // Au sein, en tailleur ou de côté : l'enfant repose sur les cuisses (genoux dressés, il n'y aurait pas de place).
+        if (s.allaite) return unite(hacher(s.id, 159)) < 0.6 ? "assis.tailleur" : "assis.cote";
         return "assis." + choisir(ASSIS, s, lent(150 + 200 * unite(hacher(s.id, 77)), 75), 0);
       case "travail": {
         const v = choisir([ASSIS[0], ASSIS[3], ASSIS[4], ASSIS[1]], s, lent(400, 79), 1);
@@ -455,7 +459,8 @@ export class Animateur {
       case "enlace":
         return "couche.enlace";
       case "porte":
-        if (s.age < 0.8 || !s.porteur) return "porte.berceau";
+        // Au sein (0.41.8) : couché en travers, dans le creux du bras, quel que soit son âge.
+        if (s.age < 0.8 || !s.porteur || s.porteur === "allaite") return "porte.berceau";
         if (s.porteur === "couche") return "porte.couche";
         if (s.porteur === "assis" || s.porteur === "travail" || s.porteur === "accroupi") return "porte.genoux";
         return "porte.hanche";
@@ -579,7 +584,7 @@ export class Animateur {
     }
     // Une mère porte son enfant (D1) : ses bras le tiennent selon son âge et sa propre posture.
     if (s.enfant !== null && famille_ !== "couche" && famille_ !== "nage" && famille_ !== "descente" && famille_ !== "releve") {
-      porterEnfant(p, s.enfant, famille_);
+      porterEnfant(p, s.enfant, famille_, s.allaite === true);
     }
     // Les vieux : dos voûté, genoux un peu fléchis.
     if (s.voute > 0) {
@@ -1423,8 +1428,8 @@ export class Animateur {
 }
 
 /** Les bras d'une mère qui porte son enfant (D1), selon l'âge de l'enfant et sa propre posture. */
-function porterEnfant(p: Pose, age: number, posture: string): void {
-  if (age < 0.8) {
+function porterEnfant(p: Pose, age: number, posture: string, allaite = false): void {
+  if (age < 0.8 || allaite) {
     // Au creux du bras gauche, l'avant-bras sous l'enfant, la main droite par-dessus.
     p.clavicule("G", 0.03, 0.06);
     p.clavicule("D", 0.02, 0.08);
@@ -1435,7 +1440,9 @@ function porterEnfant(p: Pose, age: number, posture: string): void {
     p.epaule("D", 0.55, 0.05, -0.55);
     p.coude("D", 1.35, 0.2);
     p.main("D", 0.4, 0.4);
-    p.colonne("tete", 0.3, 0.15);
+    // Au sein, elle penche la tête vers lui.
+    p.colonne("tete", allaite ? 0.5 : 0.3, 0.15);
+    if (allaite) p.colonne("cou", 0.2, 0.1);
     p.mains[0].length = 0;
     p.mains[1].length = 0;
     return;

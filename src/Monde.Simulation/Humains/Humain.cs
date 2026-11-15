@@ -67,6 +67,8 @@ public enum Activite : byte
     Pecher = 36,
     /// <summary>Semer, soigner une parcelle ou récolter (depuis la 0.33.0).</summary>
     Cultiver = 37,
+    /// <summary>Donner le sein à son enfant (depuis la 0.41.8) : assise, au calme, plusieurs fois par jour selon son âge.</summary>
+    Allaiter = 38,
 }
 
 /// <summary>Pourquoi un humain prend la mer.</summary>

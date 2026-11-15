@@ -8,9 +8,9 @@ export const ACTIVITES = [
   "Repos", "Dormir", "Boire", "ChercherEau", "Cueillir", "Chasser", "ChercherNourriture", "SAbriter", "ChercherAbri", "RejoindrePartenaire",
   "Explorer", "Mort", "SAccoupler", "SuivreParent", "PorteParSaMere", "VeillerEnfant", "RejoindreProche", "EviterRival", "Migrer", "Fuir",
   "Raid", "RentrerDuRaid", "PartirEnExil", "Experimenter", "Fabriquer", "Veiller", "Soigner", "Nager", "SuivreRavisseur", "ChercherLeFeu",
-  "Enseigner", "Visiter", "Rassembler", "Rentrer", "Demander", "Naviguer", "Pecher", "Cultiver",
+  "Enseigner", "Visiter", "Rassembler", "Rentrer", "Demander", "Naviguer", "Pecher", "Cultiver", "Allaiter",
 ] as const;
-const A = Object.fromEntries(ACTIVITES.map((a, i) => [a, i])) as Record<(typeof ACTIVITES)[number], number>;
+export const A = Object.fromEntries(ACTIVITES.map((a, i) => [a, i])) as Record<(typeof ACTIVITES)[number], number>;
 
 /** Ce que le flux Scène dit d'un humain (voir SceneDto côté serveur). */
 export interface HumainScene {
@@ -127,6 +127,7 @@ function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Postu
       return "couche";
     case A.Veiller:
     case A.VeillerEnfant:
+    case A.Allaiter:
       return "assis";
     case A.Repos:
       return unite(hacher(s.id, 3)) < 0.5 ? "assis" : "couche";
@@ -156,6 +157,7 @@ function decalage(s: HumainScene, secondes: number, auFeu: boolean): [number, nu
       break;
     case A.Repos:
     case A.VeillerEnfant:
+    case A.Allaiter:
     case A.Fabriquer:
     case A.Enseigner:
     case A.Soigner:

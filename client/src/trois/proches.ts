@@ -1,7 +1,7 @@
 import * as THREE from "three/webgpu";
 import { hacher, lisser, unite } from "./bruit";
 import { Corps, cleDe, formeDe } from "./corps";
-import type { Corps as Etat, Foule } from "./foule";
+import { A, type Corps as Etat, type Foule } from "./foule";
 import { TeteDetaillee, type Expression } from "./tete";
 import { baseHumaine, construireReel } from "./humain";
 import { chargerVisages, couleurs, visageConnu, type Visage } from "../visage";
@@ -192,7 +192,8 @@ export class CorpsProches {
         posture: c.posture, id: s.id, age: s.age, femme: s.femme, voute: formeDe(s, c.peau, c.cheveux).voute, boite: (s.etat & 8) !== 0,
         activite: s.activite, phase: c.phase, vitesse: c.vitesse, endurance: s.endurance, reserves: s.reserves,
         enfant: enfant && (s.etat & 4) !== 0 ? enfant.s.age : (s.etat & 4) !== 0 ? 0.4 : null,
-        porteur: etatMere ? etatMere.posture : null, dort, ecoute: c.ecoute,
+        porteur: etatMere ? (etatMere.s.activite === A.Allaiter && (etatMere.s.etat & 4) !== 0 ? "allaite" : etatMere.posture) : null, dort, ecoute: c.ecoute,
+        allaite: s.activite === A.Allaiter && (s.etat & 4) !== 0,
         // F1 (0.41.8) : ce que vit l'humain ; la maladie pèse d'autant plus que la santé est basse.
         froid: lisser(15, 70, s.froid), faim: s.faim / 100, fatigue: s.fatigue / 100, peur: lisser(10, 70, s.peur),
         malade: s.etat & 1 ? 0.6 + 0.4 * (1 - s.sante / 100) : lisser(60, 25, s.sante), enceinte: (s.etat & 2) !== 0,
@@ -203,6 +204,9 @@ export class CorpsProches {
       // Ce qu'il regarde (E1) : l'Entité qui lui parle, sinon tour à tour les gens proches, sa mère, son enfant.
       anim.ecoute = c.ecoute > 0.3;
       anim.regard = c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, c.interlocuteur, places, pl, temps, arrivants);
+      // Au sein, elle regarde son enfant.
+      const auSein = sit.allaite && enfant ? this.corps.get(enfant.s.id) : undefined;
+      if (auSein && c.ecoute <= 0.3) anim.regard = auSein.maillage.localToWorld(osEn(auSein, "tete", new THREE.Vector3()));
       // Pente du sol sous lui, dans son repère (taille 1).
       let sol: SolLocal | null = null;
       if (c.posture !== "nage" && !(c.posture === "porte" && mere && sit.porteur !== "couche")) {
@@ -299,8 +303,10 @@ export class CorpsProches {
     const point = new THREE.Vector3(); // point de l'enfant (repère des os) posé sur l'ancre
     const qMere = mm.quaternion;
     const assise = postureMere === "assis" || postureMere === "travail" || postureMere === "accroupi";
-    if (age < 0.8) {
-      // Tête au pli du coude gauche, fesses sur la main gauche ; tourné vers le haut et vers sa mère.
+    const auSein = postureMere === "allaite";
+    if (age < 0.8 || auSein) {
+      // Tête au pli du coude gauche, fesses sur la main gauche ; tourné vers le haut et vers sa mère (au sein : ventre contre
+      // ventre, la bouche à hauteur du sein).
       const coude = osEn(mere, "avantBrasG", new THREE.Vector3());
       const poignet = osEn(mere, "mainG", new THREE.Vector3());
       coude.y += 0.03;
@@ -312,7 +318,11 @@ export class CorpsProches {
       haut.copy(coude).sub(poignet).normalize();
       osEn(mere, "poitrine", V1);
       mm.localToWorld(V1);
-      avant.set(0, 1, 0).multiplyScalar(0.8).add(V1.sub(milieu).setY(0).normalize().multiplyScalar(0.35));
+      avant.set(0, 1, 0).multiplyScalar(auSein ? 0.25 : 0.8).add(V1.sub(milieu).setY(0).normalize().multiplyScalar(auSein ? 1 : 0.35));
+      if (auSein) {
+        coude.y += 0.04;
+        milieu.y += 0.04;
+      }
       osEn(enfant, "bassin", V2);
       osEn(enfant, "cou", point);
       point.add(V2).multiplyScalar(0.5);
