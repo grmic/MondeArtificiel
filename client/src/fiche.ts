@@ -146,6 +146,7 @@ interface Fiche {
     servisTaille: number; servisAssemblage: number; servisPeau: number; attend: string | null } | null;
   /** De quoi dessiner son portrait (absent d'un serveur plus ancien). */
   visage?: Visage | null;
+  grossesse?: { jours: number; depuis: string } | null;
 }
 
 /** Un mot et sa traduction. */
@@ -403,6 +404,11 @@ export class PanneauFiche {
       b.type = "button";
       b.addEventListener("click", () => retour.aller());
       corps.append(b);
+    }
+    if (f.grossesse && h.vivant) {
+      const p = el("p", "grossesse", texteGrossesse(f.grossesse.jours));
+      p.append(el("span", "conception", t("fiche.grossesseConception", { date: f.grossesse.depuis })));
+      corps.append(p);
     }
     if (f.visage) {
       const portrait = el("div", "visage-portrait");
@@ -1148,4 +1154,13 @@ function blocCause(parent: HTMLElement, causeId: number, cause: Evenement | null
   });
   bloc.append(" ", replier);
   return bloc;
+}
+
+/** « Enceinte depuis 5 mois (22 semaines) » : jours, puis semaines, puis mois révolus de 30 jours (un an du monde = 360 jours). */
+function texteGrossesse(jours: number): string {
+  const semaines = Math.floor(jours / 7);
+  const duree = jours < 14 ? t("fiche.grossesse.jours", { n: jours })
+    : jours < 60 ? t("fiche.grossesse.semaines", { n: semaines })
+    : t("fiche.grossesse.mois", { n: Math.floor(jours / 30), semaines });
+  return t("fiche.grossesse", { duree });
 }

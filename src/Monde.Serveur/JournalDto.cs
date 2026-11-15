@@ -158,6 +158,9 @@ public sealed record SoignantDto(int Id, string Nom, string Role, int Gueris, in
 /// <summary>Une image peinte sur la roche par un membre de la communauté.</summary>
 public sealed record OeuvreDto(int Id, int AuteurId, string Auteur, string Le, string Description, long EvenementId);
 
+/// <summary>Grossesse en cours : jours écoulés depuis la conception et date de la conception.</summary>
+public sealed record GrossesseDto(int Jours, string Depuis);
+
 /// <summary>Fiche complète d'un humain : état, caractère, intelligence, humeur, liens, mémoire, pensées et histoire.</summary>
 public sealed record FicheDto(
     HumainDto Humain,
@@ -185,7 +188,8 @@ public sealed record FicheDto(
     FoiDto? Foi = null,
     FeuDto? Feu = null,
     RencontresDto? Rencontres = null,
-    VisageDto? Visage = null)
+    VisageDto? Visage = null,
+    GrossesseDto? Grossesse = null)
 {
     private static string Date(long s) => L.Date(s);
 
@@ -291,7 +295,10 @@ public sealed record FicheDto(
             Religions.Foi(service, h, humains),
             LireFeu(monde, h),
             LireRencontres(monde, h, humains),
-            VisageDto.De(monde, h, humains, maintenant));
+            VisageDto.De(monde, h, humains, maintenant),
+            h.EstVivant && h.EnceinteDepuis is { } conception
+                ? new GrossesseDto((int)(Math.Max(0, maintenant - conception) / Simulation.Temps.Calendrier.SecondesParJour), Date(conception))
+                : null);
     }
 
     private static RencontresDto? LireRencontres(MondeSimule monde, Humain h, IReadOnlyList<Humain> humains)

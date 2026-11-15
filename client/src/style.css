@@ -84,6 +84,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--fond);
   .panneau-lateral * { scrollbar-width: thin; scrollbar-color: #4a5a78 transparent; }
 }
 .fiche .resume { margin: 0 0 4px; }
+.fiche .grossesse { margin: 0 0 6px; padding: 3px 8px; border-left: 3px solid #f2a6c8; background: rgba(242, 166, 200, 0.12); color: #ffd6e8; font-weight: 600; }
+.fiche .grossesse .conception { display: block; font-size: 0.85em; font-weight: 400; opacity: 0.8; }
 .fiche .pensee { margin: 4px 0; font-style: italic; color: #ffe6a8; }
 .fiche .famille { margin: 4px 0; }
 .jauge { display: grid; grid-template-columns: 6.8rem 1fr 2.4rem 6.6rem; align-items: center; gap: 6px; }

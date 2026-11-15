@@ -227,6 +227,37 @@ public sealed class JournalEtMemoireTests : IDisposable
     }
 
     [Fact]
+    public async Task Hub_Fiche_DitDepuisQuandUneFemmeEstEnceinte()
+    {
+        using var usine = new UsineTest();
+        var connexion = usine.CreerConnexion();
+        await using var _ = connexion;
+        await connexion.StartAsync();
+
+        HumainDto? enceinte = null;
+        for (var jour = 0; jour < 240 && enceinte is null; jour++)
+        {
+            await connexion.InvokeAsync<HorlogeDto>("AvancerDe", "jour");
+            enceinte = (await connexion.InvokeAsync<List<HumainDto>>("Humains")).FirstOrDefault(h => h.Vivant && h.Enceinte);
+        }
+        Assert.NotNull(enceinte);
+        await connexion.InvokeAsync<HorlogeDto>("AvancerDe", "jour");
+        await connexion.InvokeAsync<HorlogeDto>("AvancerDe", "jour");
+
+        var fiche = await connexion.InvokeAsync<FicheDto?>("Fiche", enceinte.Id);
+        Assert.NotNull(fiche);
+        if (fiche.Humain.Enceinte)
+        {
+            Assert.NotNull(fiche.Grossesse);
+            Assert.InRange(fiche.Grossesse.Jours, 2, 3);
+            Assert.False(string.IsNullOrEmpty(fiche.Grossesse.Depuis));
+        }
+        // Un homme n'a jamais d'indication de grossesse.
+        var homme = (await connexion.InvokeAsync<List<HumainDto>>("Humains")).First(h => h.Sexe == "homme");
+        Assert.Null((await connexion.InvokeAsync<FicheDto?>("Fiche", homme.Id))!.Grossesse);
+    }
+
+    [Fact]
     public async Task Hub_FicheEtJournal_EtFiltresRefuses()
     {
         using var usine = new UsineTest();
