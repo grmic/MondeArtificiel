@@ -1169,10 +1169,10 @@ export class Animateur {
     switch (v) {
       case "hanche":
         // À califourchon sur la hanche, une jambe devant sa mère, l'autre derrière, un bras sur elle.
-        p.hanche("G", 0.75, 1.05, 0.35);
-        p.hanche("D", 0.7, 1.1, 0.35);
-        p.genou("G", 1.35);
-        p.genou("D", 1.25);
+        p.hanche("G", 1.25, 0.85, 0.45);
+        p.hanche("D", 1.2, 0.9, 0.45);
+        p.genou("G", 1.7);
+        p.genou("D", 1.6);
         p.cheville("G", -0.2);
         p.cheville("D", -0.2);
         p.colonne("ventre", 0.08);
