@@ -150,6 +150,8 @@ export class Sol3D {
   private aRefaire = true;
   /** Portée en mètres (selon la qualité) ; 0 : rien. */
   portee = 55;
+  /** 0.41.9 : le tapis du sol pose les plantes et la litière ; ici, seulement les cailloux. */
+  seulementPierres = false;
 
   /** Sortes texturées (0.41.5) : elles portent l'attribut d'instance `vent`. */
   private readonly texturees = new Set<number>();
@@ -273,7 +275,7 @@ export class Sol3D {
           }
           tirage -= dd;
         }
-        if (sorte < 0) continue;
+        if (sorte < 0 || (this.seulementPierres && sorte !== Sorte.Caillou)) continue;
         const s = rel.surface(x, z);
         if (!Number.isNaN(s.eau) && !(sorte === Sorte.Prele && biome === B.MARAIS && s.eau - s.sol < 0.4)) continue;
         if (s.sol < 0.3 && sorte !== Sorte.Prele && sorte !== Sorte.Caillou) continue;

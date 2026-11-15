@@ -146,6 +146,10 @@ export class Camp3D {
   private plantesA = new THREE.Vector3(NaN, 0, 0);
   private plantesCle = "";
   portee = 2500;
+  /** Centres des camps (coin de la case) et nombre de huttes : le tapis du sol s'y use (0.41.9). */
+  private centres: { x: number; z: number; huttes: number }[] = [];
+  /** Bêtes proches de la caméra à cette image : x, z, rayon des pas (m), par trois nombres (0.41.9, tapis piétiné). */
+  readonly pietineurs: number[] = [];
 
   constructor(private readonly relief: Relief) {
     const dome = new THREE.SphereGeometry(1, 18, 9, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -181,8 +185,10 @@ export class Camp3D {
       parCase.set(cle, [...(parCase.get(cle) ?? []), h]);
     }
     this.huttes = [];
+    this.centres = [];
     for (const [cle, liste] of parCase) {
       const [cx, cz] = rel.camp(cle % rel.l, Math.floor(cle / rel.l));
+      this.centres.push({ x: cx, z: cz, huttes: liste.length });
       liste.sort((a, b) => a[0] - b[0]);
       const depart = unite(hacher(cle, 31)) * Math.PI * 2;
       const rayon = 7 + liste.length * 0.9;
@@ -230,6 +236,24 @@ export class Camp3D {
     this.plantesCle = "";
   }
 
+  /**
+   * Lieux où l'on passe sans cesse (0.41.9) : huttes (rayon, entrée tournée vers le centre), champs, enclos et centres des camps.
+   * `cle` ne change que si l'un d'eux apparaît, disparaît ou bouge.
+   */
+  lieux(): { huttes: { x: number; z: number; r: number; cap: number }[]; champs: { x: number; z: number; cote: number; angle: number }[];
+    enclos: { x: number; z: number; r: number }[]; centres: { x: number; z: number; huttes: number }[]; cle: string } {
+    const huttes = this.huttes.map((h) => ({ x: h.x, z: h.z, r: 1.9 + 0.5 * unite(hacher(h.id, 37)), cap: h.cap }));
+    const champs = this.champs.map((c) => ({ x: c.x, z: c.z, cote: c.cote, angle: c.angle }));
+    const enclos = this.troupes.filter((t) => t.gardees && t.nombre >= 2).map((t) => ({ x: t.x, z: t.z, r: t.rayon * 1.05 }));
+    const arrondi = (v: number) => Math.round(v);
+    const cle = [
+      ...huttes.map((h) => `h${arrondi(h.x)},${arrondi(h.z)}`),
+      ...champs.map((c) => `c${arrondi(c.x)},${arrondi(c.z)},${arrondi(c.cote)}`),
+      ...enclos.map((e) => `e${arrondi(e.x)},${arrondi(e.z)},${arrondi(e.r)}`),
+    ].join(";");
+    return { huttes, champs, enclos, centres: this.centres, cle };
+  }
+
   /** Chaque image : place huttes, bêtes et enclos autour de la caméra. */
   animer(camera: THREE.Vector3, secondes: number, temps: number): void {
     this.origine.set(Math.round(camera.x), 0, Math.round(camera.z));
@@ -267,6 +291,7 @@ export class Camp3D {
     this.argile.count = na;
     this.entrees.count = ne;
     // Bêtes et enclos.
+    this.pietineurs.length = 0;
     const nc = this.gabarits.map(() => 0);
     const np = this.gabarits.map(() => 0);
     let npi = 0;
@@ -291,6 +316,7 @@ export class Camp3D {
         const broute = !marche && t.forme !== 6 ? -0.25 : 0;
         q.setFromAxisAngle(haut, cap).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -broute * 0.3));
         m.compose(p.set(x - o.x, s.sol, z - o.z), q, e.set(ech, ech, ech));
+        if (this.pietineurs.length < 300 && Math.abs(x - camera.x) < 34 && Math.abs(z - camera.z) < 34) this.pietineurs.push(x, z, 0.3 + 0.35 * ech);
         const corps = this.corpsBetes[t.forme] ?? this.corpsBetes[0];
         if (nc[t.forme] >= MAX_BETES) continue;
         corps.setMatrixAt(nc[t.forme], m);

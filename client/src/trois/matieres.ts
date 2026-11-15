@@ -86,6 +86,13 @@ export class Vent {
   }
 }
 
+/** Ce que le tapis du sol (tapis.ts, 0.41.9) donne au sol : usure, plaques de mousse, couvert, poids ; portées (m). */
+export interface SolTapis {
+  lireSol(p: THREE.Node<"vec3">): THREE.Node<"vec4">;
+  readonly uProche: THREE.UniformNode<"float", number>;
+  readonly uLoin: THREE.UniformNode<"float", number>;
+}
+
 export class Matieres {
   readonly vent = new Vent();
   /** Portée des plantes dessinées (m) : au-delà, le sol prend la couleur du pays vu de loin (forêts vertes). */
@@ -136,7 +143,7 @@ export class Matieres {
    * départagées par leur relief (le sable remplit les creux de la roche), à deux échelles pour casser la répétition, avec leurs
    * cartes de normales. La couleur du sommet (`color`) teinte le tout : saisons, sols plus secs ou plus riches, neige.
    */
-  materiauSol(): THREE.MeshStandardNodeMaterial {
+  materiauSol(tapis: SolTapis | null = null): THREE.MeshStandardNodeMaterial {
     const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0 });
     const p0 = attribute("poids0", "vec4");
     const p1 = attribute("poids1", "vec4");
@@ -187,8 +194,20 @@ export class Matieres {
     });
     const mouille = p1.w;
     const resultat = melange();
-    const pres = resultat.rgb.mul(teinte).mul(mix(float(1), float(0.55), mouille));
+    let pres = resultat.rgb.mul(teinte).mul(mix(float(1), float(0.55), mouille));
     const distance = length(positionWorld.sub(cameraPosition));
+    if (tapis) {
+      // 0.41.9 : le tapis du sol. Plaques de mousses et d'hépatiques peintes à même le sol ; sentiers et sols tassés (terre nue,
+      // plus sombre) ; au-delà des plantes dessinées, le sol prend leur teinte pour que la limite ne se voie pas.
+      const t = tapis.lireSol(positionWorld);
+      const usure = t.x.mul(t.w);
+      const plaque = t.y.mul(t.w).mul(float(1).sub(usure));
+      const mousse = texture(this.solsCouleur, uA).depth(int(Couche.RocheMoussue)).grad(gAx, gAy).rgb.mul(vec3(0.78, 1.18, 0.5));
+      pres = mix(pres, mousse, plaque.mul(0.7));
+      const loinTapis = smoothstep(tapis.uProche.mul(0.5), tapis.uLoin, distance);
+      pres = mix(pres, vec3(0.05, 0.075, 0.024), t.z.mul(t.w).mul(loinTapis).mul(0.5));
+      pres = pres.mul(mix(vec3(1, 1, 1), vec3(0.78, 0.7, 0.6), usure));
+    }
     // Peu à peu (dès 20 m, entièrement au bout de la portée) : vu d'avion, le sol entre les arbres prend déjà la couleur du pays.
     const loinPays = pow(clamp(distance.sub(20).div(this.portee), 0, 1), 0.7);
     mat.colorNode = mix(pres, attribute("lointain", "vec3"), loinPays);

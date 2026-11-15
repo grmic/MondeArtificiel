@@ -6361,7 +6361,7 @@
   "trois.portraitDebut": "Portrait of {nom}: drag to orbit around their face, scroll wheel to move closer (30 cm to 3 m). P, F or Esc to leave.",
   "trois.portraitSansHumain": "Nobody close enough in front of you: open a human's profile, or move closer, to take their portrait.",
   "trois.aide.portrait": "Portrait: drag to orbit around the face (and above or below) · scroll wheel: 30 cm to 3 m · P, F or Esc: leave · I: frames per second",
-  "trois.perf": "{images} frames/s\nframe: {moyenne} ms on average, {pire} ms at most (CPU)\n{appels} draw calls · {triangles} k triangles\n{qualite} quality · {moteur}\nGPU: {carte}\nI to hide",
+  "trois.perf": "{images} frames/s\nframe: {moyenne} ms on average, {pire} ms at most (CPU)\n{appels} draw calls · {triangles} k triangles\n{qualite} quality · {moteur}\nGPU: {carte}\nGround cover: {tapis} k slots, {sommets} M vertices\nI to hide",
   "trois.allerVoir": "Go and see",
   "trois.allerVoirNom": "A human's name",
   "trois.allerVoirFiche": "Go and see {nom}",

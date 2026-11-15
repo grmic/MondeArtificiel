@@ -17,6 +17,7 @@ import { ACTIVITES, Feux3D, Foule, lireScene } from "./foule";
 import { MiniCarte } from "./minicarte";
 import { Nature3D } from "./nature3d";
 import { Sol3D } from "./sol3d";
+import { REGLAGES_TAPIS, Tapis, type Lieux } from "./tapis";
 import { CorpsProches } from "./proches";
 import { echange } from "../dialogue";
 import { Relief, type Temperatures, type TerrainVue } from "./relief";
@@ -173,6 +174,11 @@ export class Vue3D {
   private readonly terrain: Terrain3D;
   private readonly nature: Nature3D;
   private readonly sol: Sol3D;
+  /** Tapis du sol (0.41.9) : mousses, sélaginelles, prêles, fougères, cycas nains, fleurs, litière ; null sans les textures. */
+  private readonly tapis: Tapis | null;
+  private lieux: Lieux | null = null;
+  private lieuxA = 0;
+  private readonly pieds: number[] = [];
   private readonly ciel: Ciel;
   private readonly foule: Foule;
   private readonly feux: Feux3D;
@@ -251,7 +257,8 @@ export class Vue3D {
     this.matieres = matieres;
     // 0.41.5 : sol en couches photographiées (si les textures sont là), eau qui suit la profondeur des fonds.
     let sol: THREE.Material;
-    if (matieres) sol = matieres.materiauSol();
+    this.tapis = matieres ? new Tapis(this.relief, matieres) : null;
+    if (matieres) sol = matieres.materiauSol(this.tapis);
     else {
       const detail = textureSol();
       detail.repeat.set(1 / 6, 1 / 6);
@@ -273,7 +280,7 @@ export class Vue3D {
     this.mer = new THREE.Mesh(plan, eauMer);
     this.mer.renderOrder = 2;
     this.mer.frustumCulled = false;
-    this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.mer);
+    this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, ...(this.tapis ? [this.tapis.groupe] : []), this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.mer);
 
     this.qualite = (lireStockage("monde.qualite3d") as Qualite | null) ?? "moyenne";
     if (!(this.qualite in QUALITES)) this.qualite = "moyenne";
@@ -459,6 +466,10 @@ export class Vue3D {
     this.nature.porteeOmbre = q.porteeOmbres + 150;
     if (this.matieres) this.matieres.portee.value = q.vegetation;
     this.sol.portee = q.sol;
+    // Tapis (0.41.9) : en Moyenne, Haute et Ultra ; le sol d'avant n'y garde que ses cailloux. Ombres du tapis en Ultra seulement.
+    const tapis = this.tapis ? REGLAGES_TAPIS[this.qualite] : null;
+    this.tapis?.regler(tapis, q.ombrePetits && q.ombres > 0);
+    this.sol.seulementPierres = tapis !== null;
     this.proches.reglage = { portee: q.corps, nombre: q.nombre, visages: q.visages, nombreVisages: q.nombreVisages, reels: q.reels, porteeReels: q.porteeReels };
     this.foule.porteeSilhouettes = q.silhouettes;
     this.camp.portee = q.camp;
@@ -1113,10 +1124,12 @@ export class Vue3D {
       this.terrain.invalider();
       this.nature.invalider();
       this.sol.invalider();
+      this.tapis?.invalider();
     } else if (premiere) {
       this.terrain.invalider();
       this.nature.vider();
       this.sol.vider();
+      this.tapis?.vider();
     }
     this.saisonVue = this.relief.saison;
   }
@@ -1200,6 +1213,7 @@ export class Vue3D {
     this.sol.mettreAJour(p, 2);
     this.foule.interlocuteur = echange.humain;
     this.foule.animer(dt, secondes, p);
+    if (this.tapis) this.mettreAJourTapis(p, dt);
     this.suivreImage(dt);
     this.proches.mettreAJour(p, maintenant / 1000);
     this.camp.animer(p, secondes, maintenant / 1000);
@@ -1252,6 +1266,28 @@ export class Vue3D {
     }
   }
 
+  /** Le tapis du sol (0.41.9) : lieux usés (relus chaque seconde) et pas des humains et des bêtes proches. */
+  private mettreAJourTapis(p: THREE.Vector3, dt: number): void {
+    const maintenant = performance.now();
+    if (maintenant - this.lieuxA > 1000) {
+      this.lieuxA = maintenant;
+      const l = this.camp.lieux();
+      this.lieux = { ...l, feux: this.foule.feux };
+    }
+    const pieds = this.pieds;
+    pieds.length = 0;
+    for (const c of this.foule.liste) {
+      if (Number.isNaN(c.x) || Math.abs(c.x - p.x) > 34 || Math.abs(c.z - p.z) > 34) continue;
+      // Couché, assis : tout le corps écrase les plantes ; debout, seulement les pieds.
+      const r = c.posture === "couche" ? 0.55 * c.taille : c.posture === "assis" || c.posture === "travail" ? 0.4 : 0.28;
+      pieds.push(c.x, c.z, r);
+    }
+    for (const v of this.camp.pietineurs) pieds.push(v);
+    // L'Entité qui marche couche les plantes elle aussi.
+    if (this.mode === "marche") pieds.push(p.x, p.z, 0.3);
+    this.tapis!.mettreAJour(p, 2, this.lieux, pieds, dt);
+  }
+
   /** Bas du relief alentour (le fond de la vallée où l'on est), pour la brume des fonds. */
   private fondAlentour(p: THREE.Vector3): number {
     let bas = Math.max(0, this.relief.hauteur(p.x, p.z));
@@ -1284,6 +1320,8 @@ export class Vue3D {
       qualite: t(`trois.qualite.${this.qualite}`),
       moteur: this.moteur,
       carte: Vue3D.nomCarte || "?",
+      tapis: nombre(Math.round((this.tapis?.mesure().emplacements ?? 0) / 1000)),
+      sommets: nombre((this.tapis?.mesure().sommets ?? 0) / 1e6, 1),
     });
   }
 
