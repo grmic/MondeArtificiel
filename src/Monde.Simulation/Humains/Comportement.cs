@@ -821,6 +821,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             && ProcheARejoindre(h, tous) is { } proche && !Bannissement.Separes(h, proche, maintenant))
         {
             _autre = proche;
+            // Deux qui se cherchent ne se croisent plus pour repartir chacun de son côté (0.42.2) : si l'autre vient déjà, on l'attend.
+            if (LAutreVient(h, proche))
+            {
+                h.Activite = Activite.Repos;
+                h.CibleX = h.CibleY = -1;
+                return;
+            }
             Avancer(h, proche.X, proche.Y, Activite.RejoindreProche);
             return;
         }
@@ -837,7 +844,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         if (PratiquerLaMatiere(h, tous)) return;
         if (Experimenter(h, tous)) return;
         if (!ailleurs && !abattu && PrendreLaMer(h, tous)) return;
-        if (!ailleurs && TiragePas() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1))
+        // On finit ce qu'on a commencé (0.42.2) : une exploration se poursuit jusqu'au but, une pause dure un moment. Avant, chacun
+        // retirait au sort toutes les dix minutes entre explorer et se reposer, et faisait demi-tour sans raison.
+        var explore = h.Activite == Activite.Explorer && h.CibleX >= 0 && !EstArrive(h);
+        var sePose = h.Activite == Activite.Repos && alea.Reel() >= FinDeLaPause(h);
+        if (!ailleurs && !sePose && (explore || TiragePas() < (0.15 + 0.5 * p.Curiosite) * (abattu ? 0.3 : 1)))
         {
             Explorer(h);
         }
@@ -1195,18 +1206,53 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         h.Activite = Activite.Repos;
     }
 
+    /// <summary>
+    /// Chance, à ce pas, que la pause prenne fin. Les pauses au camp des chasseurs-cueilleurs durent de la demi-heure à quelques
+    /// heures (Hawkes, O'Connell et Blurton Jones 1997 ; Marlowe 2010) : ici en moyenne de 30 minutes (curieux et consciencieux)
+    /// à 2 heures (ni l'un ni l'autre), plus longues chez l'abattu. Sans mémoire : la pause finit au hasard, autour de sa durée.
+    /// </summary>
+    private double FinDeLaPause(Humain h)
+    {
+        var p = h.Personnalite;
+        var duree = 1800 + 3600 * (1 - p.Curiosite) + 1800 * (1 - p.Conscience);
+        if (h.EstDeprime || h.Chagrin > 50) duree *= 1.5;
+        return Math.Min(1, MondeSimule.SecondesParPas * Math.Max(1, _cadence) / duree);
+    }
+
+    /// <summary>
+    /// Le couple qui va dormir ou s'abriter ne se court plus après (0.42.2) : celui que l'autre est déjà en train de rejoindre
+    /// mène, et l'autre le suit là où il va (l'abri qu'il a choisi, ou là où il dort). Renvoie la case où aller, ou null.
+    /// </summary>
+    private static (int X, int Y)? OuVaLAutre(Humain h, Humain partenaire)
+    {
+        if (partenaire.Activite is Activite.ChercherAbri && partenaire.CibleX >= 0) return (partenaire.CibleX, partenaire.CibleY);
+        return (partenaire.X, partenaire.Y);
+    }
+
+    /// <summary>
+    /// L'autre vient vers lui, ou va déjà là où il va : il ne bouge pas pour aller à sa rencontre, il mène.
+    /// </summary>
+    private static bool LAutreVient(Humain h, Humain partenaire) =>
+        partenaire.Activite is Activite.RejoindrePartenaire or Activite.SuivreParent or Activite.RejoindreProche
+        && (Math.Abs(partenaire.CibleX - h.X) <= 1 && Math.Abs(partenaire.CibleY - h.Y) <= 1
+            || h.CibleX >= 0 && partenaire.CibleX == h.CibleX && partenaire.CibleY == h.CibleY);
+
     private void AllerDormir(Humain h, Humain? partenaire)
     {
         // Les prudents cherchent d'abord un abri, ou rejoignent l'autre pour dormir ensemble.
         if (AbriEn(h.X, h.Y) < 0.3 && Installations.FoyerEn(h.X, h.Y) is null && h.Fatigue < 85 && h.Personnalite.Prudence > 0.4)
         {
-            if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 4)
+            if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 4 && !LAutreVient(h, partenaire)
+                && OuVaLAutre(h, partenaire) is var (ax, ay) && (ax != h.X || ay != h.Y))
             {
                 _autre = partenaire;
-                Avancer(h, partenaire.X, partenaire.Y, h.EstEnfant(_maintenant) ? Activite.SuivreParent : Activite.RejoindrePartenaire);
+                Avancer(h, ax, ay, h.EstEnfant(_maintenant) ? Activite.SuivreParent : Activite.RejoindrePartenaire);
                 return;
             }
-            var abri = Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 4, scoreMax: 0);
+            // L'abri choisi reste le but tant qu'on y va (0.42.2) : on ne change plus d'abri à chaque case.
+            var abri = h.Activite == Activite.ChercherAbri && h.CibleX >= 0 && AbriEn(h.CibleX, h.CibleY) >= 0.4
+                ? (h.CibleX, h.CibleY)
+                : Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 4, scoreMax: 0);
             if (abri is { } a)
             {
                 Avancer(h, a.X, a.Y, Activite.ChercherAbri);
@@ -1220,10 +1266,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     private void AllerSAbriter(Humain h, Humain? partenaire, long maintenant)
     {
-        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 6)
+        if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 6 && !LAutreVient(h, partenaire)
+            && OuVaLAutre(h, partenaire) is var (ax, ay) && (ax != h.X || ay != h.Y))
         {
             _autre = partenaire;
-            Avancer(h, partenaire.X, partenaire.Y, h.EstEnfant(maintenant) ? Activite.SuivreParent : Activite.RejoindrePartenaire);
+            Avancer(h, ax, ay, h.EstEnfant(maintenant) ? Activite.SuivreParent : Activite.RejoindrePartenaire);
             return;
         }
         // Chercher l'endroit le plus chaud à portée : plus bas, mieux abrité.
