@@ -273,7 +273,7 @@ export interface Construit {
   repos: THREE.Vector3[];
   p: Proportions;
   /** Os en plus des 17 (les yeux du corps réaliste, 0.41.4), avec leur parent. */
-  autres?: { nom: string; parent: NomOs }[];
+  autres?: { nom: string; parent: string }[];
   /**
    * Correction de repos, par os (repère du monde) : le corps réaliste a les bras écartés en A ; la correction les ramène le long
    * du corps, où les postures les attendent.
@@ -285,6 +285,14 @@ export interface Construit {
   yeux?: THREE.Vector3;
   /** Expressions et regard du vrai visage. */
   anime?: VisageReel;
+  /** Parents changés par le squelette fin (le bras sous la clavicule, 0.41.7). */
+  parents?: Record<string, string>;
+  /** Talon et pointe des pieds (z au repos), d'après le maillage. */
+  pieds?: { talon: number; pointe: number };
+  /** Doigts : par os des poses, axe de flexion et d'écartement (repère des poses), ou null. */
+  doigts?: { flexion: (THREE.Vector3 | null)[]; ecart: (THREE.Vector3 | null)[] };
+  /** Centre de la paume depuis le poignet, bras le long du corps. */
+  paume?: THREE.Vector3;
 }
 
 export function construire(f: Forme): Construit {
@@ -734,6 +742,71 @@ export function construire(f: Forme): Construit {
 const INVISIBLE = new THREE.MeshBasicMaterial({ visible: false });
 const QI = new THREE.Quaternion();
 
+/** Point d'appui sur le sol : un os et un décalage dans son repère au repos (taille 1). */
+export interface Appui {
+  os: number;
+  point: THREE.Vector3;
+  /** Famille, pour savoir ce qui touche : 0 pieds, 1 fesses, 2 genoux et tibias, 3 flancs, dos et ventre. */
+  famille: number;
+}
+
+/**
+ * Points d'appui d'un corps (0.41.7, proposition C1) : talons, pointes, fesses, arrière des cuisses, genoux, tibias, dessus des pieds,
+ * flancs, épaules, tête, dos, ventre. Le corps posé descend jusqu'à ce que le plus bas d'entre eux touche le sol.
+ */
+function appuisDe(repos: THREE.Vector3[], p: Proportions, idx: Int16Array, pieds?: { talon: number; pointe: number }): Appui[] {
+  const a: Appui[] = [];
+  const ajouter = (nom: NomPose, x: number, y: number, z: number, famille: number) => {
+    const o = idx[PO[nom]];
+    if (o >= 0) a.push({ os: o, point: new THREE.Vector3(x, y, z), famille });
+  };
+  // Épaisseurs selon la largeur du corps (un enfant, un corps maigre ou gras n'ont pas la même).
+  const l = p.xHanche / 0.052;
+  for (const [s, c] of [[1, "G"], [-1, "D"]] as const) {
+    const pied = repos[PO[`pied${c}`]];
+    const talon = pieds ? pieds.talon - pied.z : -0.032 * l;
+    const pointe = pieds ? pieds.pointe - pied.z : 0.105 * l;
+    ajouter(`pied${c}`, 0, -pied.y, talon, 0);
+    ajouter(`pied${c}`, 0, -pied.y, pointe * 0.62, 0);
+    ajouter(`pied${c}`, 0, -pied.y, pointe, 0);
+    ajouter(`pied${c}`, 0, -pied.y * 0.2, pointe * 0.45, 2);
+    const cuisse = p.hanche - p.genou;
+    const tibia = p.genou - p.cheville;
+    ajouter("bassin", s * 0.042 * l, -0.068 * l, -0.03 * l, 1);
+    ajouter(`cuisse${c}`, 0, -cuisse * 0.45, -0.047 * l, 1);
+    ajouter(`cuisse${c}`, 0, -cuisse * 0.8, -0.04 * l, 1);
+    ajouter(`jambe${c}`, 0, 0, 0.04 * l, 2);
+    ajouter(`jambe${c}`, 0, -tibia * 0.5, 0.03 * l, 2);
+    ajouter(`jambe${c}`, 0, -tibia * 0.4, -0.045 * l, 3);
+    ajouter(`jambe${c}`, s * 0.035 * l, -tibia * 0.05, 0, 3);
+    ajouter(`cuisse${c}`, s * 0.05 * l, -cuisse * 0.3, 0, 3);
+    ajouter("bassin", s * (p.xHanche + 0.05 * l), -0.02, 0, 3);
+    ajouter("poitrine", s * (p.xEpaule + 0.035 * l), p.epaule - repos[PO.poitrine].y - 0.01, 0, 3);
+    ajouter("tete", s * 0.07 * l, 0.07 * l, 0.005, 3);
+    ajouter(`avantBras${c}`, 0, -0.01, -0.032 * l, 3);
+  }
+  ajouter("tete", 0, 0.065 * l, -0.085 * l, 3);
+  ajouter("poitrine", 0, 0, -0.085 * l, 3);
+  ajouter("ventre", 0, 0, -0.075 * l, 3);
+  ajouter("bassin", 0, -0.02, -0.08 * l, 3);
+  ajouter("poitrine", 0, -0.02, 0.1 * l, 3);
+  ajouter("ventre", 0, 0, 0.09 * l, 3);
+  ajouter("bassin", 0, -0.035, 0.08 * l, 3);
+  return a;
+}
+
+/** Os des poses (0.41.7) : les 17 os de base, puis ceux du squelette fin (absents des corps calculés). */
+export const DOIGTS = ["pouce", "index", "majeur", "annulaire", "auriculaire"] as const;
+export const OS_FINS = (() => {
+  const l: string[] = ["claviculeG", "claviculeD"];
+  for (const c of ["G", "D"]) for (const d of DOIGTS) for (let k = 1; k <= 3; k++) l.push(`${d}${k}${c}`);
+  l.push("orteilsG", "orteilsD");
+  return l;
+})();
+export const POSE_OS: string[] = [...OS, ...OS_FINS];
+export type NomPose = NomOs | "claviculeG" | "claviculeD" | "orteilsG" | "orteilsD" | `${(typeof DOIGTS)[number]}${1 | 2 | 3}${"G" | "D"}`;
+export const PO = Object.fromEntries(POSE_OS.map((n, i) => [n, i])) as Record<NomPose, number>;
+
 /** Un corps posé dans la scène : son maillage, ses os, sa forme. */
 export class Corps {
   readonly maillage: THREE.SkinnedMesh;
@@ -750,13 +823,24 @@ export class Corps {
   readonly yeuxRepos: THREE.Vector3 | null;
   /** Expressions et regard du corps réaliste. */
   readonly anime: VisageReel | null;
-  private readonly parents: number[];
+  readonly parents: number[];
   private readonly corrections: (THREE.Quaternion | null)[] | null;
+  /** Os des poses → os de ce corps (−1 : absent). */
+  readonly idx: Int16Array;
+  /** Positions des os au repos (taille 1), dans l'ordre des os des poses (absents : null). */
+  readonly reposPose: (THREE.Vector3 | null)[];
+  /** Points d'appui sur le sol. */
+  readonly appuis: Appui[];
+  /** Doigts (squelette fin) : axe de flexion et d'écartement de chaque phalange, dans le repère des poses. */
+  readonly doigts: Construit["doigts"] | null;
+  /** Centre de la paume, depuis le poignet, au repos des poses (bras le long du corps). */
+  readonly paume: THREE.Vector3;
   /**
    * Les os vivent dans un repère à part, près de l'origine, et non sous le maillage : posé à des centaines de kilomètres, le
    * skinning en flottants 32 bits arrondirait les sommets au centimètre. Le maillage, lui, est placé normalement.
    */
   readonly armature = new THREE.Object3D();
+  private readonly reposOs: THREE.Vector3[];
 
   constructor(f: Forme, materiau: THREE.Material, construit: Construit = construire(f), cle = cleDe(f)) {
     const { geometrie, repos, p } = construit;
@@ -769,12 +853,21 @@ export class Corps {
     this.anime = construit.anime ?? null;
     this.materiaux = construit.materiaux ?? [materiau, materiau];
     this.corrections = construit.corrections ?? null;
+    this.doigts = construit.doigts ?? null;
     const noms: string[] = [...OS, ...(construit.autres ?? []).map((a) => a.nom)];
     this.parents = noms.map((n, i) => {
-      const parent = i < OS.length ? PARENT[n as NomOs] : construit.autres![i - OS.length].parent;
-      return parent ? O[parent] : -1;
+      const parent = construit.parents?.[n] ?? (i < OS.length ? PARENT[n as NomOs] : construit.autres![i - OS.length].parent);
+      return parent ? noms.indexOf(parent) : -1;
     });
+    this.idx = new Int16Array(POSE_OS.length).fill(-1);
+    POSE_OS.forEach((n, i) => (this.idx[i] = noms.indexOf(n)));
+    this.reposPose = POSE_OS.map((_, i) => (this.idx[i] >= 0 ? repos[this.idx[i]] : null));
+    this.reposOs = repos;
+    this.appuis = appuisDe(this.reposPose as THREE.Vector3[], p, this.idx, construit.pieds);
+    for (const a of this.appuis) this.versOs(a.os, a.point);
+    this.paume = construit.paume ?? new THREE.Vector3(0, -p.longMain * 0.45, 0);
     this.os = noms.map((n) => Object.assign(new THREE.Bone(), { name: n }));
+    // Les parents d'abord (les os en plus peuvent s'intercaler, comme la clavicule entre la poitrine et le bras).
     noms.forEach((_, i) => {
       const parent = this.parents[i];
       const b = this.os[i];
@@ -791,6 +884,16 @@ export class Corps {
     this.maillage.bindMode = THREE.DetachedBindMode;
     this.maillage.bind(new THREE.Skeleton(this.os), new THREE.Matrix4());
     this.maillage.frustumCulled = false;
+  }
+
+  /**
+   * Un décalage pensé dans le repère des poses (bras le long du corps) → repère de l'os `k` au repos. Seuls les os corrigés (bras et
+   * doigts du corps réaliste, en A au repos) diffèrent.
+   */
+  versOs(k: number, v: THREE.Vector3): THREE.Vector3 {
+    const c = this.corrections?.[k];
+    if (c) v.applyQuaternion(QI.copy(c).invert());
+    return v;
   }
 
   /** Montre ou cache la tête simple (remplacée de près par la tête détaillée). */
@@ -810,148 +913,16 @@ export class Corps {
     return sortie.multiplyMatrices(this.maillage.matrixWorld, os.matrixWorld).multiply(this.maillage.skeleton.boneInverses[k]);
   }
 
-  /** Remet tous les os droits. */
-  private droit(): void {
-    for (const b of this.os) b.rotation.set(0, 0, 0);
-  }
-
   /**
-   * Pose le squelette pour une posture. `phase` : cycle de marche ; `temps` : secondes réelles (petits mouvements) ;
-   * `graine` : propre à chacun. Renvoie de combien descendre le bassin (en part de la taille) et la rotation du corps entier.
+   * Pose le squelette d'après une pose « canonique » (0.41.7) : `q` donne, pour chaque os des poses, sa rotation locale comme si le
+   * corps avait les bras le long du corps ; `racine` décale le bassin (taille 1). Les yeux restent où le visage les met.
    */
-  poser(posture: string, phase: number, temps: number, graine: number, voute: number, boite: boolean, porteBebe: boolean,
-    regard: { lacet: number; tangage: number; poids: number } | null = null): { descente: number; couche: number } {
-    this.droit();
+  appliquer(q: Float32Array, racine: THREE.Vector3): void {
     const b = this.os;
-    const respire = Math.sin(temps * 1.6 + graine) * 0.015;
-    b[O.poitrine].rotation.x = respire + voute * 0.25;
-    b[O.ventre].rotation.x = voute * 0.12;
-    b[O.cou].rotation.x = -voute * 0.25;
-    b[O.tete].rotation.y = Math.sin(temps * 0.23 + graine) * 0.35;
-    b[O.tete].rotation.x = Math.sin(temps * 0.17 + graine * 2) * 0.08;
-    // Bras légèrement pliés au repos.
-    b[O.avantBrasG].rotation.x = b[O.avantBrasD].rotation.x = -0.12;
-    let descente = 0;
-    let couche = 0;
-    switch (posture) {
-      case "marche": {
-        const a = Math.sin(phase);
-        const ampl = boite ? 0.3 : 0.45;
-        b[O.cuisseG].rotation.x = -a * ampl;
-        b[O.cuisseD].rotation.x = a * ampl * (boite ? 0.6 : 1);
-        b[O.jambeG].rotation.x = Math.max(0, Math.sin(phase + 1.2)) * 0.9;
-        b[O.jambeD].rotation.x = Math.max(0, Math.sin(phase + Math.PI + 1.2)) * 0.9;
-        b[O.piedG].rotation.x = -Math.max(0, Math.sin(phase - 0.6)) * 0.3;
-        b[O.piedD].rotation.x = -Math.max(0, Math.sin(phase + Math.PI - 0.6)) * 0.3;
-        b[O.brasG].rotation.x = a * 0.4;
-        b[O.brasD].rotation.x = -a * 0.4;
-        b[O.avantBrasG].rotation.x = -0.25 - Math.max(0, a) * 0.3;
-        b[O.avantBrasD].rotation.x = -0.25 - Math.max(0, -a) * 0.3;
-        b[O.bassin].rotation.y = a * 0.08;
-        b[O.poitrine].rotation.y = -a * 0.1;
-        b[O.ventre].rotation.x += 0.04;
-        descente = 0.012 * (1 - Math.abs(Math.cos(phase)));
-        if (boite) b[O.bassin].rotation.z = Math.sin(phase) * 0.05;
-        break;
-      }
-      case "assis":
-      case "travail": {
-        // Assis par terre, jambes repliées devant soi.
-        for (const [c, j, pd, s] of [[O.cuisseG, O.jambeG, O.piedG, 1], [O.cuisseD, O.jambeD, O.piedD, -1]] as const) {
-          b[c].rotation.set(-2.1, 0, s * 0.3);
-          b[j].rotation.x = 1.75 + 0.1 * s;
-          b[pd].rotation.x = -0.3;
-        }
-        b[O.ventre].rotation.x += 0.12;
-        if (posture === "travail") {
-          const g = Math.sin(temps * 2.4 + graine);
-          b[O.brasG].rotation.set(-0.7 + g * 0.15, 0, -0.25);
-          b[O.brasD].rotation.set(-0.6 - g * 0.12, 0, 0.25);
-          b[O.avantBrasG].rotation.x = -1.1 - g * 0.2;
-          b[O.avantBrasD].rotation.x = -1.2 + g * 0.2;
-          b[O.tete].rotation.x = 0.35;
-          b[O.tete].rotation.y *= 0.3;
-        } else {
-          b[O.brasG].rotation.set(-0.45, 0, -0.1);
-          b[O.brasD].rotation.set(-0.45, 0, 0.1);
-          b[O.avantBrasG].rotation.x = -0.6;
-          b[O.avantBrasD].rotation.x = -0.6;
-        }
-        descente = this.hanche - 0.085;
-        break;
-      }
-      case "accroupi": {
-        const g = Math.sin(temps * 1.5 + graine);
-        for (const [c, j, pd, s] of [[O.cuisseG, O.jambeG, O.piedG, 1], [O.cuisseD, O.jambeD, O.piedD, -1]] as const) {
-          b[c].rotation.set(-1.85, 0, s * 0.3);
-          b[j].rotation.x = 2.2;
-          b[pd].rotation.x = -0.35;
-        }
-        b[O.ventre].rotation.x += 0.45;
-        b[O.poitrine].rotation.x += 0.2;
-        b[O.brasG].rotation.set(-1.0 + g * 0.25, 0, -0.1);
-        b[O.brasD].rotation.set(-0.7, 0, 0.15);
-        b[O.avantBrasG].rotation.x = -0.4;
-        b[O.avantBrasD].rotation.x = -0.6;
-        b[O.tete].rotation.x = 0.35;
-        descente = this.hanche - 0.19;
-        break;
-      }
-      case "couche":
-      case "porte": {
-        // Allongé sur le côté, un peu replié (le corps entier tourne).
-        b[O.cuisseG].rotation.x = -0.5;
-        b[O.cuisseD].rotation.x = -0.35;
-        b[O.jambeG].rotation.x = 0.7;
-        b[O.jambeD].rotation.x = 0.5;
-        b[O.brasG].rotation.set(-0.8, 0, 0);
-        b[O.brasD].rotation.set(-0.6, 0, 0.2);
-        b[O.avantBrasG].rotation.x = -0.8;
-        b[O.avantBrasD].rotation.x = -1;
-        b[O.tete].rotation.y *= 0.2;
-        couche = 1;
-        if (posture === "porte") {
-          b[O.cuisseG].rotation.x = b[O.cuisseD].rotation.x = -1.2;
-          b[O.jambeG].rotation.x = b[O.jambeD].rotation.x = 1.4;
-          couche = 2;
-        }
-        break;
-      }
-      case "nage": {
-        const a = Math.sin(phase * 1.5);
-        b[O.brasG].rotation.set(-2.6 + a * 0.5, 0, 0);
-        b[O.brasD].rotation.set(-2.6 - a * 0.5, 0, 0);
-        b[O.cuisseG].rotation.x = a * 0.35;
-        b[O.cuisseD].rotation.x = -a * 0.35;
-        b[O.tete].rotation.x = -0.6;
-        couche = 3;
-        break;
-      }
-      default: {
-        // Debout : poids sur une jambe, bras ballants qui bougent un peu.
-        const appui = unite(hacher(Math.floor(graine * 1000), Math.floor(temps / 9))) < 0.5 ? 1 : -1;
-        b[O.bassin].rotation.z = appui * 0.04;
-        b[O.ventre].rotation.z = -appui * 0.03;
-        b[O.cuisseG].rotation.z = -appui * 0.02;
-        b[O.cuisseD].rotation.z = -appui * 0.02;
-        b[appui > 0 ? O.jambeD : O.jambeG].rotation.x = 0.12;
-        b[O.brasG].rotation.x = respire * 2;
-        b[O.brasD].rotation.x = -respire * 2;
-      }
-    }
-    // Une mère qui porte son bébé le tient d'un bras.
-    if (porteBebe && posture !== "couche" && posture !== "nage") {
-      b[O.brasD].rotation.set(-0.35, 0, 0.35);
-      b[O.avantBrasD].rotation.set(-1.6, 0.4, 0);
-    }
-    // Tourné vers quelqu'un (l'Entité qui lui parle) : la tête et un peu le buste se tournent vers lui.
-    if (regard && regard.poids > 0.01 && couche === 0) {
-      const w = regard.poids;
-      const lacet = Math.max(-1.1, Math.min(1.1, regard.lacet));
-      b[O.poitrine].rotation.y = b[O.poitrine].rotation.y * (1 - w) + lacet * 0.25 * w;
-      b[O.cou].rotation.y = lacet * 0.3 * w;
-      b[O.tete].rotation.y = b[O.tete].rotation.y * (1 - w) + lacet * 0.45 * w;
-      b[O.tete].rotation.x = b[O.tete].rotation.x * (1 - w) + Math.max(-0.5, Math.min(0.5, regard.tangage)) * w;
+    for (let i = 0; i < POSE_OS.length; i++) {
+      const k = this.idx[i];
+      if (k < 0) continue;
+      b[k].quaternion.fromArray(q, 4 * i);
     }
     // Corps réaliste : la pose, pensée pour des bras le long du corps, s'applique après la correction du repos en A
     // (rotation locale = correction du parent⁻¹ × pose × correction de l'os).
@@ -961,12 +932,12 @@ export class Corps {
         const ck = c[k];
         const cp = this.parents[k] >= 0 ? c[this.parents[k]] : null;
         if (!ck && !cp) continue;
-        const q = b[k].quaternion;
-        if (ck) q.multiply(ck);
-        if (cp) q.premultiply(QI.copy(cp).invert());
+        const qk = b[k].quaternion;
+        if (ck) qk.multiply(ck);
+        if (cp) qk.premultiply(QI.copy(cp).invert());
       }
     }
-    return { descente, couche };
+    b[0].position.copy(this.reposOs[0]).add(racine);
   }
 
   liberer(): void {

@@ -86,7 +86,7 @@ export interface Corps {
  * Taille (m) selon l'âge et le sexe : croissance de l'enfance, puis stature adulte propre à chacun (sa taille dans la simulation,
  * écart-type d'environ 7 cm ; Roser et al., 2013), et un peu de tassement dans la vieillesse.
  */
-function stature(age: number, femme: boolean, ecart: number): number {
+export function stature(age: number, femme: boolean, ecart: number): number {
   const adulte = (femme ? 1.58 : 1.7) + ecart * 0.07;
   const courbe: [number, number][] = [[0, 0.29], [1, 0.44], [2, 0.51], [5, 0.65], [10, 0.82], [14, 0.93], [17, 1]];
   if (age >= 17) return adulte * (age > 65 ? 1 - (age - 65) * 0.002 : 1);
@@ -183,7 +183,7 @@ export class Foule {
   porteeSilhouettes = 2500;
   private readonly points: THREE.InstancedMesh;
 
-  constructor(private readonly relief: Relief) {
+  constructor(readonly relief: Relief) {
     const peau = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0 });
     const torse = new THREE.CapsuleGeometry(0.085, 0.2, 4, 8).translate(0, 0.685, 0);
     const tete = new THREE.SphereGeometry(0.065, 12, 10);
@@ -477,7 +477,7 @@ export class Feux3D {
   private readonly lumieres: THREE.PointLight[] = [];
   private feux: { x: number; y: number; z: number; couve: boolean; graine: number }[] = [];
 
-  constructor(private readonly relief: Relief) {
+  constructor(readonly relief: Relief) {
     this.flammes = new THREE.InstancedMesh(new THREE.ConeGeometry(0.28, 0.9, 7).translate(0, 0.45, 0),
       new THREE.MeshBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.85, depthWrite: false, fog: false }), 400);
     this.buches = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06, 0.07, 0.9, 6).rotateZ(Math.PI / 2).translate(0, 0.07, 0),

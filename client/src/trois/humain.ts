@@ -1,7 +1,7 @@
 import * as THREE from "three/webgpu";
 import { attribute, float, mix, texture, uv, vec2 } from "three/tsl";
 import { hacher, lisser, unite } from "./bruit";
-import { OS, type Construit, type Forme, type NomOs, type Proportions } from "./corps";
+import { DOIGTS, OS, OS_FINS, PO, POSE_OS, type Construit, type Forme, type NomOs, type Proportions } from "./corps";
 import { couleurs, type Rgb, type Visage } from "../visage";
 
 /**
@@ -16,8 +16,8 @@ import { couleurs, type Rgb, type Visage } from "../visage";
  *   gris), yeux (couleur de l'iris) ;
  * - humeur et peur → expressions (unités d'expression de MakeHuman), clignements, regard qui suit, bouche qui parle.
  *
- * Le squelette reste celui des postures existantes (17 os, plus les deux yeux) : les poids des 163 os de MakeHuman y sont
- * regroupés. Tout est calculé à l'affichage ; la simulation ne change pas.
+ * Le squelette des postures : 17 os, les deux yeux et, depuis la 0.41.7, le squelette fin (clavicules, trois phalanges par doigt,
+ * orteils) ; les poids des 163 os de MakeHuman y sont regroupés. Tout est calculé à l'affichage ; la simulation ne change pas.
  */
 
 interface Bloc {
@@ -92,9 +92,12 @@ async function charger(): Promise<BaseHumaine> {
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const buf = await r.arrayBuffer();
   const vue = new DataView(buf);
-  if (vue.getUint32(0, true) !== 0x4d55484d) throw new Error("fichier humain inconnu");
+  if (vue.getUint32(0, true) !== 0x4d55484d) throw new Error("unknown human file");
   const lg = vue.getUint32(4, true);
   const e = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, lg))) as Entete;
+  // Squelette fin (0.41.7) : les os du fichier doivent être ceux du client.
+  const attendus = [...OS, "oeilG", "oeilD", ...OS_FINS];
+  if (e.os.length !== attendus.length || e.os.some((n, i) => n !== attendus[i])) throw new Error("human skeleton mismatch");
   const d0 = 8 + lg;
   const lire = <T>(b: Bloc, C: new (buf: ArrayBuffer, off: number, n: number) => T): T => new C(buf, d0 + b.debut, b.n);
   const cibles = new Map<string, Cible>();
@@ -479,6 +482,16 @@ function materiauOeil(iris: THREE.Color): THREE.Material {
 const O = Object.fromEntries(OS.map((n, i) => [n, i])) as Record<NomOs, number>;
 const OEIL_G = OS.length;
 const OEIL_D = OS.length + 1;
+/** Premier os du squelette fin (0.41.7) dans le fichier. */
+const FIN0 = OS.length + 2;
+
+/** Parent d'un os du squelette fin. */
+function parentFin(nom: string): NomOs | string {
+  if (nom.startsWith("clavicule")) return "poitrine";
+  if (nom.startsWith("orteils")) return "pied" + nom.slice(-1);
+  const k = Number(nom[nom.length - 2]);
+  return k === 1 ? "main" + nom.slice(-1) : nom.slice(0, -2) + (k - 1) + nom.slice(-1);
+}
 
 const rgbLin = (c: Rgb) => new THREE.Color().setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace);
 
@@ -824,17 +837,68 @@ export function construireReel(b: BaseHumaine, f: Forme, v: Visage | null, id: n
   for (const nom of OS) repos[O[nom]] = A[nom].clone();
   repos[OEIL_G] = oeilG.clone();
   repos[OEIL_D] = oeilD.clone();
-  // Correction des bras (repos en A → le long du corps, légèrement écartés comme le corps calculé).
+  OS_FINS.forEach((nom, i) => (repos[FIN0 + i] = A[nom].clone()));
+  // Correction des bras (repos en A → le long du corps, légèrement écartés comme le corps calculé) ; les doigts suivent la main.
   const corrections: (THREE.Quaternion | null)[] = repos.map(() => null);
   const ouvert = 0.09;
+  const flexion: (THREE.Vector3 | null)[] = POSE_OS.map(() => null);
+  const ecart: (THREE.Vector3 | null)[] = POSE_OS.map(() => null);
+  let paume = new THREE.Vector3();
   for (const [cote, sx] of [["G", 1], ["D", -1]] as const) {
     const vise = new THREE.Vector3(sx * Math.sin(ouvert), -Math.cos(ouvert), 0);
     const bras = A[`avantBras${cote}`].clone().sub(A[`bras${cote}`]).normalize();
     const avant = A[`main${cote}`].clone().sub(A[`avantBras${cote}`]).normalize();
     corrections[O[`bras${cote}` as NomOs]] = new THREE.Quaternion().setFromUnitVectors(bras, vise);
     const qa = new THREE.Quaternion().setFromUnitVectors(avant, vise);
-    corrections[O[`avantBras${cote}` as NomOs]] = qa;
+    // Paume tournée vers la cuisse, pouce en avant (0.41.7) : la torsion qui manque est partagée entre l'avant-bras et la main
+    // (pronation et supination se font dans l'avant-bras).
+    const poignet = A[`main${cote}`];
+    const majeur = A[`majeur1${cote}`].clone().sub(poignet).normalize();
+    const lateral = A[`index1${cote}`].clone().sub(A[`auriculaire1${cote}`]).normalize();
+    const n = majeur.clone().cross(lateral).normalize();
+    const courbe = (d: string) => {
+      const d1 = A[`${d}2${cote}`].clone().sub(A[`${d}1${cote}`]).normalize();
+      const d3 = A[`${d}Bout${cote}`].clone().sub(A[`${d}3${cote}`]).normalize();
+      return d3.sub(d1);
+    };
+    if (n.dot(courbe("majeur")) < 0) n.negate();
+    const np = n.clone().applyQuaternion(qa);
+    np.addScaledVector(vise, -np.dot(vise)).normalize();
+    const voulue = new THREE.Vector3(-sx, 0, 0).addScaledVector(vise, sx * vise.x).normalize();
+    const torsion = Math.atan2(np.clone().cross(voulue).dot(vise), np.dot(voulue));
+    corrections[O[`avantBras${cote}` as NomOs]] = new THREE.Quaternion().setFromAxisAngle(vise, torsion * 0.5).multiply(qa);
+    qa.premultiply(new THREE.Quaternion().setFromAxisAngle(vise, torsion));
     corrections[O[`main${cote}` as NomOs]] = qa.clone();
+    // Doigts : axe de flexion de chaque phalange d'après la courbure de repos du doigt (vers la paume), axe d'écartement = normale
+    // de la paume ; le tout dans le repère des poses (bras le long du corps).
+    for (const d of DOIGTS) {
+      const c = courbe(d);
+      for (let k = 1; k <= 3; k++) {
+        const de = A[`${d}${k}${cote}`];
+        const vers = k < 3 ? A[`${d}${k + 1}${cote}`] : A[`${d}Bout${cote}`];
+        const dir = vers.clone().sub(de).normalize();
+        // Vers où plie le doigt : sa propre courbure si elle est nette, sinon la paume.
+        const plie = c.clone().addScaledVector(dir, -c.dot(dir));
+        if (plie.length() < 0.05 || plie.dot(n) < 0) plie.copy(n);
+        const axe = dir.clone().cross(plie.normalize()).normalize().applyQuaternion(qa);
+        const i = PO[`${d}${k}${cote}` as keyof typeof PO];
+        flexion[i] = axe;
+        ecart[i] = n.clone().applyQuaternion(qa);
+        corrections[FIN0 + OS_FINS.indexOf(`${d}${k}${cote}`)] = qa.clone();
+      }
+    }
+    if (cote === "G") paume = A.majeur1G.clone().sub(poignet).multiplyScalar(0.55).addScaledVector(n, 0.012).applyQuaternion(qa);
+  }
+  // Talon et pointe des pieds, d'après la peau qui suit le pied gauche.
+  let talon = Infinity;
+  let pointe = -Infinity;
+  for (let k = 0; k < b.triangles.length; k++) {
+    const o = b.triangles[k];
+    const os = b.osIdx[4 * o];
+    if ((os === O.piedG || os === FIN0 + OS_FINS.indexOf("orteilsG")) && b.osPoids[4 * o] > 128 && P[3 * o + 1] < A.piedG.y) {
+      talon = Math.min(talon, P[3 * o + 2]);
+      pointe = Math.max(pointe, P[3 * o + 2]);
+    }
   }
   // Proportions (pour les poses et ce qui se place sur le corps).
   let menton = Infinity;
@@ -882,7 +946,11 @@ export function construireReel(b: BaseHumaine, f: Forme, v: Visage | null, id: n
   const anime = new VisageReel(unite(hacher(id, 91)) * 100, new Float32Array(pos), deltas, yeux.clone());
   return {
     geometrie: g, repos, p, corrections, materiaux: materiauxListe, yeux,
-    autres: [{ nom: "oeilG", parent: "tete" }, { nom: "oeilD", parent: "tete" }],
+    autres: [{ nom: "oeilG", parent: "tete" }, { nom: "oeilD", parent: "tete" }, ...OS_FINS.map((nom) => ({ nom, parent: parentFin(nom) }))],
+    parents: { brasG: "claviculeG", brasD: "claviculeD" },
+    pieds: Number.isFinite(talon) ? { talon, pointe } : undefined,
+    doigts: { flexion, ecart },
+    paume,
     anime,
   };
 }

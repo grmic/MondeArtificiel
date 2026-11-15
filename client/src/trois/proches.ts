@@ -6,6 +6,7 @@ import { TeteDetaillee, type Expression } from "./tete";
 import { baseHumaine, construireReel } from "./humain";
 import { chargerVisages, couleurs, visageConnu, type Visage } from "../visage";
 import { echange } from "../dialogue";
+import { Animateur, mainVersPoint, osEn, type Situation, type SolLocal } from "./pose";
 
 /** Réglage des corps détaillés selon la Qualité : jusqu'où, et combien à la fois (proposition G1). */
 export interface ReglageProches {
@@ -45,9 +46,25 @@ function cleVisage(v: Visage): string {
   return [v.id, r(v.age, 1), r(v.maigreur, 0.15), r(v.paleur, 0.2), v.fievre ? 1 : 0, v.cicatrice ? 1 : 0, r(v.gris, 0.15), r(v.calvitie, 0.15)].join(",");
 }
 
-const AXE_Z = new THREE.Vector3(0, 0, 1);
-const AXE_X = new THREE.Vector3(1, 0, 0);
 const AXE_Y = new THREE.Vector3(0, 1, 0);
+const V1 = new THREE.Vector3();
+const V2 = new THREE.Vector3();
+const V3 = new THREE.Vector3();
+const M1 = new THREE.Matrix4();
+const M2 = new THREE.Matrix4();
+
+/** Rotation qui envoie les axes (haut, avant) d'un repère sur ceux d'un autre (vecteurs normés, presque orthogonaux). */
+function aligner(hautDe: THREE.Vector3, avantDe: THREE.Vector3, hautVers: THREE.Vector3, avantVers: THREE.Vector3, q: THREE.Quaternion): THREE.Quaternion {
+  const base = (h: THREE.Vector3, a: THREE.Vector3, m: THREE.Matrix4) => {
+    const y = h.clone().normalize();
+    const z = a.clone().addScaledVector(y, -a.dot(y)).normalize();
+    const x = y.clone().cross(z);
+    return m.makeBasis(x, y, z);
+  };
+  base(hautDe, avantDe, M1);
+  base(hautVers, avantVers, M2);
+  return q.setFromRotationMatrix(M2.multiply(M1.transpose()));
+}
 
 /**
  * Les humains proches de la caméra en corps détaillés (0.41.1) ; les autres restent en silhouettes (foule.ts). Un corps n'est
@@ -66,6 +83,10 @@ export class CorpsProches {
   /** Corps réalistes MakeHuman (0.41.4) ; faux : corps calculés de la 0.41.1. */
   reels = true;
   private readonly matrice = new THREE.Matrix4();
+  /** Animation de chacun (0.41.7) : elle survit à son corps, refait quand sa forme change. */
+  private readonly animateurs = new Map<number, Animateur>();
+  /** Ce que chacun regarde, et quand il en change. */
+  private readonly regards = new Map<number, { id: number; jusqua: number }>();
 
   constructor(private readonly foule: Foule) {}
 
@@ -116,9 +137,12 @@ export class CorpsProches {
     // Corps réalistes (0.41.4) dès que la base MakeHuman est chargée ; corps calculés en attendant (ou si elle manque).
     const base = this.reels ? baseHumaine() : null;
     let rang = 0;
+    const poses: { pl: (typeof gardes)[number]["c"]; c: Etat; corps: Corps; d: number }[] = [];
+    const peau = (c: Etat) => this.couleursDe(c)[0];
+    const cheveux = (c: Etat) => this.couleursDe(c)[1];
     for (const { c: pl, corps: c, d } of gardes) {
-      const [peau, cheveux] = this.couleursDe(c);
-      const forme = formeDe(c.s, peau, cheveux);
+      const [peauC, cheveuxC] = this.couleursDe(c);
+      const forme = formeDe(c.s, peauC, cheveuxC);
       let corps = this.corps.get(pl.id);
       // Réaliste : les plus proches, dans la portée (un peu plus pour qui l'est déjà, pour ne pas basculer sans cesse).
       const deja = corps?.anime ? 1.2 : 1;
@@ -140,47 +164,183 @@ export class CorpsProches {
         }
       }
       this.foule.detailles.add(pl.id);
+      poses.push({ pl, c, corps, d });
+    }
+    // Les mères d'abord : leurs enfants portés se placent dans leurs bras.
+    poses.sort((a, b) => (a.c.posture === "porte" ? 1 : 0) - (b.c.posture === "porte" ? 1 : 0));
+    const enfants = new Map<number, Etat>();
+    for (const c of this.foule.liste) if (c.posture === "porte" && c.s.mere > 0) enfants.set(c.s.mere, c);
+    const places = new Map<number, { x: number; y: number; z: number; h: number }>();
+    for (const { pl, c } of poses) places.set(pl.id, { x: pl.x, y: pl.y, z: pl.z, h: c.taille });
+    for (const { pl, c, corps } of poses) {
       const s = c.s;
-      const graine = unite(hacher(s.id, 71)) * 100;
+      let anim = this.animateurs.get(s.id);
+      if (!anim) {
+        anim = new Animateur(s.id);
+        this.animateurs.set(s.id, anim);
+      }
       const m = corps.maillage;
       const h = c.taille;
-      // Celui qui écoute l'Entité tourne la tête vers elle (la caméra), en plus du corps qui se tourne.
-      let regard: { lacet: number; tangage: number; poids: number } | null = null;
-      if (c.ecoute > 0.01) {
-        const dx = camera.x - pl.x;
-        const dz = camera.z - pl.z;
-        const lacet = Math.atan2(dx, dz) - pl.cap;
-        const yeux = pl.y + h * (corps.hautTete + corps.p.hauteTete * 0.55);
-        regard = {
-          lacet: Math.atan2(Math.sin(lacet), Math.cos(lacet)),
-          tangage: -Math.atan2(camera.y - yeux, Math.hypot(dx, dz)),
-          poids: c.ecoute,
-        };
+      const enfant = enfants.get(s.id);
+      const mere = c.posture === "porte" ? this.corps.get(s.mere) : undefined;
+      const etatMere = mere ? [...this.foule.liste].find((e) => e.s.id === s.mere) : undefined;
+      const dort = c.posture === "couche" && (s.activite === 1 || s.activite === 7);
+      const sit: Situation = {
+        posture: c.posture, id: s.id, age: s.age, femme: s.femme, voute: formeDe(s, c.peau, c.cheveux).voute, boite: (s.etat & 8) !== 0,
+        activite: s.activite, phase: c.phase, vitesse: c.vitesse, endurance: s.endurance, reserves: s.reserves,
+        enfant: enfant && (s.etat & 4) !== 0 ? enfant.s.age : (s.etat & 4) !== 0 ? 0.4 : null,
+        porteur: etatMere ? etatMere.posture : null, dort, ecoute: c.ecoute,
+      };
+      // Ce qu'il regarde (E1) : l'Entité qui lui parle, sinon tour à tour les gens proches, sa mère, son enfant.
+      anim.ecoute = c.ecoute > 0.3;
+      anim.regard = c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, places, pl, temps);
+      // Pente du sol sous lui, dans son repère (taille 1).
+      let sol: SolLocal | null = null;
+      if (c.posture !== "nage" && !(c.posture === "porte" && mere && sit.porteur !== "couche")) {
+        const rel = this.foule.relief;
+        const e = 0.5;
+        const gx = (rel.hauteur(pl.x + e, pl.z) - rel.hauteur(pl.x - e, pl.z)) / (2 * e);
+        const gz = (rel.hauteur(pl.x, pl.z + e) - rel.hauteur(pl.x, pl.z - e)) / (2 * e);
+        const co = Math.cos(pl.cap);
+        const si = Math.sin(pl.cap);
+        const borne = (v: number) => Math.max(-0.7, Math.min(0.7, v));
+        sol = { ax: borne(gx * co - gz * si), az: borne(gx * si + gz * co) };
       }
-      const { descente, couche } = corps.poser(c.posture, c.phase, temps, graine, forme.voute, (s.etat & 8) !== 0, (s.etat & 4) !== 0, regard);
       m.scale.setScalar(h);
       m.quaternion.setFromAxisAngle(AXE_Y, pl.cap);
-      let y = pl.y - descente * h;
-      if (couche === 1) {
-        // Allongé sur le flanc : le corps pivote autour de l'axe avant.
-        m.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(AXE_Z, Math.PI / 2));
-        y = pl.y + 0.09 * h;
-      } else if (couche === 3) {
-        // Nage : à plat ventre, la tête en avant.
-        m.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(AXE_X, Math.PI / 2));
-        y = pl.y - 0.05;
-      } else if (couche === 2) {
-        // Porté contre sa mère : le bassin à hauteur de la hanche qui le porte.
-        y = pl.y - corps.hanche * h;
+      m.position.set(pl.x, c.posture === "nage" ? pl.y - corps.hanche * h + 0.12 : pl.y, pl.z);
+      if (c.posture === "porte" && mere && sit.porteur === "couche") {
+        // Couché contre sa mère couchée, devant sa poitrine.
+        osEn(mere, "poitrine", V1);
+        mere.maillage.localToWorld(V1);
+        const cap = mere.maillage.rotation.y;
+        m.position.set(V1.x + Math.sin(cap) * 0.22, places.get(s.mere)?.y ?? pl.y, V1.z + Math.cos(cap) * 0.22);
+        m.quaternion.copy(mere.maillage.quaternion);
       }
-      m.position.set(pl.x, y, pl.z);
       m.updateMatrixWorld();
-      corps.armature.updateMatrixWorld(true);
+      anim.animer(corps, sit, temps, sol);
+      if (c.posture === "porte" && mere && sit.porteur !== "couche") {
+        // Seul l'enfant porté bouge après l'animation : les autres squelettes sont déjà à jour.
+        this.placerDansLesBras(corps, h, mere, places.get(s.mere)?.h ?? 1.6, s.age, sit.porteur ?? "debout");
+        m.updateMatrixWorld();
+        corps.armature.updateMatrixWorld(true);
+      }
       // Tête détaillée, de près (le corps réaliste a déjà son visage : on l'anime).
       if (corps.anime) {
-        if (tetesVoulues.has(pl.id)) this.animerVisage(c, corps, camera, temps);
-      } else if (tetesVoulues.has(pl.id)) this.poserTete(c, corps, peau, cheveux, camera, temps, tetesFaites < 1 ? () => tetesFaites++ : null);
+        if (tetesVoulues.has(pl.id)) this.animerVisage(c, corps, anim.regard, temps);
+      } else if (tetesVoulues.has(pl.id)) this.poserTete(c, corps, peau(c), cheveux(c), anim.regard, temps, tetesFaites < 1 ? () => tetesFaites++ : null);
     }
+    for (const id of this.animateurs.keys()) if (!this.corps.has(id)) this.animateurs.delete(id);
+  }
+
+  /** Change de temps en temps ce qu'un humain regarde : quelqu'un de proche (sa mère, son enfant d'abord), ou rien. */
+  private choisirRegard(id: number, mere: number, enfant: number, places: Map<number, { x: number; y: number; z: number; h: number }>,
+    pl: { x: number; z: number }, temps: number): THREE.Vector3 | null {
+    let r = this.regards.get(id);
+    if (!r || temps > r.jusqua || (r.id && !places.has(r.id))) {
+      const proches: number[] = [];
+      for (const [k, q] of places) if (k !== id && Math.hypot(q.x - pl.x, q.z - pl.z) < 7) proches.push(k);
+      const h = unite(hacher(id, Math.floor(temps * 3), 131));
+      let choix = 0;
+      if (enfant && places.has(enfant) && h < 0.45) choix = enfant;
+      else if (mere && places.has(mere) && h < 0.5) choix = mere;
+      else if (proches.length > 0 && h < 0.75) choix = proches[Math.floor(unite(hacher(id, Math.floor(temps * 3), 133)) * proches.length)];
+      r = { id: choix, jusqua: temps + 1.5 + 5 * unite(hacher(id, Math.floor(temps * 3), 137)) };
+      this.regards.set(id, r);
+    }
+    const q = r.id ? places.get(r.id) : undefined;
+    if (!q) return null;
+    const corps = this.corps.get(r.id);
+    if (corps) {
+      // Les yeux de l'autre, d'après son corps posé.
+      osEn(corps, "tete", V3);
+      V3.y += corps.p.hauteTete * 0.45;
+      return corps.maillage.localToWorld(V3.clone());
+    }
+    return new THREE.Vector3(q.x, q.y + q.h * 0.92, q.z);
+  }
+
+  /**
+   * L'enfant porté dans les bras de sa mère (D1) : au creux du bras (moins de 10 mois environ), à califourchon sur la hanche, ou
+   * assis sur ses cuisses quand elle est assise. La mère le tient : ses mains vont sur lui.
+   */
+  private placerDansLesBras(enfant: Corps, he: number, mere: Corps, hm: number, age: number, postureMere: string): void {
+    const mm = mere.maillage;
+    mm.updateMatrixWorld();
+    const em = enfant.maillage;
+    const haut = new THREE.Vector3();
+    const avant = new THREE.Vector3();
+    const ancre = new THREE.Vector3();
+    const point = new THREE.Vector3(); // point de l'enfant (repère des os) posé sur l'ancre
+    const qMere = mm.quaternion;
+    const assise = postureMere === "assis" || postureMere === "travail" || postureMere === "accroupi";
+    if (age < 0.8) {
+      // Tête au pli du coude gauche, fesses sur la main gauche ; tourné vers le haut et vers sa mère.
+      const coude = osEn(mere, "avantBrasG", new THREE.Vector3());
+      const poignet = osEn(mere, "mainG", new THREE.Vector3());
+      coude.y += 0.03;
+      poignet.y += 0.028;
+      const milieu = coude.clone().add(poignet).multiplyScalar(0.5);
+      mm.localToWorld(coude);
+      mm.localToWorld(poignet);
+      mm.localToWorld(milieu);
+      haut.copy(coude).sub(poignet).normalize();
+      osEn(mere, "poitrine", V1);
+      mm.localToWorld(V1);
+      avant.set(0, 1, 0).multiplyScalar(0.8).add(V1.sub(milieu).setY(0).normalize().multiplyScalar(0.35));
+      osEn(enfant, "bassin", V2);
+      osEn(enfant, "cou", point);
+      point.add(V2).multiplyScalar(0.5);
+      ancre.copy(milieu);
+      aligner(osEn(enfant, "cou", new THREE.Vector3()).sub(V2), new THREE.Vector3(0, 0, 1), haut, avant, em.quaternion);
+    } else if (assise) {
+      // Assis sur les cuisses de sa mère, tourné comme elle (un peu de biais).
+      const a = osEn(mere, "cuisseG", new THREE.Vector3()).add(osEn(mere, "cuisseD", V1));
+      const b = osEn(mere, "jambeG", new THREE.Vector3()).add(osEn(mere, "jambeD", V1));
+      ancre.copy(a.multiplyScalar(0.5 * 0.3)).addScaledVector(b, 0.5 * 0.7);
+      ancre.y += 0.075;
+      mm.localToWorld(ancre);
+      haut.set(0, 1, 0);
+      avant.set(0.35, 0, 1).applyQuaternion(qMere).setY(0).normalize();
+      osEn(enfant, "bassin", point);
+      point.y -= 0.075;
+      aligner(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), haut, avant, em.quaternion);
+    } else {
+      // À califourchon sur la hanche gauche, tourné vers sa mère.
+      ancre.copy(osEn(mere, "cuisseG", new THREE.Vector3()));
+      ancre.x += 0.1;
+      ancre.y += 0.035;
+      ancre.z += 0.0;
+      mm.localToWorld(ancre);
+      haut.set(-0.25, 1, 0).applyQuaternion(qMere).normalize();
+      avant.set(-0.9, 0, 0.42).applyQuaternion(qMere).normalize();
+      osEn(enfant, "bassin", point);
+      point.y -= 0.06;
+      aligner(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), haut, avant, em.quaternion);
+    }
+    em.scale.setScalar(he);
+    // Position : le point de l'enfant tombe sur l'ancre.
+    em.position.set(0, 0, 0);
+    em.updateMatrixWorld();
+    const p = point.clone().applyMatrix4(em.matrixWorld);
+    em.position.copy(ancre).sub(p);
+    em.updateMatrixWorld();
+    // Les mains de la mère sur l'enfant (repère des os de la mère).
+    const versMere = (nom: Parameters<typeof osEn>[1], dx: number, dy: number, dz: number) => {
+      const w = osEn(enfant, nom, new THREE.Vector3()).add(new THREE.Vector3(dx, dy, dz));
+      return mm.worldToLocal(em.localToWorld(w));
+    };
+    if (age < 0.8) {
+      mainVersPoint(mere, 1, versMere("ventre", 0, 0, 0.09));
+    } else if (assise) {
+      mainVersPoint(mere, 0, versMere("ventre", 0.07, 0, 0.08));
+      mainVersPoint(mere, 1, versMere("ventre", -0.07, 0.02, 0.08));
+    } else {
+      // L'avant-bras sous les fesses, la main sur la cuisse de devant.
+      mainVersPoint(mere, 0, versMere("cuisseG", 0.0, -0.06, -0.02));
+    }
+    mere.armature.updateMatrixWorld(true);
+    void hm;
   }
 
   /** Expressions qui suivent l'humeur sans à-coups ; bouche qui bouge quand il répond à l'Entité. */
@@ -195,14 +355,14 @@ export class CorpsProches {
   }
 
   /** Visage du corps réaliste : expressions, clignements, regard (vers la caméra quand il écoute l'Entité). */
-  private animerVisage(c: Etat, corps: Corps, camera: THREE.Vector3, temps: number): void {
+  private animerVisage(c: Etat, corps: Corps, regard: THREE.Vector3 | null, temps: number): void {
     const dort = c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7);
     corps.matriceTete(this.matrice);
-    corps.anime!.poser(corps.maillage, corps.os, this.matrice, this.expressionsDuMoment(c, temps), c.ecoute > 0.3 ? camera : null, dort, temps);
+    corps.anime!.poser(corps.maillage, corps.os, this.matrice, this.expressionsDuMoment(c, temps), regard, dort, temps);
   }
 
   /** Construit au besoin (une par image au plus) puis pose la tête détaillée d'un humain proche. */
-  private poserTete(c: Etat, corps: Corps, peau: THREE.Color, cheveux: THREE.Color, camera: THREE.Vector3, temps: number, construire: (() => void) | null): void {
+  private poserTete(c: Etat, corps: Corps, peau: THREE.Color, cheveux: THREE.Color, regard: THREE.Vector3 | null, temps: number, construire: (() => void) | null): void {
     const v = visageConnu(c.s.id);
     let tete = this.tetes.get(c.s.id);
     if (v) {
@@ -223,7 +383,7 @@ export class CorpsProches {
     corps.teteSimple(false);
     const dort = c.posture === "couche" && (c.s.activite === 1 || c.s.activite === 7);
     corps.matriceTete(this.matrice);
-    tete.poser(this.matrice, this.expressionsDuMoment(c, temps), c.ecoute > 0.3 ? camera : null, dort, temps);
+    tete.poser(this.matrice, this.expressionsDuMoment(c, temps), regard, dort, temps);
   }
 
   /**

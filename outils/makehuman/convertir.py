@@ -85,11 +85,30 @@ ARTICULATIONS = {
     "cuisseG": "upperleg01.L", "jambeG": "lowerleg01.L", "piedG": "foot.L",
     "cuisseD": "upperleg01.R", "jambeD": "lowerleg01.R", "piedD": "foot.R",
 }
+# Squelette fin (0.41.7) : clavicules, trois phalanges par doigt, orteils.
+DOIGTS = ["pouce", "index", "majeur", "annulaire", "auriculaire"]
+FINS = []
+for cote, mh in (("G", "L"), ("D", "R")):
+    ARTICULATIONS[f"clavicule{cote}"] = f"clavicle.{mh}"
+    FINS.append(f"clavicule{cote}")
+for cote, mh in (("G", "L"), ("D", "R")):
+    for d, nom in enumerate(DOIGTS):
+        for k in range(1, 4):
+            ARTICULATIONS[f"{nom}{k}{cote}"] = f"finger{d + 1}-{k}.{mh}"
+            FINS.append(f"{nom}{k}{cote}")
+for cote, mh in (("G", "L"), ("D", "R")):
+    ARTICULATIONS[f"orteils{cote}"] = f"toe3-1.{mh}"
+    FINS.append(f"orteils{cote}")
 OS = ["bassin", "ventre", "poitrine", "cou", "tete", "brasG", "avantBrasG", "mainG", "brasD", "avantBrasD", "mainD",
-      "cuisseG", "jambeG", "piedG", "cuisseD", "jambeD", "piedD", "oeilG", "oeilD"]
+      "cuisseG", "jambeG", "piedG", "cuisseD", "jambeD", "piedD", "oeilG", "oeilD"] + FINS
 joints = {}
 for nom, os_mh in ARTICULATIONS.items():
     joints[nom] = squelette["joints"][squelette["bones"][os_mh]["head"]]
+# Bouts des doigts (direction de la dernière phalange) et pointe des orteils.
+for cote, mh in (("G", "L"), ("D", "R")):
+    for d, nom in enumerate(DOIGTS):
+        joints[f"{nom}Bout{cote}"] = squelette["joints"][squelette["bones"][f"finger{d + 1}-3.{mh}"]["tail"]]
+    joints[f"orteilsBout{cote}"] = squelette["joints"][squelette["bones"][f"toe3-3.{mh}"]["tail"]]
 # Bout des pieds (pour poser les orteils au sol) et sommet de la tête : sommets de la peau.
 
 # Sommets gardés et renumérotés.
@@ -137,7 +156,9 @@ def os_de(nom: str) -> str:
         return "bassin"
     if base in ("spine04", "spine03"):
         return "ventre"
-    if base in ("spine02", "spine01", "breast", "clavicle"):
+    if base == "clavicle":
+        return "clavicule" + cote
+    if base in ("spine02", "spine01", "breast"):
         return "poitrine"
     if base.startswith("neck"):
         return "cou"
@@ -147,13 +168,18 @@ def os_de(nom: str) -> str:
         return "bras" + cote
     if base.startswith("lowerarm"):
         return "avantBras" + cote
-    if base in ("wrist",) or base.startswith("metacarpal") or base.startswith("finger"):
+    if base.startswith("finger"):
+        d, k = base[6:].split("-")
+        return DOIGTS[int(d) - 1] + k + cote
+    if base in ("wrist",) or base.startswith("metacarpal"):
         return "main" + cote
     if base.startswith("upperleg"):
         return "cuisse" + cote
     if base.startswith("lowerleg"):
         return "jambe" + cote
-    if base == "foot" or base.startswith("toe"):
+    if base.startswith("toe"):
+        return "orteils" + cote
+    if base == "foot":
         return "pied" + cote
     return "tete"  # tête, mâchoire, muscles du visage, langue
 
@@ -243,7 +269,7 @@ for t in TRAITS:
 
 # Écriture.
 blocs = []
-entete = {"version": 1, "source": "MakeHuman (makehumancommunity/makehuman a8bc2d5), données CC0 1.0",
+entete = {"version": 2, "source": "MakeHuman (makehumancommunity/makehuman a8bc2d5), données CC0 1.0",
           "sommets": NG, "rendu": len(rendu_orig), "os": OS, "articulations": {}, "morceaux": {}, "cibles": [], "groupes": {}}
 position = 0
 
