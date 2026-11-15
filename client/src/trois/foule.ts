@@ -64,7 +64,7 @@ export function lireScene(n: number[]): HumainScene[] {
   return liste;
 }
 
-export type Posture = "debout" | "marche" | "assis" | "couche" | "accroupi" | "nage" | "travail" | "porte";
+export type Posture = "debout" | "marche" | "assis" | "couche" | "accroupi" | "nage" | "travail" | "porte" | "enlace";
 
 export interface Corps {
   s: HumainScene;
@@ -85,6 +85,8 @@ export interface Corps {
   /** H1 (0.41.8) : celui à qui il parle (0 : personne), et s'il a la parole (0 à 1). */
   interlocuteur: number;
   parle: number;
+  /** Celui ou celle avec qui il fait l'amour (0 : personne), apparié sur sa case. */
+  partenaire: number;
   secondesPrec: number;
   /** Il devrait marcher mais n'avance plus d'un pas à l'autre (bloqué, en attente) : on ne le fait pas avancer. */
   bloque: boolean;
@@ -117,6 +119,9 @@ function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Postu
   if (dansLEau) return "nage";
   if (enMouvement) return "marche";
   switch (s.activite) {
+    case A.SAccoupler:
+      // Faire l'amour : le couple allongé, enlacé, sans plus de détail ; entre adultes seulement à l'écran.
+      return s.age >= 18 ? "enlace" : "assis";
     case A.Dormir:
     case A.SAbriter:
       return "couche";
@@ -182,6 +187,77 @@ function decalage(s: HumainScene, secondes: number, auFeu: boolean): [number, nu
   }
   const a = angle0 + derive * (0.6 + r0);
   return [Math.cos(a) * rayon, Math.sin(a) * rayon];
+}
+
+/** Place qu'occupe au sol un corps arrêté (rayon, m) : couché, il lui faut sa longueur. */
+function emprise(c: Corps): number {
+  switch (c.posture) {
+    case "couche":
+      return 0.62 * c.taille + 0.05;
+    case "assis":
+    case "travail":
+    case "accroupi":
+      return 0.28 * c.taille + 0.05;
+    case "debout":
+      return 0.2 * c.taille + 0.05;
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Deux corps arrêtés ne se chevauchent pas : leurs places s'écartent jusqu'à ce que chacun ait la sienne (dormeurs côte à côte
+ * plutôt que les uns sur les autres). Les figurants des essais ne bougent pas.
+ */
+function ecarter(cibles: Map<Corps, [number, number, boolean]>): void {
+  const arretes: { c: Corps; t: [number, number, boolean]; r: number }[] = [];
+  for (const [c, t] of cibles) {
+    const r = t[2] || c.enMarche ? 0 : emprise(c);
+    if (r > 0) arretes.push({ c, t, r });
+  }
+  if (arretes.length < 2) return;
+  for (let passe = 0; passe < 4; passe++) {
+    const grille = new Map<string, number[]>();
+    arretes.forEach((a, i) => {
+      const k = `${Math.floor(a.t[0] / 3)},${Math.floor(a.t[1] / 3)}`;
+      let l = grille.get(k);
+      if (!l) grille.set(k, (l = []));
+      l.push(i);
+    });
+    let bouge = false;
+    arretes.forEach((a, i) => {
+      const gx = Math.floor(a.t[0] / 3);
+      const gz = Math.floor(a.t[1] / 3);
+      for (let u = -1; u <= 1; u++) {
+        for (let v = -1; v <= 1; v++) {
+          for (const j of grille.get(`${gx + u},${gz + v}`) ?? []) {
+            if (j <= i) continue;
+            const b = arretes[j];
+            let dx = b.t[0] - a.t[0];
+            let dz = b.t[1] - a.t[1];
+            let d = Math.hypot(dx, dz);
+            const voulu = a.r + b.r;
+            if (d >= voulu) continue;
+            if (d < 1e-3) {
+              const ang = unite(hacher(a.c.s.id, b.c.s.id, 17)) * Math.PI * 2;
+              dx = Math.cos(ang);
+              dz = Math.sin(ang);
+              d = 1;
+            }
+            const fa = a.c.s.figurant ? 0 : b.c.s.figurant ? 1 : 0.5;
+            const fb = b.c.s.figurant ? 0 : a.c.s.figurant ? 1 : 0.5;
+            const pousse = (voulu - Math.min(d, voulu)) / d;
+            a.t[0] -= dx * pousse * fa;
+            a.t[1] -= dz * pousse * fa;
+            b.t[0] += dx * pousse * fb;
+            b.t[1] += dz * pousse * fb;
+            bouge = true;
+          }
+        }
+      }
+    });
+    if (!bouge) break;
+  }
 }
 
 const NOMBRE_MAX = 700;
@@ -281,11 +357,28 @@ export class Foule {
         this.corps.set(s.id, {
           s, x: NaN, y: 0, z: NaN, cap: unite(hacher(s.id, 11)) * Math.PI * 2, phase: 0, vitesse: 0, taille: 1, posture: "debout", vu: this.image, peau, cheveux,
           chemin: `${s.x},${s.y},${s.versX},${s.versY}`, avancePrec: s.avance, secondesPrec: secondes, bloque: false, enMarche: false, ecoute: 0,
-          interlocuteur: 0, parle: 0,
+          interlocuteur: 0, parle: 0, partenaire: 0,
         });
       }
     }
     for (const [id, c] of this.corps) if (c.vu !== this.image) this.corps.delete(id);
+    // Les couples qui font l'amour : appariés deux à deux sur leur case (le flux ne dit pas avec qui).
+    const amants = new Map<string, Corps[]>();
+    for (const c of this.corps.values()) {
+      c.partenaire = 0;
+      if (c.s.activite !== A.SAccoupler || c.s.age < 18) continue;
+      const k = `${c.s.x},${c.s.y}`;
+      let l = amants.get(k);
+      if (!l) amants.set(k, (l = []));
+      l.push(c);
+    }
+    for (const l of amants.values()) {
+      l.sort((a, b) => a.s.id - b.s.id);
+      for (let i = 0; i + 1 < l.length; i += 2) {
+        l[i].partenaire = l[i + 1].s.id;
+        l[i + 1].partenaire = l[i].s.id;
+      }
+    }
   }
 
   /** Position visée d'un humain à l'instant `secondes` du monde. */
@@ -302,6 +395,16 @@ export class Foule {
       const l = Math.hypot(dx, dz) || 1;
       return [ax + dx * f - (dz / l) * lateral, az + dz * f + (dx / l) * lateral, parSeconde > 0 && f < 0.985];
     }
+    if (c.partenaire) {
+      // À l'écart du camp (douze à vingt mètres), l'un contre l'autre.
+      const bas = Math.min(s.id, c.partenaire);
+      const angle = unite(hacher(bas, 23)) * Math.PI * 2;
+      const r = 12 + 8 * unite(hacher(bas, 29));
+      const px = ax + Math.cos(angle) * r;
+      const pz = az + Math.sin(angle) * r;
+      const cote = s.id === bas ? -0.23 : 0.23;
+      return [px - Math.sin(angle) * cote, pz + Math.cos(angle) * cote, false];
+    }
     const [ox, oz] = decalage(s, secondes, this.feuxCases.has(`${s.x},${s.y}`));
     return [ax + ox, az + oz, false];
   }
@@ -309,11 +412,14 @@ export class Foule {
   /** Avance l'animation : `dt` secondes réelles, `secondes` instant estimé du monde. */
   animer(dt: number, secondes: number, camera: THREE.Vector3): void {
     const rel = this.relief;
+    const cibles = new Map<Corps, [number, number, boolean]>();
+    for (const c of this.corps.values()) cibles.set(c, c.s.figurant ? [c.s.figurant.x, c.s.figurant.z, false] : this.cible(c, secondes));
+    ecarter(cibles);
     for (const c of this.corps.values()) {
       const s = c.s;
       // Un dormeur (on lui parle en rêve), un bébé porté ou un nageur ne se retournent pas.
       const ecoute = s.id === this.interlocuteur && c.posture !== "couche" && c.posture !== "porte" && c.posture !== "nage";
-      let [tx, tz] = s.figurant ? [s.figurant.x, s.figurant.z] : this.cible(c, secondes);
+      let [tx, tz] = cibles.get(c)!;
       if (Number.isNaN(c.x) || Math.hypot(tx - c.x, tz - c.z) > 400) {
         c.x = tx;
         c.z = tz;
@@ -350,6 +456,14 @@ export class Foule {
         if (s.figurant.posture === "marche") c.phase += dt * 5;
       }
       c.y = eau ? surf.eau - (s.etat & 16 ? -0.3 : 0.15) : surf.sol;
+      if (c.posture === "enlace" && c.partenaire) {
+        const autre = this.corps.get(c.partenaire);
+        if (autre && !Number.isNaN(autre.x) && Math.hypot(autre.x - c.x, autre.z - c.z) > 0.05) {
+          const voulu = Math.atan2(autre.x - c.x, autre.z - c.z);
+          const ecart = ((((voulu - c.cap + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)) - Math.PI;
+          c.cap += ecart * Math.min(1, dt * 3);
+        }
+      }
     }
     this.horloge += dt;
     etreAvecLesAutres(this.corps.values(), this.feux, dt, this.horloge);
@@ -405,6 +519,7 @@ export class Foule {
           flexion = 0.15 + respire;
           break;
         case "couche":
+        case "enlace":
         case "porte":
           racine.multiply(t.makeTranslation(0, 0.09 * h, 0.45 * h)).multiply(r.makeRotationX(-Math.PI / 2));
           bras = [0.15, 0.2];

@@ -197,7 +197,8 @@ export class CorpsProches {
         froid: lisser(15, 70, s.froid), faim: s.faim / 100, fatigue: s.fatigue / 100, peur: lisser(10, 70, s.peur),
         malade: s.etat & 1 ? 0.6 + 0.4 * (1 - s.sante / 100) : lisser(60, 25, s.sante), enceinte: (s.etat & 2) !== 0,
         humeur: s.humeur, nevrosisme: s.nevrosisme, extraversion: s.extraversion,
-        parle: c.parle, converse: c.interlocuteur > 0,
+        parle: c.parle, converse: c.interlocuteur > 0 && c.posture !== "enlace",
+        enlace: c.posture === "enlace" && c.partenaire ? (s.id < c.partenaire ? 1 : -1) : 0,
       };
       // Ce qu'il regarde (E1) : l'Entité qui lui parle, sinon tour à tour les gens proches, sa mère, son enfant.
       anim.ecoute = c.ecoute > 0.3;

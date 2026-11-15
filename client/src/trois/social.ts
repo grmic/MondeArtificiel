@@ -19,7 +19,7 @@ export function etreAvecLesAutres(liste: Iterable<Corps>, feux: readonly { x: nu
   for (const c of liste) {
     const libre = ARRETES.has(c.posture) && !c.enMarche && c.ecoute < 0.3 && c.s.age >= 2 && !Number.isNaN(c.x);
     if (!libre) {
-      c.interlocuteur = 0;
+      c.interlocuteur = c.posture === "enlace" ? c.partenaire : 0;
       c.parle += (0 - c.parle) * Math.min(1, dt * 3);
       continue;
     }

@@ -270,6 +270,8 @@ export interface Situation {
   parle: number;
   /** H1 : il est en conversation (qu'il parle ou écoute). */
   converse: boolean;
+  /** Enlacé avec son partenaire : +1 ou −1 (de quel côté il se couche, pour que les deux têtes soient du même côté), 0 sinon. */
+  enlace: number;
 }
 
 /** Abattement (F1) : fatigue, faim, tristesse, maladie ; 0 à 1. */
@@ -311,10 +313,11 @@ const ACCROUPI: Variante[] = [
   { nom: "unGenou", poids: (s) => 0.7 + 0.8 * lisser(45, 75, s.age) },
 ];
 const COUCHE: Variante[] = [
-  { nom: "cote", poids: () => 1.3 },
+  // Endormis, on dort surtout sur le côté (environ 55 %), puis sur le dos, rarement sur le ventre (Skarpsno et al. 2017).
+  { nom: "cote", poids: () => 1.6 },
   { nom: "dos", poids: (s) => (0.8 + (s.age < 2 ? 1 : 0)) * (1 - 0.75 * s.froid) },
   { nom: "fusil", poids: (s) => 0.6 + (s.age < 12 ? 0.6 : 0) + 4 * s.froid + 1.5 * s.malade + 1.5 * s.peur },
-  { nom: "ventre", poids: (s) => (s.age < 1 || s.enceinte ? 0 : 0.35) * (1 - s.froid) },
+  { nom: "ventre", poids: (s) => (s.age < 1 || s.enceinte ? 0 : 0.2) * (1 - s.froid) },
 ];
 const BRAS_DEBOUT: Variante[] = [
   { nom: "ballants", poids: (s) => 3 * (1 - repli(s)) ** 2 * (1 - 0.8 * s.malade) },
@@ -367,6 +370,10 @@ function bosse(p: number, c: number, l: number): number {
 }
 
 const ease = (t: number) => t * t * (3 - 2 * t);
+const N_SOL = new THREE.Vector3();
+const HAUT = new THREE.Vector3(0, 1, 0);
+const Q_SOL = new THREE.Quaternion();
+const Q_B = new THREE.Quaternion();
 
 /** Geste d'attente en cours (E1). */
 interface Geste {
@@ -438,6 +445,8 @@ export class Animateur {
         return "couche." + choisir(COUCHE, s, lent(s.dort ? 260 : 180, 83), 3);
       case "nage":
         return "nage";
+      case "enlace":
+        return "couche.enlace";
       case "porte":
         if (s.age < 0.8 || !s.porteur) return "porte.berceau";
         if (s.porteur === "couche") return "porte.couche";
@@ -995,16 +1004,16 @@ export class Animateur {
     switch (v) {
       case "dos": {
         p.coucher(-Math.PI / 2, 0);
+        // Un genou plié tombe sur le côté (personne ne dort genou dressé) ; pieds relâchés en dehors.
         const genou = unite(hacher(s.id, 107)) < 0.4;
-        p.hanche("G", genou ? 0.75 : 0.08, 0.1, 0.35);
-        p.genou("G", genou ? 1.5 : 0.12);
+        p.hanche("G", genou ? 0.45 : 0.08, genou ? 0.45 : 0.1, genou ? 0.9 : 0.4);
+        p.genou("G", genou ? 1.0 : 0.12);
         p.hanche("D", 0.1, 0.12, 0.45);
         p.genou("D", 0.15);
-        p.cheville("G", genou ? 0 : -0.4);
+        p.cheville("G", -0.4);
         p.cheville("D", -0.45);
-        if (genou) p.plantes = [1, 0];
-        p.epaule("G", 0.1, 0.25, 0.1);
-        p.coude("G", 0.35);
+        p.epaule("G", 0.05, 0.18, 0.15);
+        p.coude("G", 0.3);
         const surVentre = unite(hacher(s.id, 109)) < 0.5;
         p.epaule("D", 0.3, 0.15, -0.3);
         p.coude("D", surVentre ? 1.6 : 0.4, 0.3);
@@ -1040,13 +1049,37 @@ export class Animateur {
         p.hanche(autre, 0.02, 0.06, 0.3);
         p.genou(autre, 0.08);
         for (const c of COTES) p.cheville(c, -0.75);
-        p.epaule(cote, 1.2, 1.35, 0.2);
-        p.coude(cote, 1.75, -0.6);
-        p.poignet(cote, 0.2);
-        p.epaule(autre, -0.15, 0.12, -0.5);
-        p.coude(autre, 0.2, -1.2);
+        // Bras du côté du visage remonté, la main près de la tête ; l'autre le long du corps, relâché.
+        p.epaule(cote, 1.9, 0.5, 0.5);
+        p.coude(cote, 1.9, 0);
+        p.poignet(cote, 0.1);
+        p.epaule(autre, 0.05, 0.12, 0.2);
+        p.coude(autre, 0.25, 0);
         p.colonne("cou", -0.35, sc * 1.15);
         p.colonne("tete", -0.15, sc * 0.3, -sc * 0.1);
+        break;
+      }
+      case "enlace": {
+        // Deux amants couchés sur le flanc, face à face : le bras du dessus passe sur l'autre, jambes mêlées sans plus.
+        const bas: Cote = s.enlace >= 0 ? "G" : "D";
+        const haut: Cote = bas === "G" ? "D" : "G";
+        const sb = SIGNE[bas];
+        p.coucher(0, -sb * Math.PI / 2);
+        p.hanche(bas, 0.35, 0.05, 0.05);
+        p.genou(bas, 0.5);
+        p.hanche(haut, 0.6, 0.1, -0.1);
+        p.genou(haut, 0.7);
+        p.cheville("G", -0.35);
+        p.cheville("D", -0.35);
+        p.epaule(bas, 1.6, 0.1, 0.1);
+        p.coude(bas, 1.5, 0.3);
+        p.epaule(haut, 0.95, -0.15, -0.2);
+        p.coude(haut, 0.35, 0.2);
+        p.main(haut, 0.3);
+        p.colonne("ventre", 0.08);
+        p.colonne("poitrine", 0.06);
+        p.colonne("cou", 0.1, 0, sb * 0.2);
+        p.colonne("tete", 0.08, 0, sb * 0.1);
         break;
       }
       default:
@@ -1460,6 +1493,12 @@ export function poser(corps: Corps, p: Pose, sol: SolLocal | null): void {
     }
   }
   RACINE.copy(p.racine);
+  // Couché sur une pente : le corps épouse le sol (sinon une moitié flotte et l'autre s'enfonce).
+  if (sol && p.appuis & APPUI_CORPS && !p.libre) {
+    N_SOL.set(-sol.ax, 1, -sol.az).normalize();
+    Q_SOL.setFromUnitVectors(HAUT, N_SOL);
+    Q_B.fromArray(p.q, 4 * PO.bassin).premultiply(Q_SOL).toArray(p.q, 4 * PO.bassin);
+  }
   corps.appliquer(p.q, RACINE);
   corps.armature.updateMatrixWorld(true);
   if (!p.libre) {
