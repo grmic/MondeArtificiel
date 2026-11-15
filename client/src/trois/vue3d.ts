@@ -1,5 +1,5 @@
 import * as THREE from "three/webgpu";
-import { float, mix, mrt, normalView, output, pass, renderOutput, screenUV, uniform, vec4, velocity } from "three/tsl";
+import { float, mix, mrt, normalView, output, pass, renderOutput, rtt, screenUV, uniform, vec4, velocity } from "three/tsl";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { traa } from "three/addons/tsl/display/TRAANode.js";
@@ -75,8 +75,8 @@ interface ReglageQualite {
 const QUALITES: Record<Qualite, ReglageQualite> = {
   basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, reels: 8, porteeReels: 15, silhouettes: 1200, camp: 1200, sol: 30, ombres: 0, porteeOmbres: 0, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false, nuages: null, lissage: "aucun", rayons: false, reflets: 0, resReflets: 0 },
   moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, reels: 16, porteeReels: 30, silhouettes: 2000, camp: 2000, sol: 55, ombres: 1024, porteeOmbres: 160, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false, nuages: null, lissage: "smaa", rayons: false, reflets: 0, resReflets: 0 },
-  haute: { pixels: 2, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, reels: 40, porteeReels: 70, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true, nuages: { pas: 24, pasLumiere: 4 }, lissage: "traa", rayons: true, reflets: 0.4, resReflets: 0.5 },
-  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, reels: 70, porteeReels: 120, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true, nuages: { pas: 48, pasLumiere: 6 }, lissage: "traa", rayons: true, reflets: 0.7, resReflets: 1 },
+  haute: { pixels: 1.5, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, reels: 40, porteeReels: 70, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true, nuages: { pas: 24, pasLumiere: 4, reduction: 4 }, lissage: "traa", rayons: true, reflets: 0, resReflets: 0 },
+  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, reels: 70, porteeReels: 120, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true, nuages: { pas: 40, pasLumiere: 5, reduction: 3 }, lissage: "traa", rayons: true, reflets: 0.7, resReflets: 1 },
 };
 
 /** Vitesse la plus haute en promenade (proposition E1) : au-delà, les humains sauteraient d'une case à l'autre. */
@@ -495,7 +495,8 @@ export class Vue3D {
       const r = reflet.getTextureNode().sample(screenUV);
       rendu = mix(rendu, r.rgb, r.a.mul(poids).clamp(0, 1));
     }
-    if (q.rayons) rendu = rendu.add(this.rayons.noeud(scene.getTextureNode("extra"), this.camera));
+    // Les rayons sont flous : calculés sur une image deux fois plus petite de côté.
+    if (q.rayons) rendu = rendu.add(rtt(this.rayons.noeud(scene.getTextureNode("extra"), this.camera), null, null, { resolutionScale: 0.5 }).sample(screenUV).rgb);
     rendu = rendu.mul(this.uExposition);
     if (q.lissage === "traa") rendu = traa(rendu, profondeur, scene.getTextureNode("velocity"), this.camera).rgb;
     if (q.halo) rendu = rendu.add(bloom(vec4(rendu, 1), 0.12, 0.4, 1.2).rgb);
@@ -1107,6 +1108,7 @@ export class Vue3D {
       const r = this.suivi ? Math.max(0.03, Math.min(0.8, this.suivi.distance * 0.12)) : Math.max(0.3, Math.min(2.5, haut * 0.25));
       this.aoNoeud.radius.value = r;
     }
+    this.ciel.rendreNuages(this.renderer, this.camera);
     if (this.chaine) this.chaine.render();
     else this.renderer.render(this.scene, this.camera);
     this.montrerNoms();

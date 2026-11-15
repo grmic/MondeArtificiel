@@ -2,7 +2,7 @@ import * as THREE from "three/webgpu";
 import { Fn, Loop, float, frameId, interleavedGradientNoise, max, screenCoordinate, screenUV, smoothstep, uniform, vec2 } from "three/tsl";
 
 /** Pas le long du trait vers le soleil. */
-const PAS = 40;
+const PAS = 24;
 
 /**
  * Rayons du soleil dans la brume (0.41.6, proposition B1), à la manière de Mitchell (« Volumetric Light Scattering as a
@@ -31,7 +31,7 @@ export class Rayons {
         const s = uv.add(vers.mul(float(i).add(bruit).div(PAS)));
         const dedans = smoothstep(0, 0.02, s.x).mul(smoothstep(1, 0.98, s.x)).mul(smoothstep(0, 0.02, s.y)).mul(smoothstep(1, 0.98, s.y));
         somme.addAssign(extra.sample(s.clamp(0, 1)).level(float(0)).g.mul(dedans).mul(poids));
-        poids.mulAssign(0.965);
+        poids.mulAssign(0.94);
       });
       // Les rayons s'éteignent loin du soleil sur l'écran.
       const ecart = max(vers.mul(vec2(1.6, 1)).length(), 0.0001);

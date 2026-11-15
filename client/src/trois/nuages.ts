@@ -199,9 +199,8 @@ export class Nuages {
    * Rend la lumière diffusée (rgb) et l'opacité (a). Le départ des pas varie d'un pixel et d'une image à l'autre (le lissage
    * temporel fond le grain).
    */
-  volume(d: N<"vec3">, pas: number, pasLumiere: number): N<"vec4"> {
+  volume(o: N<"vec3">, d: N<"vec3">, pas: number, pasLumiere: number): N<"vec4"> {
     return Fn(() => {
-      const o = cameraPosition;
       const dy = select(d.y.abs().lessThan(1e-4), float(1e-4), d.y);
       const tb = float(BASE).sub(o.y).div(dy);
       const ts = float(SOMMET).sub(o.y).div(dy);

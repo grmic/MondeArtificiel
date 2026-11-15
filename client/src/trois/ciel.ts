@@ -1,14 +1,15 @@
 import * as THREE from "three/webgpu";
 import {
   Fn, abs, asin, atan, cameraPosition, clamp, dot, exp, float, fog, max, min, mix, mrt, normalize, positionWorld,
-  select, sign, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4,
+  screenUV, select, sign, smoothstep, sqrt, texture, uniform, vec2, vec3, vec4,
 } from "three/tsl";
 import { ciel as diffusion, elevationDe, ligneDe, transmission, type Rgb } from "./atmosphere";
 import { hacher, unite } from "./bruit";
 import { Nuages } from "./nuages";
 
 /** Nuages en volume (0.41.6) : pas dans la couche et pas vers le soleil, ou null pour la nappe peinte. */
-export interface ReglageNuages { pas: number; pasLumiere: number }
+/** `reduction` : les nuages se calculent sur une image `reduction` fois plus petite de côté, puis s'étirent (ils sont flous). */
+export interface ReglageNuages { pas: number; pasLumiere: number; reduction: number }
 
 /** Durée du jour par saison (heures), comme le calendrier de la simulation (Calendrier.DureeJour). */
 const DUREE_JOUR = [12, 15, 12, 9];
@@ -59,6 +60,14 @@ export class Ciel {
 
   private readonly maillage: THREE.Mesh;
   private readonly materiauCiel: THREE.MeshBasicNodeMaterial;
+  /** Nuages en volume (0.41.6) : calculés à part, en petite image, avant chaque image. */
+  private nuagesImage: THREE.RenderTarget | null = null;
+  private nuagesQuad: THREE.QuadMesh | null = null;
+  private reduction = 4;
+  private readonly uOeil = uniform(new THREE.Vector3());
+  private readonly uCamMonde = uniform(new THREE.Matrix4());
+  private readonly uOuverture = uniform(new THREE.Vector2(1, 1));
+  private readonly taille = new THREE.Vector2();
   private readonly nuages: Nuages;
   private readonly cielDans: (d: THREE.Node<"vec3">) => THREE.Node<"vec3">;
   private readonly etoiles: THREE.Points;
@@ -177,7 +186,28 @@ export class Ciel {
     const materiau = this.materiauCiel;
     const d = normalize(positionWorld.sub(cameraPosition)).toVar();
     // Calculés une fois et lus deux fois (couleur et masque des rayons) : une variable du shader.
-    const n = (volume ? this.nuages.volume(d, volume.pas, volume.pasLumiere) : this.nuages.nappe(d, this.uNuageClair, this.uNuageOmbre)).toVar();
+    (this.nuagesQuad?.material as THREE.Material | undefined)?.dispose();
+    this.nuagesImage?.dispose();
+    this.nuagesQuad = null;
+    this.nuagesImage = null;
+    let source: THREE.Node<"vec4">;
+    if (volume) {
+      // Les cumulus coûtent cher : on les calcule sur une petite image (un rayon par bloc de pixels), lue ensuite par le ciel.
+      this.reduction = volume.reduction;
+      this.nuagesImage = new THREE.RenderTarget(1, 1, { type: THREE.HalfFloatType, depthBuffer: false });
+      this.nuagesImage.texture.minFilter = THREE.LinearFilter;
+      this.nuagesImage.texture.magFilter = THREE.LinearFilter;
+      const quad = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+      quad.blending = THREE.NoBlending;
+      // Direction du regard pour ce pixel, depuis l'ouverture de la caméra (l'inverse de la projection perd sa précision avec un
+      // plan proche à 1 cm et un lointain à 900 km).
+      const vue = vec3(screenUV.x.mul(2).sub(1).mul(this.uOuverture.x), screenUV.y.mul(-2).add(1).mul(this.uOuverture.y), -1);
+      const dq = normalize(this.uCamMonde.mul(vec4(vue, 0)).xyz);
+      quad.colorNode = this.nuages.volume(this.uOeil, dq, volume.pas, volume.pasLumiere);
+      this.nuagesQuad = new THREE.QuadMesh(quad);
+      source = texture(this.nuagesImage.texture, screenUV);
+    } else source = this.nuages.nappe(d, this.uNuageClair, this.uNuageOmbre);
+    const n = source.toVar();
     materiau.colorNode = Fn(() => {
       const fond = this.cielDans(d).toVar();
       const cs = dot(d, this.uSoleil);
@@ -193,6 +223,23 @@ export class Ciel {
     })();
     materiau.mrtNode = masque ? mrt({ extra: vec4(0, float(1).sub(n.a.mul(0.95)), 0, 1) }) : null;
     materiau.needsUpdate = true;
+  }
+
+  /** Avant chaque image : les nuages en volume, sur leur petite image, vus de la caméra. */
+  rendreNuages(renderer: THREE.WebGPURenderer, camera: THREE.PerspectiveCamera): void {
+    if (!this.nuagesImage || !this.nuagesQuad) return;
+    renderer.getDrawingBufferSize(this.taille);
+    const l = Math.max(1, Math.ceil(this.taille.x / this.reduction));
+    const h = Math.max(1, Math.ceil(this.taille.y / this.reduction));
+    if (this.nuagesImage.width !== l || this.nuagesImage.height !== h) this.nuagesImage.setSize(l, h);
+    this.uOeil.value.copy(camera.position);
+    this.uCamMonde.value.copy(camera.matrixWorld);
+    const ty = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / camera.zoom;
+    this.uOuverture.value.set(ty * camera.aspect, ty);
+    const avant = renderer.getRenderTarget();
+    renderer.setRenderTarget(this.nuagesImage);
+    this.nuagesQuad.render(renderer);
+    renderer.setRenderTarget(avant);
   }
 
   /** Lumière du soleil après la traversée de l'air (pour les rayons). */
