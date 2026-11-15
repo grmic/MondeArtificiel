@@ -387,6 +387,13 @@ interface Geste {
  * L'animation d'un humain : garde la pose en cours, les passages, l'appui, les gestes et le regard d'une image à l'autre (elle
  * survit au corps, refait quand sa forme change).
  */
+/** Couché, la jambe et le bras du dessus retombent (adduction, rad) : flottants, ils semblaient levés. */
+const FUSIL_HANCHE = -0.7;
+const FUSIL_EPAULE = -1.15;
+const COTE_HANCHE = -0.55;
+/** Bras du dessus sur le flanc : flexion, abduction de l'épaule, flexion du coude. */
+const COTE_EPAULE = [0.3, -0.1, 0.5];
+
 export class Animateur {
   private cible = "";
   private etapes: { cle: string; duree: number }[] = [];
@@ -1012,7 +1019,7 @@ export class Animateur {
         p.genou("D", 0.15);
         p.cheville("G", -0.4);
         p.cheville("D", -0.45);
-        p.epaule("G", 0.05, 0.18, 0.15);
+        p.epaule("G", -0.25, 0.18, 0.15);
         p.coude("G", 0.3);
         const surVentre = unite(hacher(s.id, 109)) < 0.5;
         p.epaule("D", 0.3, 0.15, -0.3);
@@ -1024,11 +1031,13 @@ export class Animateur {
       }
       case "fusil":
         p.coucher(0, sc * Math.PI / 2 * -1);
+        // La jambe et le bras du dessus retombent sur ceux du dessous (sinon ils flottent à hauteur de hanche).
         for (const c of COTES) {
-          p.hanche(c, 1.5 + (c === cote ? 0 : 0.15), 0.05, 0.05);
+          const dessus = c !== cote;
+          p.hanche(c, 1.5 + (dessus ? 0.15 : 0), dessus ? FUSIL_HANCHE : 0.05, 0.05);
           p.genou(c, 1.9);
           p.cheville(c, -0.3);
-          p.epaule(c, 1.4, 0.05, -0.2);
+          p.epaule(c, 1.4, dessus ? FUSIL_EPAULE : 0.05, -0.2);
           p.coude(c, 1.8, 0.2);
           p.poignet(c, 0.6);
         }
@@ -1046,11 +1055,12 @@ export class Animateur {
         p.coucher(Math.PI / 2, 0);
         p.hanche(cote, 0.55, 0.55, 1.25);
         p.genou(cote, 1.25);
-        p.hanche(autre, 0.02, 0.06, 0.3);
+        // Jambe tendue : un peu en extension pour reposer au sol (le bassin est plus épais que la cuisse).
+        p.hanche(autre, 0.12, 0.06, 0.3);
         p.genou(autre, 0.08);
         for (const c of COTES) p.cheville(c, -0.75);
         // Bras du côté du visage remonté, la main près de la tête ; l'autre le long du corps, relâché.
-        p.epaule(cote, 1.9, 0.5, 0.5);
+        p.epaule(cote, 1.9, 0.5, -0.6);
         p.coude(cote, 1.9, 0);
         p.poignet(cote, 0.1);
         p.epaule(autre, 0.05, 0.12, 0.2);
@@ -1087,14 +1097,15 @@ export class Animateur {
         p.coucher(0, -sc * Math.PI / 2);
         p.hanche(cote, 0.55, 0.05, 0.1);
         p.genou(cote, 0.75);
-        p.hanche(cote === "G" ? "D" : "G", 0.95, 0.0, -0.1);
+        // Jambe du dessus : le genou retombe au sol devant l'autre. Bras du dessus : posé le long du flanc, la main sur la cuisse.
+        p.hanche(cote === "G" ? "D" : "G", 0.95, COTE_HANCHE, -0.1);
         p.genou(cote === "G" ? "D" : "G", 1.05);
         p.cheville("G", -0.35);
         p.cheville("D", -0.35);
-        p.epaule(cote, 1.75, 0.15, 0.1);
-        p.coude(cote, 1.7, 0.3);
-        p.epaule(cote === "G" ? "D" : "G", 0.75, 0.1, -0.2);
-        p.coude(cote === "G" ? "D" : "G", 0.7, 0.2);
+        p.epaule(cote, 1.45, 0.15, 0.1);
+        p.coude(cote, 2.0, 0.3);
+        p.epaule(cote === "G" ? "D" : "G", COTE_EPAULE[0], COTE_EPAULE[1], 0);
+        p.coude(cote === "G" ? "D" : "G", COTE_EPAULE[2], 0.2);
         p.colonne("ventre", 0.12);
         p.colonne("poitrine", 0.08);
         p.colonne("cou", 0.08, 0, sc * 0.25);
@@ -1505,12 +1516,13 @@ export function poser(corps: Corps, p: Pose, sol: SolLocal | null): void {
     // Descente : le plus bas des appuis qui portent touche le sol. Pieds posés : celui du sol le plus bas décide (l'autre plie).
     let bas = Infinity;
     const piedBas = [Infinity, Infinity];
-    // Couché, seul le tronc (tête, dos, flancs, ventre, bassin) porte : un genou ou un coude un peu bas soulevait tout le corps,
-    // qui flottait au-dessus du sol.
+    // Couché, c'est la peau qui touche : le point le plus bas d'un échantillon des sommets du maillage. Les points d'appui, pensés
+    // debout, laissaient flotter le dormeur sur le dos et enfonçaient à moitié celui sur le ventre.
     const couche = (p.appuis & APPUI_CORPS) !== 0;
+    if (couche) bas = plusBasDuMaillage(corps, sol);
     for (const a of corps.appuis) {
       const os = corps.os[a.os];
-      if (couche && a.famille === 3 && !estTronc(corps, a.os)) continue;
+      if (couche && a.famille === 3) continue;
       V.copy(a.point).applyMatrix4(os.matrixWorld);
       const d = V.y - solEn(sol, V.x, V.z);
       if (a.famille === 0) {
@@ -1539,8 +1551,60 @@ export function poser(corps: Corps, p: Pose, sol: SolLocal | null): void {
   }
 }
 
-function estTronc(corps: Corps, os: number): boolean {
-  return os === corps.idx[PO.bassin] || os === corps.idx[PO.ventre] || os === corps.idx[PO.poitrine] || os === corps.idx[PO.tete];
+/** Sommets échantillonnés par maillage (environ 600 : assez pour ne pas manquer un coude ni une fesse) : positions, os et poids. */
+interface Echantillon { pos: Float32Array; os: Uint16Array; poids: Float32Array; n: number }
+const ECHANTILLONS = new WeakMap<THREE.BufferGeometry, Echantillon>();
+let MATRICES = new Float32Array(16 * 64);
+const MAT = new THREE.Matrix4();
+
+function echantillon(g: THREE.BufferGeometry): Echantillon {
+  let e = ECHANTILLONS.get(g);
+  if (e) return e;
+  const p = g.getAttribute("position");
+  const si = g.getAttribute("skinIndex");
+  const sw = g.getAttribute("skinWeight");
+  const pas = Math.max(1, Math.floor(p.count / 600));
+  const n = Math.ceil(p.count / pas);
+  e = { pos: new Float32Array(3 * n), os: new Uint16Array(4 * n), poids: new Float32Array(4 * n), n };
+  for (let i = 0, k = 0; i < p.count; i += pas, k++) {
+    e.pos[3 * k] = p.getX(i);
+    e.pos[3 * k + 1] = p.getY(i);
+    e.pos[3 * k + 2] = p.getZ(i);
+    for (let j = 0; j < 4; j++) {
+      e.os[4 * k + j] = si.getComponent(i, j);
+      e.poids[4 * k + j] = sw.getComponent(i, j);
+    }
+  }
+  ECHANTILLONS.set(g, e);
+  return e;
+}
+
+/** Point le plus bas de la peau, au-dessus du sol (calcul du skinning sur l'échantillon, comme le fait le GPU). */
+function plusBasDuMaillage(corps: Corps, sol: SolLocal | null): number {
+  const m = corps.maillage;
+  const sq = m.skeleton;
+  const e = echantillon(m.geometry);
+  if (MATRICES.length < 16 * sq.bones.length) MATRICES = new Float32Array(16 * sq.bones.length);
+  for (let b = 0; b < sq.bones.length; b++) MAT.multiplyMatrices(sq.bones[b].matrixWorld, sq.boneInverses[b]).toArray(MATRICES, 16 * b);
+  const M = MATRICES;
+  const ax = sol ? sol.ax : 0;
+  const az = sol ? sol.az : 0;
+  let bas = Infinity;
+  for (let k = 0; k < e.n; k++) {
+    const px = e.pos[3 * k], py = e.pos[3 * k + 1], pz = e.pos[3 * k + 2];
+    let x = 0, y = 0, z = 0;
+    for (let j = 0; j < 4; j++) {
+      const w = e.poids[4 * k + j];
+      if (w === 0) continue;
+      const o = 16 * e.os[4 * k + j];
+      x += w * (M[o] * px + M[o + 4] * py + M[o + 8] * pz + M[o + 12]);
+      y += w * (M[o + 1] * px + M[o + 5] * py + M[o + 9] * pz + M[o + 13]);
+      z += w * (M[o + 2] * px + M[o + 6] * py + M[o + 10] * pz + M[o + 14]);
+    }
+    const d = y - ax * x - az * z;
+    if (d < bas) bas = d;
+  }
+  return bas;
 }
 
 function mainHorsDuSol(corps: Corps, k: number, sol: SolLocal | null): void {
