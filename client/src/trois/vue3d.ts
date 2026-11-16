@@ -287,7 +287,7 @@ export class Vue3D {
    */
   /** Portrait : yeux et direction du visage lissés. */
   private visage: { id: number; yeux: THREE.Vector3; face: THREE.Vector3; cap: number | null; parVisage: boolean } | null = null;
-  private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number; portrait: boolean } | null = null;
+  private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number; portrait: boolean; capRef?: number } | null = null;
   /** Lumière (0.41.3) : ombres en cascade, chaîne de rendu (occlusion, halo, exposition), exposition courante. */
   private ombres: CSMShadowNode | null = null;
   private chaine: THREE.RenderPipeline | null = null;
@@ -1341,7 +1341,13 @@ export class Vue3D {
       return;
     }
     s.perdu = 0;
-    const { tete, cap, enMarche, taille } = etat;
+    const { tete, cap: capCorps, enMarche, taille } = etat;
+    // Celui qui écoute l'Entité se tourne vers la caméra ; si la caméra restait attachée à son cap, elle repartirait de côté,
+    // il se tournerait encore, et la vue tournerait sans fin autour de lui. Tant qu'il écoute, la caméra garde sa place
+    // (cap de référence figé) ; elle suit de nouveau son cap quand il ne nous écoute plus (0.44.6).
+    const ecoute = this.foule.interlocuteur === s.id;
+    if (s.capRef === undefined || !ecoute) s.capRef = capCorps;
+    const cap = s.capRef;
     if (s.portrait) {
       // Portrait : autour des yeux, à la distance choisie, d'après la direction de son visage (couché, on le regarde d'au-dessus) ;
       // l'angle reste attaché à son visage s'il se tourne ou marche.
@@ -1371,7 +1377,7 @@ export class Vue3D {
       else if (plat < 0.4) v.parVisage = false;
       const capVoulu = v.parVisage ? Math.atan2(face.x, face.z) : cap;
       if (v.cap === null) v.cap = capVoulu;
-      else v.cap += Math.atan2(Math.sin(capVoulu - v.cap), Math.cos(capVoulu - v.cap)) * Math.min(1, dt * 0.8);
+      else if (!ecoute) v.cap += Math.atan2(Math.sin(capVoulu - v.cap), Math.cos(capVoulu - v.cap)) * Math.min(1, dt * 0.8);
       const a = v.cap + s.angle;
       // Hauteur : celle du visage, bornée (jamais à la verticale), plus ce que l'on a choisi en glissant.
       const el = Math.max(-0.35, Math.min(1.15, Math.max(-0.2, Math.min(0.9, Math.atan2(face.y, plat))) + s.hauteur));

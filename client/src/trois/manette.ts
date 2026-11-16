@@ -56,6 +56,12 @@ export class Manette {
   private index: number | null = null;
   private avant: boolean[] = [];
   private connue = false;
+  /**
+   * Axes qui, au branchement, reposaient loin du centre (0.44.6). Hors disposition standard, une gâchette ou un curseur se range
+   * souvent parmi les axes et repose à −1 : lu comme un stick poussé à fond, il faisait tourner la caméra sans fin. Un tel axe
+   * compte pour zéro tant qu'il reste près de sa position de repos.
+   */
+  private repos: (number | null)[] = [];
   /** Appuis vus entre deux images : à 5 images par seconde, un appui bref tomberait entre deux lectures. */
   private readonly enAttente = new Set<number>();
   private minuteur = 0;
@@ -80,6 +86,7 @@ export class Manette {
     this.enAttente.clear();
     // Les boutons déjà enfoncés au moment du branchement ne comptent pas comme des appuis.
     this.avant = g.buttons.map((b) => b.pressed);
+    this.repos = g.axes.map((v) => (Math.abs(v) > 0.5 ? v : null));
     this.connue = true;
     this.surConnexion(famille(g.id), true);
   }
@@ -140,8 +147,13 @@ export class Manette {
     const tenus = g.buttons.map((b) => b.pressed);
     const appuis = new Set(this.enAttente);
     this.enAttente.clear();
-    const [lx, ly] = stick(g.axes[0] ?? 0, g.axes[1] ?? 0);
-    const [rx, ry] = stick(g.axes[2] ?? 0, g.axes[3] ?? 0);
+    const axe = (i: number) => {
+      const v = g.axes[i] ?? 0;
+      const r = this.repos[i];
+      return r !== null && r !== undefined && Math.abs(v - r) < 0.3 ? 0 : v;
+    };
+    const [lx, ly] = stick(axe(0), axe(1));
+    const [rx, ry] = stick(axe(2), axe(3));
     const gachette = (v: number) => (v < ZONE_GACHETTE ? 0 : (v - ZONE_GACHETTE) / (1 - ZONE_GACHETTE));
     return { lx, ly, rx, ry, lt: gachette(valeur(BOUTON.LT)), rt: gachette(valeur(BOUTON.RT)), appuis, tenus };
   }
