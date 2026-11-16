@@ -655,6 +655,16 @@ public sealed class Humain
     /// </summary>
     public int Continent { get; set; }
 
+    /// <summary>
+    /// Dernière bête prise à la chasse (instant et espèce), pour la vue 3D seulement (0.44.1) : la simulation ne la lit pas et ne
+    /// l'enregistre pas.
+    /// </summary>
+    public long PriseLe { get; set; } = long.MinValue;
+    public int PriseEspece { get; set; }
+
+    /// <summary>« Espèce » d'une prise qui est un poisson (0.44.1).</summary>
+    public const int PrisePoisson = 1023;
+
     /// <summary>Jusqu'à quand ses repas cuits le protègent un peu des maladies du ventre.</summary>
     public long CuitJusqua { get; set; }
 

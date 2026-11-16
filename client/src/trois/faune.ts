@@ -166,6 +166,8 @@ export class Faune3D {
   /** Portée (m) au-delà de laquelle on ne montre plus de bêtes, et part des bêtes montrées (Qualité Basse : la moitié). */
   portee = 1500;
   part = 1;
+  /** Bêtes prises à la chasse depuis moins d'un jour, à montrer près de leur chasseur arrêté (0.44.1). */
+  prises: { x: number; z: number; cap: number; espece: number }[] = [];
   /** Bêtes proches de la caméra à cette image (x, z, rayon des pas), pour le tapis du sol. */
   readonly pietineurs: number[] = [];
 
@@ -322,6 +324,16 @@ export class Faune3D {
         r.ajouter(b.x - o.x, b.y, b.z - o.z, b.cap, L, b.phase, allure, b.tete, b.regard, b.couche, b.teinte, s.gab.hanche);
         if (db < 34 && this.pietineurs.length < 600) this.pietineurs.push(b.x, b.z, 0.12 + 0.18 * L);
       }
+    }
+    // Les prises rapportées par les chasseurs (0.44.1) : la bête gît à côté de lui quand il s'arrête.
+    for (const p of this.prises) {
+      const s = this.especes.get(p.espece);
+      if (!s || Math.hypot(p.x - camera.x, p.z - camera.z) > Math.min(this.portee, 400)) continue;
+      const L = longueur(s.e.forme, s.e.poids);
+      const x = p.x + Math.cos(p.cap) * (0.6 + L * 0.15);
+      const z = p.z - Math.sin(p.cap) * (0.6 + L * 0.15);
+      const r = this.rendu(p.espece, Math.hypot(x - camera.x, z - camera.z) < 60 ? 0 : 1);
+      r?.ajouter(x - o.x, this.relief.hauteur(x, z), z - o.z, p.cap + Math.PI / 2, L, 0, 0, -1, 0, 0, 0.8, s.gab.hanche);
     }
     for (const s of this.especes.values()) {
       for (const r of s.rendus) {

@@ -67,6 +67,12 @@ export class MeteoGPU {
     this.terres.needsUpdate = true;
   }
 
+  /** Brûlé (0 à 1) de la case d'index i, lu sur le processeur (0.44.1 : les oiseaux fuient les terres noircies). */
+  bruleEn(i: number): number {
+    const d = this.terres.image.data as Uint8Array;
+    return i >= 0 && i * 4 < d.length ? d[i * 4] / 255 : 0;
+  }
+
   /** Temps au point p du monde : pluie, neige, mouillé, orage (de 0 à 1). */
   tempsEn(p: N<"vec2">): N<"vec4"> {
     return texture(this.regions, p.div(this.uRegionsM)).level(float(0));

@@ -537,13 +537,15 @@ export function materiauBetes(): THREE.MeshStandardNodeMaterial {
   const mPatte = masque(3);
   const phase = iB.y;
   const allure = iB.z;
-  const tete = iB.w;
+  // Une bête morte (tête < −0,5 : une prise rapportée par un chasseur, 0.44.1) est couchée sur le flanc, pattes tendues.
+  const mort = clamp(iB.w.mul(-2).sub(1), 0, 1);
+  const tete = max(iB.w, 0);
   const regard = iC.x;
   const couche = iC.y;
   const ampl = min(allure, 1).mul(0.36).add(max(allure.sub(1), 0).mul(0.3));
   const ph = phase.add(os.z);
   const avant = os.w;
-  const debout = float(1).sub(couche);
+  const debout = float(1).sub(couche).mul(float(1).sub(mort));
   // Hanche : la patte va et vient ; couché, elle se replie sous le corps.
   const theta1 = sin(ph).mul(ampl).mul(debout).add(couche.mul(mix(float(-0.7), float(0.35), avant)));
   // Genou : il plie pendant que la patte revient (pied levé).
@@ -572,9 +574,14 @@ export function materiauBetes(): THREE.MeshStandardNodeMaterial {
   // Le corps monte et descend à chaque pas ; couché, il s'abaisse sur ses pattes repliées.
   const souleve = abs(sin(phase)).mul(0.012).mul(min(allure, 2)).mul(debout).sub(couche.mul(iC.w).mul(0.72));
   const echelle = iB.x;
-  const monde = rotY(vec3(local.x, local.y.add(souleve), local.z).mul(echelle), iA.w).add(iA.xyz);
+  const rotZ = (v: THREE.Node<"vec3">, a: THREE.Node<"float">) => vec3(v.x.mul(cos(a)).sub(v.y.mul(sin(a))), v.x.mul(sin(a)).add(v.y.mul(cos(a))), v.z);
+  const debout3 = vec3(local.x, local.y.add(souleve), local.z);
+  const couche3 = rotZ(local, float(1.45)).add(vec3(0, 0.07, 0));
+  const pose = mix(debout3, couche3, mort);
+  const monde = rotY(pose.mul(echelle), iA.w).add(iA.xyz);
   mat.positionNode = monde;
-  const n = rotY(plier(attribute("normal", "vec3"), false), iA.w);
+  const nl = plier(attribute("normal", "vec3"), false);
+  const n = rotY(mix(nl, rotZ(nl, float(1.45)), mort), iA.w);
   mat.normalNode = transformNormalToView(normalize(n));
   mat.colorNode = attribute("color", "vec3").mul(iC.z);
   return mat;

@@ -130,7 +130,9 @@ public sealed partial class MondeSimule
                     // 0.42.0 : plaie ouverte, blessure grave (au moins 20 de santé perdue d'un coup), arme taillée portée (3 bits).
                     | (h.EstVivant && Medecine.PlaieOuverte(h, maintenant) ? 512 : 0)
                     | (h.EstVivant && h.BlessureGrave >= 20 && Medecine.PlaieOuverte(h, maintenant) ? 1024 : 0)
-                    | (int)ArmePortee(h) << 11;
+                    | (int)ArmePortee(h) << 11
+                    // 0.44.1 : une bête prise à la chasse depuis moins d'un jour (bit 14) et son espèce (bits 15 à 24).
+                    | (h.PriseLe > maintenant - Temps.Calendrier.SecondesParJour && h.PriseEspece is > 0 and < 1024 ? 1 << 14 | h.PriseEspece << 15 : 0);
                 var humeur = h switch
                 {
                     { EstDeprime: true } => 7,
@@ -207,11 +209,9 @@ public sealed partial class MondeSimule
                     var i = cy * carte.Largeur + cx;
                     var gibier = _ecosysteme.Gibier[i];
                     if (gibier < 500) continue;
-                    var especes = Faune.Sur((Biome)carte.Biomes[i]);
-                    if (especes.Count == 0) continue;
                     // Une espèce par case, toujours la même (tirée de la case) : quelques bêtes, plus nombreuses où le gibier abonde ;
                     // celles qui vivent en troupeau se montrent ensemble, les grands chasseurs seuls.
-                    var b = especes[(int)((uint)(cx * 73856093 ^ cy * 19349663) % (uint)especes.Count)];
+                    if (Faune.VueSur((Biome)carte.Biomes[i], cx, cy) is not { } b) continue;
                     // Les espèces qui vivent en troupeau se rassemblent : un troupeau toutes les trois cases environ, qui réunit les bêtes
                     // des cases voisines (la densité reste celle du gibier).
                     var hache = (uint)(cx * 2654435761u ^ cy * 40503u) >> 7;

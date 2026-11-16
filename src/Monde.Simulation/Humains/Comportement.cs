@@ -1079,6 +1079,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 if (pris > 0) GarderDeLaViande(h, pris * KgParPart * facteur);
                 if (pris > 0 && auFeu) ChasseAuFeu(h, _tous);
                 if (pris > 0) PrendreUnPetit(h, i, _tous);
+                if (pris > 0 && AvecLeRelief && Faune.VueSur(carte.BiomeEn(h.X, h.Y), h.X, h.Y) is { } prise)
+                    (h.PriseLe, h.PriseEspece) = (_maintenant, prise.Numero);
             }
             else
             {

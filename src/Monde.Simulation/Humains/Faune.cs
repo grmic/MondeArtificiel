@@ -121,6 +121,16 @@ public sealed class Faune
 
     public Bete Get(int numero) => Betes[numero - 1];
 
+    /// <summary>
+    /// L'espèce qu'on voit sur une case dans la vue 3D (une par case, toujours la même, tirée de la case) ; null si le terrain n'en a
+    /// pas. Aussi celle de la bête qu'un chasseur rapporte de cette case (0.44.1).
+    /// </summary>
+    public Bete? VueSur(Biome b, int x, int y)
+    {
+        var especes = Sur(b);
+        return especes.Count == 0 ? null : especes[(int)((uint)(x * 73856093 ^ y * 19349663) % (uint)especes.Count)];
+    }
+
     /// <summary>Bêtes de ce terrain.</summary>
     public IReadOnlyList<Bete> Sur(Biome b) => _parBiome.TryGetValue(b, out var l) ? l : [];
 

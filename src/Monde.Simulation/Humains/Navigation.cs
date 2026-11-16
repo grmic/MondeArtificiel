@@ -857,7 +857,12 @@ public sealed partial class Comportement
             // Une prise par heure ou deux sur un récif, pour un pêcheur adroit (ligne, harpon, mains) ; un poisson d'un ou deux kilos.
             var ligne = 0.0;
             foreach (var o in h.Objets) if (o.Matiere == Matiere.Facture) ligne = Math.Max(ligne, Facons.Valeur(Fonction.Pecher, o));
-            if (alea.Reel() < 0.12 * poissons * (0.5 + p.Adresse) * (1 + ligne)) h.Faim = Math.Max(0, h.Faim - (12 + 18 * alea.Reel()));
+            if (alea.Reel() < 0.12 * poissons * (0.5 + p.Adresse) * (1 + ligne))
+            {
+                h.Faim = Math.Max(0, h.Faim - (12 + 18 * alea.Reel()));
+                // Pour la vue 3D seulement (0.44.1) : le poisson pris se voit dans la barque (« espèce » 1023).
+                (h.PriseLe, h.PriseEspece) = (_maintenant, Humain.PrisePoisson);
+            }
         }
         else h.Activite = Activite.Naviguer;
         h.CibleX = h.CibleY = -1;
