@@ -619,6 +619,35 @@ public sealed partial class MondeSimule
         lock (_verrou) return (_ecosysteme.Pluies.ToArray(), _ecosysteme.RegionsX, _ecosysteme.RegionsY);
     }
 
+    /// <summary>
+    /// Jours de pluie (0.43.0) : pour chaque région climatique, pleut-il le jour <paramref name="jour"/> (voir <see cref="Ecosysteme.Pleut"/>) ?
+    /// Le tirage est celui que la simulation utilise ; rien n'est changé.
+    /// </summary>
+    public bool[] JoursDePluie(long jour)
+    {
+        lock (_verrou)
+        {
+            var e = _ecosysteme;
+            var t = Ecosysteme.TailleRegion;
+            var pleut = new bool[e.RegionsX * e.RegionsY];
+            // Avant le premier jour du monde, il n'a pas plu.
+            if (jour < 0) return pleut;
+            for (var r = 0; r < pleut.Length; r++)
+            {
+                var x = Math.Min(Carte.Largeur - 1, r % e.RegionsX * t + t / 2);
+                var y = Math.Min(Carte.Hauteur - 1, r / e.RegionsX * t + t / 2);
+                pleut[r] = e.Pleut(Carte.Indice(x, y), jour * Calendrier.SecondesParJour);
+            }
+            return pleut;
+        }
+    }
+
+    /// <summary>Dégâts des catastrophes sur chaque tuile (copie, sur 10 000 ; voir <see cref="Ecosysteme.Degats"/>).</summary>
+    public ushort[] CarteDegats()
+    {
+        lock (_verrou) return _ecosysteme.Degats.ToArray();
+    }
+
     /// <summary>État de la nature et de la population, calculé à la demande.</summary>
     public Indicateurs Indicateurs()
     {

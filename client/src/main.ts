@@ -6,6 +6,8 @@ import { AlertesSuivis, chargerSuivis, oublierSuivis, PanneauSuivis } from "./su
 import { chargerCarte, distanceEnMots, VueCarte, type Carte, type Feux, type HumainVue, type InfoTuile, type Nature } from "./carte";
 import { BandeauAlertes, PanneauCatastrophes } from "./catastrophes";
 import { Calques } from "./calques";
+import type { EnCoursJson } from "./calqueMeteo";
+import type { TempsJson } from "./meteo";
 import { connexion, demarrerConnexion } from "./connexion";
 import { PanneauCommunautes } from "./communautes";
 import { PanneauDecouvertes } from "./decouvertes";
@@ -55,6 +57,8 @@ function decrireHumain(h: HumainVue): string {
 let natureEn: (x: number, y: number) => { abondance: number; pluie: number } | null = () => null;
 let territoireEn: (x: number, y: number) => { nom: string } | null = () => null;
 let catastrophesEn: (x: number, y: number) => { nom: string; intensite: string }[] = () => [];
+let meteoEn: (x: number, y: number) => string[] = () => [];
+let zonesEn: (x: number, y: number) => { nom: string }[] = () => [];
 let feuxEn: (x: number, y: number) => string[] = () => [];
 let terrainEn: (x: number, y: number) => string[] = () => [];
 
@@ -76,7 +80,10 @@ function decrire(info: InfoTuile): void {
   if (terres) lignes.push(t("survol.terres", { nom: terres.nom, nomMin: `${terres.nom.charAt(0).toLowerCase()}${terres.nom.slice(1)}` }));
   lignes.push(...terrainEn(x, y));
   lignes.push(...feuxEn(x, y));
-  for (const c of catastrophesEn(x, y)) lignes.push(`⚠ ${c.nom}${c.intensite ? ` (${c.intensite})` : ""}`);
+  lignes.push(...meteoEn(x, y));
+  const vues = catastrophesEn(x, y);
+  for (const c of vues) lignes.push(`⚠ ${c.nom}${c.intensite ? ` (${c.intensite})` : ""}`);
+  for (const z of zonesEn(x, y)) if (!vues.some((c) => c.nom === z.nom)) lignes.push(`⚠ ${z.nom}`);
   if (emplacement) lignes.unshift(t("survol.emplacement", { numero: emplacement.numero }));
   if (info.humains.length > 0) lignes.unshift(...info.humains.slice(0, 5).map(decrireHumain));
   infos.textContent = lignes.join("\n");
@@ -87,6 +94,8 @@ async function demarrer(): Promise<void> {
   natureEn = (x, y) => vue.natureEn(x, y);
   territoireEn = (x, y) => vue.territoireEn(x, y);
   catastrophesEn = (x, y) => vue.catastrophesEn(x, y);
+  meteoEn = (x, y) => vue.meteo.texteEn(x, y);
+  zonesEn = (x, y) => vue.meteo.zonesEn(x, y);
   feuxEn = (x, y) => vue.feuxEn(x, y);
   const calques = new Calques(vue, element<HTMLButtonElement>("#boutonCalques"), element("#panneauCalques"));
   terrainEn = (x, y) => calques.texteEn(x, y);
@@ -114,6 +123,53 @@ async function demarrer(): Promise<void> {
   });
   window.setInterval(() => void lireFeux(), 5000);
   void lireFeux();
+
+  // Temps et catastrophes en cours (0.43.0) : averses relues au changement de jour (et toutes les 30 s), catastrophes toutes les
+  // 5 s ; le ciel est recalculé à chaque battement de l'horloge. Chaque calque peut être masqué (choix retenu par le navigateur).
+  const caseTemps = element<HTMLInputElement>("#voirTemps");
+  const caseDesastres = element<HTMLInputElement>("#voirDesastres");
+  const lireChoix = (cle: string) => {
+    try {
+      return localStorage.getItem(cle) !== "non";
+    } catch {
+      return true;
+    }
+  };
+  caseTemps.checked = lireChoix("monde.calqueTemps");
+  caseDesastres.checked = lireChoix("monde.calqueDesastres");
+  const appliquerCalques = () => {
+    vue.meteo.tempsVisible = caseTemps.checked;
+    vue.meteo.catastrophesVisibles = caseDesastres.checked;
+  };
+  for (const [c, cle] of [[caseTemps, "monde.calqueTemps"], [caseDesastres, "monde.calqueDesastres"]] as const) {
+    c.addEventListener("change", () => {
+      try {
+        localStorage.setItem(cle, c.checked ? "oui" : "non");
+      } catch {
+        // Stockage indisponible : le choix vaut pour cette page seulement.
+      }
+      appliquerCalques();
+    });
+  }
+  appliquerCalques();
+  let jourTemps = -1;
+  let secondesMonde = 0;
+  const lireTemps = async (forcer = false) => {
+    const jour = Math.floor(secondesMonde / 86400);
+    if (!forcer && jour === jourTemps) return;
+    const temps = await connexion.invoke<TempsJson>("Temps").catch(() => null);
+    if (!temps) return;
+    jourTemps = temps.jour;
+    vue.meteo.definirTemps(temps);
+    vue.meteo.regler(secondesMonde);
+  };
+  const lireEnCours = async () => {
+    const en = await connexion.invoke<EnCoursJson>("EnCours").catch(() => null);
+    if (en) vue.meteo.definirEnCours(en);
+  };
+  window.setInterval(() => void lireTemps(true), 30000);
+  window.setInterval(() => void lireEnCours(), 5000);
+  void lireEnCours();
 
   // Couche des ressources : relue toutes les 5 secondes tant qu'elle est affichée.
   const boutonRessources = element<HTMLButtonElement>("#boutonRessources");
@@ -150,6 +206,9 @@ async function demarrer(): Promise<void> {
     element("#vitesses"),
     (h) => {
       vue.eclairer(h.lumiere);
+      secondesMonde = h.secondes;
+      void lireTemps();
+      vue.meteo.regler(h.secondes);
       eteint = h.eteint;
       // Monde déjà éteint à l'ouverture de la page : le bandeau le rappelle une fois.
       if (h.eteint && !extinctionVue) montrerExtinction(t("extinction.plusPersonne"));
@@ -498,6 +557,16 @@ async function demarrer(): Promise<void> {
       else bouton3d.click();
     });
   };
+  // Catastrophe (0.43.0) : « Voir en 3D » ouvre la vue 3D (si besoin) et s'y place pour la regarder.
+  const voirCatastrophe3d = async (id: number) => {
+    if (!bouton3d.classList.contains("actif") || !vue3d) {
+      bouton3d.click();
+      for (let k = 0; k < 100 && !(bouton3d.classList.contains("actif") && vue3d); k++) await new Promise((r) => window.setTimeout(r, 100));
+    }
+    await vue3d?.allerVoirCatastropheId(id);
+  };
+  catastrophes.voir3d = (id) => void voirCatastrophe3d(id);
+  alertes.voir3d = (id) => void voirCatastrophe3d(id);
   bouton3d.addEventListener("click", async () => {
     if (bouton3d.classList.contains("actif")) {
       await quitter3d();

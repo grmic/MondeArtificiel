@@ -547,3 +547,10 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 .manette3d th { text-align: left; padding: 3px 12px 3px 0; white-space: nowrap; color: #ffd98a; font-weight: 600; }
 .manette3d td { padding: 3px 0; }
 .manette3d p { margin: 10px 0 0; opacity: 0.7; font-size: 0.8rem; }
+
+/* 0.43.0 : ce qui couvre tout le continent (grand froid, comète, éclipse…), en haut de la carte. */
+.bandeau-continent {
+  position: fixed; top: 64px; left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 5;
+  max-width: min(90vw, 720px); padding: 4px 12px; border-radius: 12px; text-align: center;
+  font-size: 0.85rem; color: #f3f0e6; background: rgba(20, 24, 36, 0.72); box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}

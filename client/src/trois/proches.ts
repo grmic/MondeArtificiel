@@ -82,6 +82,12 @@ export class CorpsProches {
   private readonly tetes = new Map<number, TeteDetaillee>();
   private readonly expressions = new Map<number, Record<Expression, number>>();
   private visagesDemandes = 0;
+  /**
+   * Temps et feu autour (0.43.0, H1 en partie) : pluie ou neige qui tombe là (0 à 1), et proximité d'un incendie (0 à 1 selon
+   * le point). Sous la pluie, on rentre les épaules et on serre les bras comme dans le froid ; près du feu, la peur.
+   */
+  pluie = 0;
+  feuEn: (x: number, z: number) => number = () => 0;
   /** Humain toujours détaillé, corps et visage, où qu'il soit (suivi ou Portrait, 0.41.3). */
   force: number | null = null;
   /** Corps réalistes MakeHuman (0.41.4) ; faux : corps calculés de la 0.41.1. */
@@ -202,7 +208,8 @@ export class CorpsProches {
         porteur: etatMere ? (etatMere.s.activite === A.Allaiter && (etatMere.s.etat & 4) !== 0 ? "allaite" : etatMere.posture) : null, dort, ecoute: c.ecoute,
         allaite: s.activite === A.Allaiter && (s.etat & 4) !== 0,
         // F1 (0.41.8) : ce que vit l'humain ; la maladie pèse d'autant plus que la santé est basse.
-        froid: lisser(15, 70, s.froid), faim: s.faim / 100, fatigue: s.fatigue / 100, peur: lisser(10, 70, s.peur),
+        froid: Math.max(lisser(15, 70, s.froid), dort || c.posture === "nage" ? 0 : this.pluie * 0.6), faim: s.faim / 100, fatigue: s.fatigue / 100,
+        peur: Math.max(lisser(10, 70, s.peur), dort ? 0 : this.feuEn(pl.x, pl.z) * 0.7),
         malade: s.etat & 1 ? 0.6 + 0.4 * (1 - s.sante / 100) : lisser(60, 25, s.sante), enceinte: (s.etat & 2) !== 0,
         humeur: s.humeur, nevrosisme: s.nevrosisme, extraversion: s.extraversion, nage: s.nage,
         parle: c.parle, converse: c.interlocuteur > 0 && c.posture !== "enlace",

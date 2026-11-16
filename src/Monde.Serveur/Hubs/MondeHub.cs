@@ -947,6 +947,12 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Températures du jour sur chaque case, pour la neige de la vue 3D.</summary>
     public TemperaturesDto Temperatures() => TemperaturesDto.Depuis(service.Monde);
 
+    /// <summary>Averses d'hier et d'aujourd'hui sur chaque région (pluie, neige, orage), pour la carte et la vue 3D (0.43.0).</summary>
+    public TempsDto Temps() => TempsDto.Depuis(service.Monde);
+
+    /// <summary>Catastrophes en cours et terres pas encore remises, pour le calque de la carte et la vue 3D (0.43.0).</summary>
+    public EnCoursDto EnCours() => EnCoursDto.Depuis(service.Monde);
+
     /// <summary>Journal filtré, du plus récent au plus ancien (500 événements au plus par demande).</summary>
     public List<EvenementDto> Journal(FiltreJournal filtre)
     {

@@ -90,7 +90,14 @@ export const PROVOQUABLES: [string, string, number, string][] = [
  * Catastrophes et phénomènes du monde. En tête, ce que l'Entité peut provoquer ; puis ce qui est en cours, l'histoire
  * (un clic montre les terres touchées sur la carte), les maladies apparues et la géologie du continent (failles, volcans).
  */
+/** Ce qui se voit dans un paysage (0.43.0) : pas ce qui couvre tout le continent, ni une épidémie. */
+export function visibleEn3D(type: string): boolean {
+  return !["froid", "canicule", "epidemie", "eclipse", "comete", "aurore", "hiver-volcanique", "hiver-impact"].includes(type);
+}
+
 export class PanneauCatastrophes {
+  /** Aller voir une catastrophe dans la vue 3D (0.43.0). */
+  voir3d: ((id: number) => void) | null = null;
   private liste: CatastropheVue[] = [];
   private choisie = 0;
   private communaute: { id: number; nom: string } | null = null;
@@ -261,6 +268,12 @@ export class PanneauCatastrophes {
       });
       li.append(el("span", "date", x.debut), " ", titre);
       if (x.origine === "entite") li.append(el("span", "entite", ` ✦ ${t("commun.entite")}`));
+      if (x.active && this.voir3d && visibleEn3D(x.type)) {
+        const voir = el("button", "lien voir3d", ` 🎥 ${t("catastrophes.voir3d")}`);
+        voir.type = "button";
+        voir.addEventListener("click", () => this.voir3d?.(x.id));
+        li.append(voir);
+      }
       const details = [x.intensite, x.surface ? t("catastrophes.touches", { surface: x.surface }) : "",
         x.morts ? t("catastrophes.morts", { n: x.morts }) : "", x.blesses ? t("catastrophes.blesses", { n: x.blesses }) : "",
         x.mortsSuites ? t("catastrophes.mortsSuites", { n: x.mortsSuites }) : "",
@@ -371,6 +384,8 @@ const ALERTES_MAX = 3;
  * fenêtre pour la dernière fois. Le réglage de la Configuration cache les alertes, pas la pastille.
  */
 export class BandeauAlertes {
+  /** Aller voir une catastrophe dans la vue 3D (0.43.0). */
+  voir3d: ((id: number) => void) | null = null;
   private nonVues = 0;
   private readonly titreBouton: string;
 
@@ -411,7 +426,14 @@ export class BandeauAlertes {
     fermer.type = "button";
     fermer.title = t("commun.fermer");
     fermer.addEventListener("click", () => this.retirer(carte));
-    carte.append(el("span", "icone", a.grave ? "⚠" : "✦"), texte, fermer);
+    carte.append(el("span", "icone", a.grave ? "⚠" : "✦"), texte);
+    if (this.voir3d && visibleEn3D(a.type)) {
+      const voir = el("button", "lien", `🎥 ${t("catastrophes.voir3d")}`);
+      voir.type = "button";
+      voir.addEventListener("click", () => this.voir3d?.(a.catastrophe));
+      carte.append(" ", voir);
+    }
+    carte.append(fermer);
     // La plus récente en haut ; au-delà de trois, la plus ancienne s'en va.
     this.racine.prepend(carte);
     while (this.racine.children.length > ALERTES_MAX) this.racine.lastElementChild?.remove();

@@ -1,6 +1,7 @@
 import { Application, Container, Graphics, Sprite, Texture } from "pixi.js";
 import { langue, nombre, t } from "./langue";
 import type { CatastropheVue, DetailCatastrophe, Geologie } from "./catastrophes";
+import { CalqueMeteo } from "./calqueMeteo";
 
 export interface Emplacement {
   numero: number;
@@ -567,10 +568,16 @@ export class VueCarte {
   private barreEchelle?: HTMLElement;
   private catastrophes: { actives: CatastropheVue[]; detail: DetailCatastrophe | null; cases: Set<number> } = { actives: [], detail: null, cases: new Set() };
 
+  /** Calques Temps et Catastrophes (0.43.0). */
+  readonly meteo: CalqueMeteo;
+
   private constructor(
     private readonly app: Application,
     private readonly surSurvol: (info: InfoTuile) => void,
+    hote: HTMLElement,
   ) {
+    this.meteo = new CalqueMeteo(hote);
+    app.ticker.add(() => this.meteo.animer());
     app.stage.addChild(this.monde);
     this.brancherSouris();
   }
@@ -580,7 +587,7 @@ export class VueCarte {
     // Résolution de l'écran (Retina, écrans 4K) : traits, cercles et carte nets ; autoDensity garde les mesures en pixels CSS.
     await app.init({ resizeTo: window, background: "#0f1a2b", antialias: true, resolution: window.devicePixelRatio || 1, autoDensity: true });
     hote.appendChild(app.canvas);
-    const vue = new VueCarte(app, surSurvol);
+    const vue = new VueCarte(app, surSurvol, hote);
     // Barre d'échelle en bas à gauche : sa longueur suit le zoom.
     vue.barreEchelle = document.createElement("div");
     vue.barreEchelle.className = "barre-echelle";
@@ -646,6 +653,9 @@ export class VueCarte {
     this.afficherTerritoires(null);
     this.afficherCatastrophes(null, [], null);
     this.carte = carte;
+    this.meteo.dimensionner(carte.largeur, carte.hauteur);
+    // Sur un aperçu d'autres réglages, ni temps ni catastrophes du monde courant.
+    this.meteo.racine.visible = !apercu;
     this.monde.removeChildren();
     this.sprite?.texture.destroy(true);
 
@@ -669,7 +679,7 @@ export class VueCarte {
     }
     this.nuit.clear().rect(0, 0, carte.largeur, carte.hauteur).fill({ color: 0x050a1e });
     this.afficherTrajet(null);
-    this.monde.addChild(this.calqueTerrain, this.nuit, this.calqueTerritoires, this.calqueNature, this.calqueCatastrophes, this.calqueFeux, this.calqueTrajet, this.marqueurs, this.calqueHumains);
+    this.monde.addChild(this.calqueTerrain, this.nuit, this.calqueTerritoires, this.calqueNature, this.meteo.racine, this.calqueCatastrophes, this.calqueFeux, this.calqueTrajet, this.marqueurs, this.calqueHumains);
     this.cadrer();
   }
 

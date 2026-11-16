@@ -3,6 +3,7 @@ import {
   Fn, attribute, clamp, cos, dFdx, dFdy, dot, float, int, instanceIndex, ivec2, length, log2, max, mix, normalGeometry, normalize, positionGeometry,
   select, sin, smoothstep, sqrt, texture, textureLoad, time, transformNormalToView, uint, uniform, uv, varying, vec2, vec3, vec4,
 } from "three/tsl";
+import { bruleEn } from "./meteo3d";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { hacher, unite } from "./bruit";
 import * as B from "./relief";
@@ -749,7 +750,9 @@ class Niveau {
     const fondu = smoothstep(R.x, R.y, d).mul(float(1).sub(smoothstep(R.z, R.w, d)));
     const garde = r(3).lessThan(dens).and(r(4).lessThan(fondu));
     const taille = float(g.tmin).add(r(5).mul(r(5)).mul(g.etendue)).mul(dens.mul(0.35).add(0.65)).mul(this.lointain ? 1.2 : 1);
-    const echelle = select(garde, taille, float(0)).toVar();
+    // 0.43.0 : rien ne pousse plus là où le feu vient de passer ; les plantes reviennent à mesure que la terre se remet.
+    const brule = bruleEn(vec3(lx.add(t.uOrigineF.x), 0, lz.add(t.uOrigineF.y)));
+    const echelle = select(garde, taille.mul(float(1).sub(smoothstep(0.2, 0.5, brule))), float(0)).toVar();
     const angle = r(6).mul(Math.PI * 2);
     const ca = cos(angle);
     const sa = sin(angle);

@@ -1,3 +1,4 @@
+import { ecorceBrulee, feuillageBrule, mouilleEn, terreTouchee } from "./meteo3d";
 import * as THREE from "three/webgpu";
 import {
   Fn, If, attribute, cameraPosition, dot, int, log2, positionWorld, smoothstep, clamp, cross, dFdx, dFdy, float, length, max, mix, normalWorldGeometry, normalize, positionGeometry, positionLocal,
@@ -192,7 +193,8 @@ export class Matieres {
       });
       return normale.div(max(total, 1e-4));
     });
-    const mouille = p1.w;
+    // 0.43.0 : le sol se mouille sous la pluie (comme le lit des rivières) et sèche ensuite.
+    const mouille = max(p1.w, mouilleEn(positionWorld).mul(0.85));
     const resultat = melange();
     let pres = resultat.rgb.mul(teinte).mul(mix(float(1), float(0.55), mouille));
     const distance = length(positionWorld.sub(cameraPosition));
@@ -210,7 +212,10 @@ export class Matieres {
     }
     // Peu à peu (dès 20 m, entièrement au bout de la portée) : vu d'avion, le sol entre les arbres prend déjà la couleur du pays.
     const loinPays = pow(clamp(distance.sub(20).div(this.portee), 0, 1), 0.7);
-    mat.colorNode = mix(pres, attribute("lointain", "vec3"), loinPays);
+    // 0.43.0 : terres brûlées (charbon qui reverdit), cendre, et braises là où le feu passe.
+    const touchee = terreTouchee(mix(pres, attribute("lointain", "vec3"), loinPays), positionWorld);
+    mat.colorNode = touchee.couleur;
+    mat.emissiveNode = touchee.braises;
     mat.roughnessNode = mix(resultat.a, float(0.3), mouille);
     mat.normalNode = Fn(() => {
       const n = normalize(normalWorldGeometry);
@@ -257,7 +262,8 @@ export class Matieres {
     // Au loin, les niveaux réduits de l'atlas moyennent la transparence et les feuilles fondraient : on la relève selon le niveau lu.
     const px = uv().mul(2048);
     const niveau = max(log2(max(dot(dFdx(px), dFdx(px)), dot(dFdy(px), dFdy(px)))).mul(0.5), 0);
-    mat.colorNode = vec4(c.rgb, c.a.mul(niveau.mul(0.3).add(1)));
+    // 0.43.0 : feuilles roussies puis tombées là où le feu est passé.
+    mat.colorNode = feuillageBrule(vec4(c.rgb, c.a.mul(niveau.mul(0.3).add(1))), positionWorld);
     // La normale de la géométrie, sans la retourner sur la face arrière : une feuille vue de dos reste éclairée (lumière qui la traverse).
     mat.normalNode = transformNormalToView(normalWorldGeometry);
     mat.positionNode = this.deplacementVent();
@@ -268,7 +274,7 @@ export class Matieres {
   materiauEcorce(couche: number): THREE.MeshStandardNodeMaterial {
     const mat = new THREE.MeshStandardNodeMaterial({ metalness: 0, roughness: 0.92 });
     // Les stipes (photo sombre) sont éclaircis pour ne pas paraître noirs.
-    mat.colorNode = texture(this.ecorcesCouleur, uv()).depth(int(couche)).rgb.mul(couche === 1 ? 2.2 : 1.1);
+    mat.colorNode = ecorceBrulee(texture(this.ecorcesCouleur, uv()).depth(int(couche)).rgb.mul(couche === 1 ? 2.2 : 1.1), positionWorld);
     mat.normalMap = null;
     const n = texture(this.ecorcesNormales, uv()).depth(int(couche)).xyz.mul(2).sub(1);
     mat.normalNode = Fn(() => {

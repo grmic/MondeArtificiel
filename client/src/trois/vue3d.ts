@@ -28,6 +28,9 @@ import { Matieres, Vent } from "./matieres";
 import { Rejeu, type AssautJson } from "./combat";
 import { BOUTON, Manette, nomBouton, type EtatManette, type Famille } from "./manette";
 import { decrireFacteur } from "../horloge";
+import { Eclairs, Precipitations, meteoGPU } from "./meteo3d";
+import { Incendies3D } from "./incendies3d";
+import { etatA, lireAverses, regionDe, type Averse, type EnCoursJson, type EtatTemps, type TempsJson, type ZoneJson } from "../meteo";
 
 /** Ce que la vue 3D demande au reste du client. */
 export interface Contexte {
@@ -86,16 +89,18 @@ interface ReglageQualite {
    * soleil dans la brume, réflexions à l'écran sur l'eau (qualité de 0 à 1, 0 : aucune ; résolution relative).
    */
   nuages: ReglageNuages | null; lissage: "aucun" | "smaa" | "traa"; rayons: boolean; reflets: number; resReflets: number;
+  /** Temps et feux (0.43.0) : gouttes de pluie autour de soi (0 : aucune, le ciel et le sol mouillé restent), densité des flammes. */
+  gouttes: number; feu: number;
 }
 /**
  * Réglages de Qualité (proposition G1, 0.41.1 ; Ultra et lumière en 0.41.3) : corps détaillés jusqu'à `corps` m (au plus `nombre`),
  * silhouettes jusqu'à `silhouettes` m, points de vie au-delà ; camp et bêtes jusqu'à `camp` m. Basse reste proche de la 0.41.2.
  */
 const QUALITES: Record<Qualite, ReglageQualite> = {
-  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, reels: 8, porteeReels: 15, silhouettes: 1200, camp: 1200, sol: 30, ombres: 0, porteeOmbres: 0, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false, nuages: null, lissage: "aucun", rayons: false, reflets: 0, resReflets: 0 },
-  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, reels: 16, porteeReels: 30, silhouettes: 2000, camp: 2000, sol: 55, ombres: 1024, porteeOmbres: 160, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false, nuages: null, lissage: "smaa", rayons: false, reflets: 0, resReflets: 0 },
-  haute: { pixels: 1.5, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, reels: 40, porteeReels: 70, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true, nuages: { pas: 24, pasLumiere: 4, reduction: 4 }, lissage: "traa", rayons: true, reflets: 0, resReflets: 0 },
-  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, reels: 70, porteeReels: 120, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true, nuages: { pas: 40, pasLumiere: 5, reduction: 3 }, lissage: "traa", rayons: true, reflets: 0.7, resReflets: 1 },
+  basse: { pixels: 1, finesse: 1.3, vegetation: 450, corps: 40, nombre: 16, visages: 5, nombreVisages: 4, reels: 8, porteeReels: 15, silhouettes: 1200, camp: 1200, sol: 30, ombres: 0, porteeOmbres: 0, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false, nuages: null, lissage: "aucun", rayons: false, reflets: 0, resReflets: 0, gouttes: 0, feu: 0.4 },
+  moyenne: { pixels: 1.5, finesse: 1.8, vegetation: 900, corps: 90, nombre: 45, visages: 8, nombreVisages: 8, reels: 16, porteeReels: 30, silhouettes: 2000, camp: 2000, sol: 55, ombres: 1024, porteeOmbres: 160, ombreRelief: false, ombrePetits: false, douces: false, ao: 0, halo: false, nuages: null, lissage: "smaa", rayons: false, reflets: 0, resReflets: 0, gouttes: 12000, feu: 0.7 },
+  haute: { pixels: 1.5, finesse: 2.4, vegetation: 1400, corps: 150, nombre: 80, visages: 25, nombreVisages: 20, reels: 40, porteeReels: 70, silhouettes: 2500, camp: 3000, sol: 85, ombres: 2048, porteeOmbres: 450, ombreRelief: true, ombrePetits: false, douces: false, ao: 0.5, halo: true, nuages: { pas: 24, pasLumiere: 4, reduction: 4 }, lissage: "traa", rayons: true, reflets: 0, resReflets: 0, gouttes: 25000, feu: 1 },
+  ultra: { pixels: 3, finesse: 3.2, vegetation: 2200, corps: 250, nombre: 140, visages: 35, nombreVisages: 32, reels: 70, porteeReels: 120, silhouettes: 3500, camp: 4000, sol: 120, ombres: 4096, porteeOmbres: 1000, ombreRelief: true, ombrePetits: true, douces: true, ao: 1, halo: true, nuages: { pas: 40, pasLumiere: 5, reduction: 3 }, lissage: "traa", rayons: true, reflets: 0.7, resReflets: 1, gouttes: 40000, feu: 1 },
 };
 
 /**
@@ -203,6 +208,20 @@ export class Vue3D {
   private readonly ciel: Ciel;
   private readonly foule: Foule;
   private readonly feux: Feux3D;
+  /** Temps et catastrophes (0.43.0) : pluie et neige, éclairs, incendies ; averses du jour et ciel du moment. */
+  private readonly precipitations: Precipitations;
+  private readonly eclairs: Eclairs;
+  private readonly incendies: Incendies3D;
+  private temps: TempsJson | null = null;
+  private averses: Averse[] = [];
+  private etatTemps: EtatTemps | null = null;
+  private tempsA = 0;
+  private tempsLuA = 0;
+  private zones: ZoneJson[] = [];
+  private orages: { x: number; z: number; force: number; rayon: number }[] = [];
+  private pluieIci = 0;
+  private neigeIci = 0;
+  private orageIci = 0;
   private readonly proches: CorpsProches;
   private readonly camp: Camp3D;
   private readonly mer: THREE.Mesh;
@@ -274,6 +293,7 @@ export class Vue3D {
   private readonly manette = new Manette((f, branchee) => this.surManette(f, branchee));
   private readonly pad = { avant: 0, cote: 0, monte: 0 };
   private courir = false;
+  private l3Tenu = false;
   private quitterArme = 0;
   private readonly voisinsVus: number[] = [];
   private readonly ronde = new Set<number>();
@@ -293,6 +313,8 @@ export class Vue3D {
     matieres: Matieres | null,
     cacheRelief: CacheRelief | null,
   ) {
+    // 0.43.0 : textures du temps et des terres touchées, lues par les matériaux construits plus bas.
+    meteoGPU.preparer(ctx.carte.largeur, ctx.carte.hauteur, ctx.carte.kilometresParCase * 1000);
     this.relief = new Relief(ctx.carte, terrainVue);
     this.ciel = new Ciel(this.scene);
     this.vagues = textureVagues();
@@ -316,7 +338,14 @@ export class Vue3D {
     this.sol = new Sol3D(this.relief, matieres);
     this.foule = new Foule(this.relief);
     this.feux = new Feux3D(this.relief);
+    this.precipitations = new Precipitations(this.vent.u);
+    this.eclairs = new Eclairs(this.relief);
+    this.incendies = new Incendies3D(this.relief, ctx.carte.largeur);
     this.proches = new CorpsProches(this.foule);
+    this.proches.feuEn = (x, z) => {
+      const f = this.incendies.frontProche(x, z);
+      return f ? Math.max(0, 1 - Math.hypot(f.x - x, f.z - z) / 1500) : 0;
+    };
     this.camp = new Camp3D(this.relief);
     if (renderer.reversedDepthBuffer) this.camp.inverserDecalage();
     // La mer : des anneaux autour de la caméra, fins près d'elle (houle), larges jusqu'à l'horizon.
@@ -324,7 +353,8 @@ export class Vue3D {
     this.mer = new THREE.Mesh(plan, eauMer);
     this.mer.renderOrder = 2;
     this.mer.frustumCulled = false;
-    this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, ...(this.tapis ? [this.tapis.groupe] : []), this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.mer);
+    this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, ...(this.tapis ? [this.tapis.groupe] : []), this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.mer,
+      this.precipitations.groupe, this.eclairs.groupe, this.incendies.groupe);
 
     this.qualite = (lireStockage("monde.qualite3d") as Qualite | null) ?? "moyenne";
     if (!(this.qualite in QUALITES)) this.qualite = "moyenne";
@@ -526,6 +556,7 @@ export class Vue3D {
     this.proches.reglage = { portee: q.corps, nombre: q.nombre, visages: q.visages, nombreVisages: q.nombreVisages, reels: q.reels, porteeReels: q.porteeReels };
     this.foule.porteeSilhouettes = q.silhouettes;
     this.camp.portee = q.camp;
+    this.precipitations.regler(q.gouttes);
     this.nature.vider();
     this.sol.vider();
     this.cadrer();
@@ -845,6 +876,10 @@ export class Vue3D {
       void connexion.invoke("AllerJusqua", { type: "assaut" }).then(() => this.ctx.message(t("trois.combat.attendre"))).catch(() => undefined);
       return;
     }
+    if (e.key === "k" || e.key === "K") {
+      this.allerVoirCatastrophe(null);
+      return;
+    }
     if (e.key === "i" || e.key === "I") {
       this.perf.hidden = !this.perf.hidden;
       ecrireStockage("monde.perf3d", this.perf.hidden ? "0" : "1");
@@ -890,7 +925,10 @@ export class Vue3D {
     void this.boucleAssauts();
     void this.lireFeux();
     void this.lireTemperatures();
-    this.minuteurs.push(window.setInterval(() => void this.lireFeux(), 5000), window.setInterval(() => void this.lireTemperatures(), 15000));
+    void this.lireTemps();
+    void this.lireEnCours();
+    this.minuteurs.push(window.setInterval(() => void this.lireFeux(), 5000), window.setInterval(() => void this.lireTemperatures(), 15000),
+      window.setInterval(() => void this.lireTemps(), 5000), window.setInterval(() => void this.lireEnCours(), 5000));
     this.renderer.setAnimationLoop(() => this.image());
   }
 
@@ -1188,6 +1226,7 @@ export class Vue3D {
       [b(BOUTON.MENU), t("trois.manette.pause")],
       [b(BOUTON.VUE), t("trois.manette.fiche")],
       [b(BOUTON.R3), t("trois.manette.combat")],
+      [`${b(BOUTON.L3)} + ${b(BOUTON.R3)}`, t("trois.manette.catastrophe")],
     ];
     const div = document.createElement("div");
     div.className = "manette3d";
@@ -1221,6 +1260,7 @@ export class Vue3D {
       this.montrerAideManette(false);
       return;
     }
+    this.l3Tenu = e.tenus[BOUTON.L3] === true;
     this.analogiqueManette(e, dt);
     for (const k of e.appuis) this.boutonManette(k);
   }
@@ -1307,6 +1347,12 @@ export class Vue3D {
         this.courir = !this.courir;
         return;
       case BOUTON.R3:
+        // Les deux sticks enfoncés ensemble : aller voir la catastrophe la plus proche (0.43.0).
+        if (this.l3Tenu) {
+          this.courir = false;
+          this.allerVoirCatastrophe(null);
+          return;
+        }
         this.cameraCombat = !this.cameraCombat;
         this.ctx.message(t(this.cameraCombat ? "trois.combat.camera" : "trois.combat.libre"));
         return;
@@ -1559,6 +1605,126 @@ export class Vue3D {
     this.saisonVue = this.relief.saison;
   }
 
+  /** Averses d'hier et d'aujourd'hui : relues au changement de jour, et chaque minute (un feu de foudre ajoute son orage). */
+  private async lireTemps(): Promise<void> {
+    const jour = Math.floor(this.secondesMonde() / 86400);
+    if (this.temps && this.temps.jour === jour && performance.now() - this.tempsLuA < 60000) return;
+    const temps = await connexion.invoke<TempsJson>("Temps").catch(() => null);
+    if (!temps) return;
+    this.tempsLuA = performance.now();
+    this.temps = temps;
+    this.averses = lireAverses(temps);
+    this.tempsA = 0;
+  }
+
+  /** Catastrophes en cours et terres pas encore remises : feux, cendres, crues. */
+  private async lireEnCours(): Promise<void> {
+    const en = await connexion.invoke<EnCoursJson>("EnCours").catch(() => null);
+    if (!en) return;
+    this.zones = en.zones;
+    this.incendies.definir(en.zones);
+  }
+
+  /**
+   * Le temps du moment (0.43.0) : deux fois par seconde, l'état de chaque région (pluie, neige, mouillé, orage) part au GPU ;
+   * à chaque image, le ciel sur la caméra se couvre ou se dégage peu à peu, le vent forcit sous l'orage.
+   */
+  private mettreAJourTemps(secondes: number, p: THREE.Vector3, maintenant: number, dt: number): void {
+    const t = this.temps;
+    if (t && maintenant - this.tempsA > 500) {
+      this.tempsA = maintenant;
+      const e = (this.etatTemps = etatA(t, this.averses, secondes));
+      meteoGPU.definirTemps(e);
+      const m = this.relief.m;
+      const regionM = e.tailleRegion * m;
+      this.orages = e.orages.map((o) => ({
+        x: o.x >= 0 ? (o.x + 0.5) * m : (o.region % e.regionsX + 0.5) * regionM,
+        z: o.y >= 0 ? (o.y + 0.5) * m : (Math.floor(o.region / e.regionsX) + 0.5) * regionM,
+        force: o.force, rayon: o.x >= 0 ? 6000 : regionM * 0.6,
+      }));
+    }
+    const e = this.etatTemps;
+    let pluie = 0, neige = 0, orage = 0;
+    if (e) {
+      // Moyenne pondérée des quatre régions voisines (comme la texture lissée que lisent les gouttes et les nuages).
+      const u = p.x / (e.tailleRegion * this.relief.m) - 0.5, v = p.z / (e.tailleRegion * this.relief.m) - 0.5;
+      const x0 = Math.floor(u), y0 = Math.floor(v), fx = u - x0, fy = v - y0;
+      for (const [dx, dy, w] of [[0, 0, (1 - fx) * (1 - fy)], [1, 0, fx * (1 - fy)], [0, 1, (1 - fx) * fy], [1, 1, fx * fy]]) {
+        const x = Math.min(e.regionsX - 1, Math.max(0, x0 + dx)), y = Math.min(e.regionsY - 1, Math.max(0, y0 + dy));
+        const r = regionDe(e, x * e.tailleRegion, y * e.tailleRegion);
+        pluie += e.pluie[r] * w;
+        neige += e.neige[r] * w;
+        orage += e.orage[r] * w;
+      }
+    }
+    const k = Math.min(1, dt / 4);
+    this.pluieIci += (pluie - this.pluieIci) * k;
+    this.neigeIci += (neige - this.neigeIci) * k;
+    this.orageIci += (orage - this.orageIci) * k;
+    this.ciel.couvert = Math.min(1, Math.max(this.pluieIci, this.neigeIci) * 1.6 + this.orageIci * 0.4);
+    // Sous l'orage, le vent souffle en rafales (le vent du jour, renforcé).
+    if (this.orageIci > 0.05) this.vent.u.value.multiplyScalar(1 + 1.8 * this.orageIci);
+  }
+
+  /**
+   * Aller voir une catastrophe (0.43.0, G1) : la zone donnée, ou la plus proche en cours. Le point de vue dépend de ce qu'on
+   * regarde : un feu de près, à quelques centaines de mètres, face au vent ; une éruption d'une dizaine de kilomètres ; une crue
+   * ou une vague d'assez haut pour voir l'eau couvrir les terres.
+   */
+  allerVoirCatastrophe(zone: { id: number; x: number; y: number; type: string; rayon: number } | null): void {
+    const p = this.camera.position;
+    const m = this.relief.m;
+    const actives = this.zones.filter((z) => z.active);
+    let z = zone ?? null;
+    if (!z) {
+      let d = Infinity;
+      for (const c of actives) {
+        const e = Math.hypot((c.x + 0.5) * m - p.x, (c.y + 0.5) * m - p.z);
+        if (e < d) {
+          d = e;
+          z = c;
+        }
+      }
+    }
+    if (!z) {
+      this.ctx.message(t("trois.catastrophe.aucune"));
+      return;
+    }
+    if (this.suivi) this.arreterSuivi();
+    let cx = (z.x + 0.5) * m, cz = (z.y + 0.5) * m;
+    let recul = Math.max(600, Math.min(12000, z.rayon * m * 0.8)), haut = recul * 0.25;
+    let dir = new THREE.Vector2(-0.6, 0.8);
+    if (z.type === "incendie") {
+      const f = this.incendies.frontProche(p.x, p.z) ?? this.incendies.frontProche(cx, cz);
+      const zj = this.zones.find((c) => c.id === z!.id);
+      if (f) [cx, cz] = [f.x, f.z];
+      // Face au feu qui arrive : on se place sous le vent, à 700 m, un peu en hauteur.
+      if (zj) dir = new THREE.Vector2(Math.cos(zj.direction), Math.sin(zj.direction));
+      recul = 700;
+      haut = 90;
+    } else if (z.type === "eruption") {
+      recul = 9000;
+      haut = 1200;
+    }
+    const sol = Math.max(0, this.relief.hauteur(cx + dir.x * recul, cz + dir.y * recul));
+    this.camera.position.set(cx + dir.x * recul, sol + haut, cz + dir.y * recul);
+    this.regarderVers(new THREE.Vector3(cx, Math.max(0, this.relief.hauteur(cx, cz)) + 30, cz));
+    this.mode = "vol";
+    this.viser = null;
+    this.ombresAFaire = 2;
+    this.afficherAide();
+    const nom = this.zones.find((c) => c.id === z!.id)?.nom;
+    if (nom) this.ctx.message(nom);
+  }
+
+  /** Aller voir la catastrophe `id` (relit d'abord les catastrophes en cours, la vue vient peut-être de s'ouvrir). */
+  async allerVoirCatastropheId(id: number): Promise<void> {
+    await this.lireEnCours();
+    const z = this.zones.find((c) => c.id === id);
+    if (z) this.allerVoirCatastrophe(z);
+    else this.ctx.message(t("trois.catastrophe.finie"));
+  }
+
   /** Instant du monde estimé maintenant : le dernier pas, plus le temps écoulé à la vitesse atteinte (sans dépasser le pas suivant). */
   private secondesMonde(): number {
     return this.secondesScene + Math.min(600, (this.facteur * (performance.now() - this.recuA)) / 1000);
@@ -1624,6 +1790,7 @@ export class Vue3D {
     this.ciel.regler(secondes, p);
     this.rayons.regler(this.camera, this.ciel.direction, this.ciel.couleurSoleil, this.ciel.brume);
     this.vent.regler(secondes);
+    this.mettreAJourTemps(secondes, p, maintenant, dt);
     // L'œil s'adapte à la lumière en une ou deux secondes (plus lentement vers le noir).
     const vise = this.ciel.expositionVisee;
     const vitesse = vise > this.exposition ? 0.8 : 1.6;
@@ -1650,6 +1817,11 @@ export class Vue3D {
     this.proches.mettreAJour(p, this.tempsGestes);
     this.camp.animer(p, secondes, maintenant / 1000);
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
+    this.precipitations.animer(this.pluieIci, this.neigeIci, this.ciel.hemi.color);
+    this.proches.pluie = Math.min(1, (this.pluieIci + this.neigeIci) * 1.5);
+    this.eclairs.animer(maintenant / 1000, p, this.orages, this.exposition);
+    this.ciel.eclair = this.eclairs.eclat;
+    this.incendies.animer(p, 1 - this.ciel.clarte, this.ciel.hemi.color, this.exposition, QUALITES[this.qualite].feu);
     this.mer.position.set(p.x, 0, p.z);
     this.eau.origineMer.value.set(p.x, p.z);
     this.eau.mettreAJour(p);

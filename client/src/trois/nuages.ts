@@ -134,6 +134,8 @@ export class Nuages {
     private readonly soleil: N<"vec3">,
     private readonly couleurSoleil: N<"vec3">,
     private readonly ambiant: N<"vec3">,
+    /** Pluie ou neige qui tombe en (x, z) du monde, de 0 à 1 (0.43.0). */
+    private readonly pluieEn: ((xz: N<"vec2">) => N<"float">) | null = null,
   ) {}
 
   /** Le bruit 3D ne se calcule que si on en a besoin (Haute et Ultra), une seule fois (un quart de seconde environ). */
@@ -151,7 +153,11 @@ export class Nuages {
     const b = lire(vec2(p.y.mul(0.8).add(p.x.mul(0.6)), p.x.mul(0.8).sub(p.y.mul(0.6))).div(COTE_COUVERTURE * 0.37));
     const n = a.mul(0.7).add(b.mul(0.3));
     const seuil = float(1).sub(this.couverture);
-    return smoothstep(seuil, seuil.add(0.3), n);
+    const c = smoothstep(seuil, seuil.add(0.3), n);
+    // 0.43.0 : au-dessus d'une averse (là où la simulation fait pleuvoir), le ciel se couvre.
+    if (!this.pluieEn) return c;
+    const pluie = this.pluieEn(xz);
+    return max(c, smoothstep(0.02, 0.5, pluie).mul(n.mul(0.5).add(0.55)).clamp(0, 1));
   }
 
   /** Densité des nuages au point p (m, monde). */
@@ -190,7 +196,9 @@ export class Nuages {
     const c = this.amas(xz);
     const fondu = select(t.greaterThan(0), smoothstep(0.0, 0.1, d.y.abs()).mul(float(1).sub(smoothstep(15000, 45000, t))), float(0));
     const avant = max(dot(d, this.soleil), 0).pow(6).mul(0.6);
-    const couleur = mix(clair, sombre, smoothstep(0.3, 1, c)).add(this.couleurSoleil.mul(avant.mul(0.08)));
+    // Sous la pluie, la base des nuages est sombre.
+    const pluie = this.pluieEn ? this.pluieEn(xz) : float(0);
+    const couleur = mix(clair, sombre, smoothstep(0.3, 1, c)).mul(float(1).sub(pluie.mul(0.55))).add(this.couleurSoleil.mul(avant.mul(0.08)));
     return vec4(couleur, smoothstep(0.02, 0.4, c).mul(fondu).mul(0.92));
   }
 

@@ -6,6 +6,7 @@ import {
 import { ciel as diffusion, elevationDe, ligneDe, transmission, type Rgb } from "./atmosphere";
 import { hacher, unite } from "./bruit";
 import { Nuages } from "./nuages";
+import { meteoGPU } from "./meteo3d";
 
 /** Nuages en volume (0.41.6) : pas dans la couche et pas vers le soleil, ou null pour la nappe peinte. */
 /** `reduction` : les nuages se calculent sur une image `reduction` fois plus petite de côté, puis s'étirent (ils sont flous). */
@@ -49,6 +50,12 @@ export class Ciel {
   readonly hemi = new THREE.HemisphereLight(0xbfd6ff, 0x5a5040, 0.9);
   readonly direction = new THREE.Vector3();
   readonly directionLune = new THREE.Vector3();
+  /**
+   * Temps sur la caméra (0.43.0) : ciel couvert par la pluie ou la neige (0 à 1), éclat d'un éclair (0 à 1). Le soleil passe
+   * mal sous un ciel couvert de pluie (de 10 à 30 % de la lumière directe), l'air se charge de brume.
+   */
+  couvert = 0;
+  eclair = 0;
   /** Clarté du moment (0 nuit, 1 plein jour), comme la simulation. */
   clarte = 1;
   /** Exposition visée (l'œil, ou l'appareil, s'adapte) : plus haute la nuit. */
@@ -140,7 +147,10 @@ export class Ciel {
       return texture(this.tex, vec2(u, v)).rgb.mul(this.gain).add(this.uNuit);
     });
     this.cielDans = (d) => cielDans(d) as THREE.Node<"vec3">;
-    this.nuages = new Nuages(this.uVent, this.uCouverture, this.uSoleil, this.uCouleurSoleil, this.uAmbiant);
+    this.nuages = new Nuages(this.uVent, this.uCouverture, this.uSoleil, this.uCouleurSoleil, this.uAmbiant, (xz) => {
+      const t = meteoGPU.tempsEn(xz);
+      return max(t.r, t.g);
+    });
     // Ombre des nuages sur le sol : la lumière de l'astre (soleil ou lune) passe à travers la carte des nuages.
     (this.astre as THREE.DirectionalLight & { colorNode?: THREE.Node }).colorNode =
       uniform(this.astre.color).mul(this.nuages.ombre(positionWorld));
@@ -375,15 +385,16 @@ export class Ciel {
     this.uCouleurSoleil.value.set(ts[0] * S, ts[1] * S, ts[2] * S);
     const disqueLune = 0.9 * Math.min(1, tl[1] * 4 + 0.2);
     this.uCouleurLune.value.set(disqueLune * 0.95, disqueLune * 0.95, disqueLune * 0.9);
-    const eSoleil = lum(ts) * S * Math.max(0, this.direction.y);
-    const eLune = lum(tl) * S * LUNE * Math.max(0, this.directionLune.y);
+    const voile = 1 - 0.8 * this.couvert;
+    const eSoleil = lum(ts) * S * Math.max(0, this.direction.y) * voile;
+    const eLune = lum(tl) * S * LUNE * Math.max(0, this.directionLune.y) * voile;
     if (eSoleil >= eLune) {
       this.astre.color.setRGB(ts[0], ts[1], ts[2]);
-      this.astre.intensity = S;
+      this.astre.intensity = S * voile;
       this.astre.position.copy(camera).addScaledVector(this.direction, 5000);
     } else {
       this.astre.color.setRGB(tl[0] * 0.8, tl[1] * 0.88, tl[2]);
-      this.astre.intensity = S * LUNE;
+      this.astre.intensity = S * LUNE * voile;
       this.astre.position.copy(camera).addScaledVector(this.directionLune, 5000);
     }
     this.astre.target.position.copy(camera);
@@ -394,7 +405,8 @@ export class Ciel {
     this.hemi.color.setRGB(r + LUEUR_NUIT[0], v + LUEUR_NUIT[1], b + LUEUR_NUIT[2]);
     const renvoi = 0.16 * (Math.max(eSoleil, eLune) + lum(this.cielSol));
     this.hemi.groundColor.setRGB(renvoi * 0.95, renvoi * 0.85, renvoi * 0.65);
-    this.hemi.intensity = 1;
+    // Un éclair illumine tout un instant, d'autant plus que la nuit est noire.
+    this.hemi.intensity = 1 + this.eclair * 0.6 / Math.max(lum(this.cielSol), 0.004);
     this.uNuit.value.set(LUEUR_NUIT[0] * 0.08, LUEUR_NUIT[1] * 0.08, LUEUR_NUIT[2] * 0.08);
     this.eclairement = eSoleil + eLune + lum(this.cielSol) + lum(LUEUR_NUIT);
     // Exposition visée : un gris moyen bien exposé de jour ; la nuit, l'adaptation s'arrête avant de rendre la nuit claire.
@@ -405,12 +417,14 @@ export class Ciel {
     const c0 = unite(hacher(jour, 31, 7));
     const c1 = unite(hacher(jour + 1, 31, 7));
     const f = (secondes % 86400) / 86400;
-    this.uCouverture.value = 0.12 + 0.5 * (c0 + (c1 - c0) * f);
+    const couverture = 0.12 + 0.5 * (c0 + (c1 - c0) * f);
+    this.uCouverture.value = couverture + (0.92 - couverture) * this.couvert;
     // Le vent des nuages : quelques mètres par seconde, sa direction tourne lentement d'un jour à l'autre.
     const cap = unite(hacher(jour, 47, 3)) * Math.PI * 2;
     this.uVent.value.set((secondes * 6 * Math.cos(cap)) % 3.6e6, (secondes * 6 * Math.sin(cap)) % 3.6e6);
     const ciel = lum(this.cielSol);
     this.uNuageClair.value.set(ts[0] * S * 0.09 + ciel * 0.4 + 0.002, ts[1] * S * 0.09 + ciel * 0.42 + 0.002, ts[2] * S * 0.09 + ciel * 0.48 + 0.003);
+    this.uNuageClair.value.multiplyScalar(1 - 0.45 * this.couvert);
     this.uNuageOmbre.value.copy(this.uNuageClair.value).multiplyScalar(0.55);
     this.uAmbiant.value.set(this.cielSol[0] / Math.PI + LUEUR_NUIT[0], this.cielSol[1] / Math.PI + LUEUR_NUIT[1], this.cielSol[2] / Math.PI + LUEUR_NUIT[2]);
 
@@ -418,8 +432,8 @@ export class Ciel {
     const apresLever = (heure - lever + 24) % 24;
     const matin = apresLever < 4 ? 1 - apresLever / 4 : 0;
     const nuitBrume = this.clarte < 0.5 ? 0.5 : 0;
-    this.uBrume.value = 0.00012 + 0.0008 * Math.max(matin, nuitBrume);
-    this.uVoile.value = 2.2e-5 / (1 + haut / 4000);
+    this.uBrume.value = 0.00012 + 0.0008 * Math.max(matin, nuitBrume, 0.6 * this.couvert);
+    this.uVoile.value = (2.2e-5 * (1 + 6 * this.couvert)) / (1 + haut / 4000);
   }
 
   /** Refait `n` lignes de la texture du ciel ; à la dernière, l'envoie au GPU et calcule la lumière du ciel. */
