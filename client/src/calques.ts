@@ -2,6 +2,7 @@ import { Container, Graphics, type Sprite } from "pixi.js";
 import { connexion } from "./connexion";
 import { nombre, t } from "./langue";
 import { calqueLisse, type VueCarte } from "./carte";
+import { Population, couleurEspece, environ } from "./population";
 
 /** Terrain et mer, tels que renvoyés par le hub (méthode « Terrain », voir TerrainDto côté serveur). */
 interface TerrainJson {
@@ -44,7 +45,7 @@ interface Terrain extends Omit<TerrainJson, "roches" | "sols" | "pente" | "debit
   estCol: Set<number>;
 }
 
-const CALQUES = ["roches", "sols", "eau", "fonds", "grottes", "gisements", "falaises", "limon", "champs"] as const;
+const CALQUES = ["roches", "sols", "eau", "fonds", "grottes", "gisements", "falaises", "limon", "champs", "animaux"] as const;
 type Calque = (typeof CALQUES)[number];
 
 /** Couleurs des roches, dans l'ordre de l'énumération Roche : granite, basalte, volcanique, calcaire, craie, grès, schiste, alluvions, évaporites. */
@@ -87,11 +88,18 @@ export class Calques {
   private terrain?: Terrain;
   private readonly choix = new Set<Calque>();
   private minuteur?: number;
+  /** Calque des animaux (0.44.2) : la population lue, l'espèce choisie (0 : toutes) et sa liste. */
+  private population: Population | null = null;
+  private espece = 0;
+  private readonly choixEspece = document.createElement("select");
+  private readonly cases = new Map<Calque, HTMLInputElement>();
 
   constructor(
     private readonly vue: VueCarte,
     private readonly bouton: HTMLButtonElement,
     private readonly panneau: HTMLElement,
+    /** Terrain de chaque case de la carte courante (pour savoir quelles espèces y vivent). */
+    private readonly biomes: () => Uint8Array | null = () => null,
   ) {
     try {
       for (const c of (localStorage.getItem("monde.calques") ?? "").split(",")) if ((CALQUES as readonly string[]).includes(c)) this.choix.add(c as Calque);
@@ -116,7 +124,17 @@ export class Calques {
       label.append(caseACocher, ` ${t(`calques.${c}`)}`);
       label.title = t(`calques.${c}Aide`);
       this.panneau.append(label);
+      this.cases.set(c, caseACocher);
     }
+    // Sous la case des animaux : quelle espèce montrer.
+    this.choixEspece.className = "choix-espece";
+    this.choixEspece.title = t("calques.animauxEspece");
+    this.choixEspece.addEventListener("change", () => {
+      this.espece = Number(this.choixEspece.value);
+      this.dessiner();
+    });
+    this.panneau.append(this.choixEspece);
+    this.remplirEspeces();
     this.bouton.classList.toggle("actif", this.choix.size > 0);
     this.bouton.addEventListener("click", () => {
       this.panneau.style.top = `${Math.round(this.bouton.getBoundingClientRect().bottom + 8)}px`;
@@ -129,6 +147,7 @@ export class Calques {
 
   /** Relit le terrain du monde courant (après un changement de carte ou de langue) et redessine. */
   async recharger(): Promise<void> {
+    if (this.choix.has("animaux")) await this.lirePopulation();
     const json = await connexion.invoke<TerrainJson>("Terrain").catch(() => null);
     if (!json) return;
     this.terrain = {
@@ -144,12 +163,48 @@ export class Calques {
     this.dessiner();
   }
 
+  private async lirePopulation(): Promise<void> {
+    const p = await Population.lire();
+    if (!p) return;
+    this.population = p;
+    this.remplirEspeces();
+  }
+
+  private remplirEspeces(): void {
+    const options = [Object.assign(document.createElement("option"), { value: "0", textContent: t("calques.animauxToutes") })];
+    for (const e of [...(this.population?.especes ?? [])].filter((x) => !x.disparue).sort((a, b) => a.nom.localeCompare(b.nom)))
+      options.push(Object.assign(document.createElement("option"), { value: String(e.numero), textContent: `${e.nom} (${e.biome})` }));
+    this.choixEspece.replaceChildren(...options);
+    this.choixEspece.value = String(this.population?.parNumero.has(this.espece) ? this.espece : 0);
+    this.choixEspece.hidden = !this.choix.has("animaux");
+  }
+
+  /** Coche le calque des animaux et montre une espèce (0 : toutes), depuis la fenêtre Faune. */
+  async montrerAnimaux(numero: number): Promise<void> {
+    this.choix.add("animaux");
+    const c = this.cases.get("animaux");
+    if (c) c.checked = true;
+    try {
+      localStorage.setItem("monde.calques", [...this.choix].join(","));
+    } catch {
+      // Le choix vaut pour cette page seulement.
+    }
+    this.espece = numero;
+    await this.lirePopulation();
+    if (!this.terrain) await this.recharger();
+    else this.dessiner();
+  }
+
   arreter(): void {
     window.clearInterval(this.minuteur);
   }
 
   private dessiner(): void {
     this.bouton.classList.toggle("actif", this.choix.size > 0);
+    this.choixEspece.hidden = !this.choix.has("animaux");
+    if (this.choix.has("animaux") && !this.population) {
+      void this.lirePopulation().then(() => this.population && this.dessiner());
+    }
     const tr = this.terrain;
     if (!tr || this.choix.size === 0 || this.vue.largeurCarte() !== tr.largeur) {
       this.vue.afficherCalques(null);
@@ -248,6 +303,32 @@ export class Calques {
       }
       dessin.addChild(g);
     }
+    const pop = this.population;
+    const biomes = this.biomes();
+    if (this.choix.has("animaux") && pop && biomes && biomes.length === l * h) {
+      // Bêtes sauvages : une teinte par case, plus opaque où elles sont nombreuses (racine carrée, rapportée à la case la plus riche) ;
+      // une espèce choisie prend sa couleur, toutes ensemble une teinte fauve.
+      const e = this.espece > 0 ? pop.parNumero.get(this.espece) : undefined;
+      const densite = (i: number) => (e ? pop.surCase(i, biomes[i], e) : pop.especesDe(biomes[i]).length > 0 ? pop.gibier[i] : 0);
+      let max = 0;
+      for (let i = 0; i < l * h; i++) max = Math.max(max, densite(i));
+      const c = e ? couleurEspece(e.numero) : 0xd08a30;
+      if (max > 0) {
+        dessin.addChild(image(l, h, (i) => {
+          const d = densite(i);
+          return d > 0 ? [(c >> 16) & 255, (c >> 8) & 255, c & 255, Math.round(40 + 190 * Math.sqrt(d / max))] : null;
+        }));
+      }
+      // Troupeaux gardés : un rond à la couleur de l'espèce, d'autant plus grand qu'ils sont nombreux ; bord blanc s'ils sont domestiqués.
+      const g = new Graphics();
+      for (const tr of pop.troupeaux) {
+        if (e && tr.espece !== e.numero) continue;
+        const r = Math.min(1.6, 0.45 + 0.12 * Math.sqrt(tr.adultes + tr.petits));
+        g.circle(tr.x + 0.5, tr.y + 0.5, r).fill({ color: couleurEspece(tr.espece), alpha: 0.95 })
+          .stroke({ width: 0.18, color: tr.domestique ? 0xffffff : 0x2a1d14 });
+      }
+      dessin.addChild(g);
+    }
     this.vue.afficherCalques(dessin);
   }
 
@@ -275,6 +356,16 @@ export class Calques {
     for (const s of tr.sources) if (s.x === x && s.y === y) lignes.push(t("calques.source", { type: s.nom }));
     for (const g of tr.gisements) {
       if (g.x === x && g.y === y) lignes.push(t("calques.gisement", { type: g.type, profondeur: g.profondeur, n: g.connu }));
+    }
+    const pop = this.population;
+    const biomes = this.biomes();
+    if (this.choix.has("animaux") && pop && biomes && i < biomes.length) {
+      const ici = pop.especesDe(biomes[i]).map((e) => `${e.nom} ≈ ${environ(pop.surCase(i, biomes[i], e))}`);
+      if (ici.length > 0) lignes.push(t("calques.animauxIci", { liste: ici.join(", ") }));
+      for (const b of pop.troupeaux) {
+        if (b.x !== x || b.y !== y) continue;
+        lignes.push(t("calques.troupeauIci", { nom: pop.parNumero.get(b.espece)?.nom ?? "?", a: b.adultes, p: b.petits }));
+      }
     }
     return lignes;
   }

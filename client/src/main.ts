@@ -13,6 +13,7 @@ import { PanneauCommunautes } from "./communautes";
 import { PanneauDecouvertes } from "./decouvertes";
 import { PanneauDemographie } from "./demographie";
 import { PanneauRemarquables } from "./remarquables";
+import { PanneauFaune } from "./population";
 import { PanneauPrieres, PanneauReligions, definirOuvrirCommunaute } from "./cultes";
 import { PanneauConfiguration, type Reglages } from "./configuration";
 import { definirLiensNoms, PanneauFiche } from "./fiche";
@@ -97,7 +98,7 @@ async function demarrer(): Promise<void> {
   meteoEn = (x, y) => vue.meteo.texteEn(x, y);
   zonesEn = (x, y) => vue.meteo.zonesEn(x, y);
   feuxEn = (x, y) => vue.feuxEn(x, y);
-  const calques = new Calques(vue, element<HTMLButtonElement>("#boutonCalques"), element("#panneauCalques"));
+  const calques = new Calques(vue, element<HTMLButtonElement>("#boutonCalques"), element("#panneauCalques"), () => carteCourante?.biomes ?? null);
   terrainEn = (x, y) => calques.texteEn(x, y);
 
   // Feux et réserves : relus toutes les 5 secondes ; les réserves peuvent être masquées (choix retenu par le navigateur).
@@ -473,6 +474,14 @@ async function demarrer(): Promise<void> {
     configuration.fermer();
     demographie.fermer();
     decouvertes.basculer();
+  });
+  // Fenêtre Faune (0.44.2) : population de chaque espèce ; un clic sur une espèce la montre sur la carte (calque des animaux).
+  const faune = new PanneauFaune(element("#faune"), (numero) => void calques.montrerAnimaux(numero));
+  element("#boutonFaune").addEventListener("click", () => {
+    remarquables.fermer();
+    demographie.fermer();
+    decouvertes.fermer();
+    faune.basculer();
   });
   element("#boutonDemographie").addEventListener("click", () => {
     journal.fermer();

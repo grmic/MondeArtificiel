@@ -561,3 +561,15 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
   max-width: min(90vw, 720px); padding: 4px 12px; border-radius: 12px; text-align: center;
   font-size: 0.85rem; color: #f3f0e6; background: rgba(20, 24, 36, 0.72); box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
+
+/* Fenêtre Faune et calque des animaux (0.44.2). */
+.defile-faune { overflow-x: auto; }
+.tableau-faune { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.tableau-faune th, .tableau-faune td { text-align: left; padding: 3px 6px; border-bottom: 1px solid #2c3646; vertical-align: top; }
+.tableau-faune th button { font-weight: 600; white-space: nowrap; }
+.tableau-faune td.nombre { text-align: right; white-space: nowrap; }
+.tableau-faune td.hausse { color: #8fd3a0; }
+.tableau-faune td.baisse { color: #f0a080; }
+.tableau-faune tr.discret { opacity: 0.55; }
+.pastille-faune { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
+.choix-espece { margin: 2px 0 4px 22px; max-width: 100%; }

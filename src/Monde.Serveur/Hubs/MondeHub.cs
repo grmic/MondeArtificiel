@@ -947,6 +947,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Petite fiche d'une bête cliquée dans la vue 3D (0.44.0) : un troupeau (id &gt; 0) ou une bête sauvage de l'espèce.</summary>
     public FicheBeteDto? FicheBete(int id, int espece) => FicheBeteDto.Depuis(service.Monde, id, espece);
 
+    /// <summary>Population animale par espèce, gibier de chaque case et troupeaux gardés (0.44.2, fenêtre Faune et calque des animaux).</summary>
+    public PopulationFauneDto PopulationFaune() => PopulationFauneDto.Depuis(service.Monde);
+
     /// <summary>Assauts des deux derniers jours autour de la caméra, pour les rejouer dans la vue 3D (0.42.0).</summary>
     public AssautDto[] Assauts(int x, int y, int rayon) => AssautDto.Depuis(service.Monde, x, y, rayon);
 

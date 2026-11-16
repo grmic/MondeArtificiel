@@ -879,6 +879,7 @@ public sealed partial class MondeSimule
         {
             if (_secondes % Calendrier.SecondesParAn < Calendrier.SecondesParJour) NouvelleAnnee();
             _ecosysteme.Journee(_secondes);
+            ReleverFaune();
             _catastrophes.Jour(_humains, _secondes);
         }
         if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0)

@@ -56,3 +56,35 @@ public sealed record FicheBeteDto(string Titre, List<string> Lignes)
         return new FicheBeteDto(titre, lignes);
     }
 }
+
+/// <summary>
+/// La fenêtre Faune et le calque des animaux (0.44.2) : chaque espèce avec sa population (sauvages estimées, gardées comptées),
+/// le gibier de chaque case (entiers sur 16 bits, petit-boutiste, en base 64) et les troupeaux gardés (case, espèce, nombre).
+/// </summary>
+public sealed record PopulationFauneDto(List<PopulationEspeceDto> Especes, string Gibier, double KgVifParPart, List<TroupeauCarteDto> Troupeaux)
+{
+    public static PopulationFauneDto Depuis(MondeSimule monde)
+    {
+        var p = monde.Population();
+        var faune = monde.Faune;
+        var especes = p.Especes.Select(e =>
+        {
+            var b = faune.Get(e.Numero);
+            return new PopulationEspeceDto(e.Numero, EspeceDto.NomDe(b), L.T($"biome.{b.Biome}"), (int)b.Biome, b.Forme, Math.Round(b.Poids, 1), (int)b.Regime,
+                (long)Math.Round(e.Sauvages), e.SauvagesAvant is { } a ? (long)Math.Round(a) : null, e.Mois,
+                (int)Math.Round(e.GardeesAdultes), (int)Math.Round(e.GardeesPetits), e.Troupeaux, e.Domestique, faune.EstDisparue(e.Numero));
+        }).ToList();
+        var octets = new byte[p.Gibier.Length * 2];
+        for (var i = 0; i < p.Gibier.Length; i++) (octets[2 * i], octets[2 * i + 1]) = ((byte)(p.Gibier[i] & 0xFF), (byte)(p.Gibier[i] >> 8));
+        var troupeaux = p.Troupeaux.Where(t => t.Case.X >= 0)
+            .Select(t => new TroupeauCarteDto(t.Case.X, t.Case.Y, t.Troupeau.Espece, (int)Math.Round(t.Troupeau.Adultes), (int)Math.Round(t.Troupeau.Petits),
+                t.Troupeau.Domestique))
+            .ToList();
+        return new PopulationFauneDto(especes, Convert.ToBase64String(octets), MondeSimule.KgVifParPartDeGibier, troupeaux);
+    }
+}
+
+public sealed record PopulationEspeceDto(int Numero, string Nom, string Biome, int BiomeNumero, int Forme, double Poids, int Regime, long Sauvages,
+    long? SauvagesAvant, int Mois, int GardeesAdultes, int GardeesPetits, int Troupeaux, bool Domestique, bool Disparue);
+
+public sealed record TroupeauCarteDto(int X, int Y, int Espece, int Adultes, int Petits, bool Domestique);
