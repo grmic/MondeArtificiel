@@ -510,6 +510,7 @@ export class Vue3D {
 
   private construireHud(): void {
     this.hud.innerHTML = `
+      <button type="button" class="reduire" data-action="reduire"></button>
       <div class="ligne">
         <button type="button" data-action="carte">${t("trois.carte")}</button>
         <button type="button" data-action="vol">${t("trois.voler")}</button>
@@ -537,6 +538,8 @@ export class Vue3D {
       <div class="etat" data-role="etat"></div>`;
     const q = <T extends HTMLElement>(s: string) => this.hud.querySelector<T>(s)!;
     q<HTMLButtonElement>('[data-action="carte"]').addEventListener("click", () => this.ctx.quitter());
+    q<HTMLButtonElement>('[data-action="reduire"]').addEventListener("click", () => this.reduireCommandes(!this.hud.classList.contains("reduite")));
+    this.reduireCommandes(lireStockage("monde.hud3d.reduit") === "1", false);
     q<HTMLButtonElement>('[data-action="vol"]').addEventListener("click", () => this.changerMode("vol"));
     q<HTMLButtonElement>('[data-action="marche"]').addEventListener("click", () => this.changerMode("marche"));
     const choix = q<HTMLSelectElement>('[data-action="qualite"]');
@@ -572,6 +575,19 @@ export class Vue3D {
     q<HTMLButtonElement>('[data-action="portrait"]').addEventListener("click", () => this.basculerPortrait());
     q<HTMLButtonElement>('[data-action="manette"]').addEventListener("click", () => this.montrerAideManette(!this.aideManette));
     this.afficherAide();
+  }
+
+  /**
+   * Fenêtre des commandes repliée en pastille (0.44.5) : pour voir le monde sans elle. Bouton ▾/▴ ou touche H ; l'état est gardé
+   * d'une visite à l'autre. Les messages du monde ne sont pas dans cette fenêtre et restent affichés.
+   */
+  private reduireCommandes(reduite: boolean, memoriser = true): void {
+    this.hud.classList.toggle("reduite", reduite);
+    const bouton = this.hud.querySelector<HTMLButtonElement>('[data-action="reduire"]')!;
+    bouton.textContent = reduite ? `▴ ${t("trois.commandes")} (H)` : "▾";
+    bouton.title = t(reduite ? "trois.commandes.ouvrir" : "trois.commandes.reduire");
+    bouton.setAttribute("aria-expanded", String(!reduite));
+    if (memoriser) ecrireStockage("monde.hud3d.reduit", reduite ? "1" : "0");
   }
 
   private remplirVivants(): void {
@@ -958,6 +974,10 @@ export class Vue3D {
     }
     if (e.key === "k" || e.key === "K") {
       this.allerVoirCatastrophe(null);
+      return;
+    }
+    if (e.key === "h" || e.key === "H") {
+      this.reduireCommandes(!this.hud.classList.contains("reduite"));
       return;
     }
     if (e.key === "i" || e.key === "I") {

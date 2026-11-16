@@ -515,6 +515,12 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 .hud3d button.actif { background: #2f6f4a; border-color: #4ac26b; }
 .hud3d input { min-width: 12em; }
 .hud3d .aide, .hud3d .etat { opacity: 0.8; }
+/* Commandes repliées (0.44.5) : bouton ▾ en coin, pastille « ▴ Commandes (H) » une fois réduite. */
+.hud3d { padding-right: 40px; }
+.hud3d > button.reduire { position: absolute; top: 6px; right: 6px; min-width: 1.9em; padding: 1px 6px; }
+.hud3d.reduite { padding: 4px; }
+.hud3d.reduite > :not(.reduire) { display: none; }
+.hud3d.reduite > button.reduire { position: static; }
 .etiquettes3d { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .etiquettes3d span {
   position: absolute; left: 0; top: 0; padding: 1px 6px; border-radius: 6px; white-space: nowrap;
