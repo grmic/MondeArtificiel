@@ -48,4 +48,19 @@ public sealed class FamilleLlmTests
     [InlineData("Le monde est né du feu.", false)]
     public void UneQuestion_NEstPasUneRevelation(string texte, bool question) =>
         Assert.Equal(question, Dialogues.SeulementDesQuestions(texte));
+
+    [Theory]
+    [InlineData("Je suis Celle qui t'a créé. Mon nom est MICHEL.", "MICHEL")]
+    [InlineData("Appelle-moi Ona, enfant.", "Ona")]
+    [InlineData("My name is Ava.", "Ava")]
+    [InlineData("Te souviens-tu de mon nom ?", null)]
+    public void LeNomQuElleSeDonne_EstLu(string texte, string? nom) => Assert.Equal(nom, Dialogues.NomDonne(texte));
+
+    [Theory]
+    [InlineData("Elle se nomme Michel, elle dit qu'elle nous a faits.", true)]
+    [InlineData("C'est une présence invisible qui m'a fait.", true)]
+    [InlineData("She says she made us.", true)]
+    [InlineData("Tu es Michel, celle qui nous a faits. Je te crois.", false)]
+    [InlineData("C'est Faepe, mon enfant. Elle repose contre moi.", false)]
+    public void ParlerDeLEntite_AuLieuDeLuiRepondre(string reponse, bool tiers) => Assert.Equal(tiers, Dialogues.ParleDElle(reponse));
 }

@@ -370,12 +370,19 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     var inconnus = Inconnus(m, permis);
                     // Il répond à l'Entité (0.42.8) : une réponse vide, ou qui n'est que sa pensée, ne convient pas.
                     var sansReponse = se.Length == 0 || Normaliser(se) == Normaliser(pe);
-                    if ((inconnus.Count > 0 || sansReponse) && essai == 0)
+                    // Il ne redit pas mot pour mot une réponse déjà faite, et parle à l'Entité, pas d'elle (0.44.10) : un petit modèle
+                    // redisait « C'est Faepe, mon enfant… » à « Mon Monde s'appelle LA TERRE », et « elle se nomme Michel ».
+                    var repete = !sansReponse && precedentes.Exists(r => r.Sens.Length > 0 && Normaliser(r.Sens) == Normaliser(se));
+                    var tiers = !sansReponse && ParleDElle(se);
+                    if ((inconnus.Count > 0 || sansReponse || repete || tiers) && essai == 0)
                     {
                         messages.Add(("assistant", reponse));
                         messages.Add(("user", inconnus.Count > 0
                             ? L.T("dlg.erreur.motsInconnus2", ("liste", string.Join(", ", inconnus.Take(20))), ("langue", L.Courante.Nom))
-                            : L.T("dlg.erreur.reponseVide", ("langue", L.Courante.Nom))));
+                            : sansReponse ? L.T("dlg.erreur.reponseVide", ("langue", L.Courante.Nom))
+                            : repete ? L.T("dlg.erreur.repete", ("texte", texte))
+                            : L.T("dlg.erreur.tiers", ("texte", texte))));
+                        if (inconnus.Count == 0 && !sansReponse) brut.AppendLine($"---- {L.T(repete ? "dlg.trace.repete" : "dlg.trace.tiers")} ----");
                         continue;
                     }
                     if (inconnus.Count > 0) m = Effacer(m, permis);
@@ -604,6 +611,9 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             var fautes = new List<string>();
             valides = LireTraduction(reponse, texte, c.Humain, c.Mode, humains, fautes, monde);
             LireTon(reponse, out ton, out revelation);
+            // Le nom qu'elle se donne est toujours une révélation (0.44.10) : la traduction l'avait laissé tomber.
+            if (NomDonne(texte) is { } nomEntite && !revelation.Contains(nomEntite, StringComparison.OrdinalIgnoreCase))
+                revelation = (revelation.Length > 0 ? revelation + " " : "") + L.T("dlg.r.nomEntite", ("nom", nomEntite));
             if (fautes.Count == 0 || essai == 1) break;
             messages.Add(("assistant", reponse));
             messages.Add(("user", L.T("llm.d.corriger", ("erreurs", string.Join(" ", fautes)))));
@@ -624,6 +634,25 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         }
         return (valides, ton, revelation);
     }
+
+    private static readonly System.Text.RegularExpressions.Regex MotifNom = new(
+        @"\b(?:mon\s+nom\s+est|je\s+m['’]appelle|je\s+me\s+nomme|on\s+m['’]appelle|appelle[-\s]moi|my\s+name\s+is|i\s+am\s+called|call\s+me)\s+([\p{L}][\p{L}'’-]*)",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static readonly System.Text.RegularExpressions.Regex MotifTiers = new(
+        @"\b(?:elle|il)\s+(?:dit|a\s+dit|disait|se\s+nomme|s['’]appelle|me\s+parle|m['’]a\s+parlé|demande|me\s+demande|a\s+demandé)\b|\b(?:une|cette|la)\s+(?:présence|entité)(?:\s+\p{L}+)?\s+(?:qui|m['’]|me|dit|parle)|\b(?:she|it)\s+(?:says|said|is\s+called|asks|asked|speaks\s+to\s+me|spoke\s+to\s+me)\b|\bher\s+name\s+is\b",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>Le nom que l'Entité se donne dans ses mots (« Mon nom est MICHEL »), ou null (0.44.10).</summary>
+    public static string? NomDonne(string texte)
+    {
+        if (MotifNom.Match(texte) is not { Success: true } m) return null;
+        var nom = m.Groups[1].Value.Trim('\'', '’', '-');
+        return nom.Length >= 2 ? nom : null;
+    }
+
+    /// <summary>Vrai s'il parle de l'Entité comme d'une autre au lieu de lui répondre (« elle se nomme Michel », 0.44.10).</summary>
+    public static bool ParleDElle(string reponse) => MotifTiers.IsMatch(reponse.Replace('’', '\''));
 
     /// <summary>Vrai si les mots de l'Entité ne sont que des questions : chaque phrase finit par « ? » (0.44.8).</summary>
     public static bool SeulementDesQuestions(string texte)
@@ -899,17 +928,12 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         d.AppendLine(L.T("dlg.d.noms", ("liste", string.Join(", ", Noms(h, humains)))));
         if (c.Priere != 0 && Religions.Prieres(service, enAttente: false).FirstOrDefault(p => p.Id == c.Priere) is { } pr)
             d.AppendLine(L.T("dlg.d.priere", ("texte", pr.Texte)));
-        // Ses dialogues passés avec l'Entité (les trois derniers, en quelques mots).
-        foreach (var x in service.Depot.Dialogues(h.Id, statut: 1, limite: 3))
-        {
-            var r = service.Depot.Repliques(x.Id);
-            if (r.Count == 0) continue;
-            d.AppendLine(L.T("dlg.d.passe", ("date", L.Date(x.Debut)), ("voie", L.T($"modeParole.{(ModeParole)x.Mode}")),
-                ("resume", string.Join(" / ", r.Take(3).Select(y => ClientLlm.Couper(y.Entite, 100) + (y.Sens.Length > 0 || y.Mots.Length > 0 ? " — " + ClientLlm.Couper(y.Sens.Length > 0 ? y.Sens : y.Mots, 100) : ""))))));
-        }
+        // Ce qu'il retient de ses dialogues passés avec l'Entité (0.44.10) : les mots exacts des plus récents, le sens des plus
+        // anciens, ou seulement qu'elle lui a parlé ; le reste est oublié, selon sa mémoire, le temps passé et la voie.
+        Souvenirs(d, h, c.Id, maintenant);
         d.AppendLine();
         d.AppendLine(L.T("dlg.d.conversation", ("voie", L.T($"modeParole.{c.Mode}"))));
-        foreach (var r in precedentes.TakeLast(8))
+        foreach (var r in precedentes.TakeLast(20))
         {
             d.AppendLine($"{L.T("dlg.t.entite")} : « {r.Entite} »");
             // Ce qu'il a répondu (en clair), et ses mots dits tout haut s'il en a dit (0.42.8).
@@ -924,8 +948,57 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         if (regle.Fin != FinDialogue.Aucune) d.AppendLine("- " + L.T($"dlg.h.fin.{regle.Fin}"));
         d.AppendLine();
         d.AppendLine(L.T("dlg.d.ficheVraie"));
+        // Ses derniers mots redits juste avant la question (0.44.10) : un petit modèle répondait à une réplique plus ancienne
+        // (« qui est ton enfant ? », « assieds-toi et prie ») au lieu de « te souviens-tu de mon nom ? ».
+        d.AppendLine(L.T("dlg.d.aRepondre", ("texte", texte)));
         d.AppendLine(L.T("dlg.d.fin", ("nom", h.Nom)));
         return d.ToString();
+    }
+
+    /// <summary>Le plus de texte donné au LLM pour ses souvenirs des dialogues passés (environ 1 500 jetons).</summary>
+    private const int SouvenirsMax = 6000;
+
+    /// <summary>
+    /// Ses souvenirs des dialogues passés avec l'Entité, du plus ancien au plus récent (0.44.10), tels que <see cref="SouvenirDialogue"/>
+    /// les garde : chaque réplique mot pour mot, à peu près, ou plus du tout. Il reconnaît l'Entité s'il se souvient d'au moins une fois.
+    /// </summary>
+    private void Souvenirs(StringBuilder d, Humain h, long dialogueEnCours, long maintenant)
+    {
+        var memoire = SouvenirDialogue.MemoireDe(h);
+        var blocs = new List<string>();
+        var taille = 0;
+        long? derniere = null;
+        foreach (var x in service.Depot.Dialogues(h.Id, limite: 60).Where(x => x.Id != dialogueEnCours))
+        {
+            var repliques = service.Depot.Repliques(x.Id);
+            if (repliques.Count == 0) continue;
+            var mode = (ModeParole)x.Mode;
+            var retenues = repliques.Select(r => (R: r, T: SouvenirDialogue.Retenu(maintenant - r.Le, memoire, mode, r.Id * 7919 + h.Id))).ToList();
+            var meilleure = retenues.Max(y => y.T);
+            if (meilleure == SouvenirDialogue.Trace.Oubli) continue;
+            derniere ??= x.Debut;
+            var b = new StringBuilder();
+            var (date, voie) = (L.Date(x.Debut), L.T($"modeParole.{mode}"));
+            if (meilleure == SouvenirDialogue.Trace.Vague) b.AppendLine(L.T("dlg.d.souvenirVague", ("date", date), ("voie", voie)));
+            else
+            {
+                b.AppendLine(L.T("dlg.d.souvenir", ("date", date), ("voie", voie)));
+                foreach (var (r, t) in retenues.Where(y => y.T >= SouvenirDialogue.Trace.Sens))
+                {
+                    var lui = r.Sens.Length > 0 ? r.Sens : r.Mots;
+                    b.AppendLine(t == SouvenirDialogue.Trace.MotPourMot
+                        ? L.T("dlg.d.motPourMot", ("e", ClientLlm.Couper(r.Entite, 300)), ("t", ClientLlm.Couper(lui, 300)))
+                        : L.T("dlg.d.aPeuPres", ("e", ClientLlm.Couper(r.Entite, 70)), ("t", ClientLlm.Couper(lui, 70))));
+                }
+            }
+            if (taille + b.Length > SouvenirsMax) break;
+            taille += b.Length;
+            blocs.Add(b.ToString().TrimEnd());
+        }
+        if (blocs.Count == 0) return;
+        d.AppendLine(L.T("dlg.d.reconnais", ("n", blocs.Count), ("date", L.Date(derniere!.Value))));
+        d.AppendLine(L.T("dlg.d.souvenirs"));
+        foreach (var b in Enumerable.Reverse(blocs)) d.AppendLine(b);
     }
 
     /// <summary>Les noms qu'il peut dire : le sien (et son nom dans sa langue), ceux de ses proches.</summary>
