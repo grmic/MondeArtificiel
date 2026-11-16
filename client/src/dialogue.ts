@@ -6,6 +6,7 @@ import { vignette } from "./visage";
 interface Replique {
   rang: number; date: string; entite: string; traduction: string[]; regles: string[]; mots: string; pensee: string; libre: string[];
   juge: string | null; erreur: string | null; secondes: number; journalPremier: number; sens: string;
+  suivi?: string[] | null;
 }
 interface Dialogue {
   id: number; humain: number; nom: string; mode: string; voie: string; priere: number; textePriere: string | null; debut: string; fin: string | null;
@@ -292,6 +293,13 @@ export class FenetreDialogue {
     ul.append(el("li", "discret", t("dlgc.duree", { s: r.secondes })));
     details.append(ul);
     bloc.append(details);
+    // Ce que sont devenus ses ordres, aujourd'hui (0.44.11) : en cours, fait, refusé…
+    if (r.suivi && r.suivi.length > 0) {
+      const suivi = el("ul", "liste dialogue-suivi");
+      suivi.append(el("li", "discret", t("dlgc.suivi")));
+      for (const x of r.suivi) suivi.append(el("li", undefined, x));
+      bloc.append(suivi);
+    }
     // Ce qu'il te répond, en clair (0.42.8) ; ses mots dits tout haut, dans sa langue, en dessous ; sa pensée, repliée.
     const humain = el("div", "dialogue-humain");
     humain.append(vignette(d.humain, 22), " ");

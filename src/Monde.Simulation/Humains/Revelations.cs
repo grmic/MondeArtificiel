@@ -151,6 +151,7 @@ public sealed partial class Comportement
         foreach (var h in vivants)
         {
             if (h.Revelations.Count == 0) continue;
+            Transmettre(h, cultes, vivants, maintenant);
             for (var k = h.Revelations.Count - 1; k >= 0; k--)
             {
                 var c = h.Revelations[k];
@@ -210,6 +211,12 @@ public sealed partial class Comportement
         }
         var auditeur = enfant ?? proche;
         if (auditeur is null) return;
+        RaconterA(h, c, r, auditeur, maintenant);
+    }
+
+    /// <summary>Il la raconte à <paramref name="auditeur"/> : ce qu'il en garde, s'il y croit, la ligne du journal (Bartlett, 1932).</summary>
+    private void RaconterA(Humain h, Connue c, Revelation r, Humain auditeur, long maintenant)
+    {
         var (mh, ma) = (MemoireDe(h), MemoireDe(auditeur));
         // De bouche en bouche : à chaque récit, une part se perd ou se transforme (Bartlett, 1932).
         var garde = Math.Clamp(0.7 + 0.12 * mh + 0.1 * ma + 0.08 * (alea.Reel() - 0.5), 0.55, 0.97);
@@ -223,6 +230,61 @@ public sealed partial class Comportement
         Apprendre(auditeur, r, croit, fidelite, h.Id, id, maintenant);
         var k = h.Revelations.FindIndex(x => x.Id == r.Id);
         if (k >= 0) h.Revelations[k] = h.Revelations[k] with { RaconteLe = maintenant };
+    }
+
+    /// <summary>
+    /// L'Entité lui a demandé de transmettre ce qu'elle lui a révélé (0.44.11) : chaque jour où il s'y tient, il la raconte, l'un
+    /// après l'autre, aux membres de sa communauté qui sont près du camp et ne la savent pas (ou moins bien), à ses proches s'il n'a
+    /// pas de communauté. Combien par jour : selon son entrain (extraversion) et sa persévérance (conscience, endurance), moitié
+    /// moins s'il n'y obéit qu'à moitié. C'est fait quand il n'y a plus personne à qui la dire ; le temps passé, c'est fait en partie
+    /// ou pas du tout. Il transmet la dernière révélation qu'il a reçue, celle que l'Entité vient de lui confier.
+    /// </summary>
+    private void Transmettre(Humain h, Cultes cultes, IReadOnlyList<Humain> vivants, long maintenant)
+    {
+        for (var k = 0; k < h.Impulsions.Count; k++)
+        {
+            var i = h.Impulsions[k];
+            if (i.Parole != Parole.Transmets || i.Reponse is not (Reponse.Acceptee or Reponse.AMoitie) || i.AgirLe > maintenant
+                || i.AgirLe == long.MaxValue)
+                continue;
+            var c = h.Revelations.OrderByDescending(x => x.Le).First();
+            if (cultes.Revelation(c.Id) is not { } r) continue;
+            if (maintenant > i.Jusqua)
+            {
+                // Le temps est passé : il en a parlé à quelques-uns, ou à personne.
+                h.Impulsions[k] = i with { Reponse = i.Param > 0 ? Reponse.AMoitie : Reponse.Abandonnee, AgirLe = long.MaxValue };
+                NoterEntite(maintenant, TypeEvenement.Parole, h, null, i.Param > 0
+                    ? new Recit("dem.fait.transmisEnPartie", ("h", h), ("n", i.Param), ("t", Court(r.Texte)))
+                    : new Recit("dem.fait.pasTransmis", ("h", h), ("t", Court(r.Texte))), i.EvenementId);
+                Jardin.Retirer(h, $"entite:{(int)i.Parole}");
+                continue;
+            }
+            var p = h.Personnalite;
+            var perseverance = 0.6 * p.Conscience + 0.4 * p.Endurance;
+            var parJour = Math.Max(1, (int)Math.Round((1 + 5 * p.Extraversion) * (0.5 + perseverance) * (i.Reponse == Reponse.AMoitie ? 0.5 : 1)
+                                                      * (0.7 + 0.6 * alea.Reel())));
+            var auditeurs = vivants.Where(o => o.Id != h.Id && o.AgeEnAnnees(maintenant) >= 4 && Distance(o.X, o.Y, h.X, h.Y) <= 6
+                                               && (h.CommunauteId > 0 ? o.CommunauteId == h.CommunauteId
+                                                   : o.Id == h.PartenaireId || o.MereId == h.Id || o.PereId == h.Id || h.AffectionPour(o.Id) >= 20)
+                                               && (o.Revelations.Find(x => x.Id == r.Id) is not { } sait || sait.Fidelite < c.Fidelite))
+                .OrderBy(o => Distance(o.X, o.Y, h.X, h.Y)).ThenBy(o => o.Id).ToList();
+            if (auditeurs.Count == 0)
+            {
+                h.Impulsions[k] = i with { Reponse = i.Reponse == Reponse.AMoitie ? Reponse.AMoitie : Reponse.Accomplie, AgirLe = long.MaxValue,
+                    Jusqua = Math.Min(i.Jusqua, maintenant) };
+                NoterEntite(maintenant, TypeEvenement.Parole, h, null, i.Param > 0
+                    ? new Recit("dem.fait.transmis", ("h", h), ("n", i.Param), ("t", Court(r.Texte)))
+                    : new Recit("dem.fait.personneATransmettre", ("h", h), ("t", Court(r.Texte))), i.EvenementId);
+                Jardin.Retirer(h, $"entite:{(int)i.Parole}");
+                continue;
+            }
+            foreach (var o in auditeurs.Take(parJour))
+            {
+                c = h.Revelations.Find(x => x.Id == r.Id)!;
+                RaconterA(h, c, r, o, maintenant);
+            }
+            h.Impulsions[k] = i with { Param = i.Param + Math.Min(parJour, auditeurs.Count) };
+        }
     }
 
     /// <summary>Note quand une révélation est sue de plus de la moitié d'une communauté, et quand plus personne ne s'en souvient.</summary>

@@ -148,6 +148,7 @@ interface Fiche {
   visage?: Visage | null;
   grossesse?: { jours: number; depuis: string } | null;
   /** Ce qu'il sait de ce que l'Entité a révélé (0.42.9). */
+  ordres?: string[] | null;
   revelations?: { id: number; texte: string; fidelite: number; souvenir: string; deQui: string | null; deQuiId: number; date: string; croit: boolean }[] | null;
 }
 
@@ -565,6 +566,13 @@ export class PanneauFiche {
         li.append(p);
         ul.append(li);
       }
+      corps.append(ul);
+    }
+    // Les ordres de l'Entité et ce qu'il en a fait (0.44.11).
+    if (f.ordres && f.ordres.length > 0) {
+      corps.append(el("h3", undefined, t("fiche.ordres")));
+      const ul = el("ul", "liste");
+      for (const x of f.ordres) ul.append(el("li", "entite", x));
       corps.append(ul);
     }
     if (h.vivant && h.etape !== "bébé") {

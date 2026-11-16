@@ -190,7 +190,8 @@ public sealed record FicheDto(
     RencontresDto? Rencontres = null,
     VisageDto? Visage = null,
     GrossesseDto? Grossesse = null,
-    IReadOnlyList<RevelationConnueDto>? Revelations = null)
+    IReadOnlyList<RevelationConnueDto>? Revelations = null,
+    IReadOnlyList<string>? Ordres = null)
 {
     private static string Date(long s) => L.Date(s);
 
@@ -300,7 +301,27 @@ public sealed record FicheDto(
             h.EstVivant && h.EnceinteDepuis is { } conception
                 ? new GrossesseDto((int)(Math.Max(0, maintenant - conception) / Simulation.Temps.Calendrier.SecondesParJour), Date(conception))
                 : null,
-            h.Revelations.Count == 0 ? null : RevelationsDto.Connues(monde, h, humains));
+            h.Revelations.Count == 0 ? null : RevelationsDto.Connues(monde, h, humains),
+            OrdresDe(h, humains, maintenant));
+    }
+
+    /// <summary>
+    /// Les ordres de l'Entité qu'il garde en mémoire (0.44.11), les plus récents d'abord : quand, par quelle voie, quoi, et ce qu'il
+    /// en a fait. Les penchants (sans un mot) et les paroles qui ne demandent rien n'y sont pas.
+    /// </summary>
+    private static List<string>? OrdresDe(Humain h, IReadOnlyList<Humain> humains, long maintenant)
+    {
+        var ordres = h.Impulsions.Where(i => i.Parole != Parole.Penchant && i.Mode != ModeParole.Penchant
+                                             && i.Parole is not (Parole.NAiePasPeur or Parole.TuNEsPasSeul or Parole.TaPeinePassera or Parole.JeSuisCelleQuiVousAFaits))
+            .OrderByDescending(i => i.Le).Take(15).ToList();
+        if (ordres.Count == 0) return null;
+        return ordres.Select(i =>
+        {
+            var parole = L.T($"parole.{i.Parole}")
+                         + (i.CibleId > 0 && i.CibleId <= humains.Count && Simulation.Humains.Paroles.VeutCible(i.Parole) ? $" ({humains[i.CibleId - 1].Nom})" : "");
+            return L.T("fiche.ordre", ("date", Date(i.Le)), ("voie", L.T($"modeParole.{i.Mode}")),
+                ("parole", parole), ("etat", Monde.Serveur.Entite.Ordres.Etat(i, maintenant)));
+        }).ToList();
     }
 
     private static RencontresDto? LireRencontres(MondeSimule monde, Humain h, IReadOnlyList<Humain> humains)

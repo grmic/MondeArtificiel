@@ -453,7 +453,7 @@ public sealed partial class Comportement
         var duree = (30 + 300 * force * (0.5 + 0.5 * p.Conscience)) * (0.7 + 0.6 * alea.Reel());
         var jusqua = Durable(parole)
             ? maintenant + (long)(duree * Calendrier.SecondesParJour)
-            : agirLe + (long)((Paroles.Demande(parole) ? 1 : 10 + 30 * p.Conscience) * Calendrier.SecondesParJour);
+            : agirLe + (long)((parole == Parole.Transmets ? 3 + 9 * p.Conscience : Paroles.Demande(parole) ? 1 : 10 + 30 * p.Conscience) * Calendrier.SecondesParJour);
         if (parole is Parole.PartsVers or Parole.CatastropheArrive) param = Destination(h, parole, param);
         if (Paroles.Demande(parole)) param = 0;
         var impulsion = new Impulsion(parole, mode, cibleId, param, force, maintenant, jusqua, agirLe, hesite ? Reponse.Differee : reponse, reception);

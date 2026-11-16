@@ -89,6 +89,11 @@ public enum Parole : byte
     CacheToi = 50,
     /// <summary>« Jeûne » : il ne part pas chercher à manger pendant un jour ou deux, tant que sa faim le lui permet.</summary>
     Jeune = 51,
+    /// <summary>
+    /// « Transmets ce que je t'ai révélé à ta communauté » (0.44.11) : il va la raconter, l'un après l'autre, aux membres de sa
+    /// communauté (à ses proches s'il n'en a pas) qui ne la savent pas encore.
+    /// </summary>
+    Transmets = 52,
 }
 
 /// <summary>Comment l'Entité se fait entendre.</summary>
@@ -168,7 +173,7 @@ public static class Paroles
         or Parole.Console or Parole.Pardonne or Parole.Ecoute or Parole.Frappe or Parole.Tue or Parole.VaVers or Parole.ParleA or Parole.Enseigne;
 
     /// <summary>Gestes de tous les jours qu'on lui demande de faire (0.42.8).</summary>
-    public static bool Demande(Parole p) => p >= Parole.AssiedsToi && p <= Parole.Jeune;
+    public static bool Demande(Parole p) => p >= Parole.AssiedsToi && p <= Parole.Transmets;
 
     /// <summary>Gestes demandés qu'il commence à l'instant même s'il le veut, sur place (s'asseoir, prier, dormir, chanter, veiller le feu, jeûner).</summary>
     public static bool Immediat(Parole p) => p is Parole.AssiedsToi or Parole.Prie or Parole.Dors or Parole.Chante or Parole.VeilleLeFeu or Parole.Jeune;

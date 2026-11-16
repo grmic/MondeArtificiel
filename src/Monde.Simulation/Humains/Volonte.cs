@@ -22,7 +22,7 @@ public sealed partial class Comportement
         Parole.AssiedsToi or Parole.Dors or Parole.Mange or Parole.Jeune or Parole.Ecoute or Parole.TuGuideras => 0,
         Parole.Prie => 0.1,
         Parole.Bois or Parole.Chante or Parole.ParleA or Parole.Console or Parole.Pardonne or Parole.NeTeVengePas or Parole.ResteIci => 0.25,
-        Parole.CacheToi or Parole.VeilleLeFeu or Parole.Partage or Parole.ResteAvec or Parole.Quitte or Parole.PorteMaParole => 0.4,
+        Parole.CacheToi or Parole.VeilleLeFeu or Parole.Partage or Parole.ResteAvec or Parole.Quitte or Parole.PorteMaParole or Parole.Transmets => 0.4,
         Parole.Enseigne or Parole.UnisToi or Parole.PrendsSoin or Parole.VaVers or Parole.DefendsLesTiens => 0.55,
         Parole.Frappe => 0.7,
         Parole.VaChercherAManger or Parole.Tue => 0.85,

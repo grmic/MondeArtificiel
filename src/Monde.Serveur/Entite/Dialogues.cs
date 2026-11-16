@@ -13,7 +13,8 @@ namespace Monde.Serveur.Entite;
 
 /// <summary>Une réplique pour le navigateur : les mots de l'Entité, leur traduction, ce qu'en ont fait les règles, la réponse de l'humain.</summary>
 public sealed record RepliqueDto(int Rang, string Date, string Entite, IReadOnlyList<string> Traduction, IReadOnlyList<string> Regles, string Mots,
-    string Pensee, IReadOnlyList<string> Libre, string? Juge, string? Erreur, double Secondes, long JournalPremier, string Sens = "");
+    string Pensee, IReadOnlyList<string> Libre, string? Juge, string? Erreur, double Secondes, long JournalPremier, string Sens = "",
+    IReadOnlyList<string>? Suivi = null);
 
 /// <summary>
 /// Un dialogue pour le navigateur. <paramref name="Attend"/> : les mots de l'Entité en cours de traitement (null : rien en cours) ;
@@ -247,10 +248,10 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         // 1. Traduire ses mots en paroles codées.
         List<ActeLlm> paroles;
         TonParole ton;
-        string revelation;
+        string revelation, impossible;
         try
         {
-            (paroles, ton, revelation) = await Traduire(c, texte, precedentes, entite.ConnexionPourJuge, brut, arret);
+            (paroles, ton, revelation, impossible) = await Traduire(c, texte, precedentes, entite.ConnexionPourJuge, brut, arret);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
@@ -303,7 +304,9 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             }
         }
         // Rien à faire dans ses mots : on le dit, pour que le joueur sache que l'humain n'a reçu aucun ordre (0.44.4).
-        if (paroles.Count == 0) regles.Add(L.T("dlg.r.aucuneParole"));
+        // Un ordre qu'aucun geste ne dit n'est pas tu (0.44.11) : le joueur sait qu'il ne sera pas exécuté.
+        if (impossible.Length > 0) regles.Add(L.T("dlg.r.impossible", ("t", impossible)));
+        else if (paroles.Count == 0) regles.Add(L.T("dlg.r.aucuneParole"));
         var (regle, p2, d2) = monde.Executer(m => m.Ecouter(c.Humain, c.Mode, rang, c.Croit, reponses, c.Reception));
         Plage(p2, d2);
         c.Comprise |= regle.Comprise;
@@ -531,6 +534,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         {
             ["ton"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<TonParole>().Select(x => (JsonNode)x)]) },
             ["revelation"] = new JsonObject { ["type"] = "string", ["maxLength"] = MondeSimule.RevelationMax },
+            ["impossible"] = new JsonObject { ["type"] = "string", ["maxLength"] = 300 },
             ["paroles"] = new JsonObject
             {
                 ["type"] = "array",
@@ -574,7 +578,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         return c.ToString();
     }
 
-    private async Task<(List<ActeLlm> Paroles, TonParole Ton, string Revelation)> Traduire(EnCours c, string texte, List<RepliqueEntite> precedentes, ConnexionLlm connexion, StringBuilder brut,
+    private async Task<(List<ActeLlm> Paroles, TonParole Ton, string Revelation, string Impossible)> Traduire(EnCours c, string texte, List<RepliqueEntite> precedentes, ConnexionLlm connexion, StringBuilder brut,
         CancellationToken arret)
     {
         var monde = c.Monde;
@@ -601,7 +605,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         d.AppendLine(L.T("dlg.t.dit", ("texte", texte)));
         var messages = new List<(string, string)> { ("user", d.ToString()) };
         var valides = new List<ActeLlm>();
-        var (ton, revelation) = (TonParole.Aucun, "");
+        var (ton, revelation, impossible) = (TonParole.Aucun, "", "");
         for (var essai = 0; essai < 2; essai++)
         {
             using var delai = CancellationTokenSource.CreateLinkedTokenSource(arret);
@@ -611,6 +615,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             var fautes = new List<string>();
             valides = LireTraduction(reponse, texte, c.Humain, c.Mode, humains, fautes, monde);
             LireTon(reponse, out ton, out revelation);
+            impossible = LireImpossible(reponse);
             // Le nom qu'elle se donne est toujours une révélation (0.44.10) : la traduction l'avait laissé tomber.
             if (NomDonne(texte) is { } nomEntite && !revelation.Contains(nomEntite, StringComparison.OrdinalIgnoreCase))
                 revelation = (revelation.Length > 0 ? revelation + " " : "") + L.T("dlg.r.nomEntite", ("nom", nomEntite));
@@ -632,7 +637,11 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             valides.Add(new ActeLlm { Type = Actes.Parler, Humains = [c.Humain], Parole = g.ToString(), Mode = c.Mode.ToString(), Cible = 0 });
             brut.AppendLine($"---- {L.T("dlg.trace.lu")} ----").AppendLine(g.ToString());
         }
-        return (valides, ton, revelation);
+        // Un ordre sans geste correspondant (0.44.11) : seulement si rien d'autre n'est demandé et que ce n'est pas une question,
+        // pour ne jamais dire « pas exécuté » d'un ordre qui l'est.
+        if (valides.Count > 0 || SeulementDesQuestions(texte)) impossible = "";
+        if (impossible.Length > 0) brut.AppendLine($"---- {L.T("dlg.trace.impossible")} ----").AppendLine(impossible);
+        return (valides, ton, revelation, impossible);
     }
 
     private static readonly System.Text.RegularExpressions.Regex MotifNom = new(
@@ -653,6 +662,26 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
     /// <summary>Vrai s'il parle de l'Entité comme d'une autre au lieu de lui répondre (« elle se nomme Michel », 0.44.10).</summary>
     public static bool ParleDElle(string reponse) => MotifTiers.IsMatch(reponse.Replace('’', '\''));
+
+    /// <summary>Ce qu'elle lui demande et qu'aucune parole ne dit, selon la traduction ("" : rien), 0.44.11.</summary>
+    public static string LireImpossible(string reponse)
+    {
+        try
+        {
+            if (JsonNode.Parse(ClientLlm.Nettoyer(reponse), documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true }) is JsonObject o
+                && o["impossible"] is JsonValue v && v.TryGetValue<string>(out var s))
+            {
+                s = ClientLlm.Couper(s.Trim(), 300);
+                // « aucun », « rien », « - » : rien d'impossible.
+                return s.Length >= 6 ? s : "";
+            }
+        }
+        catch (JsonException)
+        {
+            // Illisible : rien.
+        }
+        return "";
+    }
 
     /// <summary>Vrai si les mots de l'Entité ne sont que des questions : chaque phrase finit par « ? » (0.44.8).</summary>
     public static bool SeulementDesQuestions(string texte)
@@ -1180,14 +1209,16 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         var nom = d.Humain >= 1 && d.Humain <= humains.Count ? humains[d.Humain - 1].Nom : "?";
         var mode = (ModeParole)d.Mode;
         string? textePriere = d.Priere != 0 ? Religions.Prieres(service, enAttente: false).FirstOrDefault(p => p.Id == d.Priere)?.Texte : null;
-        var repliques = service.Depot.Repliques(id).Select(Dto).ToList();
+        var (instant, _) = service.Monde.InstantaneHumains();
+        var lui = d.Humain >= 1 && d.Humain <= humains.Count ? humains[d.Humain - 1] : null;
+        var repliques = service.Depot.Repliques(id).Select(r => Dto(r, lui, instant)).ToList();
         var croit = c is not null ? (c.Croit is { } b ? b ? 1 : 0 : -1) : d.Croit;
         return new DialogueDto(d.Id, d.Humain, nom, mode.ToString(), L.T($"modeParole.{mode}"), d.Priere, textePriere, L.Date(d.Debut),
             d.Statut == 1 ? L.Date(d.Fin) : null, d.Statut == 1 ? L.T($"dlg.fin.court.{(FinDialogue)d.FinRaison}") : null, c is not null, c?.Attend,
             repliques.Count, CroitTexte(croit, c?.Comprise ?? d.Comprise), repliques, c?.Erreur);
     }
 
-    private RepliqueDto Dto(RepliqueEntite r)
+    private RepliqueDto Dto(RepliqueEntite r, Humain? lui, long maintenant)
     {
         List<string> regles, libre = [];
         List<ActeLlm> paroles;
@@ -1202,7 +1233,24 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             (regles, paroles) = ([], []);
         }
         return new RepliqueDto(r.Rang, L.Date(r.Le), r.Entite, paroles.Select(Libelle).ToList(), regles, r.Mots, r.Pensee, libre,
-            r.Juge.Length > 0 ? r.Juge : null, r.Erreur, Math.Round(r.DureeMs / 1000.0, 1), r.JournalPremier, r.Sens);
+            r.Juge.Length > 0 ? r.Juge : null, r.Erreur, Math.Round(r.DureeMs / 1000.0, 1), r.JournalPremier, r.Sens,
+            lui is null ? null : Suivi(paroles, r.Le, lui, maintenant));
+    }
+
+    /// <summary>
+    /// Ce que sont devenus les ordres d'une réplique (0.44.11) : pour chaque parole, l'impulsion qu'elle a laissée chez lui (même
+    /// parole, reçue à ce moment-là), et son état aujourd'hui.
+    /// </summary>
+    private List<string> Suivi(List<ActeLlm> paroles, long le, Humain lui, long maintenant)
+    {
+        var lignes = new List<string>();
+        foreach (var a in paroles)
+        {
+            if (!Enum.TryParse<Parole>(a.Parole, true, out var p)) continue;
+            var i = lui.Impulsions.LastOrDefault(x => x.Parole == p && Math.Abs(x.Le - le) <= MondeSimule.SecondesParPas);
+            lignes.Add(L.T("ordre.ligne", ("parole", Libelle(a)), ("etat", Ordres.Etat(i, maintenant))));
+        }
+        return lignes;
     }
 
     public List<DialogueResumeDto> Liste(int humain)

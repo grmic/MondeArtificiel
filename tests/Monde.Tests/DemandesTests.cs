@@ -113,6 +113,8 @@ public sealed class DemandesTests
     [InlineData("Assieds-toi et prie.", "AssiedsToi,Prie")]
     [InlineData("Ana, je suis là. Assois-toi, puis prie pour les tiens !", "AssiedsToi,Prie")]
     [InlineData("Sit down and pray.", "AssiedsToi,Prie")]
+    [InlineData("Voici ce que tu dois faire : Enseigne le son sacré à ta communauté.", "Transmets")]
+    [InlineData("Tell your people what I said.", "Transmets")]
     [InlineData("Va chercher à manger, puis dors.", "VaChercherAManger,Dors")]
     [InlineData("Je t'en prie, écoute-moi.", "")]
     [InlineData("Veux-tu prier avec moi ?", "")]

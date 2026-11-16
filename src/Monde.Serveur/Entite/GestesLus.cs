@@ -25,6 +25,8 @@ public static class GestesLus
         (Parole.Bois, new(@"(?<!\b(?:du|le|de|des|les|en|au|ce|son|sa|ton|mon|un)\s)\bbois\b(?!\s+(?:sec|mort|vert|dur|flotté))|\bbuvez\b|\bdrink\b", Options)),
         (Parole.Chante, new(@"\b(?:chante|chantez)\b|\bsing\b", Options)),
         (Parole.CacheToi, new(@"\b(?:cache|cachez)\s+(?:toi|vous)\b|\bhide(?:\s+yourself)?\b", Options)),
+        // « Enseigne le son sacré à ta communauté », « raconte aux tiens ce que je t'ai dit », « tell your people » (0.44.11).
+        (Parole.Transmets, new(@"\b(?:enseigne|enseignez|apprends|apprenez|raconte|racontez|transmets|transmettez|répète|répétez|annonce|annoncez|dis|dites|porte|portez)\b[^.!?]*?\b(?:à|aux)\s+(?:ta|ton|tes|votre|vos|toute\s+ta|tous\s+les)\s+(?:communauté|tribu|clan|peuple|gens|famille|proches|frères|sœurs|siens|tiens)\b|\b(?:teach|tell|spread|pass\s+on|share)\b[^.!?]*?\b(?:to\s+)?(?:your|all\s+your)\s+(?:community|tribe|clan|people|family|kin)\b", Options)),
         (Parole.Jeune, new(@"\b(?:jeûne|jeûnez)\b|\bfast\s+(?:for|until|today|now)\b|\bdo\s+not\s+eat\b", Options)),
     ];
 

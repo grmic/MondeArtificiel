@@ -90,6 +90,16 @@ public sealed partial class Comportement
                 // Le contemplatif fervent jeûne volontiers ; la faim déjà là, et la gourmandise du plaisir immédiat, retiennent.
                 return (Math.Clamp(0.15 + 0.8 * faim + 0.2 * nouveaute + (h.EstEnceinte ? 0.4 : 0), 0, 1), 0.35 * p.Transcendance + 0.25 * h.Ferveur - 0.1,
                     new Recit(faim > 0.5 ? "dem.refus.affame" : "dem.refus.jeuner", ("h", h)), true);
+            case Parole.Transmets:
+            {
+                // Il ne peut transmettre que ce qu'il sait. Raconter aux siens ce que l'invisible a dit : la gêne retient le timide
+                // et celui qui en doute ; l'expansif, le fervent et celui qui y croit y vont volontiers.
+                if (h.Revelations.Count == 0) return (1, 0, new Recit("dem.refus.rienATransmettre", ("h", h)), false);
+                var croit = h.Revelations.Exists(c => c.Croit);
+                return (Math.Clamp(occupe + 0.35 * timide + (croit ? 0 : 0.3), 0, 1),
+                    0.3 * p.Extraversion + 0.25 * p.Transcendance + 0.2 * h.Ferveur + (croit ? 0.1 : -0.1) - 0.1,
+                    new Recit(croit ? "dem.refus.transmettre" : "dem.refus.transmettreDoute", ("h", h)), true);
+            }
             default:
                 return (0, 0, null, false);
         }
