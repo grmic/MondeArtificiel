@@ -30,10 +30,22 @@ public sealed class FamilleLlmTests
         Assert.Contains($"{bebe.Nom} n°{bebe.Id}", texte);
         Assert.Contains("tu portes contre toi ton bébé " + bebe.Nom, texte);
         Assert.DoesNotContain("aucun enfant", texte);
+        // 0.44.8 : ce qu'elle porte est redit en tête du dialogue, et « Enfant » ne devient pas une prière pour en avoir un.
+        Assert.Contains(bebe.Nom, Contexte.CeQuIlPorte(humains, maintenant, mere.Id));
+        Assert.Equal(0, monde.DemanderEnDialogue(mere.Id, SujetPriere.Enfant, 0, 0));
         // Un homme sans enfant le sait aussi.
         var seul = humains.First(h => h.EstVivant && !humains.Any(e => e.MereId == h.Id || e.PereId == h.Id));
         var s = new StringBuilder();
         Contexte.Famille(s, humains, maintenant, seul.Id);
         Assert.Contains("aucun enfant", s.ToString());
     }
+
+    [Theory]
+    [InlineData("qui est le père de Thounouvial ?", true)]
+    [InlineData("Kelou, qui est l'enfant qui se trouve à tes côtés ?", true)]
+    [InlineData("Qui es-tu ? D'où viens-tu ?", true)]
+    [InlineData("Je suis celle qui vous a créés. Qui es-tu ?", false)]
+    [InlineData("Le monde est né du feu.", false)]
+    public void UneQuestion_NEstPasUneRevelation(string texte, bool question) =>
+        Assert.Equal(question, Dialogues.SeulementDesQuestions(texte));
 }

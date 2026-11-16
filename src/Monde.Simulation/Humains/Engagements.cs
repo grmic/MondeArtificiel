@@ -111,6 +111,10 @@ public sealed partial class Comportement
     {
         _maintenant = maintenant;
         if (!h.EstVivant || !Enum.IsDefined(sujet)) return 0;
+        // « Mon enfant est ici » n'est pas « donne-moi un enfant » (0.44.8) : celle qui est enceinte, ou qui a un tout-petit à
+        // porter, ne prie pas pour en avoir un ; le mot « enfant » dans sa réponse avait fait naître une telle prière.
+        if (sujet == SujetPriere.Enfant && (h.EstEnceinte || tous.Any(e => e.EstVivant && e.EstBebe(maintenant) && (e.MereId == h.Id || e.PereId == h.Id))))
+            return 0;
         return PrierSurParole(h, tous, maintenant, cause, sujet, pour);
     }
 

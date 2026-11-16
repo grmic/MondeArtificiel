@@ -608,6 +608,12 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             messages.Add(("assistant", reponse));
             messages.Add(("user", L.T("llm.d.corriger", ("erreurs", string.Join(" ", fautes)))));
         }
+        // Une question n'apprend rien (0.44.8) : « qui est le père de Thounouvial ? » était devenu une révélation.
+        if (revelation.Length > 0 && SeulementDesQuestions(texte))
+        {
+            brut.AppendLine($"---- {L.T("dlg.trace.revelationQuestion")} ----").AppendLine(revelation);
+            revelation = "";
+        }
         // Les gestes demandés en toutes lettres que la traduction a manqués (0.44.4) : sans eux, « assieds-toi et prie » restait sans effet.
         foreach (var g in GestesLus.Lire(texte))
         {
@@ -617,6 +623,14 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             brut.AppendLine($"---- {L.T("dlg.trace.lu")} ----").AppendLine(g.ToString());
         }
         return (valides, ton, revelation);
+    }
+
+    /// <summary>Vrai si les mots de l'Entité ne sont que des questions : chaque phrase finit par « ? » (0.44.8).</summary>
+    public static bool SeulementDesQuestions(string texte)
+    {
+        var phrases = System.Text.RegularExpressions.Regex.Matches(texte, @"[^.!?…\n]+[.!?…]*").Select(m => m.Value.Trim())
+            .Where(p => p.Any(char.IsLetter)).ToList();
+        return phrases.Count > 0 && phrases.All(p => p.EndsWith('?'));
     }
 
     /// <summary>
@@ -874,6 +888,9 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         var d = new StringBuilder();
         d.AppendLine(L.T("llm.d.date", ("date", L.Date(maintenant))));
         d.AppendLine(L.T("dlg.d.toi", ("nom", h.Nom), ("id", h.Id)));
+        // Ce qu'il porte dans ses bras, en tête (0.44.8) : perdu au milieu de la fiche, le LLM faisait dire à Kelou qu'elle ne
+        // voyait pas d'enfant près d'elle.
+        if (Contexte.CeQuIlPorte(humains, maintenant, h.Id) is { } porte) d.AppendLine(L.T("dlg.d.vrai", ("t", porte)));
         Contexte.Humain(d, service, h.Id, soiMeme: true);
         // Ses mots, tous (les plus sûrs d'abord) : ce sont les seuls qu'il peut dire.
         var vocabulaire = h.Vocabulaire.Where(m => !m.Signe).OrderByDescending(m => m.Force).Take(200)
@@ -906,6 +923,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             d.AppendLine("- " + L.T("dlg.h.parole", ("parole", Libelle(a)), ("issue", L.T($"dlg.h.issue.{(r ?? Reponse.Incomprise)}")), ("detail", t)));
         if (regle.Fin != FinDialogue.Aucune) d.AppendLine("- " + L.T($"dlg.h.fin.{regle.Fin}"));
         d.AppendLine();
+        d.AppendLine(L.T("dlg.d.ficheVraie"));
         d.AppendLine(L.T("dlg.d.fin", ("nom", h.Nom)));
         return d.ToString();
     }

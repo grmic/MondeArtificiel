@@ -425,6 +425,8 @@ public static class Contexte
             if (h.Enceinte) etat.Add(L.T("llm.h.enceinte"));
             if (h.Faim >= 50) etat.Add(L.T("llm.h.faim", ("v", N(h.Faim))));
             if (soiMeme && f.Grossesse is { } g) etat.Add(L.T("llm.h.grossesse", ("mois", Math.Max(1, (g.Jours + 15) / 30))));
+            // Elle le sait aussi quand elle ne l'est pas (0.44.8) : sans cette ligne, le LLM inventait une grossesse.
+            else if (soiMeme && !h.Enceinte && h.Sexe == "femme" && h.Age >= 12) etat.Add(L.T("llm.h.pasEnceinte"));
         }
         d.AppendLine(string.Join(", ", etat) + ".");
         var (instant, tous) = service.Monde.InstantaneHumains();
@@ -527,12 +529,7 @@ public static class Contexte
         if (id < 1 || id > humains.Count) return;
         var h = humains[id - 1];
         string Nom(int x) => x >= 1 && x <= humains.Count ? humains[x - 1].Nom : "?";
-        string Age(Humain x)
-        {
-            var ans = x.AgeEnAnnees(maintenant);
-            var jours = (int)(ans * 365.25);
-            return ans >= 2 ? L.T("llm.h.ageAns", ("n", (int)ans)) : jours >= 60 ? L.T("llm.h.ageMois", ("n", jours / 30)) : L.T("llm.h.ageJours", ("n", Math.Max(0, jours)));
-        }
+        string Age(Humain x) => AgeEnMots(x, maintenant);
         if (h.PartenaireId > 0) d.AppendLine(L.T("llm.h.compagnon", ("nom", Nom(h.PartenaireId)), ("id", h.PartenaireId)));
         var parents = new[] { h.MereId, h.PereId }.Where(x => x > 0).Select(x => $"{Nom(x)} n°{x}{(humains[x - 1].EstVivant ? "" : " (" + L.T("llm.h.disparu") + ")")}").ToList();
         if (parents.Count > 0) d.AppendLine(L.T("llm.h.parents", ("liste", string.Join(", ", parents))));
@@ -540,15 +537,32 @@ public static class Contexte
         d.AppendLine(enfants.Count == 0 ? L.T("llm.h.sansEnfant")
             : L.T("llm.h.enfants", ("n", enfants.Count), ("liste", string.Join(", ", enfants.Select(e =>
                 $"{e.Nom} n°{e.Id} ({(e.EstVivant ? Age(e) : L.T("llm.h.disparu"))})")))));
-        if (!h.EstVivant) return;
-        // Le bébé qu'il ou elle porte en ce moment : le sien, ou celui d'une autre (une nourrice).
-        var porte = h.BebePorteLe >= maintenant - 2 * MondeSimule.SecondesParPas
-            ? humains.Where(b => b.EstVivant && b.EstBebe(maintenant) && b.X == h.X && b.Y == h.Y && b.Activite is Activite.PorteParSaMere or Activite.Dormir
-                                 && (b.MereId == h.Id || b.MereId > 0 && b.MereId <= humains.Count && !humains[b.MereId - 1].EstVivant)).ToList()
-            : [];
-        foreach (var b in porte)
-            d.AppendLine(b.MereId == h.Id ? L.T("llm.h.porteSien", ("nom", b.Nom), ("id", b.Id), ("age", Age(b)))
-                : L.T("llm.h.porteAutre", ("nom", b.Nom), ("id", b.Id), ("age", Age(b)), ("mere", Nom(b.MereId))));
+        if (CeQuIlPorte(humains, maintenant, id) is { } porte) d.AppendLine(porte);
+    }
+
+    /// <summary>Son âge en ans, en mois ou en jours.</summary>
+    private static string AgeEnMots(Humain x, long maintenant)
+    {
+        var ans = x.AgeEnAnnees(maintenant);
+        var jours = (int)(ans * 365.25);
+        return ans >= 2 ? L.T("llm.h.ageAns", ("n", (int)ans)) : jours >= 60 ? L.T("llm.h.ageMois", ("n", jours / 30)) : L.T("llm.h.ageJours", ("n", Math.Max(0, jours)));
+    }
+
+    /// <summary>
+    /// Le bébé qu'il ou elle porte en ce moment, le sien ou celui d'une mère disparue (une nourrice), en une phrase ; null s'il ne
+    /// porte personne. Redit en tête de la demande du dialogue (0.44.8) : perdu au milieu de la fiche, le LLM l'oubliait.
+    /// </summary>
+    public static string? CeQuIlPorte(IReadOnlyList<Humain> humains, long maintenant, int id)
+    {
+        if (id < 1 || id > humains.Count) return null;
+        var h = humains[id - 1];
+        if (!h.EstVivant || h.BebePorteLe < maintenant - 2 * MondeSimule.SecondesParPas) return null;
+        var porte = humains.Where(b => b.EstVivant && b.EstBebe(maintenant) && b.X == h.X && b.Y == h.Y && b.Activite is Activite.PorteParSaMere or Activite.Dormir
+                                       && (b.MereId == h.Id || b.MereId > 0 && b.MereId <= humains.Count && !humains[b.MereId - 1].EstVivant)).ToList();
+        if (porte.Count == 0) return null;
+        string Age(Humain x) => AgeEnMots(x, maintenant);
+        return string.Join(" ", porte.Select(b => b.MereId == h.Id ? L.T("llm.h.porteSien", ("nom", b.Nom), ("id", b.Id), ("age", Age(b)))
+            : L.T("llm.h.porteAutre", ("nom", b.Nom), ("id", b.Id), ("age", Age(b)), ("mere", humains[b.MereId - 1].Nom))));
     }
 
     private static void Communaute(StringBuilder d, ServiceMonde service, int id, bool avecMembres)
