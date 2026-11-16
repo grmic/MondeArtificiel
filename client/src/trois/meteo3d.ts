@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu";
 import {
-  Fn, abs, cameraPosition, clamp, cos, cross, float, fract, instanceIndex, length, mix, mod, normalize, positionGeometry,
+  Fn, abs, cameraPosition, max, clamp, cos, cross, float, fract, instanceIndex, length, mix, mod, normalize, positionGeometry,
   sin, smoothstep, texture, time, uniform, uv, vec2, vec3, vec4,
 } from "three/tsl";
 import type { EtatTemps } from "../meteo";
@@ -17,6 +17,8 @@ type N<T extends string> = THREE.Node<T>;
  */
 export class MeteoGPU {
   private regions = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+  /** Lumière du ciel que renvoie l'eau d'une crue (0.43.1) : réglée à chaque image d'après le ciel. */
+  readonly uCielEau = uniform(new THREE.Vector3(0.3, 0.35, 0.45));
   private terres = new THREE.DataTexture(new Uint8Array(4), 1, 1);
   /** Taille couverte par la texture des régions et par celle de la carte (m). */
   private readonly uRegionsM = uniform(new THREE.Vector2(1, 1));
@@ -112,6 +114,8 @@ export class Precipitations {
   /** Lumière ambiante (couleur du ciel) qui éclaire les gouttes. */
   readonly uLumiere = uniform(new THREE.Vector3(0.5, 0.5, 0.5));
   private readonly uBoite = uniform(50);
+  /** Cendre qui tombe d'une éruption (0 à 1, 0.43.1) : les flocons deviennent gris et tombent partout autour de la caméra. */
+  readonly uCendre = uniform(0);
   private nombre = 0;
 
   constructor(vent: N<"vec2">) {
@@ -148,7 +152,7 @@ export class Precipitations {
     const flotte = neige ? vec2(sin(time.mul(1.3).add(i)).mul(0.4), cos(time.mul(1.1).add(i.mul(1.7))).mul(0.4)) : vec2(0, 0);
     const centre = vec3(x.add(flotte.x), y, z.add(flotte.y));
     const t = meteoGPU.tempsEn(centre.xz);
-    const force = neige ? t.g : t.r;
+    const force = neige ? max(t.g, this.uCendre) : t.r;
     // Une goutte sur deux cents par petite pluie, toutes sous l'averse.
     const garde = smoothstep(0, 0.15, force.sub(alea(i, 5)));
     const dist = length(centre.sub(cam));
@@ -165,7 +169,7 @@ export class Precipitations {
     const forme = neige
       ? smoothstep(0.5, 0.15, length(q.sub(0.5)))
       : smoothstep(0.5, 0.1, abs(q.x.sub(0.5))).mul(smoothstep(0, 0.4, q.y)).mul(smoothstep(1, 0.6, q.y));
-    const teinte = neige ? this.uLumiere.mul(1.1) : this.uLumiere.mul(0.9).add(0.02);
+    const teinte = neige ? mix(this.uLumiere.mul(1.1), this.uLumiere.mul(0.35), this.uCendre) : this.uLumiere.mul(0.9).add(0.02);
     mat.colorNode = vec4(teinte, forme.mul(fondu).mul(garde).mul(neige ? 0.9 : 0.42));
     return mat;
   }
@@ -179,10 +183,11 @@ export class Precipitations {
   }
 
   /** Une image : on ne dessine les gouttes que s'il pleut (ou neige) près de la caméra. */
-  animer(pluieIci: number, neigeIci: number, lumiere: THREE.Color): void {
+  animer(pluieIci: number, neigeIci: number, lumiere: THREE.Color, cendre = 0): void {
     this.uLumiere.value.set(lumiere.r, lumiere.g, lumiere.b);
+    this.uCendre.value = cendre;
     this.geoPluie.instanceCount = pluieIci > 0.005 ? this.nombre : 0;
-    this.geoNeige.instanceCount = neigeIci > 0.005 ? Math.round(this.nombre * 0.6) : 0;
+    this.geoNeige.instanceCount = neigeIci > 0.005 || cendre > 0.005 ? Math.round(this.nombre * 0.6) : 0;
   }
 }
 
@@ -292,8 +297,11 @@ export function bruleEn(p: N<"vec3">): N<"float"> {
 }
 
 /** Couleur d'une terre brûlée, puis cendre grise d'une éruption, et braises sous le feu qui passe. */
-export function terreTouchee(couleur: N<"vec3">, p: N<"vec3">): { couleur: N<"vec3">; braises: N<"vec3"> } {
+export function terreTouchee(couleur: N<"vec3">, p: N<"vec3">): { couleur: N<"vec3">; braises: N<"vec3">; eau: N<"float"> } {
   const t = meteoGPU.terresEn(p.xz);
+  // 0.43.1 : l'eau boueuse d'une crue ou d'une vague couvre les terres basses ; après, un limon brun-gris sèche dessus.
+  const eau = smoothstep(0.6, 0.9, t.a);
+  const limon = smoothstep(0.08, 0.3, t.a).mul(float(1).sub(eau));
   // Le brûlé fonce le sol jusqu'au charbon ; la cendre le grise.
   let c = mix(couleur, vec3(0.035, 0.03, 0.026), clamp(t.r.mul(1.1), 0, 0.92));
   c = mix(c, vec3(0.42, 0.41, 0.39), clamp(t.b, 0, 0.85));
@@ -306,9 +314,14 @@ export function terreTouchee(couleur: N<"vec3">, p: N<"vec3">): { couleur: N<"ve
     .div(6).add(0.5);
   // Une seconde nappe, plus large et dans d'autres directions, rompt la régularité : des foyers épars, pas un motif.
   const n1 = sin(p.x.mul(0.023).sub(p.z.mul(0.031)).add(1.7)).add(sin(p.x.mul(0.017).add(p.z.mul(0.026)).sub(time.mul(0.3)))).div(4).add(0.5);
-  const n = mix(n0.mul(n1).mul(1.6), float(0.45), smoothstep(250, 1500, length(cameraPosition.xz.sub(p.xz))));
+  const n = mix(n0.mul(n1).mul(1.6), float(0.62), smoothstep(250, 1500, length(cameraPosition.xz.sub(p.xz))));
   const braises = vec3(1, 0.3, 0.05).mul(t.g.mul(smoothstep(0.45, 0.95, n)).mul(1.2));
-  return { couleur: c, braises };
+  c = mix(c, vec3(0.42, 0.36, 0.27), limon.mul(0.7));
+  c = mix(c, vec3(0.1, 0.085, 0.055), eau.mul(0.9));
+  // L'eau renvoie le ciel, d'autant plus qu'on la regarde en rasant (Schlick, eau : 2 % de face).
+  const rasant = float(1).sub(abs(normalize(cameraPosition.sub(p)).y));
+  const reflet = meteoGPU.uCielEau.mul(eau.mul(rasant.pow(5).mul(0.98).add(0.02)));
+  return { couleur: c, braises: braises.add(reflet), eau };
 }
 
 /** Feuillage brûlé : les feuilles tombent quand la brûlure est forte, ce qui reste roussit. */

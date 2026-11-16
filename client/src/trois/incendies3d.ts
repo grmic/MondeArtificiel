@@ -140,10 +140,13 @@ export class Incendies3D {
     const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: true });
     const base = a.xyz;
     const echelle = a.w;
-    const phase = b.x;
+    // b.x : phase (partie décimale) et noirceur (partie entière, de 0 : fumée de bois, à 9 : cendre volcanique) ; b.w : durée d'une
+    // bouffée (s), négative pour une bouffée qui ne monte pas (le chapeau d'un champignon, qui s'étale).
+    const phase = fract(b.x);
+    const sombre = b.x.floor().div(10).clamp(0, 0.9);
     const vent = vec2(b.y, b.z);
-    const c = fract(time.div(b.w).add(phase));
-    const montee = c.mul(echelle).mul(14);
+    const c = fract(time.div(abs(b.w)).add(phase));
+    const montee = c.mul(echelle).mul(14).mul(b.w.sign().max(0));
     const derive = vent.mul(c.mul(c).mul(echelle).mul(30));
     const centre = base.add(vec3(derive.x, montee, derive.y));
     const taille = echelle.mul(c.mul(7).add(1));
@@ -156,7 +159,7 @@ export class Incendies3D {
     const r = length(q);
     const bosse = sin(q.x.mul(9).add(phase.mul(7))).mul(sin(q.y.mul(8).add(phase.mul(3)))).mul(0.08);
     const disque = smoothstep(0.5, 0.15, r.add(bosse));
-    const gris = this.uCiel.mul(mix(float(0.75), float(0.45), c));
+    const gris = this.uCiel.mul(mix(float(0.75), float(0.45), c)).mul(float(1).sub(sombre.mul(0.8)));
     // La nuit, le bas du panache rougeoie de la lueur du feu.
     const lueur = vec3(1, 0.38, 0.1).mul(this.uNuit.mul(pow(float(1).sub(c), 4)).mul(this.uEclat).mul(0.25));
     const apparait = smoothstep(0, 0.08, c).mul(float(1).sub(smoothstep(0.55, 1, c)));
@@ -193,13 +196,30 @@ export class Incendies3D {
         if (canal < 0) continue;
         z.cases.forEach((i, k) => {
           if (i < 0 || i >= l * h) return;
-          // Les terres d'une crue ne sont sous l'eau que pendant la crue.
-          const v = canal === 3 ? (z.active ? 255 : 0) : deg[k] ?? 255;
+          // Les terres d'une crue ne sont sous l'eau que pendant la crue ; ensuite reste le limon (0.43.1), tant que les dégâts restent.
+          // La vague n'a noyé les côtes qu'une fois arrivée (phase 1).
+          const noye = z.active && (z.type !== "tsunami" || z.phase >= 1);
+          const v = canal === 3 ? (noye ? 255 : z.active ? 0 : Math.round(90 * (deg[k] ?? 0) / 255)) : deg[k] ?? 255;
           d[i * 4 + canal] = Math.max(d[i * 4 + canal], v);
         });
         if (z.type === "incendie") for (const i of z.front) if (i >= 0 && i < l * h) {
           d[i * 4 + 1] = 255;
           d[i * 4] = Math.max(d[i * 4], 120);
+        }
+      }
+      // Éruption (0.43.1) : au paroxysme, le cratère rougeoie ; une éruption effusive (VEI 0 à 2) épanche sa lave autour, sur
+      // un à trois kilomètres (les coulées hawaïennes font de quelques centaines de mètres à des dizaines de kilomètres).
+      for (const z of zones) {
+        if (z.type !== "eruption" || !z.active || z.phase < 1) continue;
+        const r = z.intensite <= 2 ? 1 + z.intensite : 0;
+        for (let dy = -Math.ceil(r); dy <= Math.ceil(r); dy++) for (let dx = -Math.ceil(r); dx <= Math.ceil(r); dx++) {
+          const x = z.x + dx, y = z.y + dy;
+          if (x < 0 || y < 0 || x >= l || y >= h || dx * dx + dy * dy > r * r + 0.5) continue;
+          // Des langues de lave, pas un disque : une case sur deux environ, d'autant moins qu'on s'éloigne du cratère.
+          if ((dx || dy) && unite(hacher(z.id, x, y)) > 0.75 - 0.15 * Math.hypot(dx, dy)) continue;
+          const i = y * l + x;
+          d[i * 4] = 255;
+          d[i * 4 + 1] = 255;
         }
       }
     });
@@ -273,9 +293,66 @@ export class Incendies3D {
         this.fumees.ajouter(x, this.relief.hauteur(x, zz) + 10, zz, 30 + 30 * r(3), r(4), vx, vz, 35 + 20 * r(5));
       }
     }
+    this.poserPanaches(camera, qualite, () => meilleure, (v, d) => {
+      meilleure = d;
+      this.plusProche = v;
+    });
     this.flammes.envoyer();
     this.fumees.envoyer();
     this.braises.envoyer();
+  }
+
+  /**
+   * Panaches (0.43.1, E1) : celui d'une éruption (vapeur quand le volcan gronde, colonne de cendres au paroxysme, haute de 2 à
+   * plus de 25 km selon l'indice d'explosivité, et fontaines de lave pour une éruption effusive), et le champignon d'un impact.
+   */
+  private poserPanaches(camera: THREE.Vector3, qualite: number, meilleure: () => number, plusProche: (v: THREE.Vector3, d: number) => void): void {
+    const m = this.relief.m;
+    for (const z of this.zones) {
+      if (!z.active || (z.type !== "eruption" && z.type !== "impact")) continue;
+      const x0 = (z.x + 0.5) * m, z0 = (z.y + 0.5) * m;
+      const y0 = Math.max(0, this.relief.hauteur(x0, z0));
+      const d = Math.hypot(x0 - camera.x, z0 - camera.z);
+      const r = (k: number, u: number) => unite(hacher(z.id, k, 300 + u));
+      if (z.type === "eruption") {
+        const vei = Math.max(0, z.intensite);
+        if (z.phase < 1) {
+          // Le volcan gronde : un panache de vapeur et de gaz, blanchâtre.
+          for (let k = 0; k < 8; k++) this.fumees.ajouter(x0 + (r(k, 1) - 0.5) * 200, y0 + 20, z0 + (r(k, 2) - 0.5) * 200, 40 + 30 * r(k, 3), r(k, 4), 0.2, 0.1, 40 + 20 * r(k, 5));
+          continue;
+        }
+        // Colonne : la hauteur d'une bouffée au bout de sa montée vaut 14 fois sa taille.
+        const echelle = Math.min(1800, 140 * Math.pow(1.6, vei));
+        const n = Math.round((24 + 6 * vei) * Math.max(0.5, qualite));
+        for (let k = 0; k < n; k++) {
+          this.fumees.ajouter(x0 + (r(k, 1) - 0.5) * 300, y0 + 30, z0 + (r(k, 2) - 0.5) * 300, echelle * (0.6 + 0.6 * r(k, 3)), 7 + r(k, 4), 0.15, 0.1, 50 + 40 * r(k, 5));
+        }
+        // Fontaines et lueur du cratère.
+        const fontaine = vei <= 2 ? 40 + 50 * vei : 25;
+        const nf = d < 15000 ? 60 : 12;
+        for (let k = 0; k < nf; k++) {
+          const a = r(k, 6) * Math.PI * 2, e = r(k, 7) * 120;
+          const x = x0 + Math.cos(a) * e, zz = z0 + Math.sin(a) * e;
+          this.flammes.ajouter(x, Math.max(0, this.relief.hauteur(x, zz)) - 1, zz, fontaine * (0.3 + 0.7 * r(k, 8)), r(k, 9) * 60, 0, 0, 0);
+          if (r(k, 10) < 0.3) this.braises.ajouter(x, y0 + fontaine * 0.4, zz, fontaine * 2, r(k, 11), 0, 0, 3 + 3 * r(k, 12));
+        }
+        if (d < meilleure()) plusProche(new THREE.Vector3(x0, y0 + 60, z0), d);
+      } else {
+        // Impact : la colonne monte, le chapeau s'étale à 8-15 km (champignon d'un souffle de l'ordre de la mégatonne).
+        const mt = Math.max(0.01, z.intensite);
+        const haut = Math.min(15000, 6000 + 2500 * Math.log10(1 + mt));
+        const col = Math.round(18 * Math.max(0.5, qualite));
+        for (let k = 0; k < col; k++) {
+          this.fumees.ajouter(x0 + (r(k, 1) - 0.5) * 600, y0 + 50, z0 + (r(k, 2) - 0.5) * 600, (haut / 14) * (0.7 + 0.5 * r(k, 3)), 5 + r(k, 4), 0, 0, 60 + 30 * r(k, 5));
+        }
+        for (let k = 0; k < 30; k++) {
+          const a = (k / 30) * Math.PI * 2 + r(k, 6);
+          const ray = haut * 0.2 * r(k, 7);
+          this.fumees.ajouter(x0 + Math.cos(a) * ray, y0 + haut * (0.85 + 0.2 * r(k, 8)), z0 + Math.sin(a) * ray, haut * 0.09 * (0.7 + 0.6 * r(k, 9)), 6 + r(k, 10),
+            Math.cos(a) * 0.25, Math.sin(a) * 0.25, -(80 + 40 * r(k, 11)));
+        }
+      }
+    }
   }
 
   /** Le front le plus proche d'un point (m), ou null. */

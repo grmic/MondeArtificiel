@@ -88,6 +88,12 @@ export class CorpsProches {
    */
   pluie = 0;
   feuEn: (x: number, z: number) => number = () => 0;
+  /**
+   * Catastrophes (0.43.1, H1) : direction d'un phénomène du ciel (comète, aurore, éclipse, boule de feu) vers lequel la plupart
+   * lèvent les yeux, et effroi d'un séisme qu'on sent (0 à 1).
+   */
+  regardCiel: THREE.Vector3 | null = null;
+  effroi = 0;
   /** Humain toujours détaillé, corps et visage, où qu'il soit (suivi ou Portrait, 0.41.3). */
   force: number | null = null;
   /** Corps réalistes MakeHuman (0.41.4) ; faux : corps calculés de la 0.41.1. */
@@ -209,7 +215,7 @@ export class CorpsProches {
         allaite: s.activite === A.Allaiter && (s.etat & 4) !== 0,
         // F1 (0.41.8) : ce que vit l'humain ; la maladie pèse d'autant plus que la santé est basse.
         froid: Math.max(lisser(15, 70, s.froid), dort || c.posture === "nage" ? 0 : this.pluie * 0.6), faim: s.faim / 100, fatigue: s.fatigue / 100,
-        peur: Math.max(lisser(10, 70, s.peur), dort ? 0 : this.feuEn(pl.x, pl.z) * 0.7),
+        peur: Math.max(lisser(10, 70, s.peur), dort ? 0 : Math.max(this.feuEn(pl.x, pl.z) * 0.7, this.effroi)),
         malade: s.etat & 1 ? 0.6 + 0.4 * (1 - s.sante / 100) : lisser(60, 25, s.sante), enceinte: (s.etat & 2) !== 0,
         humeur: s.humeur, nevrosisme: s.nevrosisme, extraversion: s.extraversion, nage: s.nage,
         parle: c.parle, converse: c.interlocuteur > 0 && c.posture !== "enlace",
@@ -221,6 +227,10 @@ export class CorpsProches {
       // En combat (0.42.0), on ne quitte pas l'adversaire des yeux.
       const adversaire = c.role?.face ? this.foule.position(c.role.face) : null;
       anim.regard = adversaire && !dort ? adversaire : c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, c.interlocuteur, places, pl, temps, arrivants);
+      // Un phénomène du ciel : huit sur dix lèvent les yeux (les autres ne l'ont pas remarqué, ou s'en détournent).
+      if (this.regardCiel && !dort && !adversaire && c.ecoute <= 0.3 && unite(hacher(s.id, 77, 5)) < 0.8) {
+        anim.regard = new THREE.Vector3(pl.x, pl.y + 1.5, pl.z).addScaledVector(this.regardCiel, 1000);
+      }
       // Au sein, elle regarde son enfant.
       const auSein = sit.allaite && enfant ? this.corps.get(enfant.s.id) : undefined;
       if (auSein && c.ecoute <= 0.3) anim.regard = auSein.maillage.localToWorld(osEn(auSein, "tete", new THREE.Vector3()));

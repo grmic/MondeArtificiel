@@ -56,6 +56,12 @@ export class Ciel {
    */
   couvert = 0;
   eclair = 0;
+  /**
+   * Catastrophes du ciel (0.43.1, E1) : part du soleil cachée par une éclipse (0 à 1), et voile d'un hiver volcanique ou d'impact
+   * (0 à 1) qui pâlit et rougit le soleil, baisse la lumière et épaissit la brume.
+   */
+  obscurite = 0;
+  hiver = 0;
   /** Clarté du moment (0 nuit, 1 plein jour), comme la simulation. */
   clarte = 1;
   /** Exposition visée (l'œil, ou l'appareil, s'adapte) : plus haute la nuit. */
@@ -385,7 +391,12 @@ export class Ciel {
     this.uCouleurSoleil.value.set(ts[0] * S, ts[1] * S, ts[2] * S);
     const disqueLune = 0.9 * Math.min(1, tl[1] * 4 + 0.2);
     this.uCouleurLune.value.set(disqueLune * 0.95, disqueLune * 0.95, disqueLune * 0.9);
-    const voile = 1 - 0.8 * this.couvert;
+    // Une éclipse ne laisse passer que la part du soleil encore découverte ; un hiver de cendres ou de suies en arrête l'essentiel.
+    const cache = (1 - this.obscurite) * (1 - 0.8 * this.hiver);
+    this.gain.value = (S / ECHELLE) * Math.max(0.02, cache);
+    ts[1] *= 1 - 0.25 * this.hiver;
+    ts[2] *= 1 - 0.45 * this.hiver;
+    const voile = (1 - 0.8 * this.couvert) * cache;
     const eSoleil = lum(ts) * S * Math.max(0, this.direction.y) * voile;
     const eLune = lum(tl) * S * LUNE * Math.max(0, this.directionLune.y) * voile;
     if (eSoleil >= eLune) {
@@ -401,17 +412,18 @@ export class Ciel {
     this.astre.target.updateMatrixWorld();
 
     // Lumière du ciel (calculée sur la texture), lueur de la nuit, et sol qui renvoie un peu de lumière.
-    const [r, v, b] = this.cielSol;
+    const [r, v, b] = this.cielSol.map((c) => c * Math.max(0.02, cache)) as Rgb;
     this.hemi.color.setRGB(r + LUEUR_NUIT[0], v + LUEUR_NUIT[1], b + LUEUR_NUIT[2]);
-    const renvoi = 0.16 * (Math.max(eSoleil, eLune) + lum(this.cielSol));
+    const renvoi = 0.16 * (Math.max(eSoleil, eLune) + lum(this.cielSol) * cache);
     this.hemi.groundColor.setRGB(renvoi * 0.95, renvoi * 0.85, renvoi * 0.65);
     // Un éclair illumine tout un instant, d'autant plus que la nuit est noire.
     this.hemi.intensity = 1 + this.eclair * 0.6 / Math.max(lum(this.cielSol), 0.004);
     this.uNuit.value.set(LUEUR_NUIT[0] * 0.08, LUEUR_NUIT[1] * 0.08, LUEUR_NUIT[2] * 0.08);
-    this.eclairement = eSoleil + eLune + lum(this.cielSol) + lum(LUEUR_NUIT);
+    this.eclairement = eSoleil + eLune + lum(this.cielSol) * cache + lum(LUEUR_NUIT);
     // Exposition visée : un gris moyen bien exposé de jour ; la nuit, l'adaptation s'arrête avant de rendre la nuit claire.
     this.expositionVisee = 1.9 / Math.max(this.eclairement, 0.09);
-    this.materiauEtoiles.opacity = Math.max(0, 1 - this.clarte * 2.5);
+    // Les étoiles paraissent aussi au plus noir d'une éclipse totale.
+    this.materiauEtoiles.opacity = Math.max(0, 1 - this.clarte * cache * 2.5);
 
     // Nuages : la couverture change d'un jour à l'autre (sans à-coup), le vent les pousse.
     const c0 = unite(hacher(jour, 31, 7));
@@ -433,7 +445,7 @@ export class Ciel {
     const matin = apresLever < 4 ? 1 - apresLever / 4 : 0;
     const nuitBrume = this.clarte < 0.5 ? 0.5 : 0;
     this.uBrume.value = 0.00012 + 0.0008 * Math.max(matin, nuitBrume, 0.6 * this.couvert);
-    this.uVoile.value = (2.2e-5 * (1 + 6 * this.couvert)) / (1 + haut / 4000);
+    this.uVoile.value = (2.2e-5 * (1 + 6 * this.couvert) * (1 + 5 * this.hiver)) / (1 + haut / 4000);
   }
 
   /** Refait `n` lignes de la texture du ciel ; à la dernière, l'envoie au GPU et calcule la lumière du ciel. */

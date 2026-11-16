@@ -6,7 +6,7 @@ using Monde.Simulation.Temps;
 
 namespace Monde.Tests;
 
-/// <summary>0.43.0 : averses détaillées à partir des jours de pluie de la simulation, et catastrophes en cours pour la carte et la 3D.</summary>
+/// <summary>0.43.0 et 0.43.1 : averses détaillées à partir des jours de pluie de la simulation, et catastrophes en cours pour la carte et la 3D.</summary>
 public sealed class TempsTests
 {
     private const long Jour = Calendrier.SecondesParJour;
@@ -69,6 +69,18 @@ public sealed class TempsTests
         var t = TempsDto.Depuis(monde);
         Assert.Equal(0, t.Jour);
         Assert.Empty(monde.JoursDePluie(-1).Where(p => p));
+    }
+
+    [Fact]
+    public void EnCours_DitLaPartEtLaDureeDUneEclipse()
+    {
+        var monde = new MondeSimule(MondeSimuleTests.Carte42, MondeSimule.Nouveau(42));
+        monde.Declencher(TypeCatastrophe.Eclipse, 0, 0, 1);
+        var en = EnCoursDto.Depuis(monde);
+        var eclipse = Assert.Single(en.Continent, c => c.Type == "eclipse");
+        Assert.InRange(eclipse.Intensite, 0.8, 1);
+        Assert.Equal(Calendrier.SecondesParHeure, eclipse.Duree);
+        Assert.Equal(monde.Secondes, eclipse.Debut);
     }
 
     [Fact]

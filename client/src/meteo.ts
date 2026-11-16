@@ -115,7 +115,8 @@ export interface ZoneJson {
 export interface EnCoursJson {
   secondes: number;
   zones: ZoneJson[];
-  continent: { id: number; type: string; nom: string }[];
+  /** Tout le continent : intensité (part d'une éclipse, écart de température…), début et durée prévue (secondes, 0.43.1). */
+  continent: { id: number; type: string; nom: string; intensite: number; debut: number; duree: number }[];
 }
 
 /** Dégâts d'une zone, octet par case (le serveur envoie un tableau d'octets en Base64). */

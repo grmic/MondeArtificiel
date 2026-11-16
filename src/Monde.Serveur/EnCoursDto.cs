@@ -15,8 +15,11 @@ namespace Monde.Serveur;
 public sealed record ZoneDto(long Id, string Type, string Nom, bool Active, int X, int Y, int Rayon, double Intensite, int Phase,
     double Direction, long Debut, int[] Cases, byte[] Degats, int[] Front);
 
-/// <summary>Ce qui couvre tout le continent (froid, canicule, phénomènes du ciel, hivers) : un bandeau sur la carte.</summary>
-public sealed record ContinentDto(long Id, string Type, string Nom);
+/// <summary>
+/// Ce qui couvre tout le continent (froid, canicule, phénomènes du ciel, hivers) : un bandeau sur la carte, et le ciel de la vue 3D
+/// (0.43.1) : intensité (part du soleil cachée par une éclipse, écart de température d'un hiver…), début et durée prévue (secondes).
+/// </summary>
+public sealed record ContinentDto(long Id, string Type, string Nom, double Intensite, long Debut, long Duree);
 
 /// <summary>Les catastrophes à montrer sur la carte et dans la vue 3D, relues toutes les quelques secondes.</summary>
 public sealed record EnCoursDto(long Secondes, IReadOnlyList<ZoneDto> Zones, IReadOnlyList<ContinentDto> Continent)
@@ -39,7 +42,7 @@ public sealed record EnCoursDto(long Secondes, IReadOnlyList<ZoneDto> Zones, IRe
             if (c.Rayon >= largeur || c.Type is TypeCatastrophe.HiverDImpact or TypeCatastrophe.HiverVolcanique
                 || (TypesCatastrophe.EstPhenomene(c.Type) && c.Type != TypeCatastrophe.Bolide))
             {
-                if (c.Active) continent.Add(new ContinentDto(c.Id, cle, L.Garde(c.Nom)));
+                if (c.Active) continent.Add(new ContinentDto(c.Id, cle, L.Garde(c.Nom), Math.Round(c.Intensite, 3), c.Debut, c.Duree));
                 continue;
             }
             if (c.Type == TypeCatastrophe.Epidemie) continue;

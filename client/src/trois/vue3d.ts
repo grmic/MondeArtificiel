@@ -32,6 +32,7 @@ import { BOUTON, Manette, nomBouton, type EtatManette, type Famille } from "./ma
 import { decrireFacteur } from "../horloge";
 import { Eclairs, Precipitations, meteoGPU } from "./meteo3d";
 import { Incendies3D } from "./incendies3d";
+import { Phenomenes3D } from "./phenomenes3d";
 import { etatA, lireAverses, regionDe, type Averse, type EnCoursJson, type EtatTemps, type TempsJson, type ZoneJson } from "../meteo";
 
 /** Ce que la vue 3D demande au reste du client. */
@@ -224,6 +225,18 @@ export class Vue3D {
   private pluieIci = 0;
   private neigeIci = 0;
   private orageIci = 0;
+  /**
+   * Catastrophes autour (0.43.1) : ce qu'on relit du serveur, tempête et cendre sur la caméra (0 à 1), secousse d'un séisme (début,
+   * durée en ms, amplitude en m), éclair d'un impact, et les catastrophes déjà ressenties (une secousse, un éclair chacune).
+   */
+  private enCours: EnCoursJson | null = null;
+  private tempeteIci = 0;
+  private cendreIci = 0;
+  private secousse: { debut: number; duree: number; amplitude: number } | null = null;
+  private readonly decalage = new THREE.Vector3();
+  private flashImpact = 0;
+  private readonly ressenties = new Set<number>();
+  private readonly phenomenes: Phenomenes3D;
   private readonly proches: CorpsProches;
   private readonly camp: Camp3D;
   /** Les bêtes vivantes (0.44.0). */
@@ -353,6 +366,7 @@ export class Vue3D {
     this.precipitations = new Precipitations(this.vent.u);
     this.eclairs = new Eclairs(this.relief);
     this.incendies = new Incendies3D(this.relief, ctx.carte.largeur);
+    this.phenomenes = new Phenomenes3D();
     this.proches = new CorpsProches(this.foule);
     this.proches.feuEn = (x, z) => {
       const f = this.incendies.frontProche(x, z);
@@ -367,7 +381,7 @@ export class Vue3D {
     this.mer.renderOrder = 2;
     this.mer.frustumCulled = false;
     this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, ...(this.tapis ? [this.tapis.groupe] : []), this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.faune.groupe, this.mer,
-      this.precipitations.groupe, this.eclairs.groupe, this.incendies.groupe);
+      this.precipitations.groupe, this.eclairs.groupe, this.incendies.groupe, this.phenomenes.groupe);
 
     this.qualite = (lireStockage("monde.qualite3d") as Qualite | null) ?? "moyenne";
     if (!(this.qualite in QUALITES)) this.qualite = "moyenne";
@@ -1806,6 +1820,7 @@ export class Vue3D {
     const en = await connexion.invoke<EnCoursJson>("EnCours").catch(() => null);
     if (!en) return;
     this.zones = en.zones;
+    this.enCours = en;
     this.incendies.definir(en.zones);
   }
 
@@ -1818,6 +1833,7 @@ export class Vue3D {
     if (t && maintenant - this.tempsA > 500) {
       this.tempsA = maintenant;
       const e = (this.etatTemps = etatA(t, this.averses, secondes));
+      this.ajouterTempetes(e);
       meteoGPU.definirTemps(e);
       const m = this.relief.m;
       const regionM = e.tailleRegion * m;
@@ -1848,6 +1864,99 @@ export class Vue3D {
     this.ciel.couvert = Math.min(1, Math.max(this.pluieIci, this.neigeIci) * 1.6 + this.orageIci * 0.4);
     // Sous l'orage, le vent souffle en rafales (le vent du jour, renforcé).
     if (this.orageIci > 0.05) this.vent.u.value.multiplyScalar(1 + 1.8 * this.orageIci);
+    this.mettreAJourCatastrophes(secondes, p, maintenant, dt);
+  }
+
+  /**
+   * Une tempête (0.43.1, E1) : sur son disque, la pluie bat fort et l'orage gronde, d'autant plus près de l'œil. Elle s'ajoute aux
+   * averses du jour avant que l'état parte au GPU, si bien que gouttes, nuages, sol mouillé et éclairs la suivent.
+   */
+  private ajouterTempetes(e: EtatTemps): void {
+    for (const z of this.zones) {
+      if (z.type !== "cyclone" || !z.active) continue;
+      for (let r = 0; r < e.pluie.length; r++) {
+        const cx = ((r % e.regionsX) + 0.5) * e.tailleRegion, cy = (Math.floor(r / e.regionsX) + 0.5) * e.tailleRegion;
+        const s = Math.max(0, 1 - Math.hypot(cx - z.x, cy - z.y) / Math.max(1, z.rayon + e.tailleRegion * 0.5));
+        if (s <= 0) continue;
+        const f = Math.sqrt(s);
+        e.pluie[r] = Math.max(e.pluie[r], 0.6 + 0.4 * f);
+        e.orage[r] = Math.max(e.orage[r], 0.8 * f);
+        e.mouille[r] = Math.max(e.mouille[r], 1);
+        if (f > 0.5 && !e.orages.some((o) => o.region === r)) e.orages.push({ region: r, x: -1, y: -1, force: f });
+      }
+    }
+  }
+
+  /**
+   * Les catastrophes autour de la caméra (0.43.1, E1 et H1) : vent et ciel d'une tempête, cendre d'une éruption, secousse d'un
+   * séisme, éclair d'un impact, éclipse, hivers de cendres ou de suies, et ce que regardent les humains.
+   */
+  private mettreAJourCatastrophes(secondes: number, p: THREE.Vector3, maintenant: number, dt: number): void {
+    const m = this.relief.m;
+    let tempete = 0, cendre = 0;
+    for (const z of this.zones) {
+      if (!z.active) continue;
+      const d = Math.hypot((z.x + 0.5) * m - p.x, (z.y + 0.5) * m - p.z);
+      if (z.type === "cyclone") tempete = Math.max(tempete, Math.sqrt(Math.max(0, 1 - d / Math.max(m, z.rayon * m))));
+      // Retombées de cendre au paroxysme : d'autant plus que l'éruption est explosive et qu'on est près.
+      if (z.type === "eruption" && z.phase >= 1) cendre = Math.max(cendre, Math.min(1, z.intensite / 3) * Math.max(0, 1 - d / Math.max(m, z.rayon * m)));
+      // Secousse et éclair ne se ressentent qu'à l'instant : pas en ouvrant la vue une demi-heure après.
+      if (this.ressenties.has(z.id) || secondes - z.debut > 900) continue;
+      if (z.type === "seisme") {
+        this.ressenties.add(z.id);
+        // Amplitude ressentie (m) : magnitude et distance (atténuation grossière d'un séisme superficiel) ; durée de la secousse
+        // forte : quelques secondes à M 5, une demi-minute à M 7, plus d'une minute au-delà de 8.
+        const M = z.intensite;
+        const amplitude = (0.04 * Math.pow(10, 0.5 * (M - 5))) / (1 + d / 15000);
+        if (amplitude > 0.004) this.secousse = { debut: maintenant, duree: Math.min(90000, 4000 * Math.pow(2, M - 5)), amplitude: Math.min(0.6, amplitude) };
+      } else if (z.type === "impact" && d < 400000) {
+        this.ressenties.add(z.id);
+        this.flashImpact = Math.min(1, 300000 / Math.max(d, 30000));
+      }
+    }
+    const k = Math.min(1, dt / 3);
+    this.tempeteIci += (tempete - this.tempeteIci) * k;
+    this.cendreIci += (cendre - this.cendreIci) * k;
+    if (this.tempeteIci > 0.02) {
+      this.ciel.couvert = Math.max(this.ciel.couvert, this.tempeteIci);
+      this.vent.u.value.setLength(Math.min(2.2, this.vent.force + 1.8 * this.tempeteIci));
+    }
+    if (this.cendreIci > 0.02) this.ciel.couvert = Math.max(this.ciel.couvert, this.cendreIci * 0.9);
+
+    // Éclipse : le disque de la lune mord le soleil puis le libère en une heure ; totale, quelques minutes de nuit en plein jour.
+    let obscurite = 0, hiver = 0;
+    for (const c of this.enCours?.continent ?? []) {
+      if (c.type === "eclipse" && c.duree > 0) {
+        const u = (secondes - c.debut) / c.duree;
+        if (u > 0 && u < 1) {
+          const pic = 1 - Math.abs(2 * u - 1);
+          obscurite = Math.max(obscurite, c.intensite >= 0.999 && pic > 0.94 ? 0.9995 : Math.min(0.995, c.intensite * Math.sqrt(pic)));
+        }
+      } else if (c.type === "hiver-impact") hiver = Math.max(hiver, Math.min(1, Math.abs(c.intensite) / 8));
+      else if (c.type === "hiver-volcanique") hiver = Math.max(hiver, Math.min(0.6, Math.abs(c.intensite) / 4));
+    }
+    this.ciel.obscurite = obscurite;
+    this.ciel.hiver = hiver;
+    this.flashImpact *= Math.exp(-dt / 1.5);
+    this.proches.effroi = this.secousse ? 0.85 : 0;
+  }
+
+  /** Secousse d'un séisme : la caméra tremble autour de sa place (ôté après le rendu, pour ne pas dériver). */
+  private secouer(maintenant: number): void {
+    const s = this.secousse;
+    this.decalage.set(0, 0, 0);
+    if (!s) return;
+    const u = (maintenant - s.debut) / s.duree;
+    if (u >= 1) {
+      this.secousse = null;
+      return;
+    }
+    // Les ondes P d'abord (faibles), puis les ondes S et de surface (fortes), qui s'amortissent.
+    const env = u < 0.1 ? 0.25 : Math.min(1, (u - 0.1) / 0.08) * Math.exp(-(u - 0.18) * 2.5);
+    const t = maintenant / 1000;
+    const a = s.amplitude * Math.max(0.15, env);
+    this.decalage.set(Math.sin(t * 23.1) * Math.sin(t * 3.7) * a, Math.sin(t * 17.3 + 1) * a * 0.5, Math.sin(t * 19.7 + 2) * Math.cos(t * 4.3) * a);
+    this.camera.position.add(this.decalage);
   }
 
   /**
@@ -1889,6 +1998,20 @@ export class Vue3D {
     } else if (z.type === "eruption") {
       recul = 9000;
       haut = 1200;
+    } else if (z.type === "impact") {
+      // Le champignon monte à plus de dix kilomètres : on le voit de loin.
+      recul = 30000;
+      haut = 1500;
+    } else if (z.type === "cyclone") {
+      // Dans la tempête, au sol, à mi-chemin de l'œil.
+      recul = Math.max(1500, z.rayon * m * 0.3);
+      haut = 40;
+    } else if (z.type === "crue" || z.type === "tsunami") {
+      recul = 1500;
+      haut = 150;
+    } else if (z.type === "seisme" || z.type === "bolide") {
+      recul = 400;
+      haut = 30;
     }
     const sol = Math.max(0, this.relief.hauteur(cx + dir.x * recul, cz + dir.y * recul));
     this.camera.position.set(cx + dir.x * recul, sol + haut, cz + dir.y * recul);
@@ -2003,11 +2126,17 @@ export class Vue3D {
     this.animerFaune(dt, p);
     this.suivreBeteImage(dt);
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
-    this.precipitations.animer(this.pluieIci, this.neigeIci, this.ciel.hemi.color);
+    // L'eau d'une crue renvoie la lumière du ciel (la couleur du ciel près de l'horizon, plus claire que la moyenne).
+    meteoGPU.uCielEau.value.set(this.ciel.hemi.color.r, this.ciel.hemi.color.g, this.ciel.hemi.color.b).multiplyScalar(0.6 * this.ciel.hemi.intensity);
+    this.precipitations.animer(Math.max(this.pluieIci, this.tempeteIci), this.neigeIci, this.ciel.hemi.color, this.cendreIci);
     this.proches.pluie = Math.min(1, (this.pluieIci + this.neigeIci) * 1.5);
     this.eclairs.animer(maintenant / 1000, p, this.orages, this.exposition);
-    this.ciel.eclair = this.eclairs.eclat;
-    this.incendies.animer(p, 1 - this.ciel.clarte, this.ciel.hemi.color, this.exposition, QUALITES[this.qualite].feu);
+    const nuit = 1 - this.ciel.clarte * (1 - this.ciel.obscurite);
+    this.phenomenes.animer(p, this.enCours, this.zones, this.ciel.direction, nuit, this.exposition, maintenant);
+    this.ciel.eclair = Math.max(this.eclairs.eclat, this.phenomenes.eclat, this.flashImpact);
+    // On lève les yeux vers ce qui se passe dans le ciel, et vers le soleil qui s'éteint pendant une éclipse.
+    this.proches.regardCiel = this.phenomenes.regard ?? (this.ciel.obscurite > 0.3 && this.ciel.direction.y > 0 ? this.ciel.direction : null);
+    this.incendies.animer(p, nuit, this.ciel.hemi.color, this.exposition, QUALITES[this.qualite].feu);
     this.mer.position.set(p.x, 0, p.z);
     this.eau.origineMer.value.set(p.x, p.z);
     this.eau.mettreAJour(p);
@@ -2035,9 +2164,15 @@ export class Vue3D {
       const r = this.suivi ? Math.max(0.03, Math.min(0.8, this.suivi.distance * 0.12)) : Math.max(0.3, Math.min(2.5, haut * 0.25));
       this.aoNoeud.radius.value = r;
     }
+    this.secouer(maintenant);
+    if (this.decalage.lengthSq() > 0) this.camera.updateMatrixWorld();
     this.ciel.rendreNuages(this.renderer, this.camera);
     if (this.chaine) this.chaine.render();
     else this.renderer.render(this.scene, this.camera);
+    if (this.decalage.lengthSq() > 0) {
+      this.camera.position.sub(this.decalage);
+      this.camera.updateMatrixWorld();
+    }
     this.montrerNoms();
     if (maintenant - this.miniA > 100) {
       this.miniA = maintenant;

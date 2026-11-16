@@ -77,13 +77,15 @@ public sealed record TemperaturesDto(int Jour, int Largeur, int Hauteur, sbyte[]
         var carte = monde.Carte;
         var midi = new sbyte[carte.Largeur * carte.Hauteur];
         var aube = new sbyte[midi.Length];
+        // L'écart du moment (vague de froid, canicule, hiver volcanique) compte, comme pour les humains (0.43.1).
+        var ecart = monde.AnomalieTemperature;
         for (var y = 0; y < carte.Hauteur; y++)
         {
             for (var x = 0; x < carte.Largeur; x++)
             {
                 var i = y * carte.Largeur + x;
-                midi[i] = (sbyte)Math.Clamp(Math.Round(Climat.Temperature(carte, x, y, debut + 12 * Calendrier.SecondesParHeure)), -128, 127);
-                aube[i] = (sbyte)Math.Clamp(Math.Round(Climat.Temperature(carte, x, y, debut + 5 * Calendrier.SecondesParHeure)), -128, 127);
+                midi[i] = (sbyte)Math.Clamp(Math.Round(Climat.Temperature(carte, x, y, debut + 12 * Calendrier.SecondesParHeure) + ecart), -128, 127);
+                aube[i] = (sbyte)Math.Clamp(Math.Round(Climat.Temperature(carte, x, y, debut + 5 * Calendrier.SecondesParHeure) + ecart), -128, 127);
             }
         }
         return new TemperaturesDto((int)(debut / Calendrier.SecondesParJour), carte.Largeur, carte.Hauteur, midi, aube);

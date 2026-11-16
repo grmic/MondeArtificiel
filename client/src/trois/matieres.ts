@@ -216,13 +216,14 @@ export class Matieres {
     const touchee = terreTouchee(mix(pres, attribute("lointain", "vec3"), loinPays), positionWorld);
     mat.colorNode = touchee.couleur;
     mat.emissiveNode = touchee.braises;
-    mat.roughnessNode = mix(resultat.a, float(0.3), mouille);
+    // Sous l'eau d'une crue (0.43.1), le sol devient un miroir boueux, lisse.
+    mat.roughnessNode = mix(mix(resultat.a, float(0.3), mouille), float(0.06), touchee.eau);
     mat.normalNode = Fn(() => {
       const n = normalize(normalWorldGeometry);
       const tx = normalize(vec3(1, 0, 0).sub(n.mul(n.x)));
       const bz = cross(tx, n);
       const nt = normaleTangente();
-      const force = mix(float(1), float(0.4), mouille);
+      const force = mix(float(1), float(0.4), mouille).mul(float(1).sub(touchee.eau.mul(0.9)));
       const w = normalize(tx.mul(nt.x.mul(force)).add(bz.mul(nt.y.mul(force))).add(n.mul(nt.z)));
       return transformNormalToView(w);
     })();
