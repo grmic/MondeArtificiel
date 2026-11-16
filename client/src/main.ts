@@ -20,6 +20,7 @@ import { PanneauJournal } from "./journal";
 import { OutilMesure, PanneauMonde } from "./monde";
 import { PanneauTerritoires } from "./territoires";
 import { PanneauParlerMonde } from "./parlermonde";
+import { PanneauRevelations } from "./revelations";
 import { placerSousLaBarre } from "./placement";
 import { nombre, t } from "./langue";
 import type { Vue3D } from "./trois/vue3d";
@@ -382,6 +383,20 @@ async function demarrer(): Promise<void> {
     entiteLlm.fermer();
     actesEntite.fermer();
     parlerMonde.basculer();
+  });
+  // Révélations de l'Entité (0.42.9).
+  const revelations = new PanneauRevelations(element("#revelations"));
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
+    if (b.id !== "boutonRevelations") b.addEventListener("click", () => revelations.fermer());
+  }
+  element("#boutonRevelations").addEventListener("click", () => {
+    fermerAutres();
+    prieres.fermer();
+    religions.fermer();
+    suivis.fermer();
+    entiteLlm.fermer();
+    actesEntite.fermer();
+    revelations.basculer();
   });
   element("#boutonActesEntite").addEventListener("click", () => {
     fermerAutres();

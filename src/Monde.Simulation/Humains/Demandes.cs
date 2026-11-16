@@ -301,10 +301,16 @@ public sealed partial class Comportement
     /// Il prie parce que l'Entité le lui a demandé : une vraie prière, qui demande ce dont il a besoin (ou remercie s'il ne manque de
     /// rien), visible parmi les prières et notée au journal.
     /// </summary>
-    private void PrierSurParole(Humain h, IReadOnlyList<Humain> tous, long maintenant, long cause)
+    /// <remarks>
+    /// <paramref name="demande"/> (0.42.9) : ce qu'il demande lui-même à l'Entité au cours d'un dialogue, et pour qui
+    /// (<paramref name="pour"/>) ; sa détresse est celle de son besoin du moment s'il porte sur la même chose, sinon modérée.
+    /// </remarks>
+    private long PrierSurParole(Humain h, IReadOnlyList<Humain> tous, long maintenant, long cause, SujetPriere? demande = null, int pour = 0)
     {
-        if (Cultes is null) return;
+        if (Cultes is null) return 0;
         var b = BesoinDePrier(h, tous, maintenant);
+        if (demande is { } d && b?.Sujet != d)
+            b = (d, pour >= 1 && pour <= tous.Count && pour != h.Id && tous[pour - 1].EstVivant ? pour : 0, 0L, d == SujetPriere.Remerciement ? 0 : 0.5, false);
         var c = h.Croyance / 100;
         var ferveur = Math.Clamp(0.5 * c + 0.4 * Math.Min(1, b?.Detresse ?? 0) + 0.2 * h.Ferveur + 0.1, 0, 1);
         var sujet = b?.Sujet ?? SujetPriere.Remerciement;
@@ -324,6 +330,7 @@ public sealed partial class Comportement
         Tour.Differer(() => cultes.Prieres.Add(Nouvelle(cultes.ProchainePriere++, evenement)));
         Confier(h, TypeIntime.Espoir, cible, new Recit("js.priere.entendra", ("qui", InvisibleRecit(h))), 20 + 50 * ferveur, evenement,
             maintenant, "priere");
+        return evenement;
     }
 
     /// <summary>Il chante : sa joie monte, et celle de ceux qui l'entendent sur sa case, d'autant plus qu'il chante bien.</summary>

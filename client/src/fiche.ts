@@ -147,6 +147,8 @@ interface Fiche {
   /** De quoi dessiner son portrait (absent d'un serveur plus ancien). */
   visage?: Visage | null;
   grossesse?: { jours: number; depuis: string } | null;
+  /** Ce qu'il sait de ce que l'Entité a révélé (0.42.9). */
+  revelations?: { id: number; texte: string; fidelite: number; souvenir: string; deQui: string | null; deQuiId: number; date: string; croit: boolean }[] | null;
 }
 
 /** Un mot et sa traduction. */
@@ -541,6 +543,26 @@ export class PanneauFiche {
         const li = el("li");
         li.append(el("span", "entite", "✦ "), t("fiche.parole", { date: x.date, mode: x.mode, texte: x.texte }) + " ", el("span", "discret", `(${x.reponse})`), " ");
         if (x.evenement > 0) li.append(boutonCause(li, x.evenement, t("commun.ceQuiSestPasse")));
+        ul.append(li);
+      }
+      corps.append(ul);
+    }
+    // Ce que l'Entité a révélé et qu'il garde en mémoire, plus ou moins fidèlement (0.42.9).
+    if (f.revelations && f.revelations.length > 0) {
+      corps.append(el("h3", undefined, t("rev.c.fiche")));
+      const ul = el("ul", "liste");
+      for (const r of f.revelations) {
+        const li = el("li", r.croit ? "entite" : undefined);
+        li.append(el("blockquote", undefined, r.texte));
+        const p = el("p", "discret", t(r.croit ? "rev.c.croit" : "rev.c.doute", { souvenir: r.souvenir, fidelite: r.fidelite, date: r.date }) + " ");
+        if (r.deQui) {
+          const b = el("button", "lien", r.deQui);
+          b.type = "button";
+          const de = r.deQuiId;
+          b.addEventListener("click", () => ouvrirHumain(de));
+          p.append(t("rev.c.deQui"), " ", b);
+        } else p.append(t("rev.c.deEntite"));
+        li.append(p);
         ul.append(li);
       }
       corps.append(ul);

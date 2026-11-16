@@ -189,7 +189,8 @@ public sealed record FicheDto(
     FeuDto? Feu = null,
     RencontresDto? Rencontres = null,
     VisageDto? Visage = null,
-    GrossesseDto? Grossesse = null)
+    GrossesseDto? Grossesse = null,
+    IReadOnlyList<RevelationConnueDto>? Revelations = null)
 {
     private static string Date(long s) => L.Date(s);
 
@@ -298,7 +299,8 @@ public sealed record FicheDto(
             VisageDto.De(monde, h, humains, maintenant),
             h.EstVivant && h.EnceinteDepuis is { } conception
                 ? new GrossesseDto((int)(Math.Max(0, maintenant - conception) / Simulation.Temps.Calendrier.SecondesParJour), Date(conception))
-                : null);
+                : null,
+            h.Revelations.Count == 0 ? null : RevelationsDto.Connues(monde, h, humains));
     }
 
     private static RencontresDto? LireRencontres(MondeSimule monde, Humain h, IReadOnlyList<Humain> humains)

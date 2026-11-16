@@ -113,6 +113,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Paroles de l'Entité au Monde entier ou à une terre, et leurs bilans (null : aucune ; 0.37.1).</summary>
     public IReadOnlyList<ParoleMonde>? ParolesMonde { get; init; }
 
+    /// <summary>Ce que l'Entité a révélé (null : rien ; 0.42.9).</summary>
+    public IReadOnlyList<Revelation>? Revelations { get; init; }
+
     /// <summary>Parcelles semées, lignées cultivées et ce que chaque communauté pense des champs (null : aucun).</summary>
     public IReadOnlyList<Parcelle>? Parcelles { get; init; }
     public IReadOnlyList<Lignee>? Lignees { get; init; }
@@ -249,7 +252,10 @@ public sealed partial class MondeSimule
         _comportement.Decrets = _ecosysteme.Decrets = _decrets;
         _comportement.Outremer = _social.Outremer = new Outremer(etat.Outremer);
         _comportement.Malheurs = _social.Malheurs = _recits = new RecitsCatastrophes(etat.RecitsCatastrophes);
-        _cultes = new Cultes(etat.Religions, etat.Prieres, etat.LieuxSacres, etat.Propheties, etat.EffetsEntite, etat.SouvenirsEntite);
+        _cultes = new Cultes(etat.Religions, etat.Prieres, etat.LieuxSacres, etat.Propheties, etat.EffetsEntite, etat.SouvenirsEntite)
+        {
+            Revelations = (etat.Revelations ?? []).Select(r => r.Copier()).ToList(),
+        };
         if (etat.ProchainePriere > _cultes.ProchainePriere) _cultes.ProchainePriere = etat.ProchainePriere;
         _comportement.Cultes = _social.Cultes = _cultes;
         // Une famine envoyée par l'Entité pèse encore sur les terres.
@@ -353,6 +359,7 @@ public sealed partial class MondeSimule
                     Outremer = _comportement.Outremer.Liste.ToList(),
                     Mandats = _social.Mandats.Select(m => m.Copier()).ToList(),
                     ParolesMonde = _parolesMonde.Count == 0 ? null : [.. _parolesMonde],
+                    Revelations = _cultes.Revelations.Count == 0 ? null : _cultes.Revelations.Select(r => r.Copier()).ToList(),
                     Parcelles = _champs.Parcelles.Count == 0 ? null : _champs.Parcelles.ToList(),
                     Lignees = _champs.Lignees.Count == 0 ? null : _champs.Lignees.ToList(),
                     IdeesChamps = _champs.Idees.Count == 0 ? null : _champs.Idees.OrderBy(x => x.Key).Select(x => (x.Key, x.Value.Copier())).ToList(),
@@ -923,6 +930,7 @@ public sealed partial class MondeSimule
             _comportement.EffetsDuJour(_secondes);
             _comportement.Religions(_humains, _secondes);
             _comportement.VivreLesCommandements(_humains, _secondes);
+            _comportement.VivreLesRevelations(_humains, _communautes, _secondes);
             _comportement.Soins(_humains, _secondes);
             _comportement.Arts(_humains, _secondes);
             _catastrophes.BrulisProtecteurs(_communautes, _humains, _secondes);

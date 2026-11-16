@@ -585,6 +585,18 @@ public sealed partial class Comportement
             {
                 // Après avoir hésité, on se décide : la parole a perdu de sa force, ce qu'elle coûte n'a pas changé.
                 var (cout, envie, raison, moitie) = Peser(h, i.Parole, x, tous, maintenant);
+                // Ce qu'il a promis de lui-même : il tient parole ou non (0.42.9).
+                if (i.Promesse)
+                {
+                    if (!TenirParole(h, i, cout, envie, maintenant))
+                    {
+                        h.Impulsions[k] = i with { Reponse = Reponse.Refusee, Jusqua = maintenant };
+                        continue;
+                    }
+                    h.Impulsions[k] = i = i with { Reponse = Reponse.Acceptee };
+                    if (Agir(h, k, i, x, tous, maintenant)) return true;
+                    continue;
+                }
                 var p = h.Personnalite;
                 var obeir = Math.Clamp((0.2 + 0.35 * p.Moral.Fondements.Autorite + 0.25 * h.Croyance / 100) * (1 - cout) + 0.4 * envie, 0.01, 0.95);
                 if (alea.Reel() >= obeir)

@@ -696,6 +696,9 @@ public sealed class Humain
     /// </summary>
     public List<Impulsion> Impulsions { get; set; } = [];
 
+    /// <summary>Ce qu'il sait de ce que l'Entité a révélé (0.42.9), et avec quelle fidélité.</summary>
+    public List<Connue> Revelations { get; set; } = [];
+
     /// <summary>Force, en ce moment, du penchant que l'Entité lui a inspiré pour un autre (0 sans penchant).</summary>
     public double Penchant(int id, long maintenant)
     {
@@ -867,6 +870,7 @@ public sealed class Humain
         copie.Savoirs = [.. Savoirs];
         copie.Objets = [.. Objets];
         copie.Impulsions = [.. Impulsions];
+        copie.Revelations = [.. Revelations];
         copie.Vocabulaire = [.. Vocabulaire];
         return copie;
     }

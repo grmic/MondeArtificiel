@@ -438,6 +438,15 @@ public static class Contexte
                 d.AppendLine($"- {L.T("llm.h.priere")} n°{p.Id}, {p.Date} : {p.Texte} → {p.Issue}{(p.Conclusion is null ? "" : $" ({p.Conclusion})")}");
         }
         foreach (var p in f.Paroles.Take(5)) d.AppendLine($"- {L.T("llm.h.parole")} {p.Date} ({p.Mode}) : {p.Texte} → {p.Reponse}");
+        // Ce que l'Entité a révélé et qu'il garde en mémoire, plus ou moins fidèlement (0.42.9).
+        if (f.Revelations is { Count: > 0 } revelations)
+        {
+            d.AppendLine(L.T("llm.h.revelations"));
+            foreach (var rv in revelations.Take(8))
+                d.AppendLine("- " + L.T("llm.h.revelation", ("texte", ClientLlm.Couper(rv.Texte, 400)), ("souvenir", rv.Souvenir),
+                    ("de", rv.DeQui is null ? L.T("llm.h.revelation.entite") : L.T("llm.h.revelation.de", ("nom", rv.DeQui))),
+                    ("croit", L.T(rv.Croit ? "llm.h.revelation.croit" : "llm.h.revelation.doute"))));
+        }
         Ligne(d, "llm.h.communaute", f.Communaute is null ? L.T("llm.h.seul") : $"{L.Communaute(f.Communaute.Nom)} (n°{f.Communaute.Id})");
         Ligne(d, "llm.h.liens", string.Join(" ; ", f.Liens.Take(10).Select(l => $"{l.Nom} n°{l.Id} ({l.Statut}, {L.T("llm.h.affection")} {l.Affection}{(l.Vivant ? "" : ", " + L.T("llm.h.disparu"))})")));
         if (f.Jardin.Count > 0)

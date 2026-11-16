@@ -620,6 +620,22 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     }
 
+    /// <summary>Ce que l'Entité a révélé, et ce que les humains en savent encore (0.42.9), du plus récent au plus ancien.</summary>
+    public List<RevelationDto> Revelations() => RevelationsDto.Liste(service);
+
+    /// <summary>
+    /// L'Entité révèle quelque chose à toute une communauté, ou au Monde entier : chacun la comprend ou non, y croit ou non, et
+    /// garde en mémoire ce qu'il a compris ; il le racontera aux siens (0.42.9).
+    /// </summary>
+    public async Task<ResultatRevelationDto> Reveler(DemandeRevelation demande)
+    {
+        var monde = service.Monde;
+        var r = Appeler(() => RevelationsDto.Reveler(monde, demande));
+        service.Sauvegarder();
+        await Clients.Diffuser("Humains", () => HumainDto.Depuis(monde));
+        return r;
+    }
+
     /// <summary>L'Entité inspire un penchant amoureux (ou une passion) à des humains, pour quelqu'un ou pour qui le monde choisit.</summary>
     public async Task<List<ResultatParoleDto>> Inspirer(DemandePenchant demande)
     {

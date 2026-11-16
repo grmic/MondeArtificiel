@@ -30,6 +30,12 @@ public sealed class Cultes
         ProchainePriere = Prieres.Count == 0 ? 1 : Prieres[^1].Id + 1;
     }
 
+    /// <summary>Ce que l'Entité a révélé (0.42.9), de la première révélation à la dernière (le numéro est le rang à partir de 1).</summary>
+    public List<Revelation> Revelations { get; init; } = [];
+
+    /// <summary>La révélation de ce numéro, ou null.</summary>
+    public Revelation? Revelation(int id) => id >= 1 && id <= Revelations.Count ? Revelations[id - 1] : null;
+
     /// <summary>Religions, de la première à la dernière (le numéro d'une religion est son rang à partir de 1).</summary>
     public List<Religion> Religions { get; }
 

@@ -145,8 +145,9 @@ public enum Reponse : byte
 /// <param name="Reponse">Ce qu'il en a fait.</param>
 /// <param name="EvenementId">Événement du journal qui rapporte la réception : la cause de ses suites.</param>
 /// <param name="Orientation">Penchant qui va contre son orientation : l'Entité a changé son cœur.</param>
+/// <param name="Promesse">Il l'a promis lui-même à l'Entité au cours d'un dialogue (0.42.9) : il le tiendra ou non, selon sa conscience.</param>
 public sealed record Impulsion(Parole Parole, ModeParole Mode, int CibleId, int Param, double Force, long Le, long Jusqua, long AgirLe,
-    Reponse Reponse, long EvenementId, bool Orientation = false)
+    Reponse Reponse, long EvenementId, bool Orientation = false, bool Promesse = false)
 {
     /// <summary>Il y a cru (qu'il ait obéi ou non).</summary>
     public bool Crue => Reponse is Reponse.Acceptee or Reponse.Differee or Reponse.AMoitie or Reponse.Refusee or Reponse.Accomplie or Reponse.Abandonnee;

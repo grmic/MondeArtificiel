@@ -195,7 +195,7 @@ public sealed partial class DepotMonde
             }
         }
         commande.CommandText = """
-            SELECT humain, parole, mode, cible, param, force, le, jusqua, agir_le, reponse, evenement, orientation
+            SELECT humain, parole, mode, cible, param, force, le, jusqua, agir_le, reponse, evenement, orientation, promesse
             FROM impulsions ORDER BY humain, rang;
             """;
         using (var l = commande.ExecuteReader())
@@ -207,7 +207,7 @@ public sealed partial class DepotMonde
                 var reponse = (Reponse)l.GetInt32(9);
                 if (!Enum.IsDefined(parole) || !Enum.IsDefined(mode) || !Enum.IsDefined(reponse)) continue;
                 Trouver(l.GetInt64(0))?.Impulsions.Add(new Impulsion(parole, mode, l.GetInt32(3), l.GetInt32(4), l.GetDouble(5), l.GetInt64(6),
-                    l.GetInt64(7), l.GetInt64(8), reponse, l.GetInt64(10), l.GetBoolean(11)));
+                    l.GetInt64(7), l.GetInt64(8), reponse, l.GetInt64(10), l.GetBoolean(11), l.GetBoolean(12)));
             }
         }
     }
@@ -228,9 +228,9 @@ public sealed partial class DepotMonde
             "INSERT INTO objets (humain, rang, matiere, qualite, usure, plein, pieces) VALUES ($h, $r, $m, $q, $u, $p, $pi);",
             "$h", "$r", "$m", "$q", "$u", "$p", "$pi"), "DELETE FROM objets WHERE humain = $h;", "DELETE FROM objets;");
         using var impulsions = new ParHumain(connexion, transaction, ecritures, "impulsions", Preparer(connexion, transaction, """
-            INSERT INTO impulsions (humain, rang, parole, mode, cible, param, force, le, jusqua, agir_le, reponse, evenement, orientation)
-            VALUES ($h, $r, $p, $m, $c, $pa, $f, $le, $j, $a, $re, $ev, $o);
-            """, "$h", "$r", "$p", "$m", "$c", "$pa", "$f", "$le", "$j", "$a", "$re", "$ev", "$o"),
+            INSERT INTO impulsions (humain, rang, parole, mode, cible, param, force, le, jusqua, agir_le, reponse, evenement, orientation, promesse)
+            VALUES ($h, $r, $p, $m, $c, $pa, $f, $le, $j, $a, $re, $ev, $o, $pr);
+            """, "$h", "$r", "$p", "$m", "$c", "$pa", "$f", "$le", "$j", "$a", "$re", "$ev", "$o", "$pr"),
             "DELETE FROM impulsions WHERE humain = $h;", "DELETE FROM impulsions;");
         foreach (var h in humains)
         {
@@ -256,7 +256,7 @@ public sealed partial class DepotMonde
             {
                 var i = h.Impulsions[r];
                 impulsions.Ligne(h.Id, r, (int)i.Parole, (int)i.Mode, i.CibleId, i.Param, i.Force, i.Le, i.Jusqua, i.AgirLe, (int)i.Reponse,
-                    i.EvenementId, i.Orientation);
+                    i.EvenementId, i.Orientation, i.Promesse);
             }
             etat.Fin();
             savoirs.Fin();

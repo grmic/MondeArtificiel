@@ -246,9 +246,11 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
         // 1. Traduire ses mots en paroles codées.
         List<ActeLlm> paroles;
+        TonParole ton;
+        string revelation;
         try
         {
-            paroles = await Traduire(c, texte, precedentes, entite.ConnexionPourJuge, brut, arret);
+            (paroles, ton, revelation) = await Traduire(c, texte, precedentes, entite.ConnexionPourJuge, brut, arret);
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
@@ -305,6 +307,27 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         c.Comprise |= regle.Comprise;
         if (regle.Comprise || c.Croit is not null) c.Croit = regle.Croit;
         regles.Add(L.T(!regle.Comprise ? "dlg.r.incomprise" : regle.Croit ? "dlg.r.croit" : "dlg.r.doute"));
+        // Ce que ses mots lui font ressentir, et ce qu'elle lui révèle, s'il a compris (0.42.9).
+        if (regle.Comprise && regle.Fin != FinDialogue.Absent)
+        {
+            var croit = regle.Croit;
+            var (ressenti, p3, d3) = monde.Executer(m => m.RessentirTon(c.Humain, ton, c.Mode, croit, c.Reception));
+            Plage(p3, d3);
+            if (ressenti is not null) regles.Add(L.Rediger(ressenti));
+            if (revelation.Length > 0)
+            {
+                try
+                {
+                    var (_, p4, d4) = monde.Executer(m => m.RevelerEnDialogue(c.Humain, revelation, c.Mode, croit, c.Reception));
+                    Plage(p4, d4);
+                    regles.Add(L.T("dlg.r.revelation", ("t", ClientLlm.Couper(revelation, 200))));
+                }
+                catch (ArgumentException e)
+                {
+                    regles.Add(L.T("llm.resultat.refuse", ("raison", e.Message)));
+                }
+            }
+        }
         if (regle.Fin != FinDialogue.Aucune) regles.Add(L.T($"dlg.r.fin.{regle.Fin}"));
         service.Sauvegarder();
 
@@ -439,6 +462,23 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                             libreTextes.Add(L.T("llm.resultat.refuse", ("raison", e.Message)));
                         }
                     }
+                    // Ce qu'il demande de lui-même à l'Entité devient une prière ; ce qu'il lui promet, il le tiendra ou non (0.42.9).
+                    LireEngagements(reponse, out var demandeLui, out var pour, out var promesse);
+                    if (ReferenceEquals(monde, service.Monde) && h.EstVivant)
+                    {
+                        if (demandeLui is { } sujet)
+                        {
+                            var (ev, p, d) = monde.Executer(x => x.DemanderEnDialogue(c.Humain, sujet, pour, c.Reception));
+                            Plage(p, d);
+                            if (ev != 0) libreTextes.Add(L.T("dlg.r.demande", ("nom", h.Nom), ("sujet", L.T($"sujetPriere.{sujet}"))));
+                        }
+                        if (promesse is { } geste)
+                        {
+                            var (ev, p, d) = monde.Executer(x => x.Promettre(c.Humain, geste, c.Mode, c.Reception));
+                            Plage(p, d);
+                            if (ev != 0) libreTextes.Add(L.T("dlg.r.promesse", ("nom", h.Nom), ("geste", L.T($"parole.{geste}"))));
+                        }
+                    }
                     break;
                 }
             }
@@ -480,6 +520,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         ["type"] = "object",
         ["properties"] = new JsonObject
         {
+            ["ton"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<TonParole>().Select(x => (JsonNode)x)]) },
+            ["revelation"] = new JsonObject { ["type"] = "string", ["maxLength"] = MondeSimule.RevelationMax },
             ["paroles"] = new JsonObject
             {
                 ["type"] = "array",
@@ -500,7 +542,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                 },
             },
         },
-        ["required"] = new JsonArray("paroles"),
+        // Le ton de ses mots et ce qu'elle révèle (0.42.9).
+        ["required"] = new JsonArray("paroles", "ton", "revelation"),
     };
 
     /// <summary>Le catalogue des paroles qu'on peut adresser à un humain, pour la traduction.</summary>
@@ -522,7 +565,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         return c.ToString();
     }
 
-    private async Task<List<ActeLlm>> Traduire(EnCours c, string texte, List<RepliqueEntite> precedentes, ConnexionLlm connexion, StringBuilder brut,
+    private async Task<(List<ActeLlm> Paroles, TonParole Ton, string Revelation)> Traduire(EnCours c, string texte, List<RepliqueEntite> precedentes, ConnexionLlm connexion, StringBuilder brut,
         CancellationToken arret)
     {
         var monde = c.Monde;
@@ -549,6 +592,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         d.AppendLine(L.T("dlg.t.dit", ("texte", texte)));
         var messages = new List<(string, string)> { ("user", d.ToString()) };
         var valides = new List<ActeLlm>();
+        var (ton, revelation) = (TonParole.Aucun, "");
         for (var essai = 0; essai < 2; essai++)
         {
             using var delai = CancellationTokenSource.CreateLinkedTokenSource(arret);
@@ -557,11 +601,36 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             brut.AppendLine($"---- {L.T("dlg.trace.traduction")} ({essai + 1}) ----").AppendLine(reponse);
             var fautes = new List<string>();
             valides = LireTraduction(reponse, texte, c.Humain, c.Mode, humains, fautes, monde);
+            LireTon(reponse, out ton, out revelation);
             if (fautes.Count == 0 || essai == 1) break;
             messages.Add(("assistant", reponse));
             messages.Add(("user", L.T("llm.d.corriger", ("erreurs", string.Join(" ", fautes)))));
         }
-        return valides;
+        return (valides, ton, revelation);
+    }
+
+    /// <summary>
+    /// Le ton des mots de l'Entité et ce qu'elle révèle, tels que la traduction les a entendus (0.42.9). Un ton inconnu vaut
+    /// « aucun » ; une révélation est vide si elle ne révèle rien.
+    /// </summary>
+    public static void LireTon(string reponse, out TonParole ton, out string revelation)
+    {
+        (ton, revelation) = (TonParole.Aucun, "");
+        try
+        {
+            if (JsonNode.Parse(ClientLlm.Nettoyer(reponse), documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true }) is not JsonObject o) return;
+            if (o["ton"] is JsonValue t && t.TryGetValue<string>(out var s) && Enum.TryParse<TonParole>(s.Trim(), true, out var x) && Enum.IsDefined(x)) ton = x;
+            if (o["revelation"] is JsonValue r && r.TryGetValue<string>(out var v))
+            {
+                v = ClientLlm.Resserrer(v.Trim(), MondeSimule.RevelationMax);
+                // « aucune », « rien », « - » : il n'y a rien de révélé.
+                if (v.Length >= 8) revelation = v;
+            }
+        }
+        catch (JsonException)
+        {
+            // Illisible : ni ton, ni révélation.
+        }
     }
 
     /// <summary>Lit la traduction : les paroles valides (au plus <see cref="ParolesMax"/>), les autres dans <paramref name="fautes"/>.</summary>
@@ -696,9 +765,9 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
     // ───────────── Faire parler l'humain ─────────────
 
-    private const string FormeHumain = """{"reponse":"…","mots":"…","pensee":"…"}""";
+    private const string FormeHumain = """{"reponse":"…","mots":"…","pensee":"…","demande":"","pour":0,"promesse":""}""";
 
-    private const string FormeHumainLibre = """{"reponse":"…","mots":"…","pensee":"…","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
+    private const string FormeHumainLibre = """{"reponse":"…","mots":"…","pensee":"…","demande":"","pour":0,"promesse":"","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
 
     /// <summary>Longueur maximale (caractères) des mots d'une réplique dans le schéma imposé au LLM.</summary>
     public const int MotsMax = 600;
@@ -709,6 +778,10 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         {
             // Ce qu'il répond à l'Entité, en clair (0.42.8) ; ce qu'il dit à voix haute dans sa langue ; ce qu'il pense sans le dire.
             ["reponse"] = Chaine(MotsMax), ["mots"] = Chaine(MotsMax), ["pensee"] = Chaine(MotsMax * 2),
+            // Ce qu'il demande de lui-même à l'Entité, pour qui, et ce qu'il lui promet (0.42.9) ; "" : rien.
+            ["demande"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<SujetPriere>().Prepend("").Select(x => (JsonNode)x)]) },
+            ["pour"] = new JsonObject { ["type"] = "integer" },
+            ["promesse"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Promesses.Select(x => x.ToString()).Prepend("").Select(x => (JsonNode)x)]) },
         };
         // Longueur bornée dans la grammaire imposée (0.37.6) : vu le 8/11, gemma3:4b répétait « shuhei, » dans « mots » jusqu'à la limite
         // de jetons, deux essais de suite ; bornée, la chaîne se ferme et la réponse reste lisible (les répétitions sont resserrées après).
@@ -737,6 +810,33 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         return new JsonObject { ["type"] = "object", ["properties"] = proprietes, ["required"] = new JsonArray("reponse", "mots", "pensee") };
     }
 
+    /// <summary>Les gestes qu'il peut promettre à l'Entité : ceux de tous les jours, sans personne à désigner (0.42.9).</summary>
+    public static readonly Parole[] Promesses = [.. Enum.GetValues<Parole>().Where(p => Paroles.Demande(p) && !Paroles.VeutCible(p))];
+
+    /// <summary>
+    /// Ce qu'il demande de lui-même à l'Entité (une prière : guérison, nourriture…), pour qui (0 : lui-même ou les siens), et le
+    /// geste qu'il lui promet ; null : rien (0.42.9).
+    /// </summary>
+    public static void LireEngagements(string reponse, out SujetPriere? demande, out int pour, out Parole? promesse)
+    {
+        (demande, pour, promesse) = (null, 0, null);
+        try
+        {
+            if (JsonNode.Parse(ClientLlm.Nettoyer(reponse), documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true }) is not JsonObject o) return;
+            if (o["demande"] is JsonValue d && d.TryGetValue<string>(out var s) && s.Trim().Length > 0 && Enum.TryParse<SujetPriere>(s.Trim(), true, out var x)
+                && Enum.IsDefined(x))
+                demande = x;
+            if (o["pour"] is JsonValue v && v.TryGetValue<int>(out var n)) pour = n;
+            if (o["promesse"] is JsonValue q && q.TryGetValue<string>(out var t) && t.Trim().Length > 0 && Enum.TryParse<Parole>(t.Trim(), true, out var g)
+                && Promesses.Contains(g))
+                promesse = g;
+        }
+        catch (JsonException)
+        {
+            // Illisible : ni demande, ni promesse.
+        }
+    }
+
     private string Consigne(Humain h, EnCours c, bool libre)
     {
         var langage = LangageDto.Depuis(h, c.Monde.InstantaneHumains().Humains, c.Monde.Communautes(), c.Monde.Flore);
@@ -745,6 +845,9 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             ("n", langage.NombreDeMots));
         var s = new StringBuilder(L.T("dlg.humain.consigne2", ("nom", h.Nom), ("voie", L.T($"modeParole.{c.Mode}")), ("langue", L.Courante.Nom),
             ("voix", voix), ("forme", libre ? FormeHumainLibre : FormeHumain)));
+        s.AppendLine().AppendLine();
+        s.AppendLine(L.T("dlg.humain.engagements", ("sujets", string.Join(", ", Enum.GetValues<SujetPriere>().Select(x => $"{x} = {L.T($"sujetPriere.{x}")}"))),
+            ("gestes", string.Join(", ", Promesses.Select(x => $"{x} = {L.T($"parole.{x}")}")))));
         if (libre)
         {
             s.AppendLine().AppendLine();

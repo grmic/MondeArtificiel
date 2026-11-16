@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 61;
+    public const int VersionSchema = 62;
 
     private readonly string _connexion;
 
@@ -646,6 +646,8 @@ public sealed partial class DepotMonde
         if (actuelle < 60) MigrerVersion60(connexion, transaction);
         // Version 61 : signe du corps peint et pudeur des communautés (0.42.6).
         if (actuelle < 61) MigrerVersion61(connexion, transaction);
+        // Version 62 : révélations de l'Entité gardées en mémoire, promesses faites à l'Entité (0.42.9).
+        if (actuelle < 62) MigrerVersion62(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -864,6 +866,7 @@ public sealed partial class DepotMonde
             LireLangage(commande, humains);
             LireMer(commande, humains);
             LireCorps(commande, humains);
+            LireRevelationsHumains(commande, humains);
         }
         var (foyers, huttes, decouvertes, oeuvres) = LireInstallations(commande);
         var (braises, reserves) = LireFeuxEtReserves(commande);
@@ -879,6 +882,8 @@ public sealed partial class DepotMonde
         if (mandats.Count > 0) etat = etat with { Mandats = mandats };
         var parolesMonde = LireParolesMonde(commande);
         if (parolesMonde.Count > 0) etat = etat with { ParolesMonde = parolesMonde };
+        var revelations = LireRevelations(commande);
+        if (revelations.Count > 0) etat = etat with { Revelations = revelations };
         var decrets = LireDecrets(commande);
         if (decrets.Count > 0) etat = etat with { Decrets = decrets };
         var recitsCatastrophes = LireRecitsCatastrophes(commande);
@@ -1298,6 +1303,7 @@ public sealed partial class DepotMonde
             EnregistrerLangage(connexion, transaction, ecritures, tous);
             EnregistrerMer(connexion, transaction, ecritures, tous);
             EnregistrerCorps(connexion, transaction, ecritures, tous);
+            EnregistrerRevelationsHumains(connexion, transaction, ecritures, tous);
         }
         if (etat.Foyers is not null || etat.Huttes is not null || etat.Decouvertes is not null || etat.Oeuvres is not null) EnregistrerInstallations(connexion, transaction, etat);
         if (etat.Braises is not null || etat.Reserves is not null) EnregistrerFeuxEtReserves(connexion, transaction, etat);
@@ -1306,6 +1312,7 @@ public sealed partial class DepotMonde
         if (etat.Outremer is not null) EnregistrerOutremer(connexion, transaction, etat.Outremer);
         if (etat.Mandats is not null) EnregistrerMandats(connexion, transaction, etat.Mandats);
         EnregistrerParolesMonde(connexion, transaction, etat.ParolesMonde ?? []);
+        EnregistrerRevelations(connexion, transaction, etat.Revelations ?? []);
         EnregistrerDecrets(connexion, transaction, etat.Decrets ?? []);
         EnregistrerInventions(connexion, transaction, etat.Inventions ?? []);
         EnregistrerRecitsCatastrophes(connexion, transaction, etat.RecitsCatastrophes ?? []);
