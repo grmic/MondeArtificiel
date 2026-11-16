@@ -406,7 +406,12 @@ public static class Contexte
         if (!string.IsNullOrWhiteSpace(valeur)) d.AppendLine($"{L.T(cle)} : {valeur}");
     }
 
-    internal static void Humain(StringBuilder d, ServiceMonde service, int id)
+    /// <remarks>
+    /// <paramref name="soiMeme"/> (0.44.7) : la fiche telle que l'humain se connaît lui-même, pour le LLM qui le joue dans un dialogue.
+    /// Tout ce qu'il sait de lui (besoins, attraits, métier, feu, soins, lieux, grossesse…), en mots plutôt qu'en chiffres, et rien
+    /// de ce qu'il ne peut savoir : ni son QI chiffré, ni le regard de l'Entité sur lui (son karma).
+    /// </remarks>
+    internal static void Humain(StringBuilder d, ServiceMonde service, int id, bool soiMeme = false)
     {
         if (FicheDto.Depuis(service, id) is not { } f) return;
         var h = f.Humain;
@@ -419,17 +424,21 @@ public static class Contexte
             if (h.Malade) etat.Add(L.T("llm.h.malade"));
             if (h.Enceinte) etat.Add(L.T("llm.h.enceinte"));
             if (h.Faim >= 50) etat.Add(L.T("llm.h.faim", ("v", N(h.Faim))));
+            if (soiMeme && f.Grossesse is { } g) etat.Add(L.T("llm.h.grossesse", ("mois", Math.Max(1, (g.Jours + 15) / 30))));
         }
         d.AppendLine(string.Join(", ", etat) + ".");
+        var (instant, tous) = service.Monde.InstantaneHumains();
+        Famille(d, tous, instant, id);
         Ligne(d, "llm.h.humeur", h.Humeur);
         Ligne(d, "llm.h.portrait", string.Join(" ", f.Portrait));
         Ligne(d, "llm.h.caractere", string.Join(" ; ", f.Caractere.Select(t => $"{t.Nom} {t.Mots}")));
         Ligne(d, "llm.h.morale", string.Join(" ; ", f.Coeur.Concat(f.Morale).Select(t => $"{t.Nom} {t.Mots}")));
-        Ligne(d, "llm.h.intelligence", string.Join(" ; ", f.Intelligence.Select(t => $"{t.Nom} {N(t.Valeur)} ({t.Mots})")));
+        Ligne(d, "llm.h.intelligence", string.Join(" ; ", f.Intelligence.Select(t => soiMeme ? $"{t.Nom} : {t.Mots}" : $"{t.Nom} {N(t.Valeur)} ({t.Mots})")));
+        if (soiMeme && h.Vivant) SoiMeme(d, f);
         if (f.Ame is { } a) Ligne(d, "llm.h.ame", string.Join(" ; ", a.Raisons.Prepend(a.Etat)));
         Ligne(d, "llm.h.epreuves", string.Join(" ; ", new[] { f.Epreuves.Maladie, f.Epreuves.PeurDe, f.Medecine.Sequelle, f.Medecine.Plaie, f.Medecine.Malediction }.Where(x => !string.IsNullOrEmpty(x))));
         var r = f.Regard;
-        Ligne(d, "llm.h.regard", string.Join(" ; ", new[] { L.T("llm.h.karma", ("v", N(r.Karma, 1)), ("mots", r.KarmaMots)), r.CroyanceMots, r.AmourMots, r.CrainteMots, r.RevolteMots }
+        Ligne(d, "llm.h.regard", string.Join(" ; ", new[] { soiMeme ? null : L.T("llm.h.karma", ("v", N(r.Karma, 1)), ("mots", r.KarmaMots)), r.CroyanceMots, r.AmourMots, r.CrainteMots, r.RevolteMots }
             .Where(x => !string.IsNullOrEmpty(x))));
         if (f.Foi is { } foi)
         {
@@ -448,11 +457,22 @@ public static class Contexte
                     ("croit", L.T(rv.Croit ? "llm.h.revelation.croit" : "llm.h.revelation.doute"))));
         }
         Ligne(d, "llm.h.communaute", f.Communaute is null ? L.T("llm.h.seul") : $"{L.Communaute(f.Communaute.Nom)} (n°{f.Communaute.Id})");
-        Ligne(d, "llm.h.liens", string.Join(" ; ", f.Liens.Take(10).Select(l => $"{l.Nom} n°{l.Id} ({l.Statut}, {L.T("llm.h.affection")} {l.Affection}{(l.Vivant ? "" : ", " + L.T("llm.h.disparu"))})")));
+        // Ses amis, ses proches, ceux qu'il ou elle déteste, et ses rancunes, chacun à part (0.44.7) : avant, seuls les dix liens les
+        // plus forts, mêlés.
+        string Lien(LienDto l) => $"{l.Nom} n°{l.Id} ({l.Statut}, {L.T("llm.h.affection")} {l.Affection}{(l.Vivant ? "" : ", " + L.T("llm.h.disparu"))})";
+        Ligne(d, "llm.h.amis", string.Join(" ; ", f.Liens.Where(l => l.Affection >= 40).OrderByDescending(l => l.Affection).Take(15).Select(Lien)));
+        Ligne(d, "llm.h.liens", string.Join(" ; ", f.Liens.Where(l => l.Affection is >= 0 and < 40).OrderByDescending(l => l.Familiarite).Take(15).Select(Lien)));
+        Ligne(d, "llm.h.ennemis", string.Join(" ; ", f.Liens.Where(l => l.Affection < 0).OrderBy(l => l.Affection).Take(10).Select(Lien)));
+        if (f.Ame is { Rancunes.Count: > 0 } ame)
+            Ligne(d, "llm.h.rancunes", string.Join(" ; ", ame.Rancunes.Take(8).Select(r => $"{r.Nom} n°{r.Id} : {r.Motif} ({r.Intensite}/100)")));
+        // Ses pensées intimes, celles qu'il ou elle ne dit à personne : les plus fortes de chaque sorte, puis les autres.
         if (f.Jardin.Count > 0)
         {
             d.AppendLine(L.T("llm.h.jardin"));
-            foreach (var j in f.Jardin.OrderByDescending(j => j.Intensite).Take(12)) d.AppendLine($"- {j.Type} : {j.Texte} ({j.Intensite}/100)");
+            var parSorte = f.Jardin.GroupBy(j => j.Type).Select(g => g.OrderByDescending(j => j.Intensite).First()).ToList();
+            var choisies = parSorte.Concat(f.Jardin.OrderByDescending(j => j.Intensite).Except(parSorte)).Take(25);
+            foreach (var j in choisies.OrderByDescending(j => j.Intensite))
+                d.AppendLine($"- {j.Type}{(j.NomSujet is null ? "" : $" ({j.NomSujet})")} : {j.Texte} ({j.Intensite}/100)");
         }
         if (f.Pensees.Count > 0)
         {
@@ -465,6 +485,70 @@ public static class Contexte
             foreach (var e in f.Histoire.OrderByDescending(e => e.Secondes).Take(15).Reverse()) d.AppendLine($"- {e.Date} : {e.Texte}");
         }
         Ligne(d, "llm.h.savoirs", string.Join(" ; ", f.Savoirs.Savoirs.Take(15).Select(s => s.Texte)));
+    }
+
+    /// <summary>Ce qu'il sait de lui-même au-delà du caractère (0.44.7), en quelques lignes compactes, sans chiffres qu'il ne peut connaître.</summary>
+    private static void SoiMeme(StringBuilder d, FicheDto f)
+    {
+        var h = f.Humain;
+        static string? Niveau(double v, string cle) => v switch
+        {
+            >= 80 => L.T($"llm.h.besoin.{cle}", ("n", L.T("llm.h.niveau.extreme"))),
+            >= 55 => L.T($"llm.h.besoin.{cle}", ("n", L.T("llm.h.niveau.fort"))),
+            >= 35 => L.T($"llm.h.besoin.{cle}", ("n", L.T("llm.h.niveau.leger"))),
+            _ => null,
+        };
+        Ligne(d, "llm.h.besoins", string.Join(", ", new[] { Niveau(h.Faim, "faim"), Niveau(h.Soif, "soif"), Niveau(h.Fatigue, "fatigue"), Niveau(h.Froid, "froid") }
+            .Where(x => x is not null)));
+        var at = f.Attraits;
+        if (!at.Impubere) Ligne(d, "llm.h.attraits", string.Join(" ; ", new[] { at.Orientation, at.Conscience, at.Ideal }.Where(x => !string.IsNullOrEmpty(x))));
+        Ligne(d, "llm.h.exclusions", string.Join(" ; ", at.Exclusions.Where(x => x.EnCours).Select(x => $"{x.Type} ({x.NomPar}) : {x.Raison}")));
+        if (f.Rencontres is { } re)
+            Ligne(d, "llm.h.metier", string.Join(" ; ", new[] { re.Metier, re.VenuDe is null ? null : L.T("llm.h.venuDe", ("c", re.VenuDe)), re.Visite, re.Rassemblement, re.Attend }
+                .Where(x => !string.IsNullOrEmpty(x))));
+        var m = f.Medecine;
+        if (m.Role is not null || m.Soignes > 0)
+            Ligne(d, "llm.h.soins", L.T("llm.h.soinsFaits", ("role", m.Role ?? L.T("llm.h.soinsAucunRole")), ("soignes", m.Soignes), ("gueris", m.Gueris), ("perdus", m.Perdus)));
+        if (f.Feu is { } feu)
+            Ligne(d, "llm.h.feu", string.Join(" ; ", new[] { feu.Porte, feu.PorteurDepuis is null ? null : L.T("llm.h.porteurDepuis", ("date", feu.PorteurDepuis)) }
+                .Concat(feu.Caches.Take(4)).Concat(feu.Lecons.Take(4)).Where(x => !string.IsNullOrEmpty(x))));
+        Ligne(d, "llm.h.immunites", string.Join(", ", f.Epreuves.Immunites));
+        if (f.Lieux.Count > 0)
+            Ligne(d, "llm.h.lieux", string.Join(", ", f.Lieux.GroupBy(l => l.Type).Select(g => L.T("llm.h.lieu", ("n", g.Count()), ("type", L.T($"lieu.{g.Key}"))))));
+    }
+
+    /// <summary>
+    /// Sa famille, en clair (0.44.7) : son compagnon, ses parents, ses enfants (vivants ou morts, avec leur âge), et le bébé qu'il
+    /// ou elle porte en ce moment. Sans ces lignes, le LLM ne voyait que les proches les plus aimés et faisait dire à une mère
+    /// qui porte son nouveau-né qu'elle n'a pas d'enfant.
+    /// </summary>
+    public static void Famille(StringBuilder d, IReadOnlyList<Humain> humains, long maintenant, int id)
+    {
+        if (id < 1 || id > humains.Count) return;
+        var h = humains[id - 1];
+        string Nom(int x) => x >= 1 && x <= humains.Count ? humains[x - 1].Nom : "?";
+        string Age(Humain x)
+        {
+            var ans = x.AgeEnAnnees(maintenant);
+            var jours = (int)(ans * 365.25);
+            return ans >= 2 ? L.T("llm.h.ageAns", ("n", (int)ans)) : jours >= 60 ? L.T("llm.h.ageMois", ("n", jours / 30)) : L.T("llm.h.ageJours", ("n", Math.Max(0, jours)));
+        }
+        if (h.PartenaireId > 0) d.AppendLine(L.T("llm.h.compagnon", ("nom", Nom(h.PartenaireId)), ("id", h.PartenaireId)));
+        var parents = new[] { h.MereId, h.PereId }.Where(x => x > 0).Select(x => $"{Nom(x)} n°{x}{(humains[x - 1].EstVivant ? "" : " (" + L.T("llm.h.disparu") + ")")}").ToList();
+        if (parents.Count > 0) d.AppendLine(L.T("llm.h.parents", ("liste", string.Join(", ", parents))));
+        var enfants = humains.Where(e => e.MereId == h.Id || e.PereId == h.Id).OrderBy(e => e.Naissance).ToList();
+        d.AppendLine(enfants.Count == 0 ? L.T("llm.h.sansEnfant")
+            : L.T("llm.h.enfants", ("n", enfants.Count), ("liste", string.Join(", ", enfants.Select(e =>
+                $"{e.Nom} n°{e.Id} ({(e.EstVivant ? Age(e) : L.T("llm.h.disparu"))})")))));
+        if (!h.EstVivant) return;
+        // Le bébé qu'il ou elle porte en ce moment : le sien, ou celui d'une autre (une nourrice).
+        var porte = h.BebePorteLe >= maintenant - 2 * MondeSimule.SecondesParPas
+            ? humains.Where(b => b.EstVivant && b.EstBebe(maintenant) && b.X == h.X && b.Y == h.Y && b.Activite is Activite.PorteParSaMere or Activite.Dormir
+                                 && (b.MereId == h.Id || b.MereId > 0 && b.MereId <= humains.Count && !humains[b.MereId - 1].EstVivant)).ToList()
+            : [];
+        foreach (var b in porte)
+            d.AppendLine(b.MereId == h.Id ? L.T("llm.h.porteSien", ("nom", b.Nom), ("id", b.Id), ("age", Age(b)))
+                : L.T("llm.h.porteAutre", ("nom", b.Nom), ("id", b.Id), ("age", Age(b)), ("mere", Nom(b.MereId))));
     }
 
     private static void Communaute(StringBuilder d, ServiceMonde service, int id, bool avecMembres)

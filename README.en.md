@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.44.6 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.44.7 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -320,6 +320,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.44.7** (16 Nov 2026): fix: in a dialogue, the human knows their family: their partner, parents, children (with their age, or whether they died) and the baby they are carrying right now (their own, or that of a mother who is gone). They also know, each apart, their friends, close ones, those they dislike and their grudges, and their strongest inner thoughts of each kind. The LLM playing them receives their whole sheet, written as what they know of themselves: pregnancy, needs, character and intelligence in words (never numbers), attractions, trade, care given, the fire they keep, immunities and the places they know; nothing they cannot know, such as their karma. A mother carrying her newborn no longer answers that she has no children.
 - **0.44.6** (16 Nov 2026): fix: the camera no longer circles endlessly around a followed human. When the Entity speaks to them, they turn towards the camera; the camera followed their body and moved aside again, and so on. It now stays in place while they listen. A non-standard gamepad with an axis resting at full travel (a trigger listed among the axes) no longer spins the view either.
 - **0.44.5** (16 Nov 2026): in the 3D World, the controls window at the bottom collapses into a small tab with the ▾ button or the H key, and opens again the same way; its state is kept from one visit to the next.
 - **0.44.4** (16 Nov 2026): fix: in a dialogue, a gesture asked for in plain words (“sit down and pray”, “sleep”, “assieds-toi et prie”) is always received, even when the LLM translating your words into orders misses it (empty list from a small model, or from a thinking model); a question, a prohibition (“do not pray”) or “je t'en prie” are not orders. When your words ask for nothing, the dialogue says so. The human still obeys, hesitates or refuses according to their will of the moment, and does nothing if they do not believe the Entity is speaking to them.

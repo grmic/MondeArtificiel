@@ -874,7 +874,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         var d = new StringBuilder();
         d.AppendLine(L.T("llm.d.date", ("date", L.Date(maintenant))));
         d.AppendLine(L.T("dlg.d.toi", ("nom", h.Nom), ("id", h.Id)));
-        Contexte.Humain(d, service, h.Id);
+        Contexte.Humain(d, service, h.Id, soiMeme: true);
         // Ses mots, tous (les plus sûrs d'abord) : ce sont les seuls qu'il peut dire.
         var vocabulaire = h.Vocabulaire.Where(m => !m.Signe).OrderByDescending(m => m.Force).Take(200)
             .Select(m => $"{m.Forme} = {Lib.Idee(m.Idee, monde.Flore)}").ToList();
