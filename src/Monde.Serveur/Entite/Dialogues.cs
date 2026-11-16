@@ -48,7 +48,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     public const int ReplicaMax = 1200;
 
     /// <summary>Paroles codées au plus par réplique.</summary>
-    public const int ParolesMax = 2;
+    public const int ParolesMax = 3;
 
     /// <summary>Sans un mot de l'Entité pendant ce temps (réel), le dialogue s'achève et l'horloge repart.</summary>
     private static readonly TimeSpan Silence = TimeSpan.FromMinutes(15);
@@ -339,15 +339,18 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                         messages.Add(("user", L.T("llm.d.corriger", ("erreurs", faute))));
                         continue;
                     }
+                    // En rêve, il répond en esprit : pas de mots dits tout haut (0.42.8).
+                    if (c.Mode == ModeParole.Reve) m = "";
                     // Il parle sa langue : seulement ses mots, des noms qu'il connaît, des gestes et des cris (0.36.5).
                     var inconnus = Inconnus(m, permis);
-                    var sansSens = se.Length == 0 && Normaliser(SansGestes(m)).Length > 0;
-                    if ((inconnus.Count > 0 || sansSens) && essai == 0)
+                    // Il répond à l'Entité (0.42.8) : une réponse vide, ou qui n'est que sa pensée, ne convient pas.
+                    var sansReponse = se.Length == 0 || Normaliser(se) == Normaliser(pe);
+                    if ((inconnus.Count > 0 || sansReponse) && essai == 0)
                     {
                         messages.Add(("assistant", reponse));
                         messages.Add(("user", inconnus.Count > 0
-                            ? L.T("dlg.erreur.motsInconnus", ("liste", string.Join(", ", inconnus.Take(20))), ("langue", L.Courante.Nom))
-                            : L.T("dlg.erreur.sensVide", ("langue", L.Courante.Nom))));
+                            ? L.T("dlg.erreur.motsInconnus2", ("liste", string.Join(", ", inconnus.Take(20))), ("langue", L.Courante.Nom))
+                            : L.T("dlg.erreur.reponseVide", ("langue", L.Courante.Nom))));
                         continue;
                     }
                     if (inconnus.Count > 0) m = Effacer(m, permis);
@@ -540,7 +543,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         foreach (var r in precedentes.TakeLast(4))
         {
             d.AppendLine($"{L.T("dlg.t.entite")} : « {ClientLlm.Couper(r.Entite, 300)} »");
-            if (r.Mots.Length > 0) d.AppendLine($"{h.Nom} : « {ClientLlm.Couper(r.Sens.Length > 0 ? r.Sens : r.Mots, 300)} »");
+            if (r.Mots.Length > 0 || r.Sens.Length > 0) d.AppendLine($"{h.Nom} : « {ClientLlm.Couper(r.Sens.Length > 0 ? r.Sens : r.Mots, 300)} »");
         }
         d.AppendLine();
         d.AppendLine(L.T("dlg.t.dit", ("texte", texte)));
@@ -693,9 +696,9 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
     // ───────────── Faire parler l'humain ─────────────
 
-    private const string FormeHumain = """{"pensee":"…","mots":"…","sens":"…"}""";
+    private const string FormeHumain = """{"reponse":"…","mots":"…","pensee":"…"}""";
 
-    private const string FormeHumainLibre = """{"pensee":"…","mots":"…","sens":"…","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
+    private const string FormeHumainLibre = """{"reponse":"…","mots":"…","pensee":"…","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
 
     /// <summary>Longueur maximale (caractères) des mots d'une réplique dans le schéma imposé au LLM.</summary>
     public const int MotsMax = 600;
@@ -704,7 +707,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     {
         var proprietes = new JsonObject
         {
-            ["pensee"] = Chaine(MotsMax * 2), ["mots"] = Chaine(MotsMax), ["sens"] = Chaine(MotsMax),
+            // Ce qu'il répond à l'Entité, en clair (0.42.8) ; ce qu'il dit à voix haute dans sa langue ; ce qu'il pense sans le dire.
+            ["reponse"] = Chaine(MotsMax), ["mots"] = Chaine(MotsMax), ["pensee"] = Chaine(MotsMax * 2),
         };
         // Longueur bornée dans la grammaire imposée (0.37.6) : vu le 8/11, gemma3:4b répétait « shuhei, » dans « mots » jusqu'à la limite
         // de jetons, deux essais de suite ; bornée, la chaîne se ferme et la réponse reste lisible (les répétitions sont resserrées après).
@@ -730,14 +734,17 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     ["required"] = new JsonArray("quoi"),
                 },
             };
-        return new JsonObject { ["type"] = "object", ["properties"] = proprietes, ["required"] = new JsonArray("pensee", "mots", "sens") };
+        return new JsonObject { ["type"] = "object", ["properties"] = proprietes, ["required"] = new JsonArray("reponse", "mots", "pensee") };
     }
 
     private string Consigne(Humain h, EnCours c, bool libre)
     {
         var langage = LangageDto.Depuis(h, c.Monde.InstantaneHumains().Humains, c.Monde.Communautes(), c.Monde.Flore);
-        var s = new StringBuilder(L.T("dlg.humain.consigne", ("nom", h.Nom), ("voie", L.T($"modeParole.{c.Mode}")), ("langue", L.Courante.Nom),
-            ("stade", langage.Stade), ("n", langage.NombreDeMots), ("forme", libre ? FormeHumainLibre : FormeHumain)));
+        // En rêve, il répond en esprit ; par la voix ou devant une apparition, il peut aussi parler tout haut, dans sa langue (0.42.8).
+        var voix = L.T(c.Mode == ModeParole.Reve ? "dlg.humain.esprit" : "dlg.humain.aVoixHaute", ("langue", L.Courante.Nom), ("stade", langage.Stade),
+            ("n", langage.NombreDeMots));
+        var s = new StringBuilder(L.T("dlg.humain.consigne2", ("nom", h.Nom), ("voie", L.T($"modeParole.{c.Mode}")), ("langue", L.Courante.Nom),
+            ("voix", voix), ("forme", libre ? FormeHumainLibre : FormeHumain)));
         if (libre)
         {
             s.AppendLine().AppendLine();
@@ -768,14 +775,15 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             var r = service.Depot.Repliques(x.Id);
             if (r.Count == 0) continue;
             d.AppendLine(L.T("dlg.d.passe", ("date", L.Date(x.Debut)), ("voie", L.T($"modeParole.{(ModeParole)x.Mode}")),
-                ("resume", string.Join(" / ", r.Take(3).Select(y => ClientLlm.Couper(y.Entite, 100) + (y.Mots.Length > 0 ? " — " + ClientLlm.Couper(y.Mots, 100) : ""))))));
+                ("resume", string.Join(" / ", r.Take(3).Select(y => ClientLlm.Couper(y.Entite, 100) + (y.Sens.Length > 0 || y.Mots.Length > 0 ? " — " + ClientLlm.Couper(y.Sens.Length > 0 ? y.Sens : y.Mots, 100) : ""))))));
         }
         d.AppendLine();
         d.AppendLine(L.T("dlg.d.conversation", ("voie", L.T($"modeParole.{c.Mode}"))));
         foreach (var r in precedentes.TakeLast(8))
         {
             d.AppendLine($"{L.T("dlg.t.entite")} : « {r.Entite} »");
-            d.AppendLine($"{L.T("dlg.d.toiCourt")} : « {r.Mots} »{(r.Sens.Length > 0 ? $" ({r.Sens})" : "")}");
+            // Ce qu'il a répondu (en clair), et ses mots dits tout haut s'il en a dit (0.42.8).
+            d.AppendLine($"{L.T("dlg.d.toiCourt")} : « {(r.Sens.Length > 0 ? r.Sens : r.Mots)} »{(r.Sens.Length > 0 && r.Mots.Length > 0 ? $" [{r.Mots}]" : "")}");
         }
         d.AppendLine($"{L.T("dlg.t.entite")} : « {texte} »");
         d.AppendLine();
@@ -852,7 +860,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             return false;
         }
         string Texte(string cle) => o[cle] is JsonValue v && v.TryGetValue<string>(out var s) ? ClientLlm.Resserrer(s, 1500) : "";
-        (mots, pensee, sens) = (Texte("mots"), Texte("pensee"), Texte("sens"));
+        // « reponse » depuis la 0.42.8 ; « sens » avant.
+        (mots, pensee, sens) = (Texte("mots"), Texte("pensee"), Texte("reponse") is { Length: > 0 } r ? r : Texte("sens"));
         if (o["changements"] is JsonArray ch && ch.Count > 0)
         {
             try

@@ -57,7 +57,13 @@ public sealed partial class Comportement
             (eleve, lecon, meilleur) = (o, s, poids);
         }
         if (eleve is null || lecon is null) return false;
+        Montrer(h, eleve, lecon, tous);
+        return true;
+    }
 
+    /// <summary>Il montre <paramref name="lecon"/> à <paramref name="eleve"/>, qui comprend ou non (les règles de l'apprentissage).</summary>
+    private void Montrer(Humain h, Humain eleve, Savoir lecon, IReadOnlyList<Humain> tous)
+    {
         h.Activite = Activite.Enseigner;
         h.CibleX = h.CibleY = -1;
         _autre = eleve;
@@ -66,7 +72,7 @@ public sealed partial class Comportement
         var idee = lecon.Espece > 0 ? Idees.Plante(lecon.Espece) : Idees.Savoir(lecon.Effet);
         var chance = (0.35 + 0.35 * eleve.Personnalite.Ouverture) * (difficile ? 0.5 + 0.5 * Ingeniosite(eleve) : 1)
                      * (Langues.Partagent(h, eleve, idee) ? 1.3 : 0.85) * Decrets.Facteur(LoiDecret.Apprentissage, eleve.CommunauteId, _maintenant);
-        if (alea.Reel() >= chance) return true;
+        if (alea.Reel() >= chance) return;
 
         var sait = eleve.Savoirs.Exists(s => s.Meme(lecon.Geste, lecon.A, lecon.B, lecon.Effet, lecon.Espece, lecon.Symptome) && s.Pieces == lecon.Pieces);
         var heritage = Heritage(eleve, lecon, lecon.Effet, lecon.Pieces, true);
@@ -81,7 +87,6 @@ public sealed partial class Comportement
         Retenir(eleve, lecon.Geste, lecon.A, lecon.B, lecon.Effet, lecon.Espece, lecon.Symptome, OrigineSavoir.Imitation, h.Id, tous,
             pieces: lecon.Pieces, recit: recit, heritage: heritage, karmaMaitre: sait ? 0 : Regard.Enseigner);
         VieSociale.Gratitude(eleve, h, sait ? 0.5 : 1.5);
-        return true;
     }
 
     /// <summary>

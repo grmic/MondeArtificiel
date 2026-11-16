@@ -97,6 +97,7 @@ public static partial class Lib
         Parole.CatastropheArrive or Parole.PlanteDangereuse => "rubriqueParole.avertir",
         Parole.TuGuideras or Parole.Ecoute or Parole.PorteMaParole => "rubriqueParole.designer",
         Parole.JeSuisCelleQuiVousAFaits => "rubriqueParole.reveler",
+        _ when Paroles.Demande(p) => "rubriqueParole.gestes",
         _ => "rubriqueParole.nuire",
     });
 

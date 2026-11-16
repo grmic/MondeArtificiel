@@ -373,7 +373,7 @@ public sealed partial class Comportement
                     : (Math.Clamp(0.45 + 0.5 * douceur * (1 - 0.5 * grief) + 0.3 * Math.Max(0, aff) + (parent ? 0.2 : 0) - 0.3 * grief, 0, 1),
                         0.5 * grief + 0.3 * Math.Max(0, -aff), new Recit("ent.refus.tuer", ("h", h)), true);
             default:
-                return (0, 0, null, false);
+                return PeserDemande(h, parole, x, tous, maintenant);
         }
     }
 
@@ -423,12 +423,9 @@ public sealed partial class Comportement
 
         var (cout, envie, raison, moitie) = Peser(h, parole, x, tous, maintenant);
         var psychopathe = Psyche.EstPsychopathe(h, maintenant);
-        // Regard sur l'invisible : l'amour fait obéir de bon gré, la crainte à contrecœur (en hésitant, ou à moitié), la révolte
-        // fait refuser (voir Regards).
+        // Sa volonté du moment (0.42.8) : ce qu'il pense de l'Entité, son caractère, son état, ce que la parole lui coûte.
+        var (obeir, pour, contre) = Vouloir(h, parole, mode, cout, envie, foi, psychopathe, raison);
         var (amour, crainte) = (h.Amour / 100, h.Crainte / 100);
-        var deference = (0.25 + 0.35 * p.Moral.Fondements.Autorite + 0.25 * h.Croyance / 100 + 0.15 * foi + 0.15 * amour + 0.1 * crainte)
-            * (psychopathe ? 0.4 : 1) * (1 - 0.8 * h.Revolte / 100);
-        var obeir = Math.Clamp(deference * (1 - cout) + 0.4 * envie, 0.01, 0.97);
         Reponse reponse;
         if (alea.Reel() < obeir) reponse = moitie && alea.Reel() < 0.6 * cout + 0.3 * crainte * (1 - amour) ? Reponse.AMoitie : Reponse.Acceptee;
         else if (alea.Reel() < 0.5 * (1 - p.Conscience) * (1 - cout)) reponse = Reponse.Differee;
@@ -436,36 +433,43 @@ public sealed partial class Comportement
 
         if (reponse == Reponse.Refusee)
         {
-            NoterEntite(maintenant, TypeEvenement.Parole, h, x, new Recit("ent.refuse", ("h", h), ("r", raison)), reception, significatif: Paroles.Nuit(parole));
+            NoterEntite(maintenant, TypeEvenement.Parole, h, x, new Recit("ent.refusePour", ("h", h), ("r", raison), ("pour", contre)), reception,
+                significatif: Paroles.Nuit(parole));
             Confier(h, TypeIntime.Intention, cibleId, new Recit("js.entite.refuse", ("ph", phrase)), 30 + 40 * foi, reception, maintenant, $"entite:{(int)parole}");
             if (Paroles.Nuit(parole) && !psychopathe)
                 Confier(h, TypeIntime.Peur, cibleId, Recits.Recit.Seul("js.entite.mal"), 30 + 40 * p.Moral.EmpathieEmotionnelle, reception, maintenant, "entite:mal");
             Garder(h, new Impulsion(parole, mode, cibleId, param, force, maintenant, maintenant, maintenant, reponse, reception));
-            return new Recit("ent.r.refusee", ("r", raison));
+            return new Recit("ent.r.refuseePour", ("r", raison), ("pour", contre));
         }
 
-        // Quand agir : tout de suite, ou après avoir hésité (de quelques heures à quelques semaines).
-        var hesite = reponse == Reponse.Differee || alea.Reel() < (0.5 * (1 - p.Conscience) * cout + 0.2 * crainte) * (1 - 0.5 * amour);
+        // Quand agir : tout de suite, ou après avoir hésité (de quelques heures à quelques semaines). L'anxieux qui a peur hésite
+        // davantage (0.42.8).
+        var hesite = reponse == Reponse.Differee || alea.Reel() < (0.5 * (1 - p.Conscience) * cout + 0.2 * crainte + 0.15 * p.Nevrosisme * h.Peur / 100) * (1 - 0.5 * amour);
         var delai = hesite ? Math.Clamp(Math.Exp(Math.Log(1 + 6 * (1 - p.Conscience) + 6 * cout) + 0.6 * Biologie.Normale(alea)), 0.2, 40) : 0;
+        // Un geste de tous les jours ne se remet pas à des semaines : quelques heures au plus.
+        if (Paroles.Demande(parole)) delai = Math.Min(delai, 0.05 + 0.4 * (1 - p.Conscience));
         var agirLe = maintenant + (long)(delai * Calendrier.SecondesParJour);
         // Une consigne qui dure s'efface avec le temps, plus lentement chez le croyant fidèle.
         var duree = (30 + 300 * force * (0.5 + 0.5 * p.Conscience)) * (0.7 + 0.6 * alea.Reel());
         var jusqua = Durable(parole)
             ? maintenant + (long)(duree * Calendrier.SecondesParJour)
-            : agirLe + (long)((10 + 30 * p.Conscience) * Calendrier.SecondesParJour);
+            : agirLe + (long)((Paroles.Demande(parole) ? 1 : 10 + 30 * p.Conscience) * Calendrier.SecondesParJour);
         if (parole is Parole.PartsVers or Parole.CatastropheArrive) param = Destination(h, parole, param);
+        if (Paroles.Demande(parole)) param = 0;
         var impulsion = new Impulsion(parole, mode, cibleId, param, force, maintenant, jusqua, agirLe, hesite ? Reponse.Differee : reponse, reception);
         Garder(h, impulsion);
 
-        var etat = reponse == Reponse.AMoitie ? "ent.r.moitie" : hesite ? "ent.r.hesite" : "ent.r.obeit";
+        var etat = reponse == Reponse.AMoitie ? "ent.r.moitiePour" : hesite ? "ent.r.hesitePour" : "ent.r.obeitPour";
         var texte = hesite
-            ? new Recit("ent.hesite", ("h", h))
-            : reponse == Reponse.AMoitie ? new Recit("ent.moitie", ("h", h)) : new Recit("ent.obeit", ("h", h));
+            ? new Recit("ent.hesitePour", ("h", h), ("pour", pour))
+            : reponse == Reponse.AMoitie ? new Recit("ent.moitiePour", ("h", h), ("pour", pour)) : new Recit("ent.obeitPour", ("h", h), ("pour", pour));
         NoterEntite(maintenant, TypeEvenement.Parole, h, x, texte, reception);
         Confier(h, TypeIntime.Intention, cibleId, new Recit(hesite ? "js.entite.dois" : "js.entite.ferai", ("ph", phrase)),
             40 + 40 * foi, reception, maintenant, $"entite:{(int)parole}");
         if (Durable(parole) && !hesite) Appliquer(h, impulsion, x, tous, maintenant);
-        return new Recit(etat, ("h", h));
+        // Un geste de tous les jours commence aussitôt (0.42.8) : il s'assoit, prie, chante… Sauf en rêve : il le fera à son réveil.
+        if (!hesite && mode != ModeParole.Reve && Paroles.Immediat(parole)) Commencer(h, h.Impulsions.Count - 1, x, tous, maintenant);
+        return new Recit(etat, ("h", h), ("pour", pour));
     }
 
     /// <summary>Paroles qui agissent dans la durée (plutôt qu'un acte à faire).</summary>
@@ -563,6 +567,12 @@ public sealed partial class Comportement
             if (i.Reponse is not (Reponse.Acceptee or Reponse.Differee or Reponse.AMoitie) || Durable(i.Parole) && i.Reponse != Reponse.Differee) continue;
             if (maintenant < i.AgirLe) continue;
             var x = i.CibleId > 0 ? tous[i.CibleId - 1] : null;
+            // Un geste demandé commencé dont le temps est passé : il s'arrête là (0.42.8).
+            if (Paroles.Demande(i.Parole) && i.Param > 0 && i.Reponse != Reponse.Differee && maintenant >= i.Jusqua)
+            {
+                Finir(h, k, maintenant);
+                continue;
+            }
             if (maintenant >= i.Jusqua || x is { EstVivant: false })
             {
                 var pourquoi = x is { EstVivant: false } ? new Recit("ent.pourquoi.mort", ("x", x)) : Recits.Recit.Seul("ent.pourquoi.temps");
@@ -608,6 +618,9 @@ public sealed partial class Comportement
             NoterEntite(maintenant, TypeEvenement.Parole, h, x, texte, i.EvenementId, significatif, karma);
             Jardin.Retirer(h, $"entite:{(int)i.Parole}");
         }
+
+        // Les gestes de tous les jours demandés (0.42.8).
+        if (Paroles.Demande(i.Parole)) return AgirDemande(h, k, i, x, tous, maintenant);
 
         // Ce qui ne demande pas d'être auprès de l'autre.
         switch (i.Parole)

@@ -10,7 +10,7 @@ export const ACTIVITES = [
   "Repos", "Dormir", "Boire", "ChercherEau", "Cueillir", "Chasser", "ChercherNourriture", "SAbriter", "ChercherAbri", "RejoindrePartenaire",
   "Explorer", "Mort", "SAccoupler", "SuivreParent", "PorteParSaMere", "VeillerEnfant", "RejoindreProche", "EviterRival", "Migrer", "Fuir",
   "Raid", "RentrerDuRaid", "PartirEnExil", "Experimenter", "Fabriquer", "Veiller", "Soigner", "Nager", "SuivreRavisseur", "ChercherLeFeu",
-  "Enseigner", "Visiter", "Rassembler", "Rentrer", "Demander", "Naviguer", "Pecher", "Cultiver", "Allaiter",
+  "Enseigner", "Visiter", "Rassembler", "Rentrer", "Demander", "Naviguer", "Pecher", "Cultiver", "Allaiter", "Prier", "Chanter",
 ] as const;
 export const A = Object.fromEntries(ACTIVITES.map((a, i) => [a, i])) as Record<(typeof ACTIVITES)[number], number>;
 
@@ -147,6 +147,7 @@ function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Postu
     case A.Veiller:
     case A.VeillerEnfant:
     case A.Allaiter:
+    case A.Prier:
       return "assis";
     case A.Repos:
       return unite(hacher(s.id, 3)) < 0.5 ? "assis" : "couche";
@@ -182,6 +183,8 @@ function decalage(s: HumainScene, secondes: number, auFeu: boolean): [number, nu
     case A.Repos:
     case A.VeillerEnfant:
     case A.Allaiter:
+    case A.Prier:
+    case A.Chanter:
     case A.Fabriquer:
     case A.Enseigner:
     case A.Soigner:

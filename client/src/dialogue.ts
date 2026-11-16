@@ -292,14 +292,19 @@ export class FenetreDialogue {
     ul.append(el("li", "discret", t("dlgc.duree", { s: r.secondes })));
     details.append(ul);
     bloc.append(details);
+    // Ce qu'il te répond, en clair (0.42.8) ; ses mots dits tout haut, dans sa langue, en dessous ; sa pensée, repliée.
     const humain = el("div", "dialogue-humain");
     humain.append(vignette(d.humain, 22), " ");
-    if (r.mots) humain.append(el("b", undefined, `${d.nom} : `), `« ${r.mots} »`);
+    const reponse = r.sens || r.mots;
+    if (reponse) humain.append(el("b", undefined, `${d.nom} : `), `« ${reponse} »`);
     else humain.append(el("span", "discret", t("dlgc.silence", { nom: d.nom })));
     bloc.append(humain);
-    // Il parle sa langue : ce qu'il veut dire, traduit.
-    if (r.mots && r.sens) bloc.append(el("p", "dialogue-sens", t("dlgc.sens", { texte: r.sens })));
-    if (r.pensee) bloc.append(el("p", "dialogue-pensee", t("dlgc.pensee", { texte: r.pensee })));
+    if (r.mots && r.sens) bloc.append(el("p", "dialogue-sens", t("dlgc.dansSaLangue", { texte: r.mots })));
+    if (r.pensee) {
+      const pense = el("details", "dialogue-pensee");
+      pense.append(el("summary", undefined, t("dlgc.penseeTitre", { nom: d.nom })), el("p", undefined, r.pensee));
+      bloc.append(pense);
+    }
     if (r.erreur) bloc.append(el("p", "dialogue-erreur", r.erreur));
     return bloc;
   }

@@ -467,6 +467,8 @@ export class Animateur {
         if (s.age < 0.5) return "couche.dos";
         // Au sein, en tailleur ou de côté : l'enfant repose sur les cuisses (genoux dressés, il n'y aurait pas de place).
         if (s.allaite) return unite(hacher(s.id, 159)) < 0.6 ? "assis.tailleur" : "assis.cote";
+        // Prier (activité 39, 0.42.8) : à genoux, ou assis sur les talons.
+        if (s.activite === 39) return unite(hacher(s.id, 161)) < 0.6 ? "assis.genoux" : "assis.talons";
         return "assis." + choisir(ASSIS, s, lent(150 + 200 * unite(hacher(s.id, 77)), 75), 0);
       case "travail": {
         const v = choisir([ASSIS[0], ASSIS[3], ASSIS[4], ASSIS[1]], s, lent(400, 79), 1);

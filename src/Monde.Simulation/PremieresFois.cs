@@ -86,7 +86,7 @@ public static class PremieresFois
                 break;
             case TypeEvenement.Parole:
                 if (cle.StartsWith("ent.recoit.", StringComparison.Ordinal)) yield return ("entite.parole", true, true, false);
-                else if (cle is "ent.obeit" or "ent.moitie" or "ent.hesite" or "ent.refuse") yield return ("entite.crue", true, false, false);
+                else if (cle is "ent.obeit" or "ent.moitie" or "ent.hesite" or "ent.refuse" or "ent.obeitPour" or "ent.moitiePour" or "ent.hesitePour" or "ent.refusePour") yield return ("entite.crue", true, false, false);
                 else if (cle == "mandat.recu") yield return ("entite.groupe", true, true, false);
                 else if (cle == "monde.parle") yield return ("entite.monde", true, false, false);
                 break;

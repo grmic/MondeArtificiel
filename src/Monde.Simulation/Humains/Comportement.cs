@@ -679,7 +679,8 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         }
         // Le besoin le plus pressant (à égalité, le premier de la liste).
         var (valeur, besoin) = (Urgence(h.Soif) * 1.2, Activite.Boire);
-        Plus(Urgence(h.Faim), Activite.Cueillir, ref valeur, ref besoin);
+        // Qui jeûne sur la parole de l'Entité ne part pas chercher à manger tant que sa faim reste supportable (0.42.8).
+        if (!Jeuner(h, maintenant)) Plus(Urgence(h.Faim), Activite.Cueillir, ref valeur, ref besoin);
         // Quand la soif devient dangereuse, l'eau passe devant la nourriture, même affamé : on meurt de soif en quelques jours,
         // de faim en quelques semaines (0.38.1 ; avant, un affamé ne cherchait l'eau qu'au-delà de sa soif mortelle).
         if (besoin == Activite.Cueillir && h.Soif >= SoifDangereuse) besoin = Activite.Boire;

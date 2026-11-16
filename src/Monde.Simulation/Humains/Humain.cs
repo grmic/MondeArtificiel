@@ -69,6 +69,10 @@ public enum Activite : byte
     Cultiver = 37,
     /// <summary>Donner le sein à son enfant (depuis la 0.41.8) : assise, au calme, plusieurs fois par jour selon son âge.</summary>
     Allaiter = 38,
+    /// <summary>Prier, assis ou à genoux (depuis la 0.42.8, quand l'Entité le lui demande).</summary>
+    Prier = 39,
+    /// <summary>Chanter, et danser parfois (depuis la 0.42.8, quand l'Entité le lui demande).</summary>
+    Chanter = 40,
 }
 
 /// <summary>Pourquoi un humain prend la mer.</summary>

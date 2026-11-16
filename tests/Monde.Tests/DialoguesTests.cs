@@ -90,7 +90,7 @@ public sealed class DialoguesTests
         Assert.Single(Dialogues.LireTraduction(json, $"Unis-toi à {autre.Nom}.", 1, ModeParole.Voix, humains, fautes, monde));
         // Une direction manquante pour « Pars vers » est une faute, pas le nord par défaut.
         Assert.Empty(Dialogues.LireTraduction("""{"paroles":[{"parole":"PartsVers","mots":"Pars"}]}""", "Pars !", 1, ModeParole.Voix, humains, fautes, monde));
-        // Au plus deux paroles.
+        // Au plus trois paroles (0.42.8 : « assieds-toi et prie » en demande deux).
         Assert.Equal(Dialogues.ParolesMax, Dialogues.LireTraduction(
             """{"paroles":[{"parole":"NAiePasPeur","mots":"pas peur"},{"parole":"TuNEsPasSeul","mots":"pas seul"},{"parole":"TaPeinePassera","mots":"passera"}]}""",
             "N'aie pas peur. Tu n'es pas seul. Ta peine passera.", 1, ModeParole.Reve, humains, fautes).Count);

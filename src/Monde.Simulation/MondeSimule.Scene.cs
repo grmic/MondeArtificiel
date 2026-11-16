@@ -51,7 +51,7 @@ public sealed partial class MondeSimule
     [
         Activite.Repos, Activite.Dormir, Activite.Boire, Activite.SAbriter, Activite.Mort, Activite.SAccoupler, Activite.PorteParSaMere,
         Activite.VeillerEnfant, Activite.Experimenter, Activite.Fabriquer, Activite.Veiller, Activite.Soigner, Activite.Enseigner,
-        Activite.Pecher, Activite.Cultiver, Activite.Allaiter,
+        Activite.Pecher, Activite.Cultiver, Activite.Allaiter, Activite.Prier, Activite.Chanter,
     ];
 
     /// <summary>

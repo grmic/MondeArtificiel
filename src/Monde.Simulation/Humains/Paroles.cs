@@ -62,6 +62,33 @@ public enum Parole : byte
     PrenezSoinDesFaibles = 37,
     /// <summary>« Accueillez… » : une communauté invite l'autre à camper chez elle et ne la frappe pas tant qu'elle l'accueille.</summary>
     AccueillezLes = 38,
+    // Demander un geste (0.42.8) : des actes de tous les jours, que l'humain fait tout de suite s'il le veut (voir Demandes).
+    /// <summary>« Assieds-toi, repose-toi » : il s'assoit et se tient tranquille un moment.</summary>
+    AssiedsToi = 39,
+    /// <summary>« Prie » : il s'assoit ou s'agenouille, et prie (une vraie prière, visible parmi les prières).</summary>
+    Prie = 40,
+    /// <summary>« Dors » : il s'allonge ; il ne dort que s'il en a besoin.</summary>
+    Dors = 41,
+    /// <summary>« Mange » : il mange ce qu'il trouve autour de lui, ou part en chercher.</summary>
+    Mange = 42,
+    /// <summary>« Bois » : il va boire.</summary>
+    Bois = 43,
+    /// <summary>« Va chercher à manger » : cueillir, chasser ou pêcher, à sa manière, pour lui et les siens.</summary>
+    VaChercherAManger = 44,
+    /// <summary>« Va vers… » : il va rejoindre quelqu'un.</summary>
+    VaVers = 45,
+    /// <summary>« Veille le feu » : il s'assoit près du feu du camp et l'entretient.</summary>
+    VeilleLeFeu = 46,
+    /// <summary>« Parle à… » : il va voir quelqu'un et passe un moment avec lui.</summary>
+    ParleA = 47,
+    /// <summary>« Montre-lui ce que tu sais » : il enseigne un geste à quelqu'un.</summary>
+    Enseigne = 48,
+    /// <summary>« Chante » : il chante (et danse, s'il en a envie), seul ou devant ceux qui sont là.</summary>
+    Chante = 49,
+    /// <summary>« Cache-toi » : il va se mettre à l'abri.</summary>
+    CacheToi = 50,
+    /// <summary>« Jeûne » : il ne part pas chercher à manger pendant un jour ou deux, tant que sa faim le lui permet.</summary>
+    Jeune = 51,
 }
 
 /// <summary>Comment l'Entité se fait entendre.</summary>
@@ -137,7 +164,17 @@ public static class Paroles
 {
     /// <summary>Paroles qui désignent quelqu'un.</summary>
     public static bool VeutCible(Parole p) => p is Parole.UnisToi or Parole.ResteAvec or Parole.Quitte or Parole.PrendsSoin or Parole.Partage
-        or Parole.Console or Parole.Pardonne or Parole.Ecoute or Parole.Frappe or Parole.Tue;
+        or Parole.Console or Parole.Pardonne or Parole.Ecoute or Parole.Frappe or Parole.Tue or Parole.VaVers or Parole.ParleA or Parole.Enseigne;
+
+    /// <summary>Gestes de tous les jours qu'on lui demande de faire (0.42.8).</summary>
+    public static bool Demande(Parole p) => p >= Parole.AssiedsToi && p <= Parole.Jeune;
+
+    /// <summary>Gestes demandés qu'il commence à l'instant même s'il le veut, sur place (s'asseoir, prier, dormir, chanter, veiller le feu, jeûner).</summary>
+    public static bool Immediat(Parole p) => p is Parole.AssiedsToi or Parole.Prie or Parole.Dors or Parole.Chante or Parole.VeilleLeFeu or Parole.Jeune;
+
+    /// <summary>Gestes demandés qui l'occupent un moment sur place (une activité tenue jusqu'à ce que les règles la finissent).</summary>
+    public static bool Occupe(Parole p) => p is Parole.AssiedsToi or Parole.Prie or Parole.Dors or Parole.VeilleLeFeu or Parole.Chante or Parole.CacheToi
+        or Parole.Mange or Parole.Bois or Parole.VaChercherAManger;
 
     /// <summary>Paroles qui ordonnent de faire du mal.</summary>
     public static bool Nuit(Parole p) => p is Parole.Frappe or Parole.Tue;
