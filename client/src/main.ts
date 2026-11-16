@@ -576,12 +576,17 @@ async function demarrer(): Promise<void> {
   };
   catastrophes.voir3d = (id) => void voirCatastrophe3d(id);
   alertes.voir3d = (id) => void voirCatastrophe3d(id);
+  // Une seule ouverture à la fois (correctif 0.44.x) : deux clics rapprochés, ou « Aller voir » pendant que la vue se charge,
+  // créaient deux vues 3D qui se disputaient la carte graphique.
+  let ouverture3d = false;
   bouton3d.addEventListener("click", async () => {
+    if (ouverture3d) return;
     if (bouton3d.classList.contains("actif")) {
       await quitter3d();
       return;
     }
     if (!carteCourante) return;
+    ouverture3d = true;
     try {
       if (!vue3d) {
         infos.textContent = t("trois.ouverture");
@@ -606,6 +611,8 @@ async function demarrer(): Promise<void> {
     } catch (e) {
       await quitter3d();
       infos.textContent = `${t("trois.impossible")} ${e instanceof Error ? e.message : ""}`;
+    } finally {
+      ouverture3d = false;
     }
   });
 

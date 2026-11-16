@@ -424,22 +424,29 @@ export class Vue3D {
     const log = params.has("profondeurlog");
     // Carte graphique (correctif 0.41.8, RTX 3060) : sur un portable à deux cartes (Optimus), demander la carte puissante ; sinon le
     // navigateur peut prendre la carte intégrée du processeur, cinq fois plus lente. Le nom de la carte retenue s'affiche (touche I).
+    // Correctif 0.44.x : le navigateur peut refuser un instant la carte graphique (processus GPU qui redémarre, onglet qui revient
+    // au premier plan) : WebGPU ne rend alors aucun adaptateur et WebGL 2 aucun contexte. On réessaie quelques fois avant de
+    // conclure, au lieu de laisser Three.js échouer sur un contexte vide.
     let adaptateur: GPUAdapter | null = null;
-    if (!params.has("webgl") && "gpu" in navigator) {
-      adaptateur = await navigator.gpu.requestAdapter({ powerPreference: "high-performance", featureLevel: "compatibility" } as GPURequestAdapterOptions).catch(() => null);
+    let canvas: HTMLCanvasElement | undefined;
+    let context: WebGL2RenderingContext | undefined;
+    for (let essai = 0; essai < 4; essai++) {
+      if (essai > 0) await new Promise((r) => window.setTimeout(r, 400 * essai));
+      if (!params.has("webgl") && "gpu" in navigator) {
+        adaptateur = await navigator.gpu.requestAdapter({ powerPreference: "high-performance", featureLevel: "compatibility" } as GPURequestAdapterOptions).catch(() => null);
+      }
+      if (adaptateur) break;
+      canvas = document.createElement("canvas");
+      context = canvas.getContext("webgl2", { antialias: true, alpha: true, depth: true, stencil: false, powerPreference: "high-performance" }) ?? undefined;
+      if (context) break;
+      canvas = undefined;
     }
     const webgpu = adaptateur !== null;
+    if (!webgpu && !context) throw new Error(t("trois.carteRefusee"));
     // Profondeur (même correctif) : la profondeur logarithmique écrit la profondeur depuis chaque pixel, ce qui prive la carte du
     // test de profondeur anticipé (early-Z) : chaque feuille cachée derrière une autre est calculée en entier. En WebGPU, la
     // profondeur inversée en nombres à virgule (32 bits) garde la même netteté de 1 cm à l'horizon sans ce coût. En WebGL 2, la
     // toile n'a qu'une profondeur de 24 bits : on garde la logarithmique.
-    let canvas: HTMLCanvasElement | undefined;
-    let context: WebGL2RenderingContext | undefined;
-    if (!webgpu) {
-      canvas = document.createElement("canvas");
-      context = canvas.getContext("webgl2", { antialias: true, alpha: true, depth: true, stencil: false, powerPreference: "high-performance" }) ?? undefined;
-      if (!context) canvas = undefined;
-    }
     const renderer = new THREE.WebGPURenderer({
       antialias: true, forceWebGL: !webgpu, powerPreference: "high-performance", canvas, context,
       reversedDepthBuffer: webgpu && !lineaire && !log, logarithmicDepthBuffer: (!webgpu || log) && !lineaire,
