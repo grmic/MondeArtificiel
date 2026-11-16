@@ -6723,5 +6723,7 @@
   "catastrophes.voir3d": "Voir en 3D",
   "trois.catastrophe.aucune": "Aucune catastrophe en cours à aller voir.",
   "trois.catastrophe.finie": "Cette catastrophe est finie : il n'y a plus rien à voir.",
-  "trois.manette.catastrophe": "aller voir la catastrophe la plus proche"
+  "trois.manette.catastrophe": "aller voir la catastrophe la plus proche",
+  "dlg.trace.lu": "Geste demandé en toutes lettres (ajouté par les règles)",
+  "dlg.r.aucuneParole": "Aucune demande ni annonce dans ces mots : l'humain n'a rien à faire, il ne fait que t'entendre."
 }

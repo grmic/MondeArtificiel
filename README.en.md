@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.44.3 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.44.4 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -318,6 +318,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.44.4** (16 Nov 2026): fix: in a dialogue, a gesture asked for in plain words (“sit down and pray”, “sleep”, “assieds-toi et prie”) is always received, even when the LLM translating your words into orders misses it (empty list from a small model, or from a thinking model); a question, a prohibition (“do not pray”) or “je t'en prie” are not orders. When your words ask for nothing, the dialogue says so. The human still obeys, hesitates or refuses according to their will of the moment, and does nothing if they do not believe the Entity is speaking to them.
 - **0.44.3** (16 Nov 2026): fix: with LM Studio and a thinking model (`prism-ml/bonsai-27b`), the dialogue and the LLM Entity showed "Unreadable answer (JSON expected)"; the answer is now read from the model's reasoning (`reasoning_content`, `reasoning`, `thinking`) when it is empty. Simulation unchanged.
 - **0.44.2** (16 Nov 2026): **animal population and animal map**: Fauna window (each species, its wild animals estimated from the game, their trend over a year, its kept animals; sort by column) and the "Show where animals live" layer (all species or just one, kept herds, details on hover). Simulation unchanged.
 - **0.44.1** (16 Nov 2026): **hunting, fishing, sky and sea**: the beast caught by a hunter lies near them, the fish caught by a fisher at their feet, a shoal under their boat; pterosaurs above the coasts and cliffs, birds above the forests and marshes, dragonflies near fresh water, fish in the rivers, lakes and sea, mosasaurs and plesiosaurs out at sea, governed by biome, plants, game, burnt land, time of day and season; card and following for these beasts. Simulation unchanged (it only records its catches for the 3D).

@@ -108,4 +108,20 @@ public sealed class DemandesTests
         Assert.True(Dialogues.Lire("""{"pensee":"…","mots":"*gémit*","sens":"J'ai peur."}""", out _, out _, out var ancien, out _, out _));
         Assert.Equal("J'ai peur.", ancien);
     }
+
+    [Theory]
+    [InlineData("Assieds-toi et prie.", "AssiedsToi,Prie")]
+    [InlineData("Ana, je suis là. Assois-toi, puis prie pour les tiens !", "AssiedsToi,Prie")]
+    [InlineData("Sit down and pray.", "AssiedsToi,Prie")]
+    [InlineData("Va chercher à manger, puis dors.", "VaChercherAManger,Dors")]
+    [InlineData("Je t'en prie, écoute-moi.", "")]
+    [InlineData("Veux-tu prier avec moi ?", "")]
+    [InlineData("Ne prie pas maintenant.", "")]
+    [InlineData("Ramasse du bois sec.", "")]
+    [InlineData("Bois à la rivière, puis chante.", "Bois,Chante")]
+    [InlineData("Jeûne jusqu'à la lune nouvelle. Tu es jeune encore.", "Jeune")]
+    public void LesGestesDitsEnToutesLettres_SontLus(string texte, string attendus)
+    {
+        Assert.Equal(attendus, string.Join(",", GestesLus.Lire(texte)));
+    }
 }

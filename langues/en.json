@@ -6723,5 +6723,7 @@
   "catastrophes.voir3d": "See in 3D",
   "trois.catastrophe.aucune": "No disaster under way to go and see.",
   "trois.catastrophe.finie": "This disaster is over: there is nothing left to see.",
-  "trois.manette.catastrophe": "go and see the nearest disaster"
+  "trois.manette.catastrophe": "go and see the nearest disaster",
+  "dlg.trace.lu": "Gesture asked for in plain words (added by the rules)",
+  "dlg.r.aucuneParole": "No request or announcement in these words: the human has nothing to do, they only hear you."
 }

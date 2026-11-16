@@ -4,7 +4,7 @@
 
 Simulation d'une communauté humaine née d'un mythe fondateur. Application client-serveur : un serveur .NET 10 avec serveur HTTP intégré (Kestrel), et un client web ouvert dans le navigateur.
 
-Version 0.44.3 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine ou dans le cloud (ChatGPT, Claude, Mistral, Euria), voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
+Version 0.44.4 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine ou dans le cloud (ChatGPT, Claude, Mistral, Euria), voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
 
 ![Un monde à l'an 108 : 5 198 humains répartis en communautés sur quatre îles, avec la fenêtre du temps et la courbe de démographie](docs/capture-an108.png)
 
@@ -318,6 +318,7 @@ Le serveur n'écoute que sur `localhost:5080` (voir `src/Monde.Serveur/appsettin
 
 Les versions, de la plus récente à la plus ancienne. Le détail de chaque nouveauté est dans le guide ci-dessus.
 
+- **0.44.4** (16 nov. 2026) : correctif : dans un dialogue, un geste demandé en toutes lettres (« assieds-toi et prie », « dors », « sit down and pray ») est toujours reçu, même quand le LLM chargé de traduire tes mots en ordres le manque (liste vide d'un petit modèle, ou d'un modèle qui réfléchit) ; une question, une défense (« ne prie pas ») ou « je t'en prie » ne sont pas des ordres. Quand tes mots ne demandent rien, le dialogue le dit. L'humain obéit, hésite ou refuse toujours selon sa volonté du moment, et ne fait rien s'il ne croit pas que c'est l'Entité qui lui parle.
 - **0.44.3** (16 nov. 2026) : correctif : avec LM Studio et un modèle qui réfléchit (`prism-ml/bonsai-27b`), le dialogue et l'Entité-LLM affichaient « Réponse illisible (JSON attendu) » ; la réponse est maintenant lue dans la réflexion du modèle (`reasoning_content`, `reasoning`, `thinking`) quand elle est vide. Simulation inchangée.
 - **0.44.2** (16 nov. 2026) : **population animale et carte des animaux** : fenêtre Faune (chaque espèce, ses bêtes sauvages estimées d'après le gibier, leur tendance sur un an, ses bêtes gardées ; tri par colonne) et calque « Afficher l'emplacement des animaux » (toutes les espèces ou une seule, troupeaux gardés, détail au survol). Simulation inchangée.
 - **0.44.1** (16 nov. 2026) : **chasse, pêche, ciel et mer** : la bête prise par un chasseur gît près de lui, le poisson pris par un pêcheur à ses pieds, un banc sous sa barque ; ptérosaures au-dessus des côtes et des falaises, oiseaux au-dessus des forêts et des marais, libellules près de l'eau douce, poissons dans les rivières, les lacs et la mer, mosasaures et plésiosaures au large, réglés par le biome, les plantes, le gibier, les terres brûlées, l'heure et la saison ; fiche et suivi de ces bêtes. Simulation inchangée (elle note seulement ses prises pour la 3D).

@@ -302,6 +302,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                 regles.Add($"{Libelle(a)} → {L.T("llm.resultat.refuse", ("raison", e.Message))}");
             }
         }
+        // Rien à faire dans ses mots : on le dit, pour que le joueur sache que l'humain n'a reçu aucun ordre (0.44.4).
+        if (paroles.Count == 0) regles.Add(L.T("dlg.r.aucuneParole"));
         var (regle, p2, d2) = monde.Executer(m => m.Ecouter(c.Humain, c.Mode, rang, c.Croit, reponses, c.Reception));
         Plage(p2, d2);
         c.Comprise |= regle.Comprise;
@@ -605,6 +607,14 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             if (fautes.Count == 0 || essai == 1) break;
             messages.Add(("assistant", reponse));
             messages.Add(("user", L.T("llm.d.corriger", ("erreurs", string.Join(" ", fautes)))));
+        }
+        // Les gestes demandés en toutes lettres que la traduction a manqués (0.44.4) : sans eux, « assieds-toi et prie » restait sans effet.
+        foreach (var g in GestesLus.Lire(texte))
+        {
+            if (valides.Count >= ParolesMax) break;
+            if (valides.Exists(v => v.Parole == g.ToString())) continue;
+            valides.Add(new ActeLlm { Type = Actes.Parler, Humains = [c.Humain], Parole = g.ToString(), Mode = c.Mode.ToString(), Cible = 0 });
+            brut.AppendLine($"---- {L.T("dlg.trace.lu")} ----").AppendLine(g.ToString());
         }
         return (valides, ton, revelation);
     }
