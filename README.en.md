@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.44.1 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.44.3 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -250,7 +250,7 @@ An LLM (large language model) can play the Entity in your place, or alongside yo
 ollama pull gemma3:12b
 ```
 
-Choose the model according to your machine's memory. With 16 GB or more, a 12-billion-parameter model (`gemma3:12b`, about 8 GB) plays the Entity well, including in free mode. With 8 GB, or to go faster, `gemma3:4b` (about 3 GB) answers two to three times faster but judges less finely. Avoid models that "think" before answering (such as `qwen3`): they are much slower, with no gain for the simulation. LM Studio and llama.cpp (`llama-server`) work too.
+Choose the model according to your machine's memory. With 16 GB or more, a 12-billion-parameter model (`gemma3:12b`, about 8 GB) plays the Entity well, including in free mode. With 8 GB, or to go faster, `gemma3:4b` (about 3 GB) answers two to three times faster but judges less finely. Avoid models that "think" before answering (such as `qwen3`): they are much slower, with no gain for the simulation. LM Studio and llama.cpp (`llama-server`) work too. Some thinking models (for example `prism-ml/bonsai-27b` in LM Studio) write their whole answer in their reasoning and leave the answer empty: since 0.44.3, the simulation looks for the JSON object there.
 
 **2. Connect the LLM to the world.** Start the server and open the page. Click **LLM Entity** in the bar. In "LLM connection", choose the software (Ollama is already at the right address, `http://localhost:11434`), click **Test and list models**, choose the model, then **Save**. The setting is kept for the whole installation.
 
@@ -316,6 +316,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.44.3** (16 Nov 2026): fix: with LM Studio and a thinking model (`prism-ml/bonsai-27b`), the dialogue and the LLM Entity showed "Unreadable answer (JSON expected)"; the answer is now read from the model's reasoning (`reasoning_content`, `reasoning`, `thinking`) when it is empty. Simulation unchanged.
 - **0.44.1** (16 Nov 2026): **hunting, fishing, sky and sea**: the beast caught by a hunter lies near them, the fish caught by a fisher at their feet, a shoal under their boat; pterosaurs above the coasts and cliffs, birds above the forests and marshes, dragonflies near fresh water, fish in the rivers, lakes and sea, mosasaurs and plesiosaurs out at sea, governed by biome, plants, game, burnt land, time of day and season; card and following for these beasts. Simulation unchanged (it only records its catches for the 3D).
 - **0.44.0** (16 Nov 2026): **living beasts** of the 3D World: a computed Cretaceous body for each species (ceratopsian, ornithopod, pachycephalosaur, ankylosaur, dromaeosaur, theropod, ornithomimid, small feathered climber), animated by the graphics card; herds behind a lead female, grazing, sleep, flight from humans according to panic, intimidation charges from irascible species; kept beasts in the pen at night and at pasture behind their keeper by day, dogs that follow their master; beast card on click, and following. Beast traits rewritten for scales and feathers. Simulation unchanged.
 - **0.43.1** (16 Nov 2026): **the other disasters in 3D**: eruption (steam, ash column, red crater, lava, falling ash), flood and wave (muddy water, silt), storm (driving rain, wind), cold wave and heatwave in the 3D temperatures, comet, aurora, eclipse, fireball, impact (flash, mushroom cloud), volcanic and impact winters (veiled sun), earthquake (the camera shakes); humans look up at the sky and take fright when the ground shakes. Simulation unchanged.

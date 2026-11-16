@@ -216,15 +216,92 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
                 };
         }
         var json = await Envoyer(c, cle, url, corps, arret);
-        string? contenu;
-        if (c.Fournisseur == ConnexionLlm.Ollama) contenu = json?["message"]?["content"]?.GetValue<string>();
-        else
+        if (c.Fournisseur != ConnexionLlm.Ollama && c.EstCloud && json?["usage"] is JsonObject u)
+            depenses.Noter(c, Entier(u["prompt_tokens"]), Entier(u["completion_tokens"]));
+        return Extraire(json, c.Fournisseur == ConnexionLlm.Ollama);
+    }
+
+    /// <summary>Champs où un modèle qui réfléchit range sa réflexion, selon le serveur (LM Studio et llama.cpp, OpenRouter, Ollama).</summary>
+    private static readonly string[] ChampsReflexion = ["reasoning_content", "reasoning", "thinking"];
+
+    /// <summary>
+    /// Texte de la réponse (format Ollama ou OpenAI) : le « content », nettoyé. Certains modèles qui réfléchissent (bonsai-27b servi par
+    /// LM Studio, par exemple) laissent « content » vide et écrivent tout, JSON compris, dans la réflexion : on y prend alors
+    /// le dernier objet JSON complet (0.44.2).
+    /// </summary>
+    public static string Extraire(JsonNode? json, bool ollama)
+    {
+        var message = ollama ? json?["message"] : json?["choices"]?[0]?["message"];
+        var contenu = Nettoyer(Texte(message?["content"]));
+        if (contenu.Contains('{')) return contenu;
+        foreach (var champ in ChampsReflexion)
+            if (DernierObjet(Texte(message?[champ])) is { } objet) return objet;
+        return contenu;
+    }
+
+    /// <summary>Une chaîne, ou les morceaux de texte d'une liste (« content » en parties) ; sinon rien.</summary>
+    private static string Texte(JsonNode? n) => n switch
+    {
+        JsonValue v when v.TryGetValue<string>(out var s) => s,
+        JsonArray a => string.Concat(a.Select(p => p switch
         {
-            contenu = json?["choices"]?[0]?["message"]?["content"]?.GetValue<string>();
-            if (c.EstCloud && json?["usage"] is JsonObject u)
-                depenses.Noter(c, Entier(u["prompt_tokens"]), Entier(u["completion_tokens"]));
+            JsonValue v when v.TryGetValue<string>(out var s) => s,
+            JsonObject o => Texte(o["text"]),
+            _ => "",
+        })),
+        _ => "",
+    };
+
+    /// <summary>
+    /// Le dernier objet JSON complet et valide d'un texte libre (une réflexion peut citer des accolades avant sa réponse) ;
+    /// les accolades dans les chaînes JSON sont ignorées. Rien si le texte n'en contient aucun.
+    /// </summary>
+    public static string? DernierObjet(string texte)
+    {
+        if (string.IsNullOrWhiteSpace(texte)) return null;
+        texte = Reflexion().Replace(texte, "");
+        var net = Nettoyer(texte);
+        if (EstObjet(net)) return net;
+        string? dernier = null;
+        for (var i = 0; i < texte.Length; i++)
+        {
+            if (texte[i] != '{') continue;
+            var fin = Fermeture(texte, i);
+            if (fin < 0) continue;
+            var candidat = texte[i..(fin + 1)];
+            if (EstObjet(candidat))
+            {
+                dernier = candidat;
+                i = fin;
+            }
         }
-        return Nettoyer(contenu ?? "");
+        return dernier;
+    }
+
+    /// <summary>Position de l'accolade qui ferme celle ouverte en <paramref name="debut"/>, ou -1.</summary>
+    private static int Fermeture(string s, int debut)
+    {
+        var profondeur = 0;
+        var dansChaine = false;
+        for (var i = debut; i < s.Length; i++)
+        {
+            var ch = s[i];
+            if (dansChaine)
+            {
+                if (ch == '\\') i++;
+                else if (ch == '"') dansChaine = false;
+            }
+            else if (ch == '"') dansChaine = true;
+            else if (ch == '{') profondeur++;
+            else if (ch == '}' && --profondeur == 0) return i;
+        }
+        return -1;
+    }
+
+    private static bool EstObjet(string s)
+    {
+        try { return JsonNode.Parse(s) is JsonObject; }
+        catch (JsonException) { return false; }
     }
 
     /// <summary>Envoie une demande ; un service du cloud occupé (429, 503) est réessayé deux fois, après l'attente qu'il demande.</summary>
