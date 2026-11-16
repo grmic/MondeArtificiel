@@ -1,9 +1,10 @@
 import * as THREE from "three/webgpu";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { hacher, unite } from "./bruit";
 import type { Relief } from "./relief";
 
-/** Ce que donne le serveur (CampDto) : huttes par 5, champs par 6, bêtes par 7 nombres. */
+import { CHAMPS_BETES, longueur } from "./betes3d";
+
+/** Ce que donne le serveur (CampDto) : huttes par 5, champs par 6, bêtes par 11 nombres (0.44.0). */
 export interface CampJson {
   huttes: number[];
   champs: number[];
@@ -30,89 +31,28 @@ interface Champ {
   angle: number;
 }
 
-interface Troupe {
+/** Un enclos : là où un troupeau passe ses nuits (les bêtes elles-mêmes sont dans faune.ts depuis la 0.44.0). */
+interface Enclos {
   id: number;
-  /** Centre de la troupe (m) et rayon où elle se tient. */
   x: number;
   z: number;
   rayon: number;
-  forme: number;
-  echelle: number;
-  nombre: number;
-  gardees: boolean;
-  couleur: THREE.Color;
-  /** Les gardées vivent dans un enclos ; les sauvages errent lentement. */
-  errance: number;
+}
+
+/**
+ * Place et rayon (m) de l'enclos d'un troupeau : près du camp de sa case, à l'écart des huttes, assez grand pour ses bêtes
+ * (longueur du corps `L`). Le même calcul sert aux bêtes (faune.ts) et aux piquets.
+ */
+export function enclosDe(rel: Relief, id: number, x: number, y: number, nombre: number, L: number): [number, number, number] {
+  const [cx, cz] = rel.camp(x, y);
+  const a = unite(hacher(id, 57)) * Math.PI * 2;
+  const rayon = 3 + Math.sqrt(Math.max(1, nombre)) * L * 0.9;
+  return [cx + Math.cos(a) * (22 + rayon), cz + Math.sin(a) * (22 + rayon), rayon];
 }
 
 const MAX_HUTTES = 600;
 const MAX_PLANTES = 24000;
-const MAX_BETES = 500;
 const MAX_PIQUETS = 3000;
-
-/** Silhouette des bêtes (huit formes de la faune, Faune.cs) : corps d'un seul tenant et pattes à part, pour 1 m de long. */
-interface Gabarit {
-  corps: THREE.BufferGeometry;
-  patte: THREE.BufferGeometry;
-  /** Points d'attache des pattes (x, y, z) et hauteur du dos. */
-  pattes: [number, number, number][];
-  couleur: THREE.Color;
-}
-
-function ellipsoide(rx: number, ry: number, rz: number, x: number, y: number, z: number): THREE.BufferGeometry {
-  return new THREE.SphereGeometry(1, 12, 8).scale(rx, ry, rz).translate(x, y, z);
-}
-
-function cylindre(r1: number, r2: number, l: number, x: number, y: number, z: number, rx = 0, rz = 0): THREE.BufferGeometry {
-  return new THREE.CylinderGeometry(r1, r2, l, 7).rotateX(rx).rotateZ(rz).translate(x, y, z);
-}
-
-function cone(r: number, l: number, x: number, y: number, z: number, rx: number, rz: number): THREE.BufferGeometry {
-  return new THREE.ConeGeometry(r, l, 6).rotateX(rx).rotateZ(rz).translate(x, y, z);
-}
-
-function patte(l: number, r: number): THREE.BufferGeometry {
-  return new THREE.CylinderGeometry(r, r * 0.6, l, 6).translate(0, -l / 2, 0);
-}
-
-function gabarits(): Gabarit[] {
-  const g = (corps: THREE.BufferGeometry[], p: THREE.BufferGeometry, pattes: [number, number, number][], c: number): Gabarit =>
-    ({ corps: mergeGeometries(corps)!, patte: p, pattes, couleur: new THREE.Color(c) });
-  const quatre = (x: number, y: number, z: number): [number, number, number][] => [[x, y, z], [-x, y, z], [x, y, -z], [-x, y, -z]];
-  return [
-    // 0 la bête à cornes : massive, cornes en avant.
-    g([ellipsoide(0.22, 0.24, 0.48, 0, 0.72, 0), cylindre(0.11, 0.14, 0.3, 0, 0.82, 0.45, 1.1), ellipsoide(0.1, 0.12, 0.17, 0, 0.8, 0.62),
-      cone(0.035, 0.28, 0.13, 0.95, 0.6, -0.4, -0.9), cone(0.035, 0.28, -0.13, 0.95, 0.6, -0.4, 0.9), cylindre(0.015, 0.01, 0.4, 0, 0.6, -0.5, 0.3)],
-    patte(0.52, 0.05), quatre(0.13, 0.55, 0.3), 0x5b4332),
-    // 1 la bête à sabots : élancée, long cou dressé.
-    g([ellipsoide(0.16, 0.18, 0.45, 0, 0.92, 0), cylindre(0.07, 0.1, 0.45, 0, 1.12, 0.42, 0.55), ellipsoide(0.07, 0.08, 0.17, 0, 1.3, 0.6),
-      cone(0.025, 0.1, 0.05, 1.38, 0.52, 0, 0), cone(0.025, 0.1, -0.05, 1.38, 0.52, 0, 0), cylindre(0.03, 0.01, 0.35, 0, 0.85, -0.5, 0.5)],
-    patte(0.78, 0.03), quatre(0.09, 0.8, 0.32), 0x8a6a45),
-    // 2 le petit brouteur : rond, longues oreilles.
-    g([ellipsoide(0.2, 0.2, 0.32, 0, 0.3, 0), ellipsoide(0.11, 0.11, 0.14, 0, 0.42, 0.3), cylindre(0.03, 0.02, 0.22, 0.04, 0.6, 0.27, -0.2),
-      cylindre(0.03, 0.02, 0.22, -0.04, 0.6, 0.27, -0.2), ellipsoide(0.06, 0.06, 0.06, 0, 0.32, -0.32)],
-    patte(0.16, 0.035), quatre(0.1, 0.18, 0.16), 0x8f7e66),
-    // 3 le fouisseur : bas et allongé.
-    g([ellipsoide(0.2, 0.15, 0.45, 0, 0.27, 0), ellipsoide(0.1, 0.09, 0.16, 0, 0.26, 0.5), cylindre(0.03, 0.01, 0.15, 0, 0.27, -0.5, 1.3)],
-    patte(0.15, 0.04), quatre(0.13, 0.15, 0.27), 0x4a4440),
-    // 4 le rôdeur : fin, museau pointu, queue touffue.
-    g([ellipsoide(0.13, 0.15, 0.4, 0, 0.58, 0), cylindre(0.06, 0.08, 0.2, 0, 0.68, 0.38, 1.0), ellipsoide(0.07, 0.08, 0.1, 0, 0.74, 0.5),
-      cone(0.04, 0.16, 0, 0.72, 0.64, Math.PI / 2, 0), cone(0.03, 0.09, 0.04, 0.84, 0.48, 0, 0), cone(0.03, 0.09, -0.04, 0.84, 0.48, 0, 0),
-      ellipsoide(0.05, 0.05, 0.22, 0, 0.5, -0.55)],
-    patte(0.45, 0.025), quatre(0.08, 0.48, 0.26), 0x7a6a58),
-    // 5 le grand chasseur : long, tête ronde, longue queue.
-    g([ellipsoide(0.18, 0.2, 0.55, 0, 0.72, 0), ellipsoide(0.13, 0.12, 0.14, 0, 0.82, 0.62), cone(0.06, 0.12, 0, 0.8, 0.76, Math.PI / 2, 0),
-      cylindre(0.03, 0.02, 0.7, 0, 0.6, -0.8, 0.9)],
-    patte(0.58, 0.05), quatre(0.11, 0.6, 0.35), 0xa07a42),
-    // 6 l'oiseau coureur : sur deux longues pattes.
-    g([ellipsoide(0.25, 0.22, 0.32, 0, 1.0, 0), cylindre(0.04, 0.06, 0.6, 0, 1.35, 0.22, 0.35), ellipsoide(0.06, 0.06, 0.09, 0, 1.65, 0.33),
-      cone(0.025, 0.1, 0, 1.64, 0.43, Math.PI / 2, 0), ellipsoide(0.18, 0.12, 0.12, 0, 1.05, -0.32)],
-    patte(0.9, 0.03), [[0.1, 0.92, 0], [-0.1, 0.92, 0]], 0x3f3a36),
-    // 7 le grimpeur : dos rond, longs bras, queue.
-    g([ellipsoide(0.15, 0.2, 0.25, 0, 0.5, 0), ellipsoide(0.1, 0.1, 0.1, 0, 0.72, 0.22), cylindre(0.02, 0.015, 0.5, 0, 0.55, -0.4, 0.6)],
-    patte(0.45, 0.03), [[0.12, 0.62, 0.15], [-0.12, 0.62, 0.15], [0.1, 0.42, -0.15], [-0.1, 0.42, -0.15]], 0x5a4a3a),
-  ];
-}
 
 /**
  * Le camp et les bêtes de la vue 3D (0.41.1) : huttes de branches (enduites d'argile ou non, affaissées quand elles s'abîment),
@@ -135,12 +75,9 @@ export class Camp3D {
     m.needsUpdate = true;
   }
   private readonly piquets: THREE.InstancedMesh;
-  private readonly gabarits = gabarits();
-  private readonly corpsBetes: THREE.InstancedMesh[];
-  private readonly pattesBetes: THREE.InstancedMesh[];
   private huttes: Hutte[] = [];
   private champs: Champ[] = [];
-  private troupes: Troupe[] = [];
+  private enclos: Enclos[] = [];
   private readonly origine = new THREE.Vector3();
   /** Les plantes des champs ne bougent pas : refaites seulement quand les champs ou la caméra changent beaucoup. */
   private plantesA = new THREE.Vector3(NaN, 0, 0);
@@ -148,8 +85,6 @@ export class Camp3D {
   portee = 2500;
   /** Centres des camps (coin de la case) et nombre de huttes : le tapis du sol s'y use (0.41.9). */
   private centres: { x: number; z: number; huttes: number }[] = [];
-  /** Bêtes proches de la caméra à cette image : x, z, rayon des pas (m), par trois nombres (0.41.9, tapis piétiné). */
-  readonly pietineurs: number[] = [];
 
   constructor(private readonly relief: Relief) {
     const dome = new THREE.SphereGeometry(1, 18, 9, 0, Math.PI * 2, 0, Math.PI / 2);
@@ -162,14 +97,12 @@ export class Camp3D {
     this.sols = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, polygonOffset: true, polygonOffsetFactor: -2 }));
     this.piquets = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.06, 1.2, 5).translate(0, 0.6, 0),
       new THREE.MeshStandardMaterial({ color: 0x5c4630, roughness: 1 }), MAX_PIQUETS);
-    this.corpsBetes = this.gabarits.map((g) => new THREE.InstancedMesh(g.corps, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), MAX_BETES));
-    this.pattesBetes = this.gabarits.map((g) => new THREE.InstancedMesh(g.patte, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9 }), MAX_BETES * 4));
-    for (const m of [this.branches, this.argile, this.entrees, this.plantes, this.piquets, ...this.corpsBetes, ...this.pattesBetes]) {
+    for (const m of [this.branches, this.argile, this.entrees, this.plantes, this.piquets]) {
       m.count = 0;
       m.frustumCulled = false;
       this.groupe.add(m);
     }
-    for (const m of [this.branches, this.argile, this.plantes, ...this.corpsBetes, ...this.pattesBetes]) m.setColorAt(0, new THREE.Color());
+    for (const m of [this.branches, this.argile, this.plantes]) m.setColorAt(0, new THREE.Color());
     this.sols.frustumCulled = false;
     this.groupe.add(this.sols);
   }
@@ -214,24 +147,13 @@ export class Camp3D {
       const d = 35 + cote * 0.75 + rang * 25;
       this.champs.push({ id, x: cx + Math.cos(a) * d, z: cz + Math.sin(a) * d, cote, etat, croissance: croissance / 1000, angle: unite(hacher(id, 43)) * 0.6 - 0.3 });
     }
-    // Bêtes.
-    this.troupes = [];
-    for (let k = 0; k + 7 <= json.betes.length; k += 7) {
-      const [id, x, y, forme, poids, nombre, gardees] = json.betes.slice(k, k + 7);
-      const [cx, cz] = rel.camp(x, y);
-      const g = this.gabarits[Math.max(0, Math.min(this.gabarits.length - 1, forme))];
-      const echelle = Math.max(0.25, Math.min(3.2, Math.cbrt(Math.max(1, poids) / 120) * 1.5));
-      const montre = Math.min(gardees ? 30 : 8, nombre);
-      const couleur = g.couleur.clone().offsetHSL((unite(hacher(id, 51)) - 0.5) * 0.04, (unite(hacher(id, 53)) - 0.5) * 0.1, (unite(hacher(id, 55)) - 0.5) * 0.12);
-      if (gardees === 1) {
-        const a = unite(hacher(id, 57)) * Math.PI * 2;
-        const rayon = 2.5 + Math.sqrt(montre) * echelle * 1.6;
-        this.troupes.push({ id, x: cx + Math.cos(a) * (22 + rayon), z: cz + Math.sin(a) * (22 + rayon), rayon, forme, echelle, nombre: montre, gardees: true, couleur, errance: 0 });
-      } else {
-        const ox = (unite(hacher(x, y, 59)) - 0.5) * rel.m * 0.7;
-        const oz = (unite(hacher(x, y, 61)) - 0.5) * rel.m * 0.7;
-        this.troupes.push({ id, x: (x + 0.5) * rel.m + ox, z: (y + 0.5) * rel.m + oz, rayon: 6 + Math.sqrt(montre) * echelle * 3, forme, echelle, nombre: montre, gardees: false, couleur, errance: 1 });
-      }
+    // Enclos des troupeaux gardés (pas pour les chiens, qui suivent leur maître).
+    this.enclos = [];
+    for (let k = 0; k + CHAMPS_BETES <= json.betes.length; k += CHAMPS_BETES) {
+      const [id, x, y, , forme, poids, adultes, petits, gardees] = json.betes.slice(k, k + CHAMPS_BETES);
+      if (gardees !== 1 || forme === 4 || adultes + petits < 2) continue;
+      const [ex, ez, rayon] = enclosDe(rel, id, x, y, Math.min(30, adultes) + Math.min(20, petits), longueur(forme, poids));
+      this.enclos.push({ id, x: ex, z: ez, rayon });
     }
     this.plantesCle = "";
   }
@@ -244,7 +166,7 @@ export class Camp3D {
     enclos: { x: number; z: number; r: number }[]; centres: { x: number; z: number; huttes: number }[]; cle: string } {
     const huttes = this.huttes.map((h) => ({ x: h.x, z: h.z, r: 1.9 + 0.5 * unite(hacher(h.id, 37)), cap: h.cap }));
     const champs = this.champs.map((c) => ({ x: c.x, z: c.z, cote: c.cote, angle: c.angle }));
-    const enclos = this.troupes.filter((t) => t.gardees && t.nombre >= 2).map((t) => ({ x: t.x, z: t.z, r: t.rayon * 1.05 }));
+    const enclos = this.enclos.map((t) => ({ x: t.x, z: t.z, r: t.rayon * 1.05 }));
     const arrondi = (v: number) => Math.round(v);
     const cle = [
       ...huttes.map((h) => `h${arrondi(h.x)},${arrondi(h.z)}`),
@@ -255,7 +177,7 @@ export class Camp3D {
   }
 
   /** Chaque image : place huttes, bêtes et enclos autour de la caméra. */
-  animer(camera: THREE.Vector3, secondes: number, temps: number): void {
+  animer(camera: THREE.Vector3): void {
     this.origine.set(Math.round(camera.x), 0, Math.round(camera.z));
     const o = this.origine;
     const m = new THREE.Matrix4();
@@ -290,61 +212,21 @@ export class Camp3D {
     this.branches.count = nb;
     this.argile.count = na;
     this.entrees.count = ne;
-    // Bêtes et enclos.
-    this.pietineurs.length = 0;
-    const nc = this.gabarits.map(() => 0);
-    const np = this.gabarits.map(() => 0);
+    // Enclos : un cercle de piquets.
     let npi = 0;
-    for (const t of this.troupes) {
-      const d = Math.hypot(t.x - camera.x, t.z - camera.z);
-      if (d > Math.min(this.portee, 1800)) continue;
-      const g = this.gabarits[t.forme] ?? this.gabarits[0];
-      // Les sauvages errent lentement (en heures du monde) ; les gardées tournent dans leur enclos.
-      const errX = t.errance * Math.sin(secondes / 7200 + t.id) * 120;
-      const errZ = t.errance * Math.cos(secondes / 9100 + t.id * 1.7) * 120;
-      for (let k = 0; k < t.nombre; k++) {
-        const graine = hacher(t.id, k, 63);
-        const a = unite(graine) * Math.PI * 2 + secondes / (2400 + 1200 * unite(hacher(graine, 1)));
-        const r = t.rayon * Math.sqrt(unite(hacher(graine, 2))) * 0.85;
-        const x = t.x + errX + Math.cos(a) * r;
-        const z = t.z + errZ + Math.sin(a) * r;
-        const s = this.relief.surface(x, z);
-        if (!Number.isNaN(s.eau) && s.eau - s.sol > 0.4) continue;
-        const marche = Math.sin(secondes / 600 + k * 3.1 + t.id) > 0.2;
-        const cap = a + Math.PI / 2 + (unite(hacher(graine, 3)) - 0.5) * 0.6;
-        const ech = t.echelle * (0.85 + 0.3 * unite(hacher(graine, 4)));
-        const broute = !marche && t.forme !== 6 ? -0.25 : 0;
-        q.setFromAxisAngle(haut, cap).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -broute * 0.3));
-        m.compose(p.set(x - o.x, s.sol, z - o.z), q, e.set(ech, ech, ech));
-        if (this.pietineurs.length < 300 && Math.abs(x - camera.x) < 34 && Math.abs(z - camera.z) < 34) this.pietineurs.push(x, z, 0.3 + 0.35 * ech);
-        const corps = this.corpsBetes[t.forme] ?? this.corpsBetes[0];
-        if (nc[t.forme] >= MAX_BETES) continue;
-        corps.setMatrixAt(nc[t.forme], m);
-        corps.setColorAt(nc[t.forme]++, c.copy(t.couleur).multiplyScalar(0.9 + 0.2 * unite(hacher(graine, 5))));
-        const pattes = this.pattesBetes[t.forme] ?? this.pattesBetes[0];
-        g.pattes.forEach(([px, py, pz], j) => {
-          const angle = marche ? Math.sin(temps * 6 + j * Math.PI * (j % 2 ? 1 : 0.5) + k) * 0.45 : 0;
-          const pm = new THREE.Matrix4().compose(p.set(px, py, pz), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), angle), e.set(1, 1, 1));
-          pattes.setMatrixAt(np[t.forme], m.clone().multiply(pm));
-          pattes.setColorAt(np[t.forme]++, c.copy(t.couleur).multiplyScalar(0.75));
-        });
-      }
-      // Enclos : un cercle de piquets autour des bêtes gardées.
-      if (t.gardees && t.nombre >= 2) {
-        const n = Math.min(80, Math.ceil((t.rayon * 2 * Math.PI) / 1.6));
-        for (let k = 0; k < n && npi < MAX_PIQUETS; k++) {
-          const a = (k / n) * Math.PI * 2;
-          const x = t.x + Math.cos(a) * t.rayon * 1.05;
-          const z = t.z + Math.sin(a) * t.rayon * 1.05;
-          m.compose(p.set(x - o.x, this.relief.hauteur(x, z), z - o.z), q.setFromAxisAngle(haut, a), e.set(1, 0.9 + 0.2 * unite(hacher(t.id, k)), 1));
-          this.piquets.setMatrixAt(npi++, m);
-        }
+    for (const t of this.enclos) {
+      if (Math.hypot(t.x - camera.x, t.z - camera.z) > Math.min(this.portee, 1800)) continue;
+      const n = Math.min(80, Math.ceil((t.rayon * 2 * Math.PI) / 1.6));
+      for (let k = 0; k < n && npi < MAX_PIQUETS; k++) {
+        const a = (k / n) * Math.PI * 2;
+        const x = t.x + Math.cos(a) * t.rayon * 1.05;
+        const z = t.z + Math.sin(a) * t.rayon * 1.05;
+        m.compose(p.set(x - o.x, this.relief.hauteur(x, z), z - o.z), q.setFromAxisAngle(haut, a), e.set(1, 0.9 + 0.2 * unite(hacher(t.id, k)), 1));
+        this.piquets.setMatrixAt(npi++, m);
       }
     }
-    this.corpsBetes.forEach((x, k) => (x.count = nc[k]));
-    this.pattesBetes.forEach((x, k) => (x.count = np[k]));
     this.piquets.count = npi;
-    for (const x of [this.branches, this.argile, this.entrees, this.piquets, ...this.corpsBetes, ...this.pattesBetes]) {
+    for (const x of [this.branches, this.argile, this.entrees, this.piquets]) {
       x.position.copy(o);
       x.instanceMatrix.needsUpdate = true;
       if (x.instanceColor) x.instanceColor.needsUpdate = true;

@@ -95,8 +95,27 @@ public sealed class SceneTests
             Assert.InRange(b.Forme, 0, Faune.NombreDeFormes - 1);
             Assert.InRange(b.Nombre, 1, 400);
             Assert.True(b.Poids > 0);
+            // 0.44.0 : l'espèce donnée est bien celle de la forme, et les sauvages n'ont ni gardien ni docilité.
+            Assert.Equal(monde.Faune.Get(b.Espece).Forme, b.Forme);
+            Assert.False(b.Gardees);
+            Assert.Equal(0, b.GardienId);
         });
         Assert.All(huttes, h => Assert.InRange(h.Solidite, 0, 1));
         Assert.All(champs, c => Assert.InRange(c.Ares, 0, 10_000));
+    }
+
+    /// <summary>0.44.0 : un troupeau gardé par un humain seul se montre sur sa case, avec ses adultes, ses petits et sa docilité.</summary>
+    [Fact]
+    public void Camp_DonneLeTroupeauAvecSonGardien()
+    {
+        var monde = NouveauMonde();
+        var h = monde.InstantaneHumains().Humains.First(x => x.EstVivant);
+        var t = new Champs().NouveauTroupeau(monde.Faune.Betes[0], 0, h.Id, 4, 2, 0.45, 0, 0);
+        var avec = new MondeSimule(MondeSimuleTests.Carte42, monde.Etat with { Troupeaux = [t] });
+        var (_, _, betes) = avec.Camp(h.X, h.Y, 1);
+        var vue = Assert.Single(betes, b => b.Gardees);
+        Assert.Equal((t.Id, h.X, h.Y, h.Id, 4, 2), (vue.Id, vue.X, vue.Y, vue.GardienId, vue.Adultes, vue.Petits));
+        Assert.Equal(0.45, vue.Docilite, 6);
+        Assert.Equal(monde.Faune.Betes[0].Numero, vue.Espece);
     }
 }

@@ -41,8 +41,15 @@ public readonly record struct HutteScene(int Id, int X, int Y, double Solidite, 
 /// <summary>Un champ vu en 3D : surface semée, et où il en est (0 semé, 1 mûr).</summary>
 public readonly record struct ChampScene(int Id, int X, int Y, double Ares, int Etat, double Croissance);
 
-/// <summary>Des bêtes vues en 3D : gardées (près de leur gardien) ou sauvages (selon le gibier de la case).</summary>
-public readonly record struct BetesScene(int Id, int X, int Y, int Forme, double Poids, int Nombre, bool Gardees);
+/// <summary>
+/// Des bêtes vues en 3D : gardées (au camp de leur communauté, ou près de leur gardien seul) ou sauvages (selon le gibier de la
+/// case). 0.44.0 : l'espèce, les adultes et les petits, le gardien et la docilité du troupeau, pour leur comportement à l'affichage.
+/// </summary>
+public readonly record struct BetesScene(int Id, int X, int Y, int Espece, int Forme, double Poids, int Adultes, int Petits, bool Gardees,
+    int GardienId, double Docilite)
+{
+    public int Nombre => Adultes + Petits;
+}
 
 public sealed partial class MondeSimule
 {
@@ -159,6 +166,14 @@ public sealed partial class MondeSimule
         return h.Porte(Matiere.Epieu) ? Arme.Epieu : Arme.Poings;
     }
 
+    /// <summary>Où vit un troupeau : au camp de sa communauté, sinon là où est son gardien (comme pour la simulation).</summary>
+    private (int X, int Y) OuVitLeTroupeau(Troupeau t)
+    {
+        if (t.CommunauteId > 0 && t.CommunauteId <= _communautes.Count && _communautes[t.CommunauteId - 1] is { Active: true, CentreX: >= 0 } c)
+            return (c.CentreX, c.CentreY);
+        return t.GardienId > 0 && t.GardienId <= _humains.Count && _humains[t.GardienId - 1] is { EstVivant: true } g ? (g.X, g.Y) : (-1, -1);
+    }
+
     /// <summary>
     /// Ce qui entoure les humains dans la vue 3D (0.41.1) : huttes, champs, bêtes gardées (sur la case de leur gardien) et bêtes
     /// sauvages (quelques-unes par case, selon le gibier et la faune du terrain). Lu sans rien changer à la simulation.
@@ -176,12 +191,15 @@ public sealed partial class MondeSimule
             foreach (var t in _champs.Troupeaux)
             {
                 if (t.Abattue || t.Nombre < 0.5 || t.Espece < 1 || t.Espece > Faune.Betes.Count) continue;
-                var g = t.GardienId > 0 && t.GardienId <= _humains.Count ? _humains[t.GardienId - 1] : null;
-                if (g is not { EstVivant: true } || !Pres(g.X, g.Y)) continue;
+                var (tx, ty) = OuVitLeTroupeau(t);
+                if (tx < 0 || !Pres(tx, ty)) continue;
                 var b = Faune.Betes[t.Espece - 1];
-                betes.Add(new BetesScene(t.Id, g.X, g.Y, b.Forme, b.Poids * Math.Clamp(t.Taille, 0.3, 2), (int)Math.Round(t.Nombre), true));
+                betes.Add(new BetesScene(t.Id, tx, ty, b.Numero, b.Forme, b.Poids * Math.Clamp(t.Taille, 0.3, 2), (int)Math.Round(t.Adultes),
+                    (int)Math.Round(t.Petits), true, t.GardienId, t.Docilite));
             }
             var carte = Carte;
+            // Saison des naissances (printemps et été, comme pour les petits que rapportent les chasseurs) : les petits suivent leur mère.
+            var saison = (int)(_secondes % Temps.Calendrier.SecondesParAn / (Temps.Calendrier.JoursParSaison * Temps.Calendrier.SecondesParJour));
             for (var cy = Math.Max(0, y - rayon); cy <= Math.Min(carte.Hauteur - 1, y + rayon); cy++)
             {
                 for (var cx = Math.Max(0, x - rayon); cx <= Math.Min(carte.Largeur - 1, x + rayon); cx++)
@@ -191,10 +209,17 @@ public sealed partial class MondeSimule
                     if (gibier < 500) continue;
                     var especes = Faune.Sur((Biome)carte.Biomes[i]);
                     if (especes.Count == 0) continue;
-                    // Une espèce par case, toujours la même (tirée de la case) : quelques bêtes, plus nombreuses où le gibier abonde.
+                    // Une espèce par case, toujours la même (tirée de la case) : quelques bêtes, plus nombreuses où le gibier abonde ;
+                    // celles qui vivent en troupeau se montrent ensemble, les grands chasseurs seuls.
                     var b = especes[(int)((uint)(cx * 73856093 ^ cy * 19349663) % (uint)especes.Count)];
-                    var nombre = (int)Math.Clamp(Math.Round(gibier / 1500.0 * (b.Poids < 30 ? 2 : 1)), 1, 8);
-                    betes.Add(new BetesScene(-(i + 1), cx, cy, b.Forme, b.Poids, nombre, false));
+                    // Les espèces qui vivent en troupeau se rassemblent : un troupeau toutes les trois cases environ, qui réunit les bêtes
+                    // des cases voisines (la densité reste celle du gibier).
+                    var hache = (uint)(cx * 2654435761u ^ cy * 40503u) >> 7;
+                    if (b.Hierarchie && hache % 3 != 0) continue;
+                    var groupe = b.Forme == 5 ? 0.25 : b.Hierarchie ? 3 : 0.6;
+                    var adultes = (int)Math.Clamp(Math.Round(gibier / 1500.0 * (b.Poids < 30 ? 2 : 1) * groupe), 1, b.Forme == 5 ? 2 : 14);
+                    var petits = saison <= 1 && b.Forme != 5 ? (int)Math.Round(adultes * 0.5 * Math.Min(1, b.Portee / 2)) : 0;
+                    betes.Add(new BetesScene(-(i + 1), cx, cy, b.Numero, b.Forme, b.Poids, adultes, petits, false, 0, 0));
                 }
             }
             return (huttes, champs, betes);

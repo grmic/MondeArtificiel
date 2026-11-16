@@ -13,6 +13,8 @@ import { nombre, t } from "../langue";
 import { Bruit, hacher, unite } from "./bruit";
 import { Ciel, type ReglageNuages } from "./ciel";
 import { Camp3D, type CampJson } from "./camp";
+import { Faune3D } from "./faune";
+import type { Espece } from "./betes3d";
 import { ACTIVITES, Feux3D, Foule, accelere, lireScene } from "./foule";
 import { MiniCarte } from "./minicarte";
 import { Nature3D } from "./nature3d";
@@ -224,6 +226,16 @@ export class Vue3D {
   private orageIci = 0;
   private readonly proches: CorpsProches;
   private readonly camp: Camp3D;
+  /** Les bêtes vivantes (0.44.0). */
+  private readonly faune: Faune3D;
+  /** Suivi d'une bête (0.44.0) : comme celui d'un humain, sans portrait. */
+  private suiviBete: { cle: string; nom: string; angle: number; distance: number; hauteur: number; perdu: number } | null = null;
+  /** Petite fiche de la bête cliquée (0.44.0). */
+  private readonly ficheBete: HTMLElement;
+  private ficheBeteCle: string | null = null;
+  /** Humains affichés (x, z, id), relus à chaque image pour les bêtes. */
+  private humainsBetes = new Float64Array(3 * 256);
+  private especesA = -Infinity;
   private readonly mer: THREE.Mesh;
   private readonly vagues: THREE.Texture;
   /** Eau (0.41.5) : carte des fonds, matériaux de la mer et de l'eau douce. Vent : plantes et vagues. */
@@ -347,13 +359,14 @@ export class Vue3D {
       return f ? Math.max(0, 1 - Math.hypot(f.x - x, f.z - z) / 1500) : 0;
     };
     this.camp = new Camp3D(this.relief);
+    this.faune = new Faune3D(this.relief);
     if (renderer.reversedDepthBuffer) this.camp.inverserDecalage();
     // La mer : des anneaux autour de la caméra, fins près d'elle (houle), larges jusqu'à l'horizon.
     const plan = maillageMer();
     this.mer = new THREE.Mesh(plan, eauMer);
     this.mer.renderOrder = 2;
     this.mer.frustumCulled = false;
-    this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, ...(this.tapis ? [this.tapis.groupe] : []), this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.mer,
+    this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, ...(this.tapis ? [this.tapis.groupe] : []), this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.faune.groupe, this.mer,
       this.precipitations.groupe, this.eclairs.groupe, this.incendies.groupe);
 
     this.qualite = (lireStockage("monde.qualite3d") as Qualite | null) ?? "moyenne";
@@ -376,7 +389,10 @@ export class Vue3D {
     this.perf = document.createElement("div");
     this.perf.className = "perf3d";
     this.perf.hidden = lireStockage("monde.perf3d") !== "1";
-    hote.append(this.etiquettes, this.bulle, this.hud, this.mini.element, this.perf);
+    this.ficheBete = document.createElement("div");
+    this.ficheBete.className = "fiche-bete3d";
+    this.ficheBete.hidden = true;
+    hote.append(this.etiquettes, this.bulle, this.hud, this.mini.element, this.perf, this.ficheBete);
     this.construireHud();
     this.brancherSouris();
     this.appliquerQualite();
@@ -557,6 +573,8 @@ export class Vue3D {
     this.foule.porteeSilhouettes = q.silhouettes;
     this.camp.portee = q.camp;
     this.precipitations.regler(q.gouttes);
+    this.faune.portee = Math.min(q.camp, 1600);
+    this.faune.part = this.qualite === "basse" ? 0.5 : 1;
     this.nature.vider();
     this.sol.vider();
     this.cadrer();
@@ -709,6 +727,7 @@ export class Vue3D {
     regler(this.feux.groupe, true);
     regler(this.proches.groupe, true);
     regler(this.camp.groupe, true);
+    this.faune.reglerOmbres(actif);
     this.mer.receiveShadow = actif;
   }
 
@@ -763,6 +782,11 @@ export class Vue3D {
       depart.bouge += Math.abs(dx) + Math.abs(dy);
       depart.x = e.clientX;
       depart.y = e.clientY;
+      if (this.suiviBete) {
+        this.suiviBete.angle -= dx * 0.006;
+        this.suiviBete.hauteur = Math.max(-0.5, Math.min(30, this.suiviBete.hauteur - dy * 0.01));
+        return;
+      }
       if (this.suivi) {
         this.suivi.angle -= dx * 0.006;
         // En Portrait, glisser de haut en bas fait tourner autour du visage (au-dessus, en dessous) ; en suivi, monter ou descendre.
@@ -781,6 +805,14 @@ export class Vue3D {
       if (clic) {
         const id = this.humainSous(e.clientX, e.clientY);
         if (id) this.ctx.ouvrirFiche(id);
+        else {
+          // Pas d'humain : une bête ? (0.44.0)
+          const r = this.renderer.domElement.getBoundingClientRect();
+          const rayon = new THREE.Raycaster();
+          rayon.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), this.camera);
+          const cle = this.faune.sous(rayon.ray.origin, rayon.ray.direction);
+          if (cle) void this.ouvrirFicheBete(cle);
+        }
       }
     };
     toile.addEventListener("pointerup", lacher);
@@ -791,6 +823,10 @@ export class Vue3D {
     toile.addEventListener("pointerleave", () => (this.souris = null));
     toile.addEventListener("wheel", (e) => {
       e.preventDefault();
+      if (this.suiviBete) {
+        this.suiviBete.distance = Math.max(0.5, Math.min(120, this.suiviBete.distance * (e.deltaY > 0 ? 1.1 : 1 / 1.1)));
+        return;
+      }
       if (this.suivi) {
         // Jusqu'à 35 cm du visage en suivi, de 30 cm à 3 m en Portrait (0.41.3).
         const [min, max] = this.suivi.portrait ? [PORTRAIT_MIN, PORTRAIT_MAX] : [0.35, 60];
@@ -840,6 +876,14 @@ export class Vue3D {
       return;
     }
     if (e.key === "Escape") {
+      if (!this.ficheBete.hidden) {
+        this.fermerFicheBete();
+        return;
+      }
+      if (this.suiviBete) {
+        this.arreterSuiviBete();
+        return;
+      }
       if (this.suivi) {
         this.arreterSuivi();
         return;
@@ -848,7 +892,8 @@ export class Vue3D {
       return;
     }
     if (e.key === "f" || e.key === "F") {
-      this.basculerSuivi();
+      if (this.suiviBete) this.arreterSuiviBete();
+      else this.basculerSuivi();
       return;
     }
     if (e.key === "p" || e.key === "P") {
@@ -889,6 +934,7 @@ export class Vue3D {
     if (mouvement.includes(e.code)) {
       // Se déplacer soi-même met fin au suivi (et rend la caméra libre pendant un assaut).
       if (this.suivi && e.code !== "ShiftLeft" && e.code !== "ShiftRight") this.arreterSuivi();
+      if (this.suiviBete && e.code !== "ShiftLeft" && e.code !== "ShiftRight") this.arreterSuiviBete();
       if (this.foule.rejeu && this.cameraCombat && e.code !== "ShiftLeft" && e.code !== "ShiftRight") {
         this.cameraCombat = false;
         this.ctx.message(t("trois.combat.libre"));
@@ -1074,6 +1120,7 @@ export class Vue3D {
 
   /** Suivi automatique d'un humain : de trois quarts, à quelques mètres, à hauteur d'homme. */
   suivre(id: number, portrait = false): void {
+    this.suiviBete = null;
     const v = this.ctx.vivants().find((h) => h.id === id);
     if (!v) {
       this.ctx.message(t("trois.introuvable"));
@@ -1104,6 +1151,116 @@ export class Vue3D {
   }
 
   /** À chaque image : place la caméra près de l'humain suivi, tournée vers lui. */
+  /** La bête devant soi si elle est plus proche que l'humain devant soi (ou s'il n'y en a pas), sinon null. */
+  private beteDevantPlutot(): string | null {
+    const avant = new THREE.Vector3();
+    this.camera.getWorldDirection(avant);
+    const cle = this.faune.devant(this.camera.position, avant);
+    if (!cle) return null;
+    const b = this.faune.etat(cle);
+    const h = this.humainDevant();
+    const ph = h ? this.foule.position(h) : null;
+    if (b && ph && ph.distanceTo(this.camera.position) < b.centre.distanceTo(this.camera.position)) return null;
+    return cle;
+  }
+
+  /** Les bêtes : on leur donne où sont les humains, l'heure du jour et l'âge des petits de la saison. */
+  private animerFaune(dt: number, p: THREE.Vector3): void {
+    let n = 0;
+    for (const c of this.foule.liste) {
+      if (Number.isNaN(c.x)) continue;
+      if ((n + 1) * 3 > this.humainsBetes.length) {
+        const plus = new Float64Array(this.humainsBetes.length * 2);
+        plus.set(this.humainsBetes);
+        this.humainsBetes = plus;
+      }
+      this.humainsBetes[n * 3] = c.x;
+      this.humainsBetes[n * 3 + 1] = c.z;
+      this.humainsBetes[n * 3 + 2] = c.s.id;
+      n++;
+    }
+    // Les petits naissent au printemps et grandissent jusqu'à la fin de l'été.
+    const croissance = this.relief.saison <= 1 ? (this.relief.saison + this.relief.dansSaison) / 2 : 1;
+    this.faune.animer(dt, p, 1 - this.ciel.clarte, this.humainsBetes, n, croissance);
+  }
+
+  /** Petite fiche d'une bête (0.44.0) : nom, poids, régime, humeur, gardien ; boutons Suivre et Fermer. */
+  private async ouvrirFicheBete(cle: string): Promise<void> {
+    const b = this.faune.etat(cle);
+    if (!b) return;
+    const f = await connexion.invoke<{ titre: string; lignes: string[] } | null>("FicheBete", b.groupe, b.espece).catch(() => null);
+    if (!f || !this.ouverte) return;
+    this.ficheBeteCle = cle;
+    const titre = document.createElement("h3");
+    titre.textContent = f.titre;
+    const liste = document.createElement("ul");
+    liste.append(...f.lignes.map((l) => Object.assign(document.createElement("li"), { textContent: l })));
+    const suivre = Object.assign(document.createElement("button"), { type: "button", textContent: t("trois.bete.suivre") });
+    suivre.addEventListener("click", () => {
+      if (this.ficheBeteCle) void this.suivreBete(this.ficheBeteCle, f.titre);
+    });
+    const fermer = Object.assign(document.createElement("button"), { type: "button", textContent: t("trois.bete.fermer") });
+    fermer.addEventListener("click", () => this.fermerFicheBete());
+    const boutons = document.createElement("div");
+    boutons.append(suivre, fermer);
+    this.ficheBete.replaceChildren(titre, liste, boutons);
+    this.ficheBete.hidden = false;
+  }
+
+  private fermerFicheBete(): void {
+    this.ficheBete.hidden = true;
+    this.ficheBeteCle = null;
+  }
+
+  /** Suivre une bête : de trois quarts, à quelques longueurs de corps. */
+  private async suivreBete(cle: string, nom?: string): Promise<void> {
+    const b = this.faune.etat(cle);
+    if (!b) return;
+    if (this.suivi) this.arreterSuivi();
+    const titre = nom ?? (await connexion.invoke<{ titre: string } | null>("FicheBete", b.groupe, b.espece).catch(() => null))?.titre ?? "";
+    this.suiviBete = { cle, nom: titre, angle: Math.PI * 0.75, distance: Math.max(3, b.longueur * 2.2), hauteur: b.longueur * 0.4, perdu: 0 };
+    this.viser = null;
+    this.mode = "vol";
+    this.afficherAide();
+    this.ctx.message(t("trois.bete.suiviDebut", { nom: titre }));
+  }
+
+  private arreterSuiviBete(): void {
+    if (!this.suiviBete) return;
+    this.suiviBete = null;
+    this.afficherAide();
+    this.ctx.message(t("trois.bete.suiviFin"));
+  }
+
+  /** À chaque image : la caméra près de la bête suivie, tournée vers elle ; elle revient peu à peu derrière quand la bête marche. */
+  private suivreBeteImage(dt: number): void {
+    const s = this.suiviBete;
+    if (!s) return;
+    const b = this.faune.etat(s.cle);
+    if (!b) {
+      s.perdu += dt;
+      if (s.perdu > 3) {
+        this.suiviBete = null;
+        this.afficherAide();
+        this.ctx.message(t("trois.bete.perdue"));
+      }
+      return;
+    }
+    s.perdu = 0;
+    if (b.enMarche) {
+      const voulu = Math.PI * 0.8;
+      s.angle += Math.atan2(Math.sin(voulu - s.angle), Math.cos(voulu - s.angle)) * Math.min(1, dt * 0.6);
+    }
+    const a = b.cap + s.angle;
+    const cible = new THREE.Vector3(b.centre.x + Math.sin(a) * s.distance, b.centre.y + s.hauteur, b.centre.z + Math.cos(a) * s.distance);
+    const plancher = Math.max(this.relief.hauteur(cible.x, cible.z), 0) + 0.5;
+    if (cible.y < plancher) cible.y = plancher;
+    const p = this.camera.position;
+    if (p.distanceTo(cible) > 200) p.copy(cible);
+    else p.lerp(cible, Math.min(1, dt * 4));
+    this.regarderVers(b.centre);
+  }
+
   private suivreImage(dt: number): void {
     const s = this.suivi;
     if (!s) return;
@@ -1299,13 +1456,25 @@ export class Vue3D {
     if (k !== BOUTON.B) this.quitterArme = 0;
     switch (k) {
       case BOUTON.A: {
+        // L'humain devant soi, sinon la bête devant soi (0.44.0), sinon celui de la fiche.
+        const bete = this.beteDevantPlutot();
+        if (bete) {
+          void this.suivreBete(bete);
+          return;
+        }
         const id = this.humainDevant() ?? this.ctx.ficheCourante();
         if (!id) this.ctx.message(t("trois.manette.personne"));
         else if (id !== this.suivi?.id) this.suivre(id);
         return;
       }
       case BOUTON.B:
-        if (this.suivi) {
+        if (!this.ficheBete.hidden) {
+          this.fermerFicheBete();
+          this.quitterArme = 0;
+        } else if (this.suiviBete) {
+          this.arreterSuiviBete();
+          this.quitterArme = 0;
+        } else if (this.suivi) {
           this.arreterSuivi();
           this.quitterArme = 0;
         } else if (performance.now() - this.quitterArme < 2500) {
@@ -1319,9 +1488,13 @@ export class Vue3D {
       case BOUTON.X:
         this.changerMode(this.mode === "vol" ? "marche" : "vol");
         return;
-      case BOUTON.Y:
-        this.basculerPortrait();
+      case BOUTON.Y: {
+        // Une bête devant soi, plus proche que tout humain : sa fiche (0.44.0) ; sinon le portrait.
+        const bete = this.beteDevantPlutot();
+        if (bete) void this.ouvrirFicheBete(bete);
+        else this.basculerPortrait();
         return;
+      }
       case BOUTON.RB:
       case BOUTON.LB:
         this.voisin(k === BOUTON.RB ? 1 : -1);
@@ -1560,8 +1733,19 @@ export class Vue3D {
       const cx = Math.floor(p.x / this.relief.m);
       const cz = Math.floor(p.z / this.relief.m);
       const rayon = Math.min(8, Math.max(2, Math.ceil(this.camp.portee / this.relief.m)));
+      // Les espèces : au début, puis chaque minute (l'Entité peut en inventer une).
+      if (performance.now() - this.especesA > 60000) {
+        const especes = await connexion.invoke<Espece[]>("Faune").catch(() => null);
+        if (especes) {
+          this.faune.definirEspeces(especes);
+          this.especesA = performance.now();
+        }
+      }
       const camp = await connexion.invoke<CampJson>("Camp", cx, cz, rayon).catch(() => null);
-      if (camp && this.ouverte) this.camp.recevoir(camp);
+      if (camp && this.ouverte) {
+        this.camp.recevoir(camp);
+        this.faune.recevoir(camp.betes);
+      }
       // Plus souvent quand on se déplace vite : le camp suit la caméra.
       for (let k = 0; k < 30 && this.ouverte; k++) {
         await new Promise((r) => window.setTimeout(r, 100));
@@ -1815,7 +1999,9 @@ export class Vue3D {
     if (this.tapis) this.mettreAJourTapis(p, dt);
     this.suivreImage(dt);
     this.proches.mettreAJour(p, this.tempsGestes);
-    this.camp.animer(p, secondes, maintenant / 1000);
+    this.camp.animer(p);
+    this.animerFaune(dt, p);
+    this.suivreBeteImage(dt);
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
     this.precipitations.animer(this.pluieIci, this.neigeIci, this.ciel.hemi.color);
     this.proches.pluie = Math.min(1, (this.pluieIci + this.neigeIci) * 1.5);
@@ -1887,7 +2073,7 @@ export class Vue3D {
       const r = c.posture === "couche" ? 0.55 * c.taille : c.posture === "assis" || c.posture === "travail" ? 0.4 : 0.28;
       pieds.push(c.x, c.z, r);
     }
-    for (const v of this.camp.pietineurs) pieds.push(v);
+    for (const v of this.faune.pietineurs) pieds.push(v);
     // L'Entité qui marche couche les plantes elle aussi.
     if (this.mode === "marche") pieds.push(p.x, p.z, 0.3);
     this.tapis!.mettreAJour(p, 2, this.lieux, pieds, dt);

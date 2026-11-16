@@ -93,7 +93,8 @@ public sealed record TemperaturesDto(int Jour, int Largeur, int Hauteur, sbyte[]
 /// <summary>
 /// Le camp et les bêtes autour de la caméra pour la vue 3D (0.41.1), en nombres : <paramref name="Huttes"/> par 5 (id, x, y,
 /// solidité en millièmes, enduite 1/0) ; <paramref name="Champs"/> par 6 (id, x, y, ares, état, croissance en millièmes) ;
-/// <paramref name="Betes"/> par 7 (id, x, y, forme, poids en kg, nombre, gardées 1/0).
+/// <paramref name="Betes"/> par 11 (id, x, y, espèce, forme, poids en kg, adultes, petits, gardées 1/0, gardien, docilité en millièmes ;
+/// 0.44.0).
 /// </summary>
 public sealed record CampDto(int[] Huttes, int[] Champs, int[] Betes)
 {
@@ -103,7 +104,8 @@ public sealed record CampDto(int[] Huttes, int[] Champs, int[] Betes)
         return new CampDto(
             [.. huttes.SelectMany(h => new[] { h.Id, h.X, h.Y, (int)Math.Round(h.Solidite * 1000), h.Enduite ? 1 : 0 })],
             [.. champs.SelectMany(c => new[] { c.Id, c.X, c.Y, (int)Math.Round(c.Ares), c.Etat, (int)Math.Round(c.Croissance * 1000) })],
-            [.. betes.SelectMany(b => new[] { b.Id, b.X, b.Y, b.Forme, (int)Math.Round(b.Poids), b.Nombre, b.Gardees ? 1 : 0 })]);
+            [.. betes.SelectMany(b => new[] { b.Id, b.X, b.Y, b.Espece, b.Forme, (int)Math.Round(b.Poids), b.Adultes, b.Petits, b.Gardees ? 1 : 0, b.GardienId,
+                (int)Math.Round(b.Docilite * 1000) })]);
     }
 }
 
