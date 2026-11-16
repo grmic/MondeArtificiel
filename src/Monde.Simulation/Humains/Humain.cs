@@ -170,6 +170,8 @@ public enum CauseDeMort : byte
     Sommeil = 22,
     /// <summary>Tombé d'une falaise, d'un passage, d'une pente raide ou d'un arbre.</summary>
     Chute = 23,
+    /// <summary>Tué par une bête sauvage : un carnassier, ou un grand nageur à l'affût dans l'eau (0.45.0).</summary>
+    Bete = 24,
 }
 
 /// <summary>
@@ -665,6 +667,36 @@ public sealed class Humain
     /// <summary>« Espèce » d'une prise qui est un poisson (0.44.1).</summary>
     public const int PrisePoisson = 1023;
 
+    /// <summary>
+    /// Où dort ce tout-petit cette nuit (0.45.0), comme celle qui le porte l'a décidé en se couchant (Aucune : il ne dort pas,
+    /// ou personne n'en a décidé) ; et près de qui (<see cref="CoucheAvecId"/>).
+    /// </summary>
+    public Coucher Coucher { get; set; }
+
+    public int CoucheAvecId { get; set; }
+
+    /// <summary>Où il a dormi la nuit d'avant : l'habitude que prend sa mère, et ce qui fait d'une nuit une nuit inhabituelle.</summary>
+    public Coucher CoucherPrecedent { get; set; }
+
+    /// <summary>Quand le journal a noté pour la dernière fois sa manière de dormir (pas chaque va-et-vient entre contre elle et à côté).</summary>
+    public long CoucherNoteLe { get; set; }
+
+    /// <summary>
+    /// Peur des bêtes, de 0 à 100 (0.45.0) : laissée par une attaque vue, subie ou racontée ; elle s'apaise plus ou moins vite
+    /// selon chacun. À part de <see cref="Peur"/>, qui est celle des catastrophes.
+    /// </summary>
+    public double PeurDesBetes { get; set; }
+
+    /// <summary>Attaque qui a laissé cette peur (événement du journal).</summary>
+    public long PeurDesBetesEvenementId { get; set; }
+
+    /// <summary>Le lieu qu'il redoute depuis une attaque (case), et jusqu'à quand il l'évite (0 : aucun).</summary>
+    public int RedouteX { get; set; } = -1;
+
+    public int RedouteY { get; set; } = -1;
+
+    public long RedouteJusqua { get; set; }
+
     /// <summary>Jusqu'à quand ses repas cuits le protègent un peu des maladies du ventre.</summary>
     public long CuitJusqua { get; set; }
 
@@ -884,4 +916,18 @@ public sealed class Humain
         copie.Vocabulaire = [.. Vocabulaire];
         return copie;
     }
+}
+
+/// <summary>Où dort un tout-petit, comme celle qui le porte l'a décidé (0.45.0).</summary>
+public enum Coucher : byte
+{
+    Aucune = 0,
+    /// <summary>Contre elle : couchée sur le flanc, enroulée autour de lui, le bébé à hauteur du sein (Ball, 2006).</summary>
+    Contre = 1,
+    /// <summary>À côté d'elle, à portée de main.</summary>
+    ACote = 2,
+    /// <summary>Confié pour la nuit à quelqu'un d'autre : le père, une grand-mère, une grande sœur, une autre mère.</summary>
+    Confie = 3,
+    /// <summary>Posé seul, à l'écart.</summary>
+    AEcart = 4,
 }

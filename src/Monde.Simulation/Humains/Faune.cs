@@ -36,6 +36,12 @@ public sealed record Bete(int Numero, Biome Biome, int Forme, int Trait, RegimeB
     /// <summary>Le nom d'une bête inventée par l'Entité libre (écrit par le LLM, dans sa langue) ; null pour les bêtes de la graine.</summary>
     public string? Nom { get; init; }
 
+    /// <summary>
+    /// Une bête de l'eau (0.45.0) : le grand nageur à l'affût des rivières, des marais et des mangroves. Elle ne se chasse pas
+    /// comme le gibier et ne se voit pas parmi les bêtes de la case : elle attend sous l'eau.
+    /// </summary>
+    public bool Eau { get; init; }
+
     public object Dit => Nom is { Length: > 0 } n ? n : _dit ??= new Recit("bete", ("forme", Recit.Seul($"bete.forme.{Forme}")), ("trait", Recit.Seul($"bete.trait.{Trait}")));
 
     private Recit? _dit;
@@ -110,6 +116,36 @@ public sealed class Faune
         }
         _betes = betes;
         _parBiome = Repartir();
+
+        // Les grands nageurs à l'affût (0.45.0) : un par terrain d'eau douce ou saumâtre, tirés d'un hasard à part pour que les
+        // bêtes de la graine et leurs numéros ne changent pas. Leurs fourchettes suivent les crocodiles d'aujourd'hui (le crocodile
+        // du Nil : 200 à 750 kg pour un grand mâle, maturité vers 10 à 15 ans ; Leslie, 1997) ; ceux du Crétacé étaient parfois
+        // bien plus grands, comme le désinosuchus.
+        var eau = new Alea(graine ^ 0x4E41474555525355UL);
+        var nageurs = new List<Bete>();
+        foreach (var b in nouveauxTerrains ? [Biome.Riviere, Biome.Marais, Biome.Mangrove] : new[] { Biome.Riviere, Biome.Marais })
+        {
+            double R(double a, double z) => a + (z - a) * eau.Reel();
+            nageurs.Add(new Bete(PremierNageur + nageurs.Count, b, FormeNageur, eau.Entier(NombreDeTraits), RegimeBete.Carnivore, R(120, 700), R(8, 15),
+                R(2, 6), false, R(0.6, 1), R(0.1, 0.3), false, true, 0) { Eau = true });
+        }
+        Nageurs = nageurs;
+    }
+
+    /// <summary>Forme du grand nageur à l'affût (0.45.0), après les huit formes de terre.</summary>
+    public const int FormeNageur = 8;
+
+    /// <summary>Numéro du premier grand nageur : loin après les bêtes de la graine et celles qu'invente l'Entité.</summary>
+    public const int PremierNageur = 1001;
+
+    /// <summary>Les grands nageurs à l'affût, un par terrain d'eau (0.45.0).</summary>
+    public IReadOnlyList<Bete> Nageurs { get; } = [];
+
+    /// <summary>Le grand nageur de ce terrain, s'il y en a un.</summary>
+    public Bete? NageurDe(Biome b)
+    {
+        foreach (var n in Nageurs) if (n.Biome == b) return n;
+        return null;
     }
 
     /// <summary>Une faune donnée (pour les essais).</summary>
@@ -119,7 +155,10 @@ public sealed class Faune
         _parBiome = Repartir();
     }
 
-    public Bete Get(int numero) => Betes[numero - 1];
+    public Bete Get(int numero) => numero >= PremierNageur ? Nageurs[numero - PremierNageur] : Betes[numero - 1];
+
+    /// <summary>Vrai si ce numéro désigne une bête de cette faune.</summary>
+    public bool Existe(int numero) => numero >= PremierNageur ? numero - PremierNageur < Nageurs.Count : numero >= 1 && numero <= Betes.Count;
 
     /// <summary>
     /// L'espèce qu'on voit sur une case dans la vue 3D (une par case, toujours la même, tirée de la case) ; null si le terrain n'en a

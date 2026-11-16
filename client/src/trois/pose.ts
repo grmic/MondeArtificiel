@@ -273,6 +273,8 @@ export interface Situation {
   parle: number;
   /** H1 : il est en conversation (qu'il parle ou écoute). */
   converse: boolean;
+  /** 0.45.0 : endormie, un tout-petit contre elle (couchée en cercle autour de lui). */
+  berceau?: boolean;
   /** Aisance dans l'eau (0 à 1) : brasse ou nage du chien (D1). */
   nage?: number;
   /** Enlacé avec son partenaire : +1 ou −1 (de quel côté il se couche, pour que les deux têtes soient du même côté), 0 sinon. */
@@ -478,6 +480,7 @@ export class Animateur {
         if (s.age < 1.5) return "assis.allonge";
         return "accroupi." + choisir(ACCROUPI, s, lent(120, 81), 2);
       case "couche":
+        if (s.berceau) return "couche.berceau";
         return "couche." + choisir(COUCHE, s, lent(s.dort ? 260 : 180, 83), 3);
       case "nage":
         return "nage";
@@ -1109,6 +1112,27 @@ export class Animateur {
         p.coude(autre, 0.25, 0);
         p.colonne("cou", -0.35, sc * 1.15);
         p.colonne("tete", -0.15, sc * 0.3, -sc * 0.1);
+        break;
+      }
+      case "berceau": {
+        // 0.45.0 : la mère qui dort avec son tout-petit (Ball, 2006) : sur le flanc, face à lui, genoux remontés sous ses pieds,
+        // le bras du dessous au-dessus de sa tête, l'autre posé sur lui ; elle forme un abri dont il ne peut pas glisser.
+        const autre: Cote = cote === "G" ? "D" : "G";
+        p.coucher(0, -sc * Math.PI / 2);
+        for (const c of COTES) {
+          p.hanche(c, 1.25 + (c === autre ? 0.1 : 0), c === autre ? COTE_HANCHE * 0.6 : 0.05, 0);
+          p.genou(c, 1.45);
+          p.cheville(c, -0.3);
+        }
+        p.epaule(cote, 2.5, 0.1, 0.2);
+        p.coude(cote, 0.7, 0.2);
+        p.epaule(autre, 1.15, -0.05, -0.1);
+        p.coude(autre, 0.7, 0.2);
+        p.main(autre, 0.3);
+        p.colonne("ventre", 0.22);
+        p.colonne("poitrine", 0.15);
+        p.colonne("cou", 0.2, 0, sc * 0.2);
+        p.colonne("tete", 0.15, 0, sc * 0.1);
         break;
       }
       case "enlace": {

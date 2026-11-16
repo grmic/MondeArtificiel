@@ -16,7 +16,7 @@ namespace Monde.Serveur;
 /// </summary>
 public sealed record SceneDto(long Secondes, double Facteur, int[] Humains)
 {
-    public const int ChampsParHumain = 31;
+    public const int ChampsParHumain = 33;
 
     /// <summary>Rayon le plus grand qu'on peut demander, en cases.</summary>
     public const int RayonMax = 64;
@@ -59,6 +59,8 @@ public sealed record SceneDto(long Secondes, double Facteur, int[] Humains)
             n[k++] = (int)Math.Round(Math.Clamp(h.Nage, 0, 1) * 1000);
             n[k++] = (int)h.Chaussures;
             n[k++] = (int)h.Enduit;
+            n[k++] = (int)h.Coucher;
+            n[k++] = h.DortContre;
         }
         return new SceneDto(secondes, service.FacteurAtteint, n);
     }

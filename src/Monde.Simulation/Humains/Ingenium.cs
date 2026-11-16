@@ -545,6 +545,7 @@ public sealed partial class Comportement
         Effet.Limon => "ing.question.Limon",
         Effet.Repousse => "ing.question.Repousse",
         Effet.Semis or Effet.Sarclage or Effet.Moisson or Effet.Semence or Effet.Essart or Effet.Apprivoiser or Effet.Traite => $"ing.question.{s.Effet}",
+        Effet.Veille or Effet.Serrer or Effet.Restes or Effet.APlusieurs or Effet.Epines => "ing.question.Fauves",
         _ => "ing.question.autre",
     });
 

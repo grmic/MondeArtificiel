@@ -1598,7 +1598,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             if (scoreMax is { } plafond && meilleur is not null && plafond - d * 300 < meilleurScore) break;
             if (i != debut && convient(i))
             {
-                var s = score(i) - d * 300;
+                var s = score(i) - d * 300 - Redoute(h, i);
                 if (s > meilleurScore)
                 {
                     (meilleurScore, meilleur, egalites) = (s, (i % carte.Largeur, i / carte.Largeur), 1);
@@ -1625,6 +1625,18 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             }
         }
         return meilleur;
+    }
+
+    /// <summary>
+    /// Le lieu d'une attaque de bête (0.45.0) : on l'évite un temps, comme s'il était plus loin de trois à huit cases, d'autant
+    /// plus qu'on a peur (le « paysage de la peur »).
+    /// </summary>
+    private int Redoute(Humain h, int i)
+    {
+        if (h.RedouteJusqua <= _maintenant) return 0;
+        var (x, y) = (i % carte.Largeur, i / carte.Largeur);
+        if (Math.Abs(x - h.RedouteX) > 1 || Math.Abs(y - h.RedouteY) > 1) return 0;
+        return (int)(900 + 15 * h.PeurDesBetes);
     }
 
     /// <summary>Reprend le calcul hors des tours (après un pas simultané) : les effets mis de côté voient la population à jour.</summary>

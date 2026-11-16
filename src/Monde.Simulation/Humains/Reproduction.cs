@@ -582,6 +582,14 @@ public sealed partial class Comportement
             });
         }
 
+        // La nuit (0.45.0) : elle a décidé en se couchant où il dort ; au jour, elle le reprend.
+        Humain? garde = null;
+        // Une sieste de jour se fait contre elle : la décision est celle du coucher, le soir.
+        var jour = Calendrier.Decomposer(maintenant).EstJour;
+        if (porte && mere!.Activite == Activite.Dormir && (!jour || b.Coucher != Coucher.Aucune)) garde = CoucherLeBebe(b, mere, maintenant);
+        else if (b.Coucher != Coucher.Aucune && (!porte || jour)) Lever(b);
+        var couche = porte && mere!.Activite == Activite.Dormir ? b.Coucher : Coucher.Aucune;
+
         // L'allaitement nourrit et abreuve le bébé, et coûte à la mère (environ 25 % d'énergie en plus). Le corps de la mère
         // protège le lait : il puise dans ses réserves, et la quantité de lait ne baisse guère chez les mères mal nourries ;
         // elle ne chute qu'en cas de dénutrition grave (Prentice et al., 1986 ; Dewey, 1997). Le lait ne tarit donc que si elle
@@ -592,9 +600,21 @@ public sealed partial class Comportement
         // si celui qui le porte n'a pas lui-même trop faim ou soif.
         var allaitante = porte && mere!.Sexe == Sexe.Femme && mere.DernierAccouchement is { } dernier
                          && maintenant - dernier < 3 * Calendrier.SecondesParAn;
+        // La nuit, il tète d'autant plus facilement qu'il est près d'elle ; confié, seulement à une autre mère qui allaite
+        // (estimations : les bébés qui dorment contre leur mère tètent plus souvent la nuit, McKenna et al., 1997).
+        var nourrice = garde is not null && garde.Sexe == Sexe.Femme && garde.DernierAccouchement is { } dg
+                       && maintenant - dg < 3 * Calendrier.SecondesParAn;
+        var deNuit = couche switch
+        {
+            Coucher.ACote => 0.9,
+            Coucher.Confie => nourrice ? 0.85 : 0,
+            Coucher.AEcart => 0.4,
+            _ => 1.0,
+        };
+        var source = couche == Coucher.Confie && nourrice ? garde! : mere;
         var lait = porte
-            ? Math.Clamp(Math.Min((100 - mere!.Faim) / 8, (100 - mere.Soif) / 15), 0, 1) * Math.Min(1, 0.65 + mere.Reserves / 30)
-              * (allaitante ? 1 : 0.5)
+            ? Math.Clamp(Math.Min((100 - source!.Faim) / 8, (100 - source.Soif) / 15), 0, 1) * Math.Min(1, 0.65 + source.Reserves / 30)
+              * (allaitante || source != mere ? 1 : 0.5) * deNuit
             : 0;
         Depenser(b, (0.4 - 1.4 * lait) * b.Biologie.Metabolisme);
         b.Soif = Math.Clamp(b.Soif + 0.6 - 1.6 * lait, 0, 100);
@@ -603,18 +623,25 @@ public sealed partial class Comportement
             // Une mère mal nourrie économise : son métabolisme ralentit et elle bouge moins, ce qui couvre une bonne part du
             // coût du lait (Prentice et Prentice, 1988, chez des femmes de Gambie). Jusqu'à la moitié environ quand elle est
             // épuisée, plus ou moins selon son endurance (estimation).
-            var economie = (0.35 + 0.3 * mere!.Personnalite.Endurance) * (1 - Math.Clamp(mere.Reserves / 40, 0, 1));
-            Tour.Changer(mere!, m =>
+            var economie = (0.35 + 0.3 * source!.Personnalite.Endurance) * (1 - Math.Clamp(source.Reserves / 40, 0, 1));
+            Tour.Changer(source!, m =>
             {
                 Depenser(m, 0.06 * lait * (1 - economie));
                 m.Soif = Math.Min(100, m.Soif + 0.08 * lait);
             });
         }
 
-        if (porte)
+        if (porte && couche is not (Coucher.AEcart))
         {
-            // Porté peau contre peau, le bébé a aussi chaud que sa mère, ou un peu plus.
-            b.Froid = Math.Max(0, mere!.Froid - 5);
+            // Porté peau contre peau, le bébé a aussi chaud que sa mère, ou un peu plus ; à côté d'elle, un peu moins ; confié,
+            // il a la chaleur de celui qui le garde.
+            b.Froid = couche switch
+            {
+                Coucher.ACote => Math.Max(0, mere!.Froid),
+                Coucher.Confie => Math.Max(0, garde!.Froid - 4),
+                _ => Math.Max(0, mere!.Froid - 5),
+            };
+            if (garde is not null) (b.X, b.Y) = (garde.X, garde.Y);
         }
         else
         {

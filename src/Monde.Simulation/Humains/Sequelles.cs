@@ -11,6 +11,8 @@ public enum OrigineBlessure : byte
     Coups = 2,
     Guerre = 3,
     Catastrophe = 4,
+    /// <summary>Morsures et griffures d'une bête (0.45.0).</summary>
+    Morsure = 5,
 }
 
 /// <summary>Le membre qu'une blessure a abîmé.</summary>

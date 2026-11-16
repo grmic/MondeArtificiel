@@ -51,11 +51,17 @@ export interface HumainScene {
   /** 0.42.6 : matière de la semelle nouée aux pieds (0 : pieds nus) et de l'enduit de la peau (0 rien, 11 boue, 18 ocre). */
   chaussures: number;
   enduit: number;
+  /**
+   * 0.45.0 : un tout-petit, la nuit, là où sa mère l'a couché (0 rien de décidé, 1 contre elle, 2 à côté d'elle, 3 confié à un
+   * autre, 4 à l'écart) et celui contre qui, ou à côté de qui, il dort.
+   */
+  coucher: number;
+  dortContre: number;
   /** Essais (?debug3d) : un figurant posé à un endroit précis, dans une posture donnée. */
   figurant?: { x: number; z: number; cap: number; posture: Posture };
 }
 
-export const CHAMPS = 31;
+export const CHAMPS = 33;
 
 export function lireScene(n: number[]): HumainScene[] {
   const liste: HumainScene[] = [];
@@ -66,7 +72,7 @@ export function lireScene(n: number[]): HumainScene[] {
       peur: n[k + 13], communaute: n[k + 14], mere: n[k + 15], reserves: n[k + 16], endurance: n[k + 17] / 1000, tailleEcart: n[k + 18] / 100,
       enfants: n[k + 19], vetement: n[k + 20], usure: n[k + 21] / 1000,
       froid: n[k + 22], faim: n[k + 23], fatigue: n[k + 24], sante: n[k + 25], nevrosisme: n[k + 26] / 1000, extraversion: n[k + 27] / 1000,
-      nage: n[k + 28] / 1000, chaussures: n[k + 29], enduit: n[k + 30],
+      nage: n[k + 28] / 1000, chaussures: n[k + 29], enduit: n[k + 30], coucher: n[k + 31], dortContre: n[k + 32],
     });
   }
   return liste;
@@ -132,8 +138,19 @@ export function stature(age: number, femme: boolean, ecart: number): number {
   return adulte;
 }
 
+/** Manières de coucher un tout-petit la nuit (énumération Coucher du serveur). */
+export const COUCHER = { Contre: 1, ACote: 2, Confie: 3, AEcart: 4 } as const;
+
+/** Celui qui le tient ou contre qui il dort : la nuit, celui que sa mère a choisi ; sinon sa mère. */
+export function porteurDe(s: HumainScene): number {
+  return s.coucher > 0 && s.dortContre > 0 ? s.dortContre : s.mere;
+}
+
 function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Posture {
   if (s.activite === A.Mort) return "couche";
+  // La nuit (0.45.0), contre sa mère ou contre celui à qui elle l'a confié ; à côté d'elle ou à l'écart, il dort seul sur le sol.
+  if (s.coucher === COUCHER.Contre || s.coucher === COUCHER.Confie) return "porte";
+  if (s.coucher === COUCHER.ACote || s.coucher === COUCHER.AEcart) return "couche";
   if (s.etat & 32 || s.activite === A.PorteParSaMere) return "porte";
   if (dansLEau) return "nage";
   if (enMouvement) return "marche";
@@ -855,8 +872,23 @@ export class Foule {
 
   /** Où est posé un humain : à sa place, ou contre sa mère s'il est porté. */
   placement(c: Corps): { x: number; y: number; z: number; cap: number } {
+    if (c.s.coucher === COUCHER.ACote || c.s.coucher === COUCHER.AEcart) {
+      // 0.45.0 : à côté d'elle, à portée de main devant sa poitrine ; à l'écart, à quelques pas, seul.
+      const mere = this.corps.get(porteurDe(c.s));
+      if (mere && !Number.isNaN(mere.x)) {
+        if (c.s.coucher === COUCHER.ACote) {
+          const d = 0.55 * mere.taille;
+          return { cap: mere.cap + Math.PI / 2, x: mere.x + Math.sin(mere.cap) * d, z: mere.z + Math.cos(mere.cap) * d, y: mere.y };
+        }
+        const angle = unite(hacher(c.s.id, 233)) * Math.PI * 2;
+        const r = 2.5 + 1.5 * unite(hacher(c.s.id, 239));
+        const x = mere.x + Math.cos(angle) * r;
+        const z = mere.z + Math.sin(angle) * r;
+        return { cap: angle, x, z, y: this.relief.hauteur(x, z) };
+      }
+    }
     if (c.posture === "porte") {
-      const mere = this.corps.get(c.s.mere);
+      const mere = this.corps.get(porteurDe(c.s));
       if (mere && !Number.isNaN(mere.x)) {
         const cap = mere.cap;
         return {

@@ -183,6 +183,7 @@ public static class Libelles
         Humains.CauseDeMort.MortSubite => "d'un mal soudain",
         Humains.CauseDeMort.Sommeil => "dans son sommeil",
         Humains.CauseDeMort.Chute => "d'une chute",
+        Humains.CauseDeMort.Bete => "sous les crocs d'une bête",
         _ => "",
     };
 

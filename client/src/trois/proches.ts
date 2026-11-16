@@ -1,7 +1,7 @@
 import * as THREE from "three/webgpu";
 import { hacher, lisser, unite } from "./bruit";
 import { Corps, PO, cleDe, formeDe } from "./corps";
-import { A, type Corps as Etat, type Foule } from "./foule";
+import { A, porteurDe, type Corps as Etat, type Foule } from "./foule";
 import { TeteDetaillee, type Expression } from "./tete";
 import { baseHumaine, construireReel } from "./humain";
 import { chargerVisages, couleurs, visageConnu, type Visage } from "../visage";
@@ -188,7 +188,7 @@ export class CorpsProches {
     // Les mères d'abord : leurs enfants portés se placent dans leurs bras.
     poses.sort((a, b) => (a.c.posture === "porte" ? 1 : 0) - (b.c.posture === "porte" ? 1 : 0));
     const enfants = new Map<number, Etat>();
-    for (const c of this.foule.liste) if (c.posture === "porte" && c.s.mere > 0) enfants.set(c.s.mere, c);
+    for (const c of this.foule.liste) if (c.posture === "porte" && porteurDe(c.s) > 0) enfants.set(porteurDe(c.s), c);
     const places = new Map<number, { x: number; y: number; z: number; h: number }>();
     for (const { pl, c } of poses) places.set(pl.id, { x: pl.x, y: pl.y, z: pl.z, h: c.taille });
     // Ceux qui marchent (H1) : on lève la tête vers qui arrive.
@@ -204,8 +204,9 @@ export class CorpsProches {
       const m = corps.maillage;
       const h = c.taille;
       const enfant = enfants.get(s.id);
-      const mere = c.posture === "porte" ? this.corps.get(s.mere) : undefined;
-      const etatMere = mere ? [...this.foule.liste].find((e) => e.s.id === s.mere) : undefined;
+      const porteur = porteurDe(s);
+      const mere = c.posture === "porte" ? this.corps.get(porteur) : undefined;
+      const etatMere = mere ? [...this.foule.liste].find((e) => e.s.id === porteur) : undefined;
       const dort = (c.posture === "couche" && (s.activite === 1 || s.activite === 7)) || c.role?.mort === true;
       const sit: Situation = {
         posture: c.posture, id: s.id, age: s.age, femme: s.femme, voute: formeDe(s, c.peau, c.cheveux).voute, boite: (s.etat & 8) !== 0,
@@ -213,6 +214,8 @@ export class CorpsProches {
         enfant: enfant && (s.etat & 4) !== 0 ? enfant.s.age : (s.etat & 4) !== 0 ? 0.4 : null,
         porteur: etatMere ? (etatMere.s.activite === A.Allaiter && (etatMere.s.etat & 4) !== 0 ? "allaite" : etatMere.posture) : null, dort, ecoute: c.ecoute,
         allaite: s.activite === A.Allaiter && (s.etat & 4) !== 0,
+        // 0.45.0 : endormie, le tout-petit contre elle : couchée en cercle autour de lui (Ball, 2006).
+        berceau: c.posture === "couche" && dort && enfant !== undefined && (enfant.s.coucher === 1 || enfant.s.coucher === 3),
         // F1 (0.41.8) : ce que vit l'humain ; la maladie pèse d'autant plus que la santé est basse.
         froid: Math.max(lisser(15, 70, s.froid), dort || c.posture === "nage" ? 0 : this.pluie * 0.6), faim: s.faim / 100, fatigue: s.fatigue / 100,
         peur: Math.max(lisser(10, 70, s.peur), dort ? 0 : Math.max(this.feuEn(pl.x, pl.z) * 0.7, this.effroi)),
@@ -254,7 +257,7 @@ export class CorpsProches {
         osEn(mere, "poitrine", V1);
         mere.maillage.localToWorld(V1);
         const cap = mere.maillage.rotation.y;
-        m.position.set(V1.x + Math.sin(cap) * 0.22, places.get(s.mere)?.y ?? pl.y, V1.z + Math.cos(cap) * 0.22);
+        m.position.set(V1.x + Math.sin(cap) * 0.22, places.get(porteur)?.y ?? pl.y, V1.z + Math.cos(cap) * 0.22);
         m.quaternion.copy(mere.maillage.quaternion);
       }
       m.updateMatrixWorld();
@@ -262,7 +265,7 @@ export class CorpsProches {
       this.armeEnMain(c, corps);
       if (c.posture === "porte" && mere && sit.porteur !== "couche") {
         // Seul l'enfant porté bouge après l'animation : les autres squelettes sont déjà à jour.
-        this.placerDansLesBras(corps, h, mere, places.get(s.mere)?.h ?? 1.6, s.age, sit.porteur ?? "debout");
+        this.placerDansLesBras(corps, h, mere, places.get(porteur)?.h ?? 1.6, s.age, sit.porteur ?? "debout");
         m.updateMatrixWorld();
         corps.armature.updateMatrixWorld(true);
       }

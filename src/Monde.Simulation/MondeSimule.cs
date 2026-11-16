@@ -131,6 +131,17 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
 
     /// <summary>Récits nés des catastrophes (null : aucun ; depuis la 0.39.0).</summary>
     public IReadOnlyList<RecitCatastrophe>? RecitsCatastrophes { get; init; }
+
+    /// <summary>Carnassiers connus des humains (null : aucun ; depuis la 0.45.0).</summary>
+    public IReadOnlyList<Fauve>? Fauves { get; init; }
+
+    /// <summary>Carnassiers manquants par case (indice → part tuée), qui se comblent peu à peu.</summary>
+    public IReadOnlyList<KeyValuePair<int, double>>? FauvesManquants { get; init; }
+
+    /// <summary>Attaques de bêtes et morts qu'elles ont faites depuis le début du monde.</summary>
+    public int AttaquesDeBetes { get; init; }
+
+    public int MortsDeBetes { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -248,6 +259,7 @@ public sealed partial class MondeSimule
             Numeros = _numeros, Generation = configuration.Generation, Comportement = _comportement, Communautes = _communautes,
         };
         _comportement.Catastrophes = _catastrophes;
+        _comportement.ChargerFauves(etat.Fauves, etat.FauvesManquants, etat.AttaquesDeBetes, etat.MortsDeBetes);
         _decrets = new Decrets(etat.Decrets);
         _comportement.Decrets = _ecosysteme.Decrets = _decrets;
         _comportement.Outremer = _social.Outremer = new Outremer(etat.Outremer);
@@ -367,6 +379,10 @@ public sealed partial class MondeSimule
                     Decrets = _decrets.Liste.Count == 0 ? null : _decrets.Liste.ToList(),
                     Inventions = _inventions.Count == 0 ? null : _inventions.ToList(),
                     RecitsCatastrophes = _recits.Liste.Count == 0 ? null : _recits.Liste.Select(r => r.Copier()).ToList(),
+                    Fauves = _comportement.Fauves.Count == 0 ? null : _comportement.Fauves.ToList(),
+                    FauvesManquants = _comportement.FauvesManquants.Count == 0 ? null : _comportement.FauvesManquants.OrderBy(x => x.Key).ToList(),
+                    AttaquesDeBetes = _comportement.AttaquesDeBetes,
+                    MortsDeBetes = _comportement.MortsDeBetes,
                 };
             }
         }
@@ -887,6 +903,7 @@ public sealed partial class MondeSimule
             _catastrophes.Heure(_humains, _secondes);
             _catastrophes.FeuxDeCamp(_installations, _humains, _secondes);
             _comportement.Raids(_humains, _secondes);
+            _comportement.HeureDesFauves(_humains, _secondes);
             SignalerTroupes();
         }
 
@@ -969,6 +986,7 @@ public sealed partial class MondeSimule
             _comportement.JourneeDesChamps(_humains, _secondes);
             _comportement.IdeesDesChamps(_humains, _secondes);
             _comportement.JourneeDesBetes(_humains, _secondes);
+            _comportement.JourneeDesFauves(_humains, _secondes);
             _social.Parler(_humains, _communautes, Carte, _secondes);
             _social.Visites(_humains, _secondes);
             _social.JourDeRassemblement(_humains, _secondes);

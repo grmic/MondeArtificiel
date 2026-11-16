@@ -21,22 +21,35 @@ public sealed partial class MondeSimule
 
     private readonly List<(long Secondes, double[] Sauvages)> _relevesFaune = [];
 
-    /// <summary>Bêtes sauvages estimées de chaque espèce (index : numéro − 1). À appeler sous le verrou.</summary>
+    /// <summary>
+    /// Bêtes sauvages estimées de chaque espèce (index : numéro − 1, puis les grands nageurs à la suite). À appeler sous le verrou.
+    /// 0.45.0 : là où vivent les prédateurs (mondes au relief), les carnassiers sont comptés comme la simulation les compte, d'après
+    /// les proies que la terre porte (<see cref="Comportement.Carnassiers"/>) ; le gibier se partage entre les autres espèces.
+    /// </summary>
     private double[] EstimerSauvages()
     {
-        var resultat = new double[Faune.Betes.Count];
+        var resultat = new double[Faune.Betes.Count + Faune.Nageurs.Count];
         var biomes = Carte.Biomes;
         var gibier = _ecosysteme.Gibier;
+        var predateurs = (Configuration?.Generation ?? 0) >= 2;
         for (var i = 0; i < gibier.Length; i++)
         {
-            if (gibier[i] == 0) continue;
             var especes = Faune.Sur((Biome)biomes[i]);
-            if (especes.Count == 0) continue;
+            if (predateurs)
+            {
+                foreach (var (b, nombre, _) in _comportement.Carnassiers(i % Carte.Largeur, i / Carte.Largeur))
+                    resultat[Index(b.Numero)] += nombre;
+                especes = [.. especes.Where(b => b.Regime != RegimeBete.Carnivore)];
+            }
+            if (gibier[i] == 0 || especes.Count == 0) continue;
             var kg = gibier[i] * KgVifParPartDeGibier / especes.Count;
             foreach (var b in especes) resultat[b.Numero - 1] += kg / Math.Max(1, b.Poids);
         }
         return resultat;
     }
+
+    /// <summary>Place d'une espèce dans les relevés : les bêtes de la faune, puis les grands nageurs.</summary>
+    private int Index(int numero) => numero >= Faune.PremierNageur ? Faune.Betes.Count + numero - Faune.PremierNageur : numero - 1;
 
     /// <summary>Chaque nouveau jour : un relevé tous les trente jours, les treize derniers gardés.</summary>
     private void ReleverFaune()
@@ -57,9 +70,9 @@ public sealed partial class MondeSimule
             var maintenant = EstimerSauvages();
             var avant = _relevesFaune.Count > 0 ? _relevesFaune[0] : ((long Secondes, double[] Sauvages)?)null;
             var especes = new List<PopulationEspece>(Faune.Betes.Count);
-            foreach (var b in Faune.Betes)
+            foreach (var b in (Configuration?.Generation ?? 0) >= 2 ? Faune.Betes.Concat(Faune.Nageurs) : Faune.Betes)
             {
-                var k = b.Numero - 1;
+                var k = Index(b.Numero);
                 var troupeaux = _champs.Troupeaux.Where(t => t.Espece == b.Numero).ToList();
                 double? ancien = avant is { } a && a.Sauvages.Length > k && _secondes - a.Secondes >= Calendrier.SecondesParJour * JoursParMois
                     ? a.Sauvages[k] : null;

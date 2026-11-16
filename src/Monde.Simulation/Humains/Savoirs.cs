@@ -310,6 +310,18 @@ public enum Effet : byte
     Regularite = 70,
     /// <summary>La boue ou l'ocre étalée sur la peau la garde du soleil et des piqûres (0.42.6).</summary>
     Enduit = 71,
+
+    // Se garder des bêtes (0.45.0) : des précautions que les humains trouvent après une attaque, se montrent et oublient.
+    /// <summary>Veiller la nuit à tour de rôle, près du feu : une bête qui rôde est vue avant qu'elle n'attaque.</summary>
+    Veille = 72,
+    /// <summary>Dormir serrés, les enfants au milieu des adultes.</summary>
+    Serrer = 73,
+    /// <summary>Porter loin du camp les restes de viande et les os, qui attirent les bêtes.</summary>
+    Restes = 74,
+    /// <summary>Ne pas aller seul à l'eau ni au bois au crépuscule et la nuit.</summary>
+    APlusieurs = 75,
+    /// <summary>Entourer le camp d'une haie de branches épineuses pour la nuit.</summary>
+    Epines = 76,
 }
 
 /// <summary>Le mal tel que l'humain le ressent : il ne connaît pas les maladies, il en voit les signes.</summary>
@@ -677,7 +689,8 @@ public static class Physique
             or Effet.Nage or Effet.Brandon or Effet.Percage or Effet.Rondelle or Effet.Pansement or Effet.Chant or Effet.Danse or Effet.Ocre
             or Effet.Peinture or Effet.MainsPropres or Effet.EauVive or Effet.Latrines or Effet.ViandeSaine or Effet.Fumage or Effet.Fumee
             or Effet.Brulis or Effet.Braises or Effet.FoyerDegage or Effet.PasDansLeVent or Effet.EteindreEnPartant or Effet.BrulisProtecteur
-            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide or Effet.Pagaie or Effet.Limon or Effet.Repousse or Effet.Sarclage or Effet.Semence or Effet.Essart or Effet.Apprivoiser or Effet.Traite => Seul($"savoir.{s.Effet}"),
+            or Effet.CacheDEau or Effet.Sechage or Effet.Provisions or Effet.CacheFroide or Effet.Pagaie or Effet.Limon or Effet.Repousse or Effet.Sarclage or Effet.Semence or Effet.Essart or Effet.Apprivoiser or Effet.Traite
+            or Effet.Veille or Effet.Serrer or Effet.Restes or Effet.APlusieurs or Effet.Epines => Seul($"savoir.{s.Effet}"),
         Effet.Semis => new Recit("savoir.Semis", ("plante", plante ?? Seul("savoir.cettePlante"))),
         Effet.Moisson => Seul($"savoir.Moisson.{s.Geste}"),
         Effet.Transformation when Comportement.LireRecette(s.Pieces) is { } r => DecrireRecette(r.Geste, r.A, r.B, r.Mode, r.Changements, r.Famille),
