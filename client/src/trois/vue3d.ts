@@ -413,7 +413,8 @@ export class Vue3D {
     try {
       const backend = renderer.backend as { isWebGPUBackend?: boolean; gl?: WebGL2RenderingContext };
       if (backend.isWebGPUBackend && adaptateur) {
-        const i = (adaptateur as GPUAdapter & { info?: { vendor?: string; architecture?: string; description?: string } }).info;
+        const i = (adaptateur as GPUAdapter & { info?: { vendor?: string; architecture?: string; description?: string; isFallbackAdapter?: boolean } }).info;
+        if (i?.isFallbackAdapter) Vue3D.secours = true;
         return [i?.description || "", i?.vendor || "", i?.architecture || ""].filter((x) => x).join(" · ");
       }
       const gl = backend.gl;
@@ -423,6 +424,18 @@ export class Vue3D {
     } catch {
       return "";
     }
+  }
+
+  /** WebGPU a donné un adaptateur « de secours » (calcul par le processeur). */
+  private static secours = false;
+
+  /**
+   * Rendu sans la carte graphique (0.43.x) : le navigateur dessine avec le processeur (SwiftShader de Chrome, WARP ou « Microsoft
+   * Basic Render Driver » de Windows, llvmpipe sous Linux). Fréquent sur un bureau à distance (VDI, RDP) ou quand le navigateur
+   * a mis la carte sur sa liste noire : la 3D devient alors très lente, quelle que soit la carte de la machine.
+   */
+  get logiciel(): boolean {
+    return Vue3D.secours || /swiftshader|basic render|\bwarp\b|llvmpipe|softpipe|software|lavapipe/i.test(Vue3D.nomCarte);
   }
 
   /** Moteur de rendu effectivement utilisé. */
@@ -1752,7 +1765,7 @@ export class Vue3D {
       triangles: nombre(Math.round((info.triangles ?? 0) / 1000)),
       qualite: t(`trois.qualite.${this.qualite}`),
       moteur: this.moteur,
-      carte: Vue3D.nomCarte || "?",
+      carte: (Vue3D.nomCarte || "?") + (this.logiciel ? ` (${t("trois.carteLogicielle")})` : ""),
       tapis: nombre(Math.round((this.tapis?.mesure().emplacements ?? 0) / 1000)),
       sommets: nombre((this.tapis?.mesure().sommets ?? 0) / 1e6, 1),
     });
