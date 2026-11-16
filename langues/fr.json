@@ -6399,6 +6399,8 @@
   "barre.monde3d": "Monde 3D",
   "barre.monde3dAide": "Se promener dans le monde en 3D, parmi les humains (le temps y passe au plus ×60, en film accéléré)",
   "trois.ouverture": "Ouverture de la vue 3D…",
+  "trois.carteLogicielle": "sans la carte graphique",
+  "trois.renduLogiciel": "La carte graphique n'est pas utilisée : le navigateur dessine la 3D avec le processeur, ce qui la rend très lente. Ouvrir chrome://gpu (ou edge://gpu) pour en voir la raison ; sur un bureau à distance, Windows doit être réglé pour donner la carte aux sessions à distance.",
   "trois.ouverte": "Vue 3D ouverte (rendu {moteur}). Glisser pour regarder, flèches ou WASD pour avancer, M pour marcher ou voler.",
   "trois.impossible": "Impossible d'ouvrir la vue 3D : ce navigateur n'a ni WebGPU ni WebGL 2.",
   "trois.carte": "Carte 2D",

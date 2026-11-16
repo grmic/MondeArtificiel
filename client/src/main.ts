@@ -590,7 +590,7 @@ async function demarrer(): Promise<void> {
       bouton3d.classList.add("actif");
       vue.suspendre(true);
       element("#scene").hidden = true;
-      infos.textContent = t("trois.ouverte", { moteur: vue3d.moteur });
+      infos.textContent = t("trois.ouverte", { moteur: vue3d.moteur }) + (vue3d.logiciel ? `\n${t("trois.renduLogiciel")}` : "");
       const ouverte = vue3d;
       fiche.portrait3d = (id) => ouverte.portraitOuSortir(id);
       await vue3d.ouvrir();

@@ -6399,6 +6399,8 @@
   "barre.monde3d": "3D World",
   "barre.monde3dAide": "Walk around the world in 3D, among the humans (time passes at up to ×60 here, as a time-lapse)",
   "trois.ouverture": "Opening the 3D view…",
+  "trois.carteLogicielle": "without the graphics card",
+  "trois.renduLogiciel": "The graphics card is not being used: the browser draws the 3D on the processor, which makes it very slow. Open chrome://gpu (or edge://gpu) to see why; on a remote desktop, Windows must be set to give the graphics card to remote sessions.",
   "trois.ouverte": "3D view open ({moteur} rendering). Drag to look around, arrow keys or WASD to move, M to switch between walking and flying.",
   "trois.impossible": "Unable to open the 3D view: this browser supports neither WebGPU nor WebGL 2.",
   "trois.carte": "2D map",
