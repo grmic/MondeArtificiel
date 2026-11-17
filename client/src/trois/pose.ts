@@ -477,7 +477,8 @@ export class Animateur {
         // Au sein, en tailleur ou de côté : l'enfant repose sur les cuisses (genoux dressés, il n'y aurait pas de place).
         if (s.allaite) return unite(hacher(s.id, 159)) < 0.6 ? "assis.tailleur" : "assis.cote";
         // Prier (activité 39, 0.42.8) : à genoux, ou assis sur les talons.
-        if (s.activite === 39) return unite(hacher(s.id, 161)) < 0.6 ? "assis.genoux" : "assis.talons";
+        // 0.45.11 : « assis.genoux » est assis genoux relevés, pas à genoux : la prière se fait vraiment à genoux.
+        if (s.activite === 39) return "assis.prie";
         return "assis." + choisir(ASSIS, s, lent(150 + 200 * unite(hacher(s.id, 77)), 75), 0);
       case "travail": {
         const v = choisir([ASSIS[0], ASSIS[3], ASSIS[4], ASSIS[1]], s, lent(400, 79), 1);
@@ -909,6 +910,37 @@ export class Animateur {
         p.epaule("D", 0.45, 0.1, -0.2);
         p.coude("D", 0.8, 0.4);
         p.viserMain("D", PO.cuisseG, 0, -0.14, 0.05, 0.8);
+        break;
+      }
+      case "prie": {
+        // Prier (0.45.11) : à genoux, le buste droit ou assis sur les talons selon chacun (les vieux s'assoient plus souvent sur
+        // leurs talons), les mains jointes devant la poitrine ou ouvertes paumes vers le ciel, la tête un peu inclinée.
+        const droit = unite(hacher(s.id, 163)) < 0.55 - 0.3 * raide;
+        for (const c of COTES) {
+          p.hanche(c, droit ? 0.1 : 1.25, 0.08, 0.05);
+          p.genou(c, droit ? 1.6 : 2.75);
+          p.cheville(c, -0.85);
+        }
+        p.bassin(droit ? 0 : 0.05);
+        p.colonne("ventre", 0.04);
+        p.colonne("poitrine", 0.05);
+        p.colonne("cou", 0.2);
+        p.colonne("tete", 0.12);
+        if (unite(hacher(s.id, 167)) < 0.65) {
+          for (const c of COTES) {
+            p.epaule(c, 0.55, 0.15, -0.35);
+            p.coude(c, 1.9, 0.3);
+            p.viserMain(c, PO.poitrine, SIGNE[c] * 0.004, 0.1, 0.14, 2);
+            p.main(c, 0.05, 0.1, 0);
+          }
+        } else {
+          for (const c of COTES) {
+            p.epaule(c, 0.75, 0.3, 0.5);
+            p.coude(c, 0.55, 1.3);
+            p.main(c, 0.2, 0.1, 0.1);
+          }
+        }
+        p.appuis = droit ? APPUI_GENOUX : APPUI_GENOUX | APPUI_FESSES;
         break;
       }
       case "talons": {

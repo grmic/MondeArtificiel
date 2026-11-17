@@ -26,7 +26,7 @@ public sealed record TemoinDto(int Humain, bool Croit);
 /// <see cref="Reponse"/>) ; traits de 0 à 1 pour nuancer le geste ; <paramref name="Temoins"/> : à la première réplique d'une apparition.
 /// </summary>
 public sealed record ReactionDto(bool Comprise, bool Croit, string Emotion, string Fin, IReadOnlyList<string> Issues, double Peur, double Nevrosisme,
-    double Transcendance, double Extraversion, double Agreabilite, IReadOnlyList<TemoinDto> Temoins);
+    double Transcendance, double Extraversion, double Agreabilite, IReadOnlyList<TemoinDto> Temoins, string Geste = "");
 
 /// <summary>
 /// Un dialogue pour le navigateur. <paramref name="Attend"/> : les mots de l'Entité en cours de traitement (null : rien en cours) ;
@@ -491,6 +491,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     }
                     // Ce qu'il demande de lui-même à l'Entité devient une prière ; ce qu'il lui promet, il le tiendra ou non (0.42.9).
                     LireEngagements(reponse, out var demandeLui, out var pour, out var promesse);
+                    Gesticuler(c.Id, rang, LireGeste(reponse));
                     if (ReferenceEquals(monde, service.Monde) && h.EstVivant)
                     {
                         if (demandeLui is { } sujet)
@@ -862,9 +863,9 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
     // ───────────── Faire parler l'humain ─────────────
 
-    private const string FormeHumain = """{"reponse":"…","mots":"…","pensee":"…","demande":"","pour":0,"promesse":""}""";
+    private const string FormeHumain = """{"reponse":"…","mots":"…","pensee":"…","geste":"","demande":"","pour":0,"promesse":""}""";
 
-    private const string FormeHumainLibre = """{"reponse":"…","mots":"…","pensee":"…","demande":"","pour":0,"promesse":"","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
+    private const string FormeHumainLibre = """{"reponse":"…","mots":"…","pensee":"…","geste":"","demande":"","pour":0,"promesse":"","changements":[{"quoi":"…","humain":n°,"valeur":x},{"quoi":"lien","humain":n°,"autre":n°,"valeur":x}]}""";
 
     /// <summary>Longueur maximale (caractères) des mots d'une réplique dans le schéma imposé au LLM.</summary>
     public const int MotsMax = 600;
@@ -878,6 +879,8 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             // Ce qu'il demande de lui-même à l'Entité, pour qui, et ce qu'il lui promet (0.42.9) ; "" : rien.
             ["demande"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Enum.GetNames<SujetPriere>().Prepend("").Select(x => (JsonNode)x)]) },
             ["pour"] = new JsonObject { ["type"] = "integer" },
+            // Ce que fait son corps en répondant (0.45.11) : le Monde 3D le montre ; "" : rien de particulier.
+            ["geste"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Gestes.Prepend("").Select(x => (JsonNode)x)]) },
             ["promesse"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray([.. Promesses.Select(x => x.ToString()).Prepend("").Select(x => (JsonNode)x)]) },
         };
         // Longueur bornée dans la grammaire imposée (0.37.6) : vu le 8/11, gemma3:4b répétait « shuhei, » dans « mots » jusqu'à la limite
@@ -905,6 +908,28 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                 },
             };
         return new JsonObject { ["type"] = "object", ["properties"] = proprietes, ["required"] = new JsonArray("reponse", "mots", "pensee") };
+    }
+
+    /// <summary>
+    /// Ce que son corps peut faire en répondant, montré dans le Monde 3D (0.45.11) : vu le 17/11, « Je me mets à genou, Entité » et
+    /// l'humain restait debout, le geste n'étant tiré que de son caractère. Fuir ou se détourner restent décidés par les règles.
+    /// </summary>
+    public static readonly string[] Gestes = ["Genoux", "Prosterne", "Debout", "Tendre", "Reculer", "Couvrir", "Hausser", "Refuser"];
+
+    /// <summary>Le geste qu'il fait en répondant (un de <see cref="Gestes"/>), ou "".</summary>
+    public static string LireGeste(string reponse)
+    {
+        try
+        {
+            if (JsonNode.Parse(ClientLlm.Nettoyer(reponse), documentOptions: new JsonDocumentOptions { AllowTrailingCommas = true }) is JsonObject o
+                && o["geste"] is JsonValue v && v.TryGetValue<string>(out var g))
+                return Array.Find(Gestes, x => string.Equals(x, g.Trim(), StringComparison.OrdinalIgnoreCase)) ?? "";
+        }
+        catch (JsonException)
+        {
+            // Illisible : aucun geste.
+        }
+        return "";
     }
 
     /// <summary>Les gestes qu'il peut promettre à l'Entité : ceux de tous les jours, sans personne à désigner (0.42.9).</summary>
@@ -943,6 +968,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         var s = new StringBuilder(L.T("dlg.humain.consigne2", ("nom", h.Nom), ("voie", L.T($"modeParole.{c.Mode}")), ("langue", L.Courante.Nom),
             ("voix", voix), ("forme", libre ? FormeHumainLibre : FormeHumain)));
         s.AppendLine().AppendLine();
+        s.AppendLine(L.T("dlg.humain.geste", ("gestes", string.Join(", ", Gestes.Select(x => $"{x} = {L.T($"dlg.geste.{x}")}")))));
         s.AppendLine(L.T("dlg.humain.engagements", ("sujets", string.Join(", ", Enum.GetValues<SujetPriere>().Select(x => $"{x} = {L.T($"sujetPriere.{x}")}"))),
             ("gestes", string.Join(", ", Promesses.Select(x => $"{x} = {L.T($"parole.{x}")}")))));
         if (libre)
@@ -1240,6 +1266,14 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             }
             parRang[rang] = r;
         }
+    }
+
+    /// <summary>Le geste qu'il fait en répondant, ajouté à la réaction de cette réplique.</summary>
+    private void Gesticuler(long dialogue, int rang, string geste)
+    {
+        if (geste.Length == 0) return;
+        lock (_reactions)
+            if (_reactions.TryGetValue(dialogue, out var parRang) && parRang.TryGetValue(rang, out var r)) parRang[rang] = r with { Geste = geste };
     }
 
     private ReactionDto? Reaction(long dialogue, int rang)

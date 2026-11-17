@@ -34,6 +34,8 @@ interface Reaction {
   extraversion: number;
   agreabilite: number;
   temoins: { humain: number; croit: boolean }[];
+  /** Le geste qu'il dit faire en répondant (Genoux, Prosterne, Debout, Tendre, Reculer, Couvrir, Hausser, Refuser), ou "". */
+  geste?: string;
 }
 
 interface Replique {
@@ -746,8 +748,45 @@ export class Rencontre {
       else if (r.issues.some((x) => x === "Differee" || x === "AMoitie")) etapes.push({ geste: "hesiter", duree: 3.2, x: garde.x, z: garde.z, court: false }, garde);
       else etapes.push(garde);
     }
+    // Le geste qu'il dit faire en répondant passe avant celui que l'on devine de son caractère (« Je me mets à genou » : il
+    // s'agenouille). Fuir et se détourner restent ce que les règles ont décidé.
+    if (r.geste && (r.fin === "Aucune" || r.fin === "Joueur")) {
+      const dit = this.gesteDit(c, r.geste);
+      if (dit) {
+        const debut = etapes.length > 1 && etapes[0].duree < 1 ? [etapes[0]] : [];
+        etapes.splice(0, etapes.length, ...debut, ...dit);
+      }
+    }
     this.jouer(d.humain, etapes, visage);
     if (premiere && r.temoins.length > 0) this.temoins(c, r.temoins);
+  }
+
+  /** Les étapes du geste qu'il dit faire, ou null s'il est inconnu. */
+  private gesteDit(c: Corps, geste: string): Etape[] | null {
+    const tenir = (g: GesteCombat, x = NaN, z = NaN): Etape => ({ geste: g, duree: Infinity, x, z, court: false });
+    const puis = (g: GesteCombat, duree: number): Etape[] => [{ geste: g, duree, x: NaN, z: NaN, court: false }, tenir("fixer")];
+    switch (geste) {
+      case "Genoux":
+        return [tenir("genoux")];
+      case "Prosterne":
+        return [tenir("prosterne")];
+      case "Tendre":
+        return [tenir("tendre")];
+      case "Debout":
+        return [tenir("fixer")];
+      case "Couvrir":
+        return puis("couvrir", 3);
+      case "Hausser":
+        return puis("hausser", 1.6);
+      case "Refuser":
+        return puis("refuser", 3);
+      case "Reculer": {
+        const [x, z] = this.recul(c, 1.2 + 0.6 * unite(hacher(c.s.id, 271)));
+        return [{ geste: null, duree: 1.6, x, z, court: false, dos: false }, tenir("fixer", x, z)];
+      }
+      default:
+        return null;
+    }
   }
 
   /** Le geste qu'il tient en ce moment (dernière étape d'une réaction en cours), ou null. */
