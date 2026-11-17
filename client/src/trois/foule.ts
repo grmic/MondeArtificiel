@@ -331,14 +331,20 @@ function emprise(c: Corps): number {
 }
 
 /**
- * Deux corps arrêtés ne se chevauchent pas : leurs places s'écartent jusqu'à ce que chacun ait la sienne (dormeurs côte à côte
- * plutôt que les uns sur les autres). Les figurants des essais ne bougent pas.
+ * Deux corps ne se chevauchent pas : leurs places s'écartent jusqu'à ce que chacun ait la sienne (dormeurs côte à côte plutôt que
+ * les uns sur les autres). 0.45.9 : celui qui marche aussi a sa place, d'une épaule à l'autre ; c'est lui qui contourne celui qui
+ * est arrêté (avant, il le traversait, et deux humains sur le même chemin ne faisaient plus qu'un corps). Les figurants des essais
+ * ne bougent pas ; un bébé porté et un couple enlacé (emprise nulle) restent l'un contre l'autre.
  */
 function ecarter(cibles: Map<Corps, [number, number, boolean]>): void {
-  const arretes: { c: Corps; t: [number, number, boolean]; r: number }[] = [];
+  const arretes: { c: Corps; t: [number, number, boolean]; r: number; marche: boolean }[] = [];
   for (const [c, t] of cibles) {
-    const r = t[2] || c.s.versX >= 0 || (c.role && !c.role.mort) ? 0 : emprise(c);
-    if (r > 0) arretes.push({ c, t, r });
+    if (c.role && !c.role.mort) continue;
+    const marche = t[2] || c.s.versX >= 0;
+    const fixe = emprise(c);
+    // Porté contre sa mère, enlacé : pas de place à lui.
+    const r = fixe <= 0 ? 0 : marche ? 0.2 * c.taille + 0.05 : fixe;
+    if (r > 0) arretes.push({ c, t, r, marche });
   }
   if (arretes.length < 2) return;
   for (let passe = 0; passe < 4; passe++) {
@@ -369,8 +375,13 @@ function ecarter(cibles: Map<Corps, [number, number, boolean]>): void {
               dz = Math.sin(ang);
               d = 1;
             }
-            const fa = a.c.s.figurant ? 0 : b.c.s.figurant ? 1 : 0.5;
-            const fb = b.c.s.figurant ? 0 : a.c.s.figurant ? 1 : 0.5;
+            // Le figurant ne bouge pas ; sinon, celui qui marche s'écarte de celui qui est arrêté ; entre pareils, chacun la moitié.
+            // (Celui qui est arrêté ne bouge pas du tout : poussé, il se mettrait à marcher.)
+            const poids = (x: typeof a, y: typeof a) => (x.c.s.figurant ? 0 : x.marche || !y.marche ? 1 : 0);
+            const pa = poids(a, b);
+            const pb = poids(b, a);
+            const fa = pa + pb === 0 ? 0 : pa / (pa + pb);
+            const fb = pa + pb === 0 ? 0 : pb / (pa + pb);
             const pousse = (voulu - Math.min(d, voulu)) / d;
             a.t[0] -= dx * pousse * fa;
             a.t[1] -= dz * pousse * fa;

@@ -2566,6 +2566,9 @@ export class Vue3D {
       .sort((a, b) => a.d - b.d)
       .slice(0, 12);
     while (this.etiquettes.children.length < proches.length) this.etiquettes.append(document.createElement("span"));
+    // 0.45.9 : deux humains côte à côte ou l'un derrière l'autre ont chacun leur nom ; une étiquette qui en recouvre une autre
+    // (plus proche) monte d'un cran au lieu de la cacher.
+    const posees: { x: number; y: number; l: number; h: number }[] = [];
     [...this.etiquettes.children].forEach((el, k) => {
       const e = el as HTMLElement;
       const a = proches[k];
@@ -2575,8 +2578,18 @@ export class Vue3D {
         return;
       }
       e.hidden = false;
-      e.textContent = this.ctx.nom(a.h.id);
-      e.style.transform = `translate(${Math.round(pos.x)}px, ${Math.round(pos.y)}px) translate(-50%, -100%)`;
+      const nom = this.ctx.nom(a.h.id);
+      if (e.textContent !== nom) e.textContent = nom;
+      const l = e.offsetWidth || 60;
+      const h = e.offsetHeight || 18;
+      let y = pos.y;
+      for (let essai = 0; essai < 6; essai++) {
+        const gene = posees.find((p) => Math.abs(p.x - pos.x) < (p.l + l) / 2 + 2 && Math.abs(p.y - y) < (p.h + h) / 2 + 1);
+        if (!gene) break;
+        y = gene.y - (gene.h + h) / 2 - 2;
+      }
+      posees.push({ x: pos.x, y, l, h });
+      e.style.transform = `translate(${Math.round(pos.x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
       e.style.opacity = String(Math.max(0.35, 1 - a.d / 50));
     });
     const id = this.souris ? this.humainSous(this.souris.x, this.souris.y) : null;
