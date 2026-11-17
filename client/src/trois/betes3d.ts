@@ -16,7 +16,7 @@ import { hacher, unite } from "./bruit";
  */
 
 /** Nombres par groupe de bêtes dans le flux Camp (CampDto.Betes, 0.44.0). */
-export const CHAMPS_BETES = 11;
+export const CHAMPS_BETES = 13;
 
 /** Une espèce telle que la donne le serveur (EspeceDto). */
 export interface Espece {
@@ -35,7 +35,7 @@ export interface Espece {
 
 /** Longueur du museau au bout de la queue (m) pour un kilo, à la racine cubique : d'après des squelettes connus (Protocératops 1,8 m
  *  pour 80 kg, Vélociraptor 2 m pour 15 kg, Ornithomimus 3,5 m pour 170 kg, petit ankylosaure 3 m pour 300 kg). */
-const LONGUEUR_PAR_KG = [0.42, 0.5, 0.55, 0.45, 0.8, 0.65, 0.62, 0.72];
+const LONGUEUR_PAR_KG = [0.42, 0.5, 0.55, 0.45, 0.8, 0.65, 0.62, 0.72, 0.54];
 
 /** Longueur (m) d'une bête de cette forme et de ce poids. */
 export function longueur(forme: number, poids: number): number {
@@ -196,6 +196,18 @@ function plan(e: Espece): Plan {
       bras = { x: 0.04, y: h * 1.1, z: 0.075, l: 0.1, r: 0.009 };
       break;
     }
+    case 8: {
+      // 0.45.0 : grand nageur à l'affût (crocodilien) : bas sur pattes écartées, long museau plat, queue épaisse aplatie.
+      const h = v(0.07, 0.085, 1);
+      cles = [[-0.5 * queue, h * 0.7, 0.006, 0.012], [-0.32 * queue, h * 0.85, 0.03, 0.04], [-0.12, h * 1.0, 0.08, 0.06], [0.02, h * 1.05, 0.095, 0.065],
+        [0.13, h * 1.0, 0.08, 0.055], [0.19, h * 0.98, 0.055, 0.045], [0.24, h * 1.0, 0.05, 0.04], [0.24 + 0.08 * museau, h * 0.95, 0.03, 0.022],
+        [0.24 + 0.16 * museau, h * 0.9, 0.018, 0.014], [0.24 + 0.19 * museau, h * 0.88, 0.008, 0.008]];
+      iQueue = 2;
+      iCou = 5;
+      arriere = { x: 0.1, y: h * 0.95, z: -0.08, r: 0.025 };
+      avant = { x: 0.09, y: h * 0.9, z: 0.12, r: 0.02 };
+      break;
+    }
     default: {
       // Grimpeur : petit, longue queue, longs bras griffus, grands yeux.
       const h = v(0.16, 0.2, 1);
@@ -221,6 +233,8 @@ function robe(e: Espece): { dos: THREE.Color; ventre: THREE.Color; motif: THREE.
   const b = bases[Math.floor(r(11) * bases.length)];
   const dos = new THREE.Color(b[0], b[1], b[2]);
   if (e.trait === 0) dos.setRGB(0.55, 0.3, 0.15);
+  // Le grand nageur : olive sombre, comme la vase.
+  if (e.forme === 8) dos.setRGB(0.2, 0.22, 0.14);
   if (A_PLUMES.has(e.forme)) dos.offsetHSL((r(12) - 0.5) * 0.06, 0.08 * r(13), 0.03);
   dos.offsetHSL((r(14) - 0.5) * 0.04, (r(15) - 0.5) * 0.1, (r(16) - 0.5) * 0.08);
   const ventre = dos.clone().lerp(new THREE.Color(0.78, 0.72, 0.6), 0.55);

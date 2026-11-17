@@ -117,6 +117,10 @@ public sealed class PredateursTests : IDisposable
         var f = Assert.Single(c.Fauves);
         Assert.Equal(Fauve.Numero, f.Espece);
         Assert.True(f.Attaques >= 1);
+        // 0.45.1 : l'attaque est gardée pour la carte et la 3D, avec sa ligne du journal et la bête.
+        var a = c.AttaquesRecentes[^1];
+        Assert.Equal((f.Id, Fauve.Numero, x, y), (a.FauveId, a.Espece, a.X, a.Y));
+        Assert.True(a.EvenementId > 0);
     }
 
     [Fact]
@@ -124,13 +128,39 @@ public sealed class PredateursTests : IDisposable
     {
         var monde = new MondeSimule(Carte, MondeSimule.Nouveau(ConfigurationMonde.Nouvelle(2)));
         var f = new Fauve(1, 3, 10, 12, 6.5, 0.4, 0.7, 0.9, 2, 1, 1000, 2000, 33);
-        var etat = monde.Etat with { Fauves = [f], FauvesManquants = [new(5, 0.25)], AttaquesDeBetes = 4, MortsDeBetes = 2 };
+        var attaque = new AttaqueDeBete(33, 1500, 10, 12, 3, 1, 7, true);
+        var etat = monde.Etat with { Fauves = [f], FauvesManquants = [new(5, 0.25)], AttaquesDeBetes = 4, MortsDeBetes = 2, AttaquesRecentes = [attaque] };
         var fichier = Path.Combine(_dossier, "monde.db");
         new DepotMonde(fichier).Enregistrer(etat);
         var relu = new DepotMonde(fichier).Charger()!;
         Assert.Equal(f, Assert.Single(relu.Fauves!));
         Assert.Equal(0.25, Assert.Single(relu.FauvesManquants!).Value);
         Assert.Equal((4, 2), (relu.AttaquesDeBetes, relu.MortsDeBetes));
+        Assert.Equal(attaque, Assert.Single(relu.AttaquesRecentes!));
+    }
+
+    /// <summary>0.45.1 : une bête connue est montrée en 3D à sa place, on sait où aller la voir, et d'où vient une ligne d'attaque.</summary>
+    [Fact]
+    public void LaBeteConnue_SeMontreEn3D_EtOnSaitOuLaVoir()
+    {
+        var monde = new MondeSimule(Carte, MondeSimule.Nouveau(ConfigurationMonde.Nouvelle(2)));
+        var b = monde.Faune.Betes.First(x => x.Regime == RegimeBete.Carnivore);
+        var (x, y) = Plaine();
+        var f = new Fauve(4, b.Numero, x, y, 6, 0, 0.7, 0.9, 1, 1, 1000, 2000, 33);
+        var avec = new MondeSimule(Carte, monde.Etat with { Fauves = [f], AttaquesRecentes = [new AttaqueDeBete(33, monde.Etat.Secondes, x, y, b.Numero, 4, 7, true)] });
+        var groupe = -(MondeSimule.IdFauveScene + 4);
+        var vue = Assert.Single(avec.Camp(x, y, 1).Betes, v => v.Id == groupe);
+        Assert.Equal((4, b.Numero, 0), (vue.Fauve, vue.Espece, vue.MinutesDepuisAttaque));
+        Assert.Equal((x, y, groupe), avec.OuVoirEspece(b.Numero, 0, 0));
+        Assert.Equal((b.Numero, groupe, x, y), avec.AttaqueDuJournal(33));
+        Assert.Null(avec.AttaqueDuJournal(34));
+        var fiche = Monde.Serveur.FicheBeteDto.Depuis(avec, groupe, b.Numero)!;
+        Assert.Contains(fiche.Lignes, l => l.Contains("1 attaque") || l.Contains("une attaque") || l.Contains("one attack"));
+        Assert.DoesNotContain(fiche.Lignes, l => l.Contains('{'));
+        // Une espèce sans bête connue : la case la plus proche où la vue 3D en montre.
+        var autre = monde.Faune.Betes.First(e => e.Regime != RegimeBete.Carnivore && monde.OuVoirEspece(e.Numero, x, y) is not null);
+        var (ox, oy, og) = monde.OuVoirEspece(autre.Numero, x, y)!.Value;
+        Assert.Contains(monde.Camp(ox, oy, 0).Betes, v => v.Id == og && v.Espece == autre.Numero);
     }
 
     /// <summary>

@@ -950,6 +950,15 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Population animale par espèce, gibier de chaque case et troupeaux gardés (0.44.2, fenêtre Faune et calque des animaux).</summary>
     public PopulationFauneDto PopulationFaune() => PopulationFauneDto.Depuis(service.Monde);
 
+    /// <summary>
+    /// Où aller voir une espèce en 3D (0.45.1) : la case la plus proche de (x, y) où elle se montre, et le groupe à suivre ; null si
+    /// elle ne se montre nulle part.
+    /// </summary>
+    public int[]? AttaqueDuJournal(long evenement) => service.Monde.AttaqueDuJournal(evenement) is { } a ? [a.Espece, a.Groupe, a.X, a.Y] : null;
+
+    /// <summary>Où aller voir une espèce en 3D (0.45.1), voir <see cref="MondeSimule.OuVoirEspece"/>.</summary>
+    public int[]? OuVoirEspece(int numero, int x, int y) => service.Monde.OuVoirEspece(numero, x, y) is { } o ? [o.X, o.Y, o.Groupe] : null;
+
     /// <summary>Assauts des deux derniers jours autour de la caméra, pour les rejouer dans la vue 3D (0.42.0).</summary>
     public AssautDto[] Assauts(int x, int y, int rayon) => AssautDto.Depuis(service.Monde, x, y, rayon);
 

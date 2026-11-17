@@ -327,6 +327,17 @@ export class Calques {
         g.circle(tr.x + 0.5, tr.y + 0.5, r).fill({ color: couleurEspece(tr.espece), alpha: 0.95 })
           .stroke({ width: 0.18, color: tr.domestique ? 0xffffff : 0x2a1d14 });
       }
+      // 0.45.1 : les attaques de l'année (rouge vif si mortelle, plus pâle avec le temps) et les bêtes connues encore en vie (losange).
+      for (const a of pop.attaques) {
+        if (e && a.espece !== e.numero) continue;
+        const alpha = 0.35 + 0.6 * Math.max(0, 1 - a.jours / 365);
+        g.circle(a.x + 0.5, a.y + 0.5, 0.55).fill({ color: a.mort ? 0xd01818 : 0xf08030, alpha }).stroke({ width: 0.12, color: 0x200000, alpha });
+      }
+      for (const f of pop.connus) {
+        if (!f.enVie || (e && f.espece !== e.numero)) continue;
+        const [cx, cy] = [f.x + 0.5, f.y + 0.5];
+        g.poly([cx, cy - 0.9, cx + 0.7, cy, cx, cy + 0.9, cx - 0.7, cy]).fill({ color: 0x7a0a0a }).stroke({ width: 0.15, color: 0xffe0c0 });
+      }
       dessin.addChild(g);
     }
     this.vue.afficherCalques(dessin);
@@ -365,6 +376,13 @@ export class Calques {
       for (const b of pop.troupeaux) {
         if (b.x !== x || b.y !== y) continue;
         lignes.push(t("calques.troupeauIci", { nom: pop.parNumero.get(b.espece)?.nom ?? "?", a: b.adultes, p: b.petits }));
+      }
+      for (const a of pop.attaques) {
+        if (a.x !== x || a.y !== y) continue;
+        lignes.push(t(a.mort ? "calques.attaqueMortelleIci" : "calques.attaqueIci", { nom: pop.parNumero.get(a.espece)?.nom ?? "?", j: a.jours }));
+      }
+      for (const f of pop.connus) {
+        if (f.enVie && f.x === x && f.y === y) lignes.push(t("calques.fauveIci", { nom: f.nom, a: f.attaques, v: f.victimes }));
       }
     }
     return lignes;

@@ -23,6 +23,12 @@ public sealed record Fauve(int Id, int Espece, int X, int Y, double Age, double 
 }
 
 /// <summary>
+/// Une attaque de bête gardée un an pour la carte et la vue 3D (0.45.1) : où, quand, l'espèce, la bête connue, la victime, et si elle
+/// en est morte. <paramref name="EvenementId"/> : la ligne du journal qui la raconte.
+/// </summary>
+public sealed record AttaqueDeBete(long EvenementId, long Le, int X, int Y, int Espece, int FauveId, int VictimeId, bool Mort);
+
+/// <summary>
 /// Les prédateurs qui attaquent (0.45.0, mondes à relief). Chaque heure, chacun court un risque qui tient à sa situation : la nuit
 /// et la lune, être seul ou en groupe, son âge et sa santé, dormir à découvert ou à l'abri, le feu, les veilleurs, les chiens,
 /// l'odeur de la viande, l'eau où guette le grand nageur, et la faim des bêtes quand les proies manquent. Une attaque est
@@ -55,6 +61,9 @@ public sealed partial class Comportement
     /// <summary>Les carnassiers connus (vivants et morts), dans l'ordre où on les a connus.</summary>
     public List<Fauve> Fauves { get; private set; } = [];
 
+    /// <summary>Les attaques de l'année écoulée (0.45.1), de la plus ancienne à la plus récente.</summary>
+    public List<AttaqueDeBete> AttaquesRecentes { get; private set; } = [];
+
     /// <summary>Carnassiers manquants par case (indice → part de la population tuée), qui se comble en quelques mois.</summary>
     public Dictionary<int, double> FauvesManquants { get; private set; } = [];
 
@@ -67,8 +76,10 @@ public sealed partial class Comportement
     public double RisqueCumule { get; set; }
 
     /// <summary>Remet les carnassiers connus d'un monde chargé.</summary>
-    public void ChargerFauves(IEnumerable<Fauve>? fauves, IEnumerable<KeyValuePair<int, double>>? manquants, int attaques, int morts)
+    public void ChargerFauves(IEnumerable<Fauve>? fauves, IEnumerable<KeyValuePair<int, double>>? manquants, int attaques, int morts,
+        IEnumerable<AttaqueDeBete>? recentes = null)
     {
+        AttaquesRecentes = [.. (recentes ?? []).Where(a => Faune.Existe(a.Espece)).OrderBy(a => a.Le)];
         Fauves = [.. (fauves ?? []).Where(f => Faune.Existe(f.Espece)).OrderBy(f => f.Id)];
         FauvesManquants = new Dictionary<int, double>(manquants ?? []);
         (AttaquesDeBetes, MortsDeBetes) = (attaques, morts);
@@ -471,6 +482,7 @@ public sealed partial class Comportement
         }
         else if (blessee) Noter(maintenant, TypeEvenement.Nature, aides.FirstOrDefault() ?? victime, null, new Recit("fauve.blessee", ("bete", b.Dit)), attaque);
         Garder(nouvelle);
+        AttaquesRecentes.Add(new AttaqueDeBete(attaque, maintenant, victime.X, victime.Y, b.Numero, nouvelle.Id, victime.Id, tue));
 
         // La peur, le lieu redouté, et peut-être une idée pour s'en garder.
         Effrayer(victime, aides, b, tue, attaque, maintenant);
@@ -620,6 +632,7 @@ public sealed partial class Comportement
         }
         // On ne garde en mémoire que les bêtes vivantes et les mortes de moins de deux ans.
         Fauves.RemoveAll(f => !f.EnVie && maintenant - f.MortLe > 2 * Calendrier.SecondesParAn);
+        AttaquesRecentes.RemoveAll(a => maintenant - a.Le > Calendrier.SecondesParAn);
         foreach (var i in FauvesManquants.Keys.ToList())
         {
             var m = FauvesManquants[i] * 0.99;

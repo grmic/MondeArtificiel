@@ -47,8 +47,10 @@ public readonly record struct ChampScene(int Id, int X, int Y, double Ares, int 
 /// Des bêtes vues en 3D : gardées (au camp de leur communauté, ou près de leur gardien seul) ou sauvages (selon le gibier de la
 /// case). 0.44.0 : l'espèce, les adultes et les petits, le gardien et la docilité du troupeau, pour leur comportement à l'affichage.
 /// </summary>
+/// <param name="Fauve">0.45.1 : une bête connue des humains (numéro de <see cref="Fauve"/>), 0 sinon.</param>
+/// <param name="MinutesDepuisAttaque">0.45.1 : minutes du monde depuis sa dernière attaque, si elle a eu lieu ce jour (−1 sinon).</param>
 public readonly record struct BetesScene(int Id, int X, int Y, int Espece, int Forme, double Poids, int Adultes, int Petits, bool Gardees,
-    int GardienId, double Docilite)
+    int GardienId, double Docilite, int Fauve = 0, int MinutesDepuisAttaque = -1)
 {
     public int Nombre => Adultes + Petits;
 }
@@ -225,7 +227,46 @@ public sealed partial class MondeSimule
                     betes.Add(new BetesScene(-(i + 1), cx, cy, b.Numero, b.Forme, b.Poids, adultes, petits, false, 0, 0));
                 }
             }
+            if ((Configuration?.Generation ?? 0) >= 2) AjouterFauves(betes, x, y, rayon);
             return (huttes, champs, betes);
+        }
+    }
+
+    /// <summary>Premier numéro des bêtes connues dans le flux Camp (0.45.1) : −(2 000 000 + numéro de la bête).</summary>
+    public const int IdFauveScene = 2_000_000;
+
+    /// <summary>Premier numéro des grands nageurs dans le flux Camp : −(3 000 000 + indice de la case).</summary>
+    public const int IdNageurScene = 3_000_000;
+
+    /// <summary>
+    /// 0.45.1 : les bêtes que les humains connaissent, à leur vraie place, avec le temps écoulé depuis leur dernière attaque ; et les
+    /// grands nageurs, là où l'eau en porte (une case en montre un avec la chance de leur nombre moyen, toujours la même case).
+    /// </summary>
+    private void AjouterFauves(List<BetesScene> betes, int x, int y, int rayon)
+    {
+        bool Pres(int cx, int cy) => Math.Abs(cx - x) <= rayon && Math.Abs(cy - y) <= rayon;
+        var aujourdhui = _secondes - Temps.Calendrier.SecondesParJour;
+        foreach (var f in _comportement.Fauves)
+        {
+            if (!f.EnVie || !Pres(f.X, f.Y) || !Faune.Existe(f.Espece)) continue;
+            var b = Faune.Get(f.Espece);
+            var derniere = _comportement.AttaquesRecentes.FindLast(a => a.FauveId == f.Id);
+            var minutes = derniere is not null && derniere.Le > aujourdhui ? (int)((_secondes - derniere.Le) / 60) : -1;
+            betes.Add(new BetesScene(-(IdFauveScene + f.Id), f.X, f.Y, b.Numero, b.Forme, b.Poids, 1, 0, false, 0, 0, f.Id, minutes));
+        }
+        var carte = Carte;
+        for (var cy = Math.Max(0, y - rayon); cy <= Math.Min(carte.Hauteur - 1, y + rayon); cy++)
+        {
+            for (var cx = Math.Max(0, x - rayon); cx <= Math.Min(carte.Largeur - 1, x + rayon); cx++)
+            {
+                var i = cy * carte.Largeur + cx;
+                if (Faune.NageurDe((Biome)carte.Biomes[i]) is not { } n) continue;
+                var nombre = 0.0;
+                foreach (var (b, k, _) in _comportement.Carnassiers(cx, cy))
+                    if (b.Numero == n.Numero) nombre = k;
+                var tirage = ((uint)(cx * 2246822519u ^ cy * 3266489917u) >> 8) / (double)(1 << 24);
+                if (tirage < nombre) betes.Add(new BetesScene(-(IdNageurScene + i), cx, cy, n.Numero, n.Forme, n.Poids, 1, 0, false, 0, 0));
+            }
         }
     }
 }

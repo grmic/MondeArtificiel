@@ -31,24 +31,63 @@ export interface TroupeauCarte {
   domestique: boolean;
 }
 
+/** Une bête connue des humains (FauveDto, 0.45.1) : celle qui a attaqué. `groupe` : son numéro dans le flux Camp de la vue 3D. */
+export interface FauveConnu {
+  id: number;
+  espece: number;
+  nom: string;
+  x: number;
+  y: number;
+  attaques: number;
+  victimes: number;
+  enVie: boolean;
+  vueLe: string;
+  groupe: number;
+  details: string[];
+}
+
+/** Une attaque de l'année écoulée (AttaqueCarteDto, 0.45.1). */
+export interface AttaqueCarte {
+  x: number;
+  y: number;
+  jours: number;
+  espece: number;
+  mort: boolean;
+  evenement: number;
+  groupe: number;
+}
+
 interface PopulationJson {
   especes: EspecePopulation[];
   gibier: string;
   kgVifParPart: number;
   troupeaux: TroupeauCarte[];
+  connus?: FauveConnu[] | null;
+  attaques?: AttaqueCarte[] | null;
 }
+
+/** Carnassiers pour un kilo de proies (Carbone et Gittleman, 2002), comme dans la simulation (0.45.0). */
+const CARNASSIERS_PAR_KG = 0.009;
+
+/** Forme des grands nageurs (crocodiliens, 0.45.0). */
+export const FORME_NAGEUR = 8;
 
 /** La population lue, avec le gibier de chaque case décodé et les espèces de chaque terrain. */
 export class Population {
   readonly parNumero = new Map<number, EspecePopulation>();
   private readonly parBiome = new Map<number, EspecePopulation[]>();
+  readonly predateurs: boolean;
 
   private constructor(
     readonly especes: EspecePopulation[],
     readonly gibier: Uint16Array,
     readonly kgVifParPart: number,
     readonly troupeaux: TroupeauCarte[],
+    readonly connus: FauveConnu[] = [],
+    readonly attaques: AttaqueCarte[] = [],
   ) {
+    // Monde où vivent les prédateurs (0.45.0) : le serveur envoie les grands nageurs, et compte les carnassiers d'après les proies.
+    this.predateurs = especes.some((e) => e.forme === FORME_NAGEUR);
     for (const e of especes) {
       this.parNumero.set(e.numero, e);
       if (e.disparue) continue;
@@ -64,7 +103,7 @@ export class Population {
     const octets = Uint8Array.from(atob(json.gibier), (c) => c.charCodeAt(0));
     const gibier = new Uint16Array(octets.length / 2);
     for (let i = 0; i < gibier.length; i++) gibier[i] = octets[2 * i] | (octets[2 * i + 1] << 8);
-    return new Population(json.especes, gibier, json.kgVifParPart, json.troupeaux);
+    return new Population(json.especes, gibier, json.kgVifParPart, json.troupeaux, json.connus ?? [], json.attaques ?? []);
   }
 
   /** Espèces qui vivent sur ce terrain. */
@@ -74,12 +113,19 @@ export class Population {
 
   /**
    * Bêtes sauvages estimées d'une espèce sur une case (même règle que le serveur : le gibier partagé à parts égales entre les
-   * espèces du terrain, en poids vivant, divisé par le poids d'une bête).
+   * espèces du terrain, en poids vivant, divisé par le poids d'une bête). Depuis la 0.45.0, là où vivent les prédateurs, les
+   * carnassiers se comptent d'après les proies (environ 9 kg pour une tonne) et le gibier se partage entre les autres espèces ;
+   * la carte suppose les proies à leur niveau, le tableau de la fenêtre Faune donne le compte exact.
    */
   surCase(i: number, biome: number, e: EspecePopulation): number {
     const l = this.especesDe(biome);
     if (!l.includes(e)) return 0;
-    return (this.gibier[i] * this.kgVifParPart) / l.length / Math.max(1, e.poids);
+    const kg = this.gibier[i] * this.kgVifParPart;
+    if (!this.predateurs) return kg / l.length / Math.max(1, e.poids);
+    if (e.forme === FORME_NAGEUR) return (Math.max(this.gibier[i], 300) * this.kgVifParPart * CARNASSIERS_PAR_KG) / Math.max(1, e.poids);
+    if (e.regime === 2) return (kg * CARNASSIERS_PAR_KG) / Math.max(1, e.poids);
+    const proies = l.filter((x) => x.regime !== 2 && x.forme !== FORME_NAGEUR).length;
+    return proies > 0 ? kg / proies / Math.max(1, e.poids) : 0;
   }
 }
 
@@ -116,6 +162,8 @@ export class PanneauFaune {
   private readonly corps = el("div", "corps");
   private readonly tableau = el("table", "tableau-faune");
   private readonly resume = el("p", "discret");
+  /** 0.45.1 : les bêtes connues des humains et les attaques de l'année. */
+  private readonly connus = el("div", "fauves-connus");
   private tri: Colonne = "sauvages";
   private descendant = true;
   private population: Population | null = null;
@@ -125,6 +173,8 @@ export class PanneauFaune {
     private readonly racine: HTMLElement,
     /** Montre l'emplacement d'une espèce sur la carte (0 : toutes). */
     private readonly montrer: (numero: number) => void,
+    /** 0.45.1 : va voir en 3D une espèce (groupe 0 : la plus proche), ou une bête connue (son groupe dans le flux Camp, sa case). */
+    private readonly allerVoir: ((espece: number, groupe: number, x: number, y: number) => void) | null = null,
   ) {
     const tete = el("div", "tete");
     tete.append(el("h2", undefined, t("faune.titre")));
@@ -138,7 +188,8 @@ export class PanneauFaune {
     toutes.addEventListener("click", () => this.montrer(0));
     const defile = el("div", "defile-faune");
     defile.append(this.tableau);
-    this.corps.append(el("p", "discret", t("faune.aide")), this.resume, toutes, defile, el("p", "discret", t("faune.estimation")), el("p", "discret", t("faune.decor")));
+    this.corps.append(el("p", "discret", t("faune.aide")), this.resume, toutes, defile, this.connus, el("p", "discret", t("faune.estimation")),
+      el("p", "discret", t("faune.decor")));
     racine.append(tete, this.corps);
   }
 
@@ -223,6 +274,13 @@ export class PanneauFaune {
       pastille.style.background = `#${couleurEspece(e.numero).toString(16).padStart(6, "0")}`;
       const tdNom = el("td");
       tdNom.append(pastille, nom);
+      if (this.allerVoir && !e.disparue) {
+        const voir = el("button", "lien voir3d", " 🎥");
+        voir.type = "button";
+        voir.title = t("faune.allerVoir");
+        voir.addEventListener("click", () => this.allerVoir?.(e.numero, 0, -1, -1));
+        tdNom.append(voir);
+      }
       if (e.disparue) tdNom.append(" · ", t("faune.disparue"));
       const tendance = el("td");
       if (e.sauvagesAvant !== null && e.sauvagesAvant > 0) {
@@ -249,5 +307,34 @@ export class PanneauFaune {
     this.tableau.replaceChildren(el("thead"), el("tbody"));
     this.tableau.tHead!.append(tete);
     this.tableau.tBodies[0].append(...lignes);
+    this.afficherConnus(p);
+  }
+
+  /** Les bêtes connues (celles qui ont attaqué), les vivantes d'abord, et ce qu'on a vu cette année (0.45.1). */
+  private afficherConnus(p: Population): void {
+    this.connus.replaceChildren();
+    if (!p.predateurs) return;
+    const morts = p.attaques.filter((a) => a.mort).length;
+    this.connus.append(el("h3", undefined, t("faune.connus")),
+      el("p", "discret", p.attaques.length === 0 ? t("faune.attaquesAucune") : t("faune.attaques", { n: p.attaques.length, m: morts })));
+    if (p.connus.length === 0) {
+      this.connus.append(el("p", "discret", t("faune.connusAucun")));
+      return;
+    }
+    const ul = el("ul", "liste-fauves");
+    for (const f of p.connus) {
+      const li = el("li", f.enVie ? undefined : "discret");
+      const titre = el("b", undefined, f.nom.charAt(0).toUpperCase() + f.nom.slice(1));
+      li.append(titre, ` · ${t("faune.connuVue", { date: f.vueLe })}`);
+      if (f.enVie && this.allerVoir) {
+        const voir = el("button", "lien voir3d", ` 🎥 ${t("faune.allerVoirBete")}`);
+        voir.type = "button";
+        voir.addEventListener("click", () => this.allerVoir?.(f.espece, f.groupe, f.x, f.y));
+        li.append(voir);
+      }
+      li.append(el("div", "discret", f.details.join(" ")));
+      ul.append(li);
+    }
+    this.connus.append(ul);
   }
 }

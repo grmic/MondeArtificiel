@@ -12,7 +12,7 @@ public sealed record EspeceDto(int Numero, int Forme, int Trait, int Poids, int 
 {
     public static List<EspeceDto> Toutes(MondeSimule monde) =>
     [
-        .. monde.Faune.Betes.Select(b => new EspeceDto(b.Numero, b.Forme, b.Trait, (int)Math.Round(b.Poids), (int)b.Regime,
+        .. ((monde.Configuration?.Generation ?? 0) >= 2 ? monde.Faune.Betes.Concat(monde.Faune.Nageurs) : monde.Faune.Betes).Select(b => new EspeceDto(b.Numero, b.Forme, b.Trait, (int)Math.Round(b.Poids), (int)b.Regime,
             (int)Math.Round(b.Panique * 1000), (int)Math.Round(b.Agressivite * 1000), b.Hierarchie, b.Charognarde, NomDe(b),
             monde.Faune.EstDisparue(b.Numero))),
     ];
@@ -29,7 +29,7 @@ public sealed record FicheBeteDto(string Titre, List<string> Lignes)
         var faune = monde.Faune;
         Troupeau? t = id > 0 ? monde.Troupeaux().Find(x => x.Id == id) : null;
         var numero = t?.Espece ?? espece;
-        if (numero < 1 || numero > faune.Betes.Count) return null;
+        if (!faune.Existe(numero)) return null;
         var b = faune.Get(numero);
         var titre = EspeceDto.NomDe(b);
         titre = titre.Length > 0 ? char.ToUpper(titre[0]) + titre[1..] : titre;
@@ -40,7 +40,12 @@ public sealed record FicheBeteDto(string Titre, List<string> Lignes)
             L.T(b.Hierarchie ? "bete3d.troupeau" : b.Forme == 5 ? "bete3d.solitaire" : "bete3d.petitsgroupes"),
             L.T(b.Agressivite > 0.65 ? "bete3d.humeur.agressive" : b.Panique > 0.65 ? "bete3d.humeur.craintive" : "bete3d.humeur.calme"),
         };
-        if (t is null)
+        // Une bête connue des humains (0.45.1) : ce qu'elle a fait.
+        var connue = id <= -MondeSimule.IdFauveScene && id > -MondeSimule.IdNageurScene
+            ? monde.FauvesConnus().Connus.Find(f => f.Id == -id - MondeSimule.IdFauveScene)
+            : null;
+        if (connue is not null) lignes.AddRange(FauveDto.LignesDe(monde, connue));
+        else if (t is null)
             lignes.Add(L.T("bete3d.sauvage"));
         else
         {
@@ -61,7 +66,8 @@ public sealed record FicheBeteDto(string Titre, List<string> Lignes)
 /// La fenêtre Faune et le calque des animaux (0.44.2) : chaque espèce avec sa population (sauvages estimées, gardées comptées),
 /// le gibier de chaque case (entiers sur 16 bits, petit-boutiste, en base 64) et les troupeaux gardés (case, espèce, nombre).
 /// </summary>
-public sealed record PopulationFauneDto(List<PopulationEspeceDto> Especes, string Gibier, double KgVifParPart, List<TroupeauCarteDto> Troupeaux)
+public sealed record PopulationFauneDto(List<PopulationEspeceDto> Especes, string Gibier, double KgVifParPart, List<TroupeauCarteDto> Troupeaux,
+    List<FauveDto>? Connus = null, List<AttaqueCarteDto>? Attaques = null)
 {
     public static PopulationFauneDto Depuis(MondeSimule monde)
     {
@@ -80,7 +86,12 @@ public sealed record PopulationFauneDto(List<PopulationEspeceDto> Especes, strin
             .Select(t => new TroupeauCarteDto(t.Case.X, t.Case.Y, t.Troupeau.Espece, (int)Math.Round(t.Troupeau.Adultes), (int)Math.Round(t.Troupeau.Petits),
                 t.Troupeau.Domestique))
             .ToList();
-        return new PopulationFauneDto(especes, Convert.ToBase64String(octets), MondeSimule.KgVifParPartDeGibier, troupeaux);
+        // 0.45.1 : les bêtes connues et les attaques de l'année, pour la fenêtre Faune et le calque des animaux.
+        var (connus, attaques) = monde.FauvesConnus();
+        var maintenant = monde.Secondes;
+        return new PopulationFauneDto(especes, Convert.ToBase64String(octets), MondeSimule.KgVifParPartDeGibier, troupeaux, FauveDto.Tous(monde),
+            [.. attaques.Select(a => new AttaqueCarteDto(a.X, a.Y, (int)((maintenant - a.Le) / Monde.Simulation.Temps.Calendrier.SecondesParJour), a.Espece, a.Mort,
+                a.EvenementId, connus.Exists(f => f.Id == a.FauveId && f.EnVie) ? -(MondeSimule.IdFauveScene + a.FauveId) : 0))]);
     }
 }
 
@@ -88,3 +99,32 @@ public sealed record PopulationEspeceDto(int Numero, string Nom, string Biome, i
     long? SauvagesAvant, int Mois, int GardeesAdultes, int GardeesPetits, int Troupeaux, bool Domestique, bool Disparue);
 
 public sealed record TroupeauCarteDto(int X, int Y, int Espece, int Adultes, int Petits, bool Domestique);
+
+/// <summary>
+/// Une bête connue des humains (0.45.1) : celle qui a attaqué, à sa dernière place connue. <paramref name="Groupe"/> : son numéro dans
+/// le flux Camp, pour la suivre en 3D.
+/// </summary>
+public sealed record FauveDto(int Id, int Espece, string Nom, int X, int Y, int Attaques, int Victimes, bool EnVie, string VueLe, int Groupe,
+    List<string> Details)
+{
+    public static List<FauveDto> Tous(MondeSimule monde)
+    {
+        var (connus, _) = monde.FauvesConnus();
+        return [.. connus.Where(f => monde.Faune.Existe(f.Espece)).OrderByDescending(f => f.EnVie).ThenByDescending(f => f.VuLe).Select(f =>
+            new FauveDto(f.Id, f.Espece, EspeceDto.NomDe(monde.Faune.Get(f.Espece)), f.X, f.Y, f.Attaques, f.Victimes, f.EnVie, L.Date(f.VuLe),
+                -(MondeSimule.IdFauveScene + f.Id), LignesDe(monde, f)))];
+    }
+
+    internal static List<string> LignesDe(MondeSimule monde, Fauve f)
+    {
+        var l = new List<string> { L.T("fauve3d.connue", ("a", f.Attaques), ("v", f.Victimes)), L.T("fauve3d.age", ("n", Math.Max(1, (int)Math.Round(f.Age)))) };
+        if (f.Blessure >= 0.3) l.Add(L.T("fauve3d.blessure"));
+        if (f.Habitude >= 0.5) l.Add(L.T("fauve3d.habitude"));
+        if (!f.EnVie)
+            l.Add(f.TueParId > 0 && monde.NomHumain(f.TueParId) is { Length: > 0 } n ? L.T("fauve3d.tueePar", ("nom", n)) : L.T("fauve3d.morte"));
+        return l;
+    }
+}
+
+/// <summary>Une attaque de l'année, pour la carte (0.45.1) : où, depuis combien de jours, l'espèce, mortelle ou non, la ligne du journal.</summary>
+public sealed record AttaqueCarteDto(int X, int Y, int Jours, int Espece, bool Mort, long Evenement, int Groupe);

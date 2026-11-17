@@ -142,6 +142,9 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     public int AttaquesDeBetes { get; init; }
 
     public int MortsDeBetes { get; init; }
+
+    /// <summary>Attaques de l'année écoulée (0.45.1).</summary>
+    public IReadOnlyList<AttaqueDeBete>? AttaquesRecentes { get; init; }
 }
 
 /// <summary>État de la nature et de la population, pour l'observateur.</summary>
@@ -259,7 +262,7 @@ public sealed partial class MondeSimule
             Numeros = _numeros, Generation = configuration.Generation, Comportement = _comportement, Communautes = _communautes,
         };
         _comportement.Catastrophes = _catastrophes;
-        _comportement.ChargerFauves(etat.Fauves, etat.FauvesManquants, etat.AttaquesDeBetes, etat.MortsDeBetes);
+        _comportement.ChargerFauves(etat.Fauves, etat.FauvesManquants, etat.AttaquesDeBetes, etat.MortsDeBetes, etat.AttaquesRecentes);
         _decrets = new Decrets(etat.Decrets);
         _comportement.Decrets = _ecosysteme.Decrets = _decrets;
         _comportement.Outremer = _social.Outremer = new Outremer(etat.Outremer);
@@ -383,6 +386,7 @@ public sealed partial class MondeSimule
                     FauvesManquants = _comportement.FauvesManquants.Count == 0 ? null : _comportement.FauvesManquants.OrderBy(x => x.Key).ToList(),
                     AttaquesDeBetes = _comportement.AttaquesDeBetes,
                     MortsDeBetes = _comportement.MortsDeBetes,
+                    AttaquesRecentes = _comportement.AttaquesRecentes.Count == 0 ? null : _comportement.AttaquesRecentes.ToList(),
                 };
             }
         }

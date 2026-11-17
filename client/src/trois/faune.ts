@@ -74,6 +74,9 @@ interface Groupe {
   alerteX: number;
   alerteZ: number;
   vu: number;
+  /** 0.45.1 : bête connue des humains (son numéro, 0 sinon) et minutes depuis sa dernière attaque ce jour (−1 : aucune). */
+  fauve: number;
+  attaque: number;
 }
 
 /** Un rendu : les bêtes d'une espèce à un degré de détail, en un seul dessin. */
@@ -220,7 +223,7 @@ export class Faune3D {
     const vus = new Set<number>();
     const maintenant = this.temps;
     for (let k = 0; k + CHAMPS_BETES <= betes.length; k += CHAMPS_BETES) {
-      const [id, x, y, numero, forme, poids, adultes0, petits0, gardees, gardien, docilite] = betes.slice(k, k + CHAMPS_BETES);
+      const [id, x, y, numero, forme, poids, adultes0, petits0, gardees, gardien, docilite, fauve, minutes] = betes.slice(k, k + CHAMPS_BETES);
       const s = this.especes.get(numero);
       if (!s) continue;
       vus.add(id);
@@ -241,12 +244,32 @@ export class Faune3D {
         } else {
           cx = (x + 0.5) * rel.m + (unite(hacher(x, y, 59)) - 0.5) * rel.m * 0.7;
           cz = (y + 0.5) * rel.m + (unite(hacher(x, y, 61)) - 0.5) * rel.m * 0.7;
+          // Le grand nageur guette au bord de l'eau : sur la rive la plus proche du milieu de la case.
+          if (forme === 8) [cx, cz] = aPiedSec(rel, cx, cz, 0.05, hacher(x, y, 67));
         }
         g = {
           id, espece: s.e, L, cx, cz, rayon: gardees ? enclos?.r ?? 20 : rel.m * 0.45, gardee: gardees === 1, gardien, docilite: docilite / 1000, chiens,
-          enclos, adultes: 0, petits: 0, betes: [], but: null, butJusqua: 0, alerte: 0, alerteX: 0, alerteZ: 0, vu: maintenant,
+          enclos, adultes: 0, petits: 0, betes: [], but: null, butJusqua: 0, alerte: 0, alerteX: 0, alerteZ: 0, vu: maintenant, fauve: 0, attaque: -2,
         };
         this.groupes.set(id, g);
+      }
+      // 0.45.1 : une bête connue qui vient d'attaquer (le jour même) rôde autour du camp de la case, puis s'éloigne.
+      g.fauve = fauve ?? 0;
+      const attaque = fauve > 0 && minutes >= 0 ? minutes : -1;
+      if (attaque !== g.attaque) {
+        g.attaque = attaque;
+        if (attaque >= 0 && attaque < 180) {
+          const [ax, az] = rel.camp(x, y);
+          const a = unite(hacher(id, 71)) * DEUX_PI;
+          const r = attaque < 30 ? 18 : 18 + attaque * 1.5;
+          [g.cx, g.cz] = [ax + Math.cos(a) * r, az + Math.sin(a) * r];
+          g.rayon = 12 + attaque * 0.5;
+          g.but = null;
+        } else if (fauve > 0) {
+          g.cx = (x + 0.5) * rel.m;
+          g.cz = (y + 0.5) * rel.m;
+          g.rayon = rel.m * 0.45;
+        }
       }
       g.espece = s.e;
       g.gardien = gardien;

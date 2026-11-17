@@ -247,6 +247,8 @@ export class Vue3D {
   private readonly decor: Decor3D;
   /** Suivi d'une bête (0.44.0) : comme celui d'un humain, sans portrait. */
   private suiviBete: { cle: string; nom: string; angle: number; distance: number; hauteur: number; perdu: number } | null = null;
+  /** 0.45.1 : une bête qu'on est allé voir, à suivre dès que le flux Camp l'aura apportée (jusqu'à quand, en ms). */
+  private beteAttendue: { cle: string; jusqua: number } | null = null;
   /** Petite fiche de la bête cliquée (0.44.0). */
   private readonly ficheBete: HTMLElement;
   private ficheBeteCle: string | null = null;
@@ -1288,6 +1290,52 @@ export class Vue3D {
     this.ficheBete.hidden = false;
   }
 
+  /**
+   * « Aller voir » une espèce ou une bête connue (0.45.1) : la case la plus proche où elle se montre (ou celle qu'on donne), en vol
+   * au-dessus, puis on la suit dès qu'elle apparaît. `groupe` 0 : le serveur choisit le groupe le plus proche de la caméra.
+   */
+  async allerVoirBete(espece: number, groupe: number, x: number, y: number): Promise<void> {
+    if (groupe === 0 && x >= 0) {
+      // Le lieu d'une attaque dont la bête n'est plus : on y va, sans rien à suivre.
+      const [ax, az] = this.relief.camp(x, y);
+      const sol = Math.max(0, this.relief.hauteur(ax, az));
+      this.teleporter(ax, az);
+      this.camera.position.set(ax + 30, sol + 40, az + 30);
+      this.regarderVers(new THREE.Vector3(ax, sol, az));
+      this.ctx.message(t("trois.bete.lieu"));
+      return;
+    }
+    if (groupe === 0 || x < 0) {
+      const p = this.camera.position;
+      const o = await connexion.invoke<number[] | null>("OuVoirEspece", espece, Math.floor(p.x / this.relief.m), Math.floor(p.z / this.relief.m)).catch(() => null);
+      if (!o) {
+        this.ctx.message(t("trois.bete.nullePart"));
+        return;
+      }
+      [x, y, groupe] = o;
+    }
+    const [cx, cz] = this.relief.camp(x, y);
+    this.teleporter(cx, cz);
+    const sol = Math.max(0, this.relief.hauteur(cx, cz));
+    this.camera.position.set(cx + 40, sol + 60, cz + 40);
+    this.regarderVers(new THREE.Vector3(cx, sol, cz));
+    this.beteAttendue = { cle: `${groupe}:0`, jusqua: performance.now() + 15000 };
+    this.ctx.message(t("trois.bete.enRoute"));
+  }
+
+  /** Chaque image : la bête qu'on est allé voir est-elle arrivée dans le flux Camp ? Alors on la suit. */
+  private attendreBete(): void {
+    const a = this.beteAttendue;
+    if (!a) return;
+    if (this.faune.etat(a.cle)) {
+      this.beteAttendue = null;
+      void this.suivreBete(a.cle);
+    } else if (performance.now() > a.jusqua) {
+      this.beteAttendue = null;
+      this.ctx.message(t("trois.bete.pasVue"));
+    }
+  }
+
   /** Une bête de la terre (Faune3D) ou du ciel et de l'eau (Decor3D, clé « d:… »). */
   private etatBete(cle: string): ReturnType<Faune3D["etat"]> {
     return cle.startsWith("d:") ? this.decor.etat(cle) : this.faune.etat(cle);
@@ -2202,6 +2250,7 @@ export class Vue3D {
     this.proches.mettreAJour(p, this.tempsGestes);
     this.camp.animer(p);
     this.animerFaune(dt, p);
+    this.attendreBete();
     this.suivreBeteImage(dt);
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
     // L'eau d'une crue renvoie la lumière du ciel (la couleur du ciel près de l'horizon, plus claire que la moyenne).

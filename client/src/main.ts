@@ -16,7 +16,7 @@ import { PanneauRemarquables } from "./remarquables";
 import { PanneauFaune } from "./population";
 import { PanneauPrieres, PanneauReligions, definirOuvrirCommunaute } from "./cultes";
 import { PanneauConfiguration, type Reglages } from "./configuration";
-import { definirLiensNoms, PanneauFiche } from "./fiche";
+import { definirLiensNoms, PanneauFiche, voirAttaque } from "./fiche";
 import { PanneauFicheCommunaute } from "./fichecommunaute";
 import { PanneauHorloge } from "./horloge";
 import { PanneauJournal } from "./journal";
@@ -476,7 +476,20 @@ async function demarrer(): Promise<void> {
     decouvertes.basculer();
   });
   // Fenêtre Faune (0.44.2) : population de chaque espèce ; un clic sur une espèce la montre sur la carte (calque des animaux).
-  const faune = new PanneauFaune(element("#faune"), (numero) => void calques.montrerAnimaux(numero));
+  // 0.45.1 : « Aller voir » une espèce ou une bête connue ouvre la vue 3D (si besoin) et la suit.
+  const voirBete3d = async (espece: number, groupe: number, x: number, y: number) => {
+    if (!bouton3d.classList.contains("actif") || !vue3d) {
+      bouton3d.click();
+      for (let k = 0; k < 100 && !(bouton3d.classList.contains("actif") && vue3d); k++) await new Promise((r) => window.setTimeout(r, 100));
+    }
+    await vue3d?.allerVoirBete(espece, groupe, x, y);
+  };
+  voirAttaque.faire = (evenement) => void connexion.invoke<number[] | null>("AttaqueDuJournal", evenement).catch(() => null).then((a) => {
+    if (a) void voirBete3d(a[0], a[1], a[2], a[3]);
+    else infos.textContent = t("evenement.attaqueAncienne");
+  });
+  const faune = new PanneauFaune(element("#faune"), (numero) => void calques.montrerAnimaux(numero),
+    (espece, groupe, x, y) => void voirBete3d(espece, groupe, x, y));
   element("#boutonFaune").addEventListener("click", () => {
     remarquables.fermer();
     demographie.fermer();

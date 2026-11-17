@@ -12,6 +12,8 @@ import { dessinerVisage, vignette, type Visage } from "./visage";
 
 interface Evenement {
   id: number;
+  /** 0.45.1 : une attaque de bête, à aller voir en 3D. */
+  bete?: boolean;
   secondes: number;
   date: string;
   type: string;
@@ -1110,6 +1112,9 @@ function texteAvecLiens(e: Evenement): (string | HTMLElement)[] {
   return morceaux;
 }
 
+/** 0.45.1 : « Aller voir » le lieu d'une attaque de bête en 3D (posé par main.ts). */
+export const voirAttaque: { faire: ((evenement: number) => void) | null } = { faire: null };
+
 /** Ligne d'événement : date, texte (noms cliquables), et la marque d'une intervention de l'Entité. */
 export function ligneEvenement(e: Evenement): HTMLElement {
   const li = el("li", `evenement ${e.type}${e.significatif ? " significatif" : ""}`);
@@ -1135,6 +1140,15 @@ export function ligneEvenement(e: Evenement): HTMLElement {
     li.append(k);
   }
   if (e.cause > 0) li.append(" ", boutonCause(li, e.cause, t("commun.pourquoi")));
+  if (e.bete && voirAttaque.faire) {
+    const voir = el("button", "lien voir3d", ` 🎥 ${t("evenement.voirAttaque")}`);
+    voir.type = "button";
+    voir.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      voirAttaque.faire?.(e.id);
+    });
+    li.append(voir);
+  }
   return li;
 }
 
