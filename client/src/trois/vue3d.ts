@@ -322,6 +322,15 @@ export class Vue3D {
   /** Temps de la carte graphique par image (ms), lissé ; NaN : inconnu (WebGL, ou navigateur qui ne le donne pas). */
   private tempsCarte = NaN;
   private lectureCarte = false;
+  /** Détail du temps du processeur par image (touche I) : ms cumulées par poste depuis le dernier affichage. */
+  private readonly postes = new Map<string, number>();
+  private marque = 0;
+
+  private poste(nom: string): void {
+    const t = performance.now();
+    this.postes.set(nom, (this.postes.get(nom) ?? 0) + t - this.marque);
+    this.marque = t;
+  }
   private jourTemperatures = -1;
   private saisonVue = -1;
   private minuteurs: number[] = [];
@@ -2269,6 +2278,7 @@ export class Vue3D {
     const maintenant = performance.now();
     const dt = Math.min(0.1, (maintenant - this.dernier) / 1000);
     this.dernier = maintenant;
+    this.marque = maintenant;
     this.lireManette(dt);
     this.deplacer(dt);
     const p = this.camera.position;
@@ -2277,6 +2287,7 @@ export class Vue3D {
     this.rayons.regler(this.camera, this.ciel.direction, this.ciel.couleurSoleil, this.ciel.brume);
     this.vent.regler(secondes);
     this.mettreAJourTemps(secondes, p, maintenant, dt);
+    this.poste("ciel");
     // L'œil s'adapte à la lumière en une ou deux secondes (plus lentement vers le noir).
     const vise = this.ciel.expositionVisee;
     const vitesse = vise > this.exposition ? 0.8 : 1.6;
@@ -2290,21 +2301,29 @@ export class Vue3D {
       this.ciel.fond = this.fondAlentour(p);
     }
     this.terrain.mettreAJour(p, 7);
+    this.poste("relief");
     this.nature.mettreAJour(p, 3);
+    this.poste("vegetation");
     this.sol.mettreAJour(p, 2);
+    this.poste("sol");
     this.foule.interlocuteur = echange.humain;
     this.avancerRejeu(dt);
     this.foule.facteur = this.facteur;
     this.foule.animer(dt, secondes, p);
+    this.poste("foule");
     // Les gestes (souffle, regard, passage d'une posture à l'autre) vont au rythme du monde, en film accéléré (A1).
     this.tempsGestes += dt * accelere(this.facteur);
     if (this.tapis) this.mettreAJourTapis(p, dt);
+    this.poste("tapis");
     this.suivreImage(dt);
     this.proches.mettreAJour(p, this.tempsGestes);
+    this.poste("corps");
     this.camp.animer(p);
+    this.poste("camp");
     this.animerFaune(dt, p);
     this.attendreBete();
     this.suivreBeteImage(dt);
+    this.poste("faune");
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
     // L'eau d'une crue renvoie la lumière du ciel (la couleur du ciel près de l'horizon, plus claire que la moyenne).
     meteoGPU.uCielEau.value.set(this.ciel.hemi.color.r, this.ciel.hemi.color.g, this.ciel.hemi.color.b).multiplyScalar(0.6 * this.ciel.hemi.intensity);
@@ -2317,9 +2336,11 @@ export class Vue3D {
     // On lève les yeux vers ce qui se passe dans le ciel, et vers le soleil qui s'éteint pendant une éclipse.
     this.proches.regardCiel = this.phenomenes.regard ?? (this.ciel.obscurite > 0.3 && this.ciel.direction.y > 0 ? this.ciel.direction : null);
     this.incendies.animer(p, nuit, this.ciel.hemi.color, this.exposition, QUALITES[this.qualite].feu);
+    this.poste("meteo");
     this.mer.position.set(p.x, 0, p.z);
     this.eau.origineMer.value.set(p.x, p.z);
     this.eau.mettreAJour(p);
+    this.poste("eau");
     // Aller voir : dès que l'humain est là, on se pose à pied à quelques mètres, face à lui.
     if (this.viser !== null) {
       const cible = this.foule.position(this.viser);
@@ -2338,6 +2359,7 @@ export class Vue3D {
     this.camera.updateMatrixWorld();
     if (++this.imagesOmbres % 30 === 1) this.ombrer();
     this.cadencerOmbres();
+    this.poste("divers");
     if (this.aoNoeud) {
       // L'occlusion se mesure à l'échelle de ce qu'on regarde : quelques millimètres sur un visage, un mètre sur un paysage.
       const haut = p.y - Math.max(0, this.relief.hauteur(p.x, p.z));
@@ -2347,14 +2369,17 @@ export class Vue3D {
     this.secouer(maintenant);
     if (this.decalage.lengthSq() > 0) this.camera.updateMatrixWorld();
     this.ciel.rendreNuages(this.renderer, this.camera);
+    this.poste("nuages");
     if (this.chaine) this.chaine.render();
     else this.renderer.render(this.scene, this.camera);
     this.lireTempsCarte();
+    this.poste("rendu");
     if (this.decalage.lengthSq() > 0) {
       this.camera.position.sub(this.decalage);
       this.camera.updateMatrixWorld();
     }
     this.montrerNoms();
+    this.poste("noms");
     if (maintenant - this.miniA > 100) {
       this.miniA = maintenant;
       this.mini.dessiner({
@@ -2441,12 +2466,17 @@ export class Vue3D {
     const moyenne = this.durees.reduce((a, b) => a + b, 0) / n;
     const pire = Math.max(0, ...this.durees);
     this.durees.length = 0;
+    // Les cinq postes les plus lourds, en ms par image.
+    const detail = [...this.postes].sort((x, y) => y[1] - x[1]).slice(0, 5)
+      .map(([k, v]) => `${t(`trois.poste.${k}`)} ${nombre(v / n, 1)}`).join(" · ");
+    this.postes.clear();
     const info = this.renderer.info.render as { drawCalls?: number; calls?: number; triangles?: number };
     this.perf.textContent = t("trois.perf", {
       images: Math.round(this.parSeconde),
       moyenne: nombre(moyenne, 1),
       carteMs: Number.isNaN(this.tempsCarte) ? "?" : nombre(this.tempsCarte, 1),
       resolution: Math.round(this.echelle * 100),
+      detail,
       pire: nombre(pire, 1),
       appels: nombre(info.drawCalls ?? info.calls ?? 0),
       triangles: nombre(Math.round((info.triangles ?? 0) / 1000)),
