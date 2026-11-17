@@ -283,8 +283,8 @@ export class Vue3D {
   private vitesseRejeu = 1;
   private cameraCombat = true;
   private facteurApresRejeu: number | null = null;
-  /** 0.45.2 : vrai si le monde continue de vivre pendant le rejeu d'un assaut (case des commandes ou touche L) ; sinon il s'arrête. */
-  private tempsCouleRejeu = lireStockage("monde.rejeu3d.continu") === "1";
+  /** 0.45.2 : vrai si le monde continue de vivre pendant le rejeu d'un assaut (par défaut) ; la case « Pause pendant un assaut » ou la touche L l'arrêtent. */
+  private tempsCouleRejeu = lireStockage("monde.rejeu3d.pause") !== "1";
   /**
    * Suivi automatique (0.41.2) : la caméra reste près d'un humain où qu'il aille. `angle` : d'où on le regarde (0 : de face),
    * relatif à son cap ; glisser la souris tourne autour de lui, la molette rapproche ou éloigne.
@@ -535,7 +535,7 @@ export class Vue3D {
           <option value="haute">${t("trois.qualite.haute")}</option>
           <option value="ultra">${t("trois.qualite.ultra")}</option>
         </select></label>
-        <label title="${t("trois.combat.tempsCouleAide")}"><input type="checkbox" data-action="rejeuContinu" /> ${t("trois.combat.tempsCoule")}</label>
+        <label title="${t("trois.combat.tempsCouleAide")}"><input type="checkbox" data-action="rejeuPause" /> ${t("trois.combat.tempsCoule")}</label>
       </div>
       <form class="ligne" data-action="aller">
         <input list="vivants3d" placeholder="${t("trois.allerVoirNom")}" />
@@ -554,9 +554,9 @@ export class Vue3D {
     this.reduireCommandes(lireStockage("monde.hud3d.reduit") === "1", false);
     q<HTMLButtonElement>('[data-action="vol"]').addEventListener("click", () => this.changerMode("vol"));
     q<HTMLButtonElement>('[data-action="marche"]').addEventListener("click", () => this.changerMode("marche"));
-    const continu = q<HTMLInputElement>('[data-action="rejeuContinu"]');
-    continu.checked = this.tempsCouleRejeu;
-    continu.addEventListener("change", () => void this.choisirTempsRejeu(continu.checked));
+    const pauseRejeu = q<HTMLInputElement>('[data-action="rejeuPause"]');
+    pauseRejeu.checked = !this.tempsCouleRejeu;
+    pauseRejeu.addEventListener("change", () => void this.choisirTempsRejeu(!pauseRejeu.checked));
     const choix = q<HTMLSelectElement>('[data-action="qualite"]');
     choix.value = this.qualite;
     choix.addEventListener("change", () => {
@@ -1823,14 +1823,14 @@ export class Vue3D {
   }
 
   /**
-   * 0.45.2 : le monde s'arrête-t-il pendant le rejeu d'un assaut ? Le choix est gardé dans le navigateur. Changé pendant un rejeu,
+   * 0.45.2 : le monde s'arrête-t-il pendant le rejeu d'un assaut ? Non par défaut. Le choix est gardé dans le navigateur. Changé pendant un rejeu,
    * il vaut tout de suite : le monde repart à sa vitesse d'avant, ou s'arrête jusqu'à la fin du rejeu.
    */
   private async choisirTempsRejeu(continu: boolean): Promise<void> {
     this.tempsCouleRejeu = continu;
-    ecrireStockage("monde.rejeu3d.continu", continu ? "1" : "0");
-    const caseHud = this.hud.querySelector<HTMLInputElement>('[data-action="rejeuContinu"]');
-    if (caseHud) caseHud.checked = continu;
+    ecrireStockage("monde.rejeu3d.pause", continu ? "0" : "1");
+    const caseHud = this.hud.querySelector<HTMLInputElement>('[data-action="rejeuPause"]');
+    if (caseHud) caseHud.checked = !continu;
     this.ctx.message(t(continu ? "trois.combat.continu" : "trois.combat.pause"));
     if (!this.foule.rejeu) return;
     if (continu && this.facteurApresRejeu) {
@@ -1851,7 +1851,7 @@ export class Vue3D {
     }
   }
 
-  /** Met en scène un assaut : le monde se met en pause le temps du rejeu (sauf si l'on a choisi de laisser le temps couler), puis reprend à sa vitesse. */
+  /** Met en scène un assaut : le temps continue de couler (ou, si l'on a coché la pause, le monde s'arrête le temps du rejeu), puis reprend à sa vitesse. */
   private async lancerRejeu(a: AssautJson): Promise<void> {
     const places = new Map<number, { x: number; z: number }>();
     const presents: number[] = [];

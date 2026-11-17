@@ -61,15 +61,11 @@ public sealed class ReglesAlertes
     public bool[] Prevenir { get; } = Enumerable.Repeat(true, Nombre).ToArray();
     public bool[] Pause { get; } = new bool[Nombre];
 
-    /// <summary>Réglage par défaut : tout prévient ; la mort d'un suivi et une guerre qui touche une communauté suivie mettent en pause.</summary>
-    public static ReglesAlertes ParDefaut()
-    {
-        var r = new ReglesAlertes();
-        r.Pause[(int)SorteAlerte.Mort] = true;
-        r.Pause[(int)SorteAlerte.Guerre] = true;
-        r.Pause[(int)SorteAlerte.TroupeAuxPortes] = true;
-        return r;
-    }
+    /// <summary>
+    /// Réglage par défaut : tout prévient, rien ne met en pause (0.45.3, voulu par l'auteur : rien n'est activé par défaut) ; chaque
+    /// pause se coche dans Suivis &gt; Réglages des alertes. Un réglage déjà enregistré dans un monde est gardé tel quel.
+    /// </summary>
+    public static ReglesAlertes ParDefaut() => new();
 
     public static bool HumainSeul(SorteAlerte s) => s <= SorteAlerte.Mer;
 }
