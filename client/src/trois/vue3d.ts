@@ -479,6 +479,7 @@ export class Vue3D {
       trackTimestamp: webgpu,
     } as ConstructorParameters<typeof THREE.WebGPURenderer>[0]);
     await renderer.init();
+    Vue3D.separerGroupesOmbres(renderer);
     Vue3D.nomCarte = Vue3D.lireCarte(renderer, adaptateur);
     Vue3D.adaptateur = adaptateur;
     // Rendu des tons « AgX » (comme un film ou un capteur : les fortes lumières passent au blanc sans virer) ; l'exposition suit la lumière.
@@ -535,6 +536,34 @@ export class Vue3D {
    */
   get logiciel(): boolean {
     return Vue3D.secours || /swiftshader|basic render|\bwarp\b|llvmpipe|softpipe|software|lavapipe/i.test(Vue3D.nomCarte);
+  }
+
+  /**
+   * Correctif 0.45.6 (relevé Chrome de l'Omen : 660 ms par image en Ultra). Dans une carte d'ombres, Three.js remplace le matériau
+   * de chaque objet par un seul matériau d'ombre et range ses objets de rendu par (objet, matériau, …). Un maillage à plusieurs
+   * matériaux (arbre proche : écorce + feuillage ; fougère du tapis ; corps proche : peau, yeux, cheveux…) n'a donc qu'un objet de
+   * rendu pour toutes ses parties, alors que chaque partie a sa propre façon d'ombrer (découpe des feuilles, vent) : à chaque
+   * partie, le shader d'ombre était jeté et recompilé, pour chaque cascade et à chaque image. On donne à chaque partie son propre
+   * rangement (identifiant de passe), sans rien changer d'autre au rendu.
+   */
+  private static separerGroupesOmbres(renderer: THREE.WebGPURenderer): void {
+    type Fonction = ((...a: unknown[]) => void) & { parGroupe?: boolean };
+    const r = renderer as unknown as { setRenderObjectFunction: (f: Fonction | null) => void };
+    const poser = r.setRenderObjectFunction.bind(renderer);
+    const faites = new WeakMap<Fonction, Fonction>();
+    r.setRenderObjectFunction = (f) => {
+      if (f === null || f.parGroupe) return poser(f);
+      const deja = faites.get(f);
+      if (deja) return poser(deja);
+      const enveloppe: Fonction = (object, scene, camera, geometry, material, group, lights, clipping, passId) => {
+        const g = group as { materialIndex?: number } | null;
+        const parties = Array.isArray((object as THREE.Mesh).material) && g && g.materialIndex !== undefined;
+        f(object, scene, camera, geometry, material, group, lights, clipping, parties ? `${(passId as string | null) ?? "default"}#${g.materialIndex}` : passId);
+      };
+      enveloppe.parGroupe = true;
+      faites.set(f, enveloppe);
+      poser(enveloppe);
+    };
   }
 
   /** Moteur de rendu effectivement utilisé. */
