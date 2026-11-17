@@ -6486,7 +6486,7 @@
   "trois.aide.suivi": "Auto-follow: drag to orbit around them · scroll wheel: closer or farther (down to 35 cm) · P: portrait · 1 to 7: speed · a movement key, F or Esc: stop following",
   "trois.introuvable": "Nobody of that name among the living.",
   "trois.versHumain": "On the way to {nom}…",
-  "trois.combat.debut": "An attack is taking place here: the world is paused while it is replayed · C: free or battle camera · V: replay speed",
+  "trois.combat.debut": "An attack is taking place here: the world is paused while it is replayed · C: free or battle camera · V: replay speed · L: let time flow",
   "trois.combat.fin": "The attack is over: the world goes on.",
   "trois.combat.camera": "Battle camera: it follows the fights.",
   "trois.combat.libre": "Free camera (C to go back to the battle camera).",
@@ -6497,8 +6497,8 @@
   "trois.combat.heures": "{n} h",
   "trois.combat.jours": "{n} d",
   "suivis.allerVoirTroupe": "Watch in 3D",
-  "trois.aide.vol": "Flying: drag to look around · W or ↑ forward, S or ↓ back, A and D sideways · E or Space up, Q down · 1 to 7 or + and −: speed · Shift: six times faster · scroll wheel: move forward · click the minimap: go there · M: walk · Esc: map · F: follow the human whose sheet is open · P: portrait · I: frames per second · H: collapse the controls · T: wait for the next attack · R: watch an attack again · C: battle camera · V: replay speed · K: go and see the nearest disaster",
-  "trois.aide.marche": "Walking: drag to look around · W or ↑ forward, S or ↓ back, A and D sideways, ← → turn · 1 to 7 or + and −: speed (1: ×0.05 to approach gently) · Shift: run · click a human: their profile · M: fly · Esc: map · F: follow the human whose sheet is open · P: portrait · I: frames per second · H: collapse the controls · T: wait for the next attack · R: watch an attack again · C: battle camera · V: replay speed · K: go and see the nearest disaster",
+  "trois.aide.vol": "Flying: drag to look around · W or ↑ forward, S or ↓ back, A and D sideways · E or Space up, Q down · 1 to 7 or + and −: speed · Shift: six times faster · scroll wheel: move forward · click the minimap: go there · M: walk · Esc: map · F: follow the human whose sheet is open · P: portrait · I: frames per second · H: collapse the controls · T: wait for the next attack · R: watch an attack again · C: battle camera · V: replay speed · L: time during an attack · K: go and see the nearest disaster",
+  "trois.aide.marche": "Walking: drag to look around · W or ↑ forward, S or ↓ back, A and D sideways, ← → turn · 1 to 7 or + and −: speed (1: ×0.05 to approach gently) · Shift: run · click a human: their profile · M: fly · Esc: map · F: follow the human whose sheet is open · P: portrait · I: frames per second · H: collapse the controls · T: wait for the next attack · R: watch an attack again · C: battle camera · V: replay speed · L: time during an attack · K: go and see the nearest disaster",
   "trois.manette.bouton": "Controller",
   "trois.manette.famille.playstation": "PlayStation controller",
   "trois.manette.famille.xbox": "Xbox controller",
@@ -6914,5 +6914,11 @@
   "fauve3d.blessure": "An old wound drives it toward easy prey.",
   "fauve3d.habitude": "It has acquired a taste for humans.",
   "fauve3d.tueePar": "Killed by {nom}.",
-  "fauve3d.morte": "Dead."
+  "fauve3d.morte": "Dead.",
+  "trois.combat.tempsCoule": "Time flows during an attack",
+  "trois.combat.tempsCouleAide": "Checked: the world keeps living while an attack is replayed. Unchecked: it stops for the replay. L key.",
+  "trois.combat.continu": "During an attack, time will keep flowing (L to change).",
+  "trois.combat.pause": "During an attack, the world will stop for the replay (L to change).",
+  "trois.combat.debutContinu": "An attack is taking place here: time keeps flowing during the replay · C: free or battle camera · V: replay speed · L: stop the world",
+  "trois.combat.finContinu": "The attack replay is over."
 }

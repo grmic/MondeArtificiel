@@ -283,6 +283,8 @@ export class Vue3D {
   private vitesseRejeu = 1;
   private cameraCombat = true;
   private facteurApresRejeu: number | null = null;
+  /** 0.45.2 : vrai si le monde continue de vivre pendant le rejeu d'un assaut (case des commandes ou touche L) ; sinon il s'arrête. */
+  private tempsCouleRejeu = lireStockage("monde.rejeu3d.continu") === "1";
   /**
    * Suivi automatique (0.41.2) : la caméra reste près d'un humain où qu'il aille. `angle` : d'où on le regarde (0 : de face),
    * relatif à son cap ; glisser la souris tourne autour de lui, la molette rapproche ou éloigne.
@@ -533,6 +535,7 @@ export class Vue3D {
           <option value="haute">${t("trois.qualite.haute")}</option>
           <option value="ultra">${t("trois.qualite.ultra")}</option>
         </select></label>
+        <label title="${t("trois.combat.tempsCouleAide")}"><input type="checkbox" data-action="rejeuContinu" /> ${t("trois.combat.tempsCoule")}</label>
       </div>
       <form class="ligne" data-action="aller">
         <input list="vivants3d" placeholder="${t("trois.allerVoirNom")}" />
@@ -551,6 +554,9 @@ export class Vue3D {
     this.reduireCommandes(lireStockage("monde.hud3d.reduit") === "1", false);
     q<HTMLButtonElement>('[data-action="vol"]').addEventListener("click", () => this.changerMode("vol"));
     q<HTMLButtonElement>('[data-action="marche"]').addEventListener("click", () => this.changerMode("marche"));
+    const continu = q<HTMLInputElement>('[data-action="rejeuContinu"]');
+    continu.checked = this.tempsCouleRejeu;
+    continu.addEventListener("change", () => void this.choisirTempsRejeu(continu.checked));
     const choix = q<HTMLSelectElement>('[data-action="qualite"]');
     choix.value = this.qualite;
     choix.addEventListener("change", () => {
@@ -974,6 +980,10 @@ export class Vue3D {
       const k = (VITESSES_REJEU.indexOf(this.vitesseRejeu) + 1) % VITESSES_REJEU.length;
       this.vitesseRejeu = VITESSES_REJEU[k];
       this.ctx.message(t("trois.combat.vitesse", { v: nombre(this.vitesseRejeu) }));
+      return;
+    }
+    if (e.key === "l" || e.key === "L") {
+      void this.choisirTempsRejeu(!this.tempsCouleRejeu);
       return;
     }
     if (e.key === "t" || e.key === "T") {
@@ -1812,7 +1822,36 @@ export class Vue3D {
     }
   }
 
-  /** Met en scène un assaut : le monde se met en pause le temps du rejeu, puis reprend à sa vitesse. */
+  /**
+   * 0.45.2 : le monde s'arrête-t-il pendant le rejeu d'un assaut ? Le choix est gardé dans le navigateur. Changé pendant un rejeu,
+   * il vaut tout de suite : le monde repart à sa vitesse d'avant, ou s'arrête jusqu'à la fin du rejeu.
+   */
+  private async choisirTempsRejeu(continu: boolean): Promise<void> {
+    this.tempsCouleRejeu = continu;
+    ecrireStockage("monde.rejeu3d.continu", continu ? "1" : "0");
+    const caseHud = this.hud.querySelector<HTMLInputElement>('[data-action="rejeuContinu"]');
+    if (caseHud) caseHud.checked = continu;
+    this.ctx.message(t(continu ? "trois.combat.continu" : "trois.combat.pause"));
+    if (!this.foule.rejeu) return;
+    if (continu && this.facteurApresRejeu) {
+      const f = this.facteurApresRejeu;
+      this.facteurApresRejeu = null;
+      await connexion.invoke("ChoisirFacteur", f).catch(() => undefined);
+    }
+    else if (!continu) await this.arreterPourRejeu();
+  }
+
+  /** Arrête le monde pour le rejeu, en retenant sa vitesse ; rien si l'on file vers un objectif ou si le monde est déjà arrêté. */
+  private async arreterPourRejeu(): Promise<void> {
+    if (this.facteurApresRejeu) return;
+    const h = await connexion.invoke<HorlogeJson>("Horloge").catch(() => null);
+    if (h && h.facteur > 0 && !h.saut && !h.objectif && this.foule.rejeu && !this.tempsCouleRejeu) {
+      this.facteurApresRejeu = h.facteur;
+      await connexion.invoke("ChoisirFacteur", 0).catch(() => undefined);
+    }
+  }
+
+  /** Met en scène un assaut : le monde se met en pause le temps du rejeu (sauf si l'on a choisi de laisser le temps couler), puis reprend à sa vitesse. */
   private async lancerRejeu(a: AssautJson): Promise<void> {
     const places = new Map<number, { x: number; z: number }>();
     const presents: number[] = [];
@@ -1825,12 +1864,8 @@ export class Vue3D {
     this.foule.rejeu = new Rejeu(a, this.relief, places, presents);
     this.foule.tRejeu = 0;
     this.cameraCombat = true;
-    this.ctx.message(t("trois.combat.debut"));
-    const h = await connexion.invoke<HorlogeJson>("Horloge").catch(() => null);
-    if (h && h.facteur > 0 && !h.saut && !h.objectif) {
-      this.facteurApresRejeu = h.facteur;
-      await connexion.invoke("ChoisirFacteur", 0).catch(() => undefined);
-    }
+    this.ctx.message(t(this.tempsCouleRejeu ? "trois.combat.debutContinu" : "trois.combat.debut"));
+    if (!this.tempsCouleRejeu) await this.arreterPourRejeu();
   }
 
   private avancerRejeu(dt: number): void {
@@ -1839,7 +1874,7 @@ export class Vue3D {
     this.foule.tRejeu += dt * this.vitesseRejeu;
     if (this.foule.tRejeu < r.duree) return;
     this.foule.rejeu = null;
-    this.ctx.message(t("trois.combat.fin"));
+    this.ctx.message(t(this.tempsCouleRejeu ? "trois.combat.finContinu" : "trois.combat.fin"));
     const f = this.facteurApresRejeu;
     this.facteurApresRejeu = null;
     if (f) void connexion.invoke("ChoisirFacteur", f).catch(() => undefined);

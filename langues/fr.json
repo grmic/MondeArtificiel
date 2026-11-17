@@ -6486,7 +6486,7 @@
   "trois.aide.suivi": "Suivi automatique : glisser pour tourner autour de lui · molette : plus près ou plus loin (jusqu'à 35 cm) · P : portrait · 1 à 7 : allure · une touche de déplacement, F ou Échap : arrêter de suivre",
   "trois.introuvable": "Personne de ce nom parmi les vivants.",
   "trois.versHumain": "En route vers {nom}…",
-  "trois.combat.debut": "Un assaut a lieu ici : le monde est en pause le temps de le rejouer · C : caméra libre ou de combat · V : vitesse du rejeu",
+  "trois.combat.debut": "Un assaut a lieu ici : le monde est en pause le temps de le rejouer · C : caméra libre ou de combat · V : vitesse du rejeu · L : laisser couler le temps",
   "trois.combat.fin": "Fin de l'assaut : le monde reprend.",
   "trois.combat.camera": "Caméra de combat : elle suit les duels.",
   "trois.combat.libre": "Caméra libre (C pour revenir à la caméra de combat).",
@@ -6497,8 +6497,8 @@
   "trois.combat.heures": "{n} h",
   "trois.combat.jours": "{n} j",
   "suivis.allerVoirTroupe": "Aller voir en 3D",
-  "trois.aide.vol": "Vol : glisser pour regarder · W/Z ou ↑ avancer, S ou ↓ reculer, A/Q et D de côté · E ou Espace monter, Q/A descendre · 1 à 7 ou + et − : allure · Maj : six fois plus vite · molette : avancer · clic sur la mini-carte : y aller · M : marcher · Échap : carte · F : suivre l'humain de la fiche · P : portrait · I : images par seconde · H : réduire les commandes · T : attendre le prochain assaut · R : revoir un assaut · C : caméra de combat · V : vitesse du rejeu · K : aller voir la catastrophe la plus proche",
-  "trois.aide.marche": "Marche : glisser pour regarder · W/Z ou ↑ avancer, S ou ↓ reculer, A/Q et D de côté, ← → tourner · 1 à 7 ou + et − : allure (1 : ×0,05 pour s'approcher doucement) · Maj : courir · clic sur un humain : sa fiche · M : voler · Échap : carte · F : suivre l'humain de la fiche · P : portrait · I : images par seconde · H : réduire les commandes · T : attendre le prochain assaut · R : revoir un assaut · C : caméra de combat · V : vitesse du rejeu · K : aller voir la catastrophe la plus proche",
+  "trois.aide.vol": "Vol : glisser pour regarder · W/Z ou ↑ avancer, S ou ↓ reculer, A/Q et D de côté · E ou Espace monter, Q/A descendre · 1 à 7 ou + et − : allure · Maj : six fois plus vite · molette : avancer · clic sur la mini-carte : y aller · M : marcher · Échap : carte · F : suivre l'humain de la fiche · P : portrait · I : images par seconde · H : réduire les commandes · T : attendre le prochain assaut · R : revoir un assaut · C : caméra de combat · V : vitesse du rejeu · L : temps pendant un assaut · K : aller voir la catastrophe la plus proche",
+  "trois.aide.marche": "Marche : glisser pour regarder · W/Z ou ↑ avancer, S ou ↓ reculer, A/Q et D de côté, ← → tourner · 1 à 7 ou + et − : allure (1 : ×0,05 pour s'approcher doucement) · Maj : courir · clic sur un humain : sa fiche · M : voler · Échap : carte · F : suivre l'humain de la fiche · P : portrait · I : images par seconde · H : réduire les commandes · T : attendre le prochain assaut · R : revoir un assaut · C : caméra de combat · V : vitesse du rejeu · L : temps pendant un assaut · K : aller voir la catastrophe la plus proche",
   "trois.manette.bouton": "Manette",
   "trois.manette.famille.playstation": "Manette PlayStation",
   "trois.manette.famille.xbox": "Manette Xbox",
@@ -6914,5 +6914,11 @@
   "fauve3d.blessure": "Une vieille blessure la pousse vers les proies faciles.",
   "fauve3d.habitude": "Elle a pris goût aux humains.",
   "fauve3d.tueePar": "Tuée par {nom}.",
-  "fauve3d.morte": "Morte."
+  "fauve3d.morte": "Morte.",
+  "trois.combat.tempsCoule": "Le temps coule pendant un assaut",
+  "trois.combat.tempsCouleAide": "Coché : le monde continue de vivre pendant le rejeu d'un assaut. Décoché : il s'arrête le temps du rejeu. Touche L.",
+  "trois.combat.continu": "Pendant un assaut, le temps continuera de couler (L pour changer).",
+  "trois.combat.pause": "Pendant un assaut, le monde s'arrêtera le temps du rejeu (L pour changer).",
+  "trois.combat.debutContinu": "Un assaut a lieu ici : le temps continue de couler pendant le rejeu · C : caméra libre ou de combat · V : vitesse du rejeu · L : arrêter le monde",
+  "trois.combat.finContinu": "Fin du rejeu de l'assaut."
 }

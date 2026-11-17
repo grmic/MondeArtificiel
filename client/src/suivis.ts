@@ -295,8 +295,9 @@ export class PanneauSuivis {
       if (this.reglages.open) void this.chargerReglages();
     });
     this.reglages.append(el("summary", undefined, t("suivis.reglages")));
-    this.corps.append(this.qui, el("h3", undefined, t("suivis.alertes")), this.alertes, this.plus,
-      el("h3", undefined, t("suivis.nouvelles")), this.nouvelles, this.reglages);
+    // 0.45.2 : les réglages des alertes en haut de la page, où on les trouve tout de suite.
+    this.corps.append(this.reglages, this.qui, el("h3", undefined, t("suivis.alertes")), this.alertes, this.plus,
+      el("h3", undefined, t("suivis.nouvelles")), this.nouvelles);
     racine.append(tete, this.corps);
     window.addEventListener("suivis", () => {
       if (this.ouvert) void this.charger();

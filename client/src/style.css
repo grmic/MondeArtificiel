@@ -484,7 +484,7 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 .alertes-suivis .lien { text-align: left; }
 .liste.suivis li.mort { opacity: 0.6; }
 .liste.suivis label.heritier { font-size: 0.78rem; color: var(--discret); cursor: pointer; }
-.reglages-alertes { margin-top: 10px; }
+.reglages-alertes { margin: 0 0 10px; }
 .reglages-alertes summary { cursor: pointer; }
 .reglages-alertes table.regles { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
 .reglages-alertes .regles th, .reglages-alertes .regles td { padding: 2px 6px; text-align: left; }
