@@ -86,7 +86,10 @@ export class Manette {
     this.enAttente.clear();
     // Les boutons déjà enfoncés au moment du branchement ne comptent pas comme des appuis.
     this.avant = g.buttons.map((b) => b.pressed);
-    this.repos = g.axes.map((v) => (Math.abs(v) > 0.5 ? v : null));
+    // 0.45.8 : en disposition standard, les quatre premiers axes sont les deux sticks, centrés au repos. Sous Windows, Chrome ne
+    // montre la manette qu'au premier geste : si ce geste était de pousser le stick vers l'avant, l'axe était pris pour un axe
+    // « au repos à −1 » et l'avant ne répondait plus jamais.
+    this.repos = g.axes.map((v, i) => (Math.abs(v) > 0.5 && !(g.mapping === "standard" && i < 4) ? v : null));
     this.connue = true;
     this.surConnexion(famille(g.id), true);
   }
@@ -149,6 +152,8 @@ export class Manette {
     this.enAttente.clear();
     const axe = (i: number) => {
       const v = g.axes[i] ?? 0;
+      // Un axe pris pour « au repos loin du centre » qui revient au centre était en fait un stick : on l'oublie.
+      if (Math.abs(v) < 0.15) this.repos[i] = null;
       const r = this.repos[i];
       return r !== null && r !== undefined && Math.abs(v - r) < 0.3 ? 0 : v;
     };
