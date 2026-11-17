@@ -22,6 +22,8 @@ const L = 96;
 const H = 48;
 /** Lignes refaites par image : le ciel entier est refait en huit images, sans à-coup. */
 const LIGNES_PAR_IMAGE = 6;
+/** Le ciel se recalcule quand le soleil ou la lune ont tourné de plus de 0,3°. */
+const COS_BOUGE = Math.cos((0.3 * Math.PI) / 180);
 /** Les valeurs sont gardées ×1000 dans une texture en demi-flottants (le ciel de nuit est très faible). */
 const ECHELLE = 1000;
 /**
@@ -373,13 +375,20 @@ export class Ciel {
     const haut = Math.max(0, camera.y);
     const soleil = this.direction.toArray() as [number, number, number];
     const lune = this.directionLune.toArray() as [number, number, number];
-    // La texture du ciel se refait quelques lignes par image ; on recommence quand elle est finie.
+    // La texture du ciel se refait quelques lignes par image. 0.45.7 : on ne la recommence que si le soleil ou la lune ont bougé
+    // d'au moins 0,3° ou si l'on a changé d'altitude d'un dixième : avant, elle tournait sans fin (environ 4 ms de processeur par
+    // image, et l'envoi des reflets du ciel à l'eau toutes les huit images), même monde arrêté.
     if (this.ligne === 0) {
-      this.soleilCalc.splice(0, 3, ...soleil);
-      this.luneCalc.splice(0, 3, ...lune);
-      this.hauteurCalc = haut;
-    }
-    this.avancerCalcul(this.premiere ? H : LIGNES_PAR_IMAGE);
+      const bouge = (a: readonly number[], b: readonly number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2] < COS_BOUGE;
+      const aRefaire = this.premiere || bouge(soleil, this.soleilCalc) || bouge(lune, this.luneCalc)
+        || Math.abs(haut - this.hauteurCalc) > Math.max(25, this.hauteurCalc * 0.1);
+      if (aRefaire) {
+        this.soleilCalc.splice(0, 3, ...soleil);
+        this.luneCalc.splice(0, 3, ...lune);
+        this.hauteurCalc = haut;
+        this.avancerCalcul(this.premiere ? H : LIGNES_PAR_IMAGE);
+      }
+    } else this.avancerCalcul(LIGNES_PAR_IMAGE);
 
     // Lumière du soleil et de la lune après la traversée de l'air.
     const ts: Rgb = [0, 0, 0];

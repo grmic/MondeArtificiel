@@ -171,7 +171,12 @@ export class Terrain3D {
       if (t.lointains) geometrie.setAttribute("lointain", new THREE.BufferAttribute(t.lointains, 3));
     }
     geometrie.setIndex(INDICES);
-    geometrie.computeBoundingSphere();
+    // Sphère englobante déduite de la tuile (0.45.7) : le calcul point par point coûtait autant que le reste de la tuile.
+    const bas = t.hMin - (pas * 2 + 8);
+    geometrie.boundingSphere = new THREE.Sphere(
+      new THREE.Vector3(n.taille / 2, (bas + t.hMax) / 2, n.taille / 2),
+      Math.hypot(n.taille / Math.SQRT2, (t.hMax - bas) / 2) + 1,
+    );
 
     let eauGeo: THREE.BufferGeometry | null = null;
     if (t.eauPositions && t.eauIndices) {
@@ -185,7 +190,10 @@ export class Terrain3D {
       }
       eauGeo.setAttribute("uv", new THREE.BufferAttribute(uvEau, 2));
       eauGeo.setIndex(new THREE.BufferAttribute(t.eauIndices, 1));
-      eauGeo.computeVertexNormals();
+      // Nappe d'eau presque plate : normales verticales (les rides viennent du matériau).
+      const nEau = new Float32Array(nb * 3);
+      for (let v = 0; v < nb; v++) nEau[v * 3 + 1] = 1;
+      eauGeo.setAttribute("normal", new THREE.BufferAttribute(nEau, 3));
     }
     this.poser(n, geometrie, eauGeo, t.hMin, t.hMax);
   }
