@@ -24,6 +24,12 @@ public sealed partial class Comportement
     private const int ImpulsionsMax = 30;
 
     /// <summary>
+    /// Témoins de la dernière apparition (0.45.11) : qui l'a vue, et s'il y a cru. Simple relevé pour la vue 3D, qui les montre
+    /// réagir : rien dans la simulation ne le lit.
+    /// </summary>
+    public List<(int Humain, bool Croit)> DerniersTemoins { get; } = [];
+
+    /// <summary>
     /// L'Entité fait comprendre une parole à <paramref name="h"/>. <paramref name="ensemble"/> : d'autres reçoivent la même au
     /// même moment (ils pourront en parler, et y croient plus). Renvoie, en mots, ce qu'il en a fait.
     /// </summary>
@@ -176,6 +182,7 @@ public sealed partial class Comportement
         var id = NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, cause, significatif: significatif && cause == 0);
         if (mode == ModeParole.Apparition) NouveauLieu(h.X, h.Y, new Recit("lieuSacre.presence", ("h", h)).Encoder(), id, maintenant);
         // Quand tout un groupe la voit à la fois, chacun la reçoit pour lui-même : pas de témoins à part.
+        DerniersTemoins.Clear();
         if (mode != ModeParole.Apparition || ensemble) return id;
         var temoins = tous.Vivants().Where(o => o.Id != h.Id && o.EstVivant && !o.EstBebe(maintenant) && o.Activite != Activite.Dormir
                                       && Distance(o.X, o.Y, h.X, h.Y) <= 1).ToList();
@@ -187,7 +194,9 @@ public sealed partial class Comportement
         {
             var pt = t.Personnalite;
             t.Peur = Math.Min(100, t.Peur + 20 + 30 * pt.Nevrosisme);
-            if (alea.Reel() < 0.3 + 0.6 * pt.Transcendance)
+            var croitTemoin = alea.Reel() < 0.3 + 0.6 * pt.Transcendance;
+            DerniersTemoins.Add((t.Id, croitTemoin));
+            if (croitTemoin)
             {
                 Confier(t, TypeIntime.Croyance, h.Id, new Recit("js.entite.temoin", ("x", h)),
                     40 + 50 * pt.Transcendance, id, maintenant, "croyance:presence");

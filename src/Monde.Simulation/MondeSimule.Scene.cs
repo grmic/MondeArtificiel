@@ -155,7 +155,7 @@ public sealed partial class MondeSimule
                     h.Personnalite.Nevrosisme, h.Personnalite.Extraversion, h.Nage,
                     h.Chaussures is { } ch && Facons.LireObjet(ch.Pieces) is { } fc ? fc.Facture.Principale : Matiere.Aucune,
                     h.Enduit != Matiere.Aucune && h.EnduitJusqua > maintenant ? h.Enduit : Matiere.Aucune,
-                    h.EstVivant ? h.Coucher : Coucher.Aucune, h.EstVivant && h.Coucher != Coucher.Aucune ? h.CoucheAvecId : 0));
+                    h.EstVivant && h.EstBebe(maintenant) ? h.Coucher : Coucher.Aucune, h.EstVivant && h.EstBebe(maintenant) && h.Coucher != Coucher.Aucune ? h.CoucheAvecId : 0));
             }
             return (maintenant, liste);
         }

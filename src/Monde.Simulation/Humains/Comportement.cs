@@ -128,6 +128,9 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             VivreBebe(h, mere ?? Nourrice(h, tous, maintenant), maintenant, mere is null);
             return false;
         }
+        // Il n'est plus un tout-petit : il ne dort plus contre personne (0.45.11 : la manière de le coucher restait sinon pour toujours, et
+        // l'enfant, puis l'adulte, restait porté par sa mère dans le Monde 3D).
+        Lever(h);
         // Pour un enfant, le « compagnon » à rejoindre (pour dormir, se tenir chaud) est celui qui veille sur lui.
         partenaire = h.EstEnfant(maintenant) ? Gardien(h, tous, maintenant) : Vivant(tous, h.PartenaireId);
         var chaleurPartagee = AuMemeEndroit(h, partenaire) || AuMemeEndroit(h, Vivant(tous, h.MereId)) || AuMemeEndroit(h, Vivant(tous, h.PereId))

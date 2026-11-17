@@ -216,4 +216,24 @@ public sealed class PredateursTests : IDisposable
         }
         Assert.InRange(confie, 10, 190);
     }
+
+    /// <summary>
+    /// 0.45.11 : un tout-petit couché contre sa mère qui a passé l'âge (deux ans) ne dort plus contre elle au pas suivant ; avant,
+    /// la manière de le coucher restait pour toujours et le grand enfant, puis l'adulte, était porté par sa mère dans le Monde 3D.
+    /// </summary>
+    [Fact]
+    public void Coucher_UnEnfantQuiAGrandi_NestPlusPorte()
+    {
+        var (x, y) = Plaine();
+        var nuit = Minuit + 2 * Calendrier.SecondesParHeure;
+        var c = Nouveau();
+        var mere = Adulte(1, x, y);
+        var grand = Adulte(2, x, y, age: 2.5, mere: 1);
+        grand.Coucher = Coucher.Contre;
+        grand.CoucheAvecId = mere.Id;
+        var tous = new List<Humain> { mere, grand };
+        c.Reprendre(tous, nuit);
+        c.Vivre(grand, tous, nuit);
+        Assert.Equal((Coucher.Aucune, 0), (grand.Coucher, grand.CoucheAvecId));
+    }
 }

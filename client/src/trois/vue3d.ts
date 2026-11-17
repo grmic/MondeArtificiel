@@ -22,6 +22,7 @@ import { Nature3D } from "./nature3d";
 import { Sol3D } from "./sol3d";
 import { REGLAGES_TAPIS, Tapis, type Lieux } from "./tapis";
 import { CorpsProches } from "./proches";
+import { PORTEE, Rencontre } from "./rencontre";
 import { echange } from "../dialogue";
 import { Relief, type Temperatures, type TerrainVue } from "./relief";
 import { CacheRelief, empreinte } from "./cacheRelief";
@@ -291,7 +292,12 @@ export class Vue3D {
    */
   /** Portrait : yeux et direction du visage lissés. */
   private visage: { id: number; yeux: THREE.Vector3; face: THREE.Vector3; cap: number | null; parVisage: boolean } | null = null;
-  private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number; portrait: boolean; capRef?: number } | null = null;
+  private suivi: { id: number; angle: number; distance: number; hauteur: number; perdu: number; portrait: boolean; capRef?: number; capFixe?: number } | null = null;
+  /** Face à face avec l'Entité (0.45.11). */
+  private readonly rencontre: Rencontre;
+  /** Humain à qui l'on peut s'adresser, relu quatre fois par seconde. */
+  private aPortee: number | null = null;
+  private aPorteeA = 0;
   /** Lumière (0.41.3) : ombres en cascade, chaîne de rendu (occlusion, halo, exposition), exposition courante. */
   private ombres: CSMShadowNode | null = null;
   private chaine: THREE.RenderPipeline | null = null;
@@ -435,6 +441,25 @@ export class Vue3D {
     this.ficheBete.className = "fiche-bete3d";
     this.ficheBete.hidden = true;
     hote.append(this.etiquettes, this.bulle, this.hud, this.mini.element, this.ficheBete);
+    this.rencontre = new Rencontre(hote, {
+      foule: this.foule,
+      camera: this.camera,
+      nom: (id) => ctx.nom(id),
+      message: (texte) => ctx.message(texte),
+      cadrer: (id, cap, angle, distance) => {
+        // Face à lui, à hauteur de visage ; le cap reste celui de l'Entité tant que dure le face à face (il se tourne vers elle).
+        this.suiviBete = null;
+        this.viser = null;
+        this.suivi = { id, angle, distance, hauteur: 0.1, perdu: 0, portrait: false, capFixe: cap };
+        this.proches.force = id;
+        this.mode = "vol";
+        this.afficherAide();
+        this.majEtat();
+      },
+      libererCadre: () => {
+        if (this.suivi) delete this.suivi.capFixe;
+      },
+    }, this.scene);
     // Compteur (touche I) posé sur la page elle-même, au-dessus des barres de la simulation.
     document.body.append(this.perf);
     this.construireHud();
@@ -970,6 +995,15 @@ export class Vue3D {
       this.touches.delete(e.code);
       return;
     }
+    // Face à face (0.45.11) : le choix de la voie prend les touches ; Entrée s'adresse à l'humain à portée.
+    if (this.rencontre.menuOuvert) {
+      this.rencontre.clavier(e);
+      return;
+    }
+    if (e.key === "Enter" && this.rencontre.proposer()) {
+      e.preventDefault();
+      return;
+    }
     // Flèches, Page préc./suiv. et Espace sur un panneau (fiche, journal…) sous le pointeur ou cliqué : on le fait défiler au lieu
     // de déplacer la caméra (sans souris ni ascenseur visible, on ne pouvait plus descendre dans la fiche).
     if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Space", "Home", "End"].includes(e.code)) {
@@ -1111,6 +1145,7 @@ export class Vue3D {
   async fermer(): Promise<void> {
     if (!this.ouverte) return;
     this.ouverte = false;
+    this.rencontre.fermer();
     this.renderer.setAnimationLoop(null);
     this.hote.hidden = true;
     this.perf.hidden = true;
@@ -1226,6 +1261,28 @@ export class Vue3D {
       const v = h.tete.clone().sub(this.camera.position);
       const d = v.length();
       if (d < meilleur && v.dot(avant) > d * 0.5) [meilleur, id] = [d, h.id];
+    }
+    return id;
+  }
+
+  /**
+   * L'humain à qui l'Entité peut s'adresser (0.45.11) : celui qu'on suit s'il est à moins de 15 m, sinon le plus proche droit
+   * devant soi (moins de 30° de l'axe de la vue), à moins de 15 m.
+   */
+  private humainAPortee(): number | null {
+    const p = this.camera.position;
+    if (this.suivi) {
+      const x = this.foule.position(this.suivi.id);
+      if (x && x.distanceTo(p) < PORTEE) return this.suivi.id;
+    }
+    const avant = new THREE.Vector3();
+    this.camera.getWorldDirection(avant);
+    let meilleur = PORTEE;
+    let id: number | null = null;
+    for (const h of this.foule.tous()) {
+      const v = h.tete.clone().sub(p);
+      const d = v.length();
+      if (d < meilleur && v.dot(avant) > d * 0.86) [meilleur, id] = [d, h.id];
     }
     return id;
   }
@@ -1488,7 +1545,7 @@ export class Vue3D {
     // (cap de référence figé) ; elle suit de nouveau son cap quand il ne nous écoute plus (0.44.6).
     const ecoute = this.foule.interlocuteur === s.id;
     if (s.capRef === undefined || !ecoute) s.capRef = capCorps;
-    const cap = s.capRef;
+    const cap = s.capFixe ?? s.capRef;
     if (s.portrait) {
       // Portrait : autour des yeux, à la distance choisie, d'après la direction de son visage (couché, on le regarde d'au-dessus) ;
       // l'angle reste attaché à son visage s'il se tourne ou marche.
@@ -1532,13 +1589,18 @@ export class Vue3D {
       this.regarderVers(yeux);
       return;
     }
-    // Quand il marche, on revient peu à peu derrière lui (de trois quarts).
-    if (enMarche) {
+    // Quand il marche, on revient peu à peu derrière lui (de trois quarts), sauf en face à face (il recule, il fuit : on reste).
+    if (enMarche && s.capFixe === undefined) {
       const voulu = Math.PI * 0.8;
       const ecart = Math.atan2(Math.sin(voulu - s.angle), Math.cos(voulu - s.angle));
       s.angle += ecart * Math.min(1, dt * 0.6);
     }
     const a = cap + s.angle;
+    // 0.45.11 : en face à face, viser ses yeux là où ils sont (assis, à genoux, couché, il n'a pas la tête à hauteur d'homme debout).
+    if (s.capFixe !== undefined) {
+      const yeux = new THREE.Vector3();
+      if (this.proches.yeux(s.id, yeux, new THREE.Vector3())) tete.copy(yeux);
+    }
     const cible = new THREE.Vector3(tete.x + Math.sin(a) * s.distance, tete.y + s.hauteur, tete.z + Math.cos(a) * s.distance);
     const plancher = Math.max(this.relief.hauteur(cible.x, cible.z), 0) + 0.6;
     if (cible.y < plancher) cible.y = plancher;
@@ -1580,6 +1642,7 @@ export class Vue3D {
       [b(BOUTON.RT), t("trois.manette.monter")],
       [b(BOUTON.LT), t("trois.manette.descendre")],
       [b(BOUTON.A), t("trois.manette.suivre")],
+      [t("trois.manette.long", { b: b(BOUTON.A) }), t("trois.manette.rencontre")],
       [b(BOUTON.B), t("trois.manette.cesser")],
       [b(BOUTON.X), t("trois.manette.mode")],
       [b(BOUTON.Y), t("trois.manette.portrait")],
@@ -1625,7 +1688,9 @@ export class Vue3D {
     }
     this.l3Tenu = e.tenus[BOUTON.L3] === true;
     this.analogiqueManette(e, dt);
-    for (const k of e.appuis) this.boutonManette(k);
+    // Appui long sur A : s'adresser à l'humain devant soi (0.45.11) ; le choix de la voie, ouvert, prend les boutons.
+    this.rencontre.manette(dt, e.tenus[BOUTON.A] === true);
+    for (const k of e.appuis) if (!this.rencontre.boutonManette(k)) this.boutonManette(k);
   }
 
   private analogiqueManette(e: EtatManette, dt: number): void {
@@ -2339,6 +2404,11 @@ export class Vue3D {
     this.avancerRejeu(dt);
     this.foule.facteur = this.facteur;
     this.foule.animer(dt, secondes, p);
+    if (maintenant - this.aPorteeA > 250) {
+      this.aPorteeA = maintenant;
+      this.aPortee = this.humainAPortee();
+    }
+    this.rencontre.mettreAJour(dt, this.aPortee, this.exposition, maintenant / 1000);
     this.poste("foule");
     // Les gestes (souffle, regard, passage d'une posture à l'autre) vont au rythme du monde, en film accéléré (A1).
     this.tempsGestes += dt * accelere(this.facteur);

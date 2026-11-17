@@ -581,3 +581,37 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 .tableau-faune tr.discret { opacity: 0.55; }
 .pastille-faune { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; margin-right: 6px; vertical-align: baseline; }
 .choix-espece { margin: 2px 0 4px 22px; max-width: 100%; }
+/* Face à face avec l'Entité (0.45.11) : invite, choix de la voie, bande de dialogue avec sous-titres. */
+.invite3d {
+  position: absolute; left: 50%; bottom: max(150px, 20vh); transform: translateX(-50%); pointer-events: none;
+  padding: 5px 12px; border-radius: 8px; background: rgba(10, 14, 20, 0.62); color: #f6f1e4; font-size: 0.9rem; white-space: nowrap;
+}
+.choix3d {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(360px, calc(100% - 32px));
+  display: flex; flex-direction: column; gap: 8px; padding: 14px 18px; border-radius: 12px;
+  background: rgba(10, 14, 20, 0.88); color: #f2efe6; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+.choix3d h3 { margin: 0 0 4px; font-size: 1.05rem; }
+.choix3d button.entite { text-align: left; }
+.choix3d button.actif { outline: 2px solid #f3dca2; outline-offset: 1px; }
+.choix3d p { margin: 0; font-size: 0.82rem; }
+.rencontre3d {
+  position: absolute; left: 50%; bottom: max(110px, 14vh); transform: translateX(-50%); width: min(760px, calc(100% - 24px));
+  display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: 12px;
+  background: rgba(10, 14, 20, 0.66); color: #f6f1e4; box-shadow: 0 2px 14px rgba(0, 0, 0, 0.4);
+}
+.rencontre3d .sous-titres { display: flex; flex-direction: column; gap: 3px; text-align: center; text-shadow: 0 1px 2px #000; }
+.rencontre3d .sous-titres p { margin: 0; }
+.rencontre3d .entite { color: #f3dca2; font-style: italic; }
+.rencontre3d .humain { font-size: 1.1rem; }
+.rencontre3d .langue { font-size: 0.82rem; opacity: 0.8; }
+.rencontre3d .pensee { font-size: 0.85rem; color: #b7b9c2; font-style: italic; }
+.rencontre3d .attente { opacity: 0.75; }
+.rencontre3d .erreur { color: #ffb4a0; font-size: 0.85rem; }
+.rencontre3d .fin { opacity: 0.85; font-size: 0.9rem; }
+.rencontre3d .saisie { display: flex; gap: 6px; }
+.rencontre3d .saisie input { flex: 1; min-width: 0; }
+.rencontre3d .options { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.8rem; opacity: 0.85; }
+.rencontre3d .etat { margin: 0; font-size: 0.8rem; color: #ffb4a0; }
+.rencontre3d .etat:empty { display: none; }
+.invite3d[hidden], .choix3d[hidden], .rencontre3d[hidden] { display: none; }

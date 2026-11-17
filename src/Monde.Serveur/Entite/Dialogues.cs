@@ -14,7 +14,19 @@ namespace Monde.Serveur.Entite;
 /// <summary>Une réplique pour le navigateur : les mots de l'Entité, leur traduction, ce qu'en ont fait les règles, la réponse de l'humain.</summary>
 public sealed record RepliqueDto(int Rang, string Date, string Entite, IReadOnlyList<string> Traduction, IReadOnlyList<string> Regles, string Mots,
     string Pensee, IReadOnlyList<string> Libre, string? Juge, string? Erreur, double Secondes, long JournalPremier, string Sens = "",
-    IReadOnlyList<string>? Suivi = null);
+    IReadOnlyList<string>? Suivi = null, ReactionDto? Reaction = null);
+
+/// <summary>Un témoin d'une apparition (0.45.11) : il l'a vue, et y a cru ou non.</summary>
+public sealed record TemoinDto(int Humain, bool Croit);
+
+/// <summary>
+/// Ce que les règles ont décidé à cette réplique, pour que la vue 3D montre sa réaction (0.45.11) ; seulement pour les répliques dites
+/// depuis le lancement du serveur. <paramref name="Emotion"/> : « incomprise », « doute », « effroi » ou « merveille » ;
+/// <paramref name="Fin"/> : nom de <see cref="FinDialogue"/> ; <paramref name="Issues"/> : ce qu'il a fait de chaque parole (noms de
+/// <see cref="Reponse"/>) ; traits de 0 à 1 pour nuancer le geste ; <paramref name="Temoins"/> : à la première réplique d'une apparition.
+/// </summary>
+public sealed record ReactionDto(bool Comprise, bool Croit, string Emotion, string Fin, IReadOnlyList<string> Issues, double Peur, double Nevrosisme,
+    double Transcendance, double Extraversion, double Agreabilite, IReadOnlyList<TemoinDto> Temoins);
 
 /// <summary>
 /// Un dialogue pour le navigateur. <paramref name="Attend"/> : les mots de l'Entité en cours de traitement (null : rien en cours) ;
@@ -273,12 +285,14 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             if (premier == 0 || p < premier) premier = p;
             dernier = Math.Max(dernier, d);
         }
+        List<TemoinDto> temoins = [];
         // Le dialogue est une seule manifestation : la première réplique l'ouvre, les suivantes et leurs paroles n'en sont pas de nouvelles.
         if (c.Reception == 0)
         {
             var (rec, pm, dm) = monde.Executer(m => m.Manifester(c.Humain, c.Mode, ClientLlm.Couper(texte, 240)));
             c.Reception = rec;
             Plage(pm, dm);
+            if (c.Mode == ModeParole.Apparition) temoins = [.. monde.DerniersTemoins().Select(x => new TemoinDto(x.Humain, x.Croit))];
         }
         foreach (var a in paroles)
         {
@@ -334,6 +348,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
             }
         }
         if (regle.Fin != FinDialogue.Aucune) regles.Add(L.T($"dlg.r.fin.{regle.Fin}"));
+        Reagir(c, rang, regle, reponses, temoins);
         service.Sauvegarder();
 
         // 3. L'humain parle (sauf s'il n'est plus là pour répondre).
@@ -1200,6 +1215,39 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
 
     private string CroitTexte(int croit, bool comprise) => L.T(croit == 1 ? "dlg.croit.oui" : comprise ? "dlg.croit.doute" : "dlg.croit.incompris");
 
+    /// <summary>Réactions des répliques récentes, par dialogue puis par rang (0.45.11) ; seuls les derniers dialogues sont gardés.</summary>
+    private readonly Dictionary<long, Dictionary<int, ReactionDto>> _reactions = [];
+
+    /// <summary>Note ce que les règles viennent de décider, avec ce qui nuance son geste (peur du moment, caractère).</summary>
+    private void Reagir(EnCours c, int rang, RegleReplique regle, List<Reponse> reponses, List<TemoinDto> temoins)
+    {
+        var (_, humains) = c.Monde.InstantaneHumains();
+        if (c.Humain < 1 || c.Humain > humains.Count) return;
+        var h = humains[c.Humain - 1];
+        var p = h.Personnalite;
+        // Comme Comportement.Eprouver : l'anxieux qui croit à une voix ou une apparition en a peur, les autres s'en émerveillent.
+        var emotion = !regle.Comprise ? "incomprise" : !regle.Croit ? "doute"
+            : c.Mode is ModeParole.Voix or ModeParole.Apparition && p.Nevrosisme > 0.55 ? "effroi" : "merveille";
+        var r = new ReactionDto(regle.Comprise, regle.Croit, emotion, regle.Fin.ToString(), reponses.Select(x => x.ToString()).ToList(),
+            Math.Round(h.Peur / 100.0, 2), Math.Round(p.Nevrosisme, 2), Math.Round(p.Transcendance, 2), Math.Round(p.Extraversion, 2),
+            Math.Round(p.Agreabilite, 2), temoins);
+        lock (_reactions)
+        {
+            if (!_reactions.TryGetValue(c.Id, out var parRang))
+            {
+                if (_reactions.Count >= 20) _reactions.Remove(_reactions.Keys.Min());
+                _reactions[c.Id] = parRang = [];
+            }
+            parRang[rang] = r;
+        }
+    }
+
+    private ReactionDto? Reaction(long dialogue, int rang)
+    {
+        lock (_reactions)
+            return _reactions.TryGetValue(dialogue, out var parRang) && parRang.TryGetValue(rang, out var r) ? r : null;
+    }
+
     public DialogueDto Dto(long id)
     {
         var d = service.Depot.Dialogue(id) ?? throw new ArgumentException(L.T("dlg.erreur.fini"));
@@ -1234,7 +1282,7 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         }
         return new RepliqueDto(r.Rang, L.Date(r.Le), r.Entite, paroles.Select(Libelle).ToList(), regles, r.Mots, r.Pensee, libre,
             r.Juge.Length > 0 ? r.Juge : null, r.Erreur, Math.Round(r.DureeMs / 1000.0, 1), r.JournalPremier, r.Sens,
-            lui is null ? null : Suivi(paroles, r.Le, lui, maintenant));
+            lui is null ? null : Suivi(paroles, r.Le, lui, maintenant), Reaction(r.Dialogue, r.Rang));
     }
 
     /// <summary>

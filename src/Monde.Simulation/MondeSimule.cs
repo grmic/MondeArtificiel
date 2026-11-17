@@ -1664,6 +1664,13 @@ public sealed partial class MondeSimule
         }
     }
 
+    /// <summary>Témoins de la dernière apparition, et s'ils y ont cru (0.45.11, pour la vue 3D seulement).</summary>
+    public List<(int Humain, bool Croit)> DerniersTemoins()
+    {
+        lock (_verrou)
+            return [.. _comportement.DerniersTemoins];
+    }
+
     /// <summary>Ce que l'humain a fait de la dernière parole de l'Entité (null : aucune).</summary>
     public Reponse? DerniereReponse(int humainId)
     {

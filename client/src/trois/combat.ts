@@ -37,7 +37,10 @@ export const ARME = { Poings: 0, Pierre: 1, Baton: 2, Epieu: 3, Lance: 4, Hache:
  * main au flanc), `chute`, `gisant`, `cache` (accroupi, caché), `reveil` (on se lève en sursaut), `tire` (emmène une captive),
  * `tiree` (emmenée), ou null : il court, marche ou se tient debout (la posture vient alors du déplacement).
  */
-export type GesteCombat = "garde" | "frappe" | "estoc" | "lancer" | "parer" | "touche" | "blesse" | "chute" | "gisant" | "cache" | "reveil" | "tire" | "tiree";
+export type GesteCombat = "garde" | "frappe" | "estoc" | "lancer" | "parer" | "touche" | "blesse" | "chute" | "gisant" | "cache" | "reveil" | "tire" | "tiree"
+  // Face à face avec l'Entité (0.45.11, rencontre.ts) : réactions jouées comme les gestes d'un assaut.
+  | "sursaut" | "effroi" | "couvrir" | "tombeAssis" | "bouche" | "tendre" | "genoux" | "prosterne" | "hausser" | "chercher" | "hesiter"
+  | "refuser" | "fixer";
 
 /** Ce que le rejeu impose à un humain à cet instant. */
 export interface Role {
@@ -55,6 +58,8 @@ export interface Role {
   mort: boolean;
   /** Celui qu'il affronte (pour le regard), ou 0. */
   face: number;
+  /** 0.45.11 : il regarde l'Entité apparue (rencontre.ts). */
+  entite?: boolean;
 }
 
 interface Acteur {

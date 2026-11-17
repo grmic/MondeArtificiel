@@ -149,8 +149,10 @@ export function porteurDe(s: HumainScene): number {
 function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Posture {
   if (s.activite === A.Mort) return "couche";
   // La nuit (0.45.0), contre sa mère ou contre celui à qui elle l'a confié ; à côté d'elle ou à l'écart, il dort seul sur le sol.
-  if (s.coucher === COUCHER.Contre || s.coucher === COUCHER.Confie) return "porte";
-  if (s.coucher === COUCHER.ACote || s.coucher === COUCHER.AEcart) return "couche";
+  // 0.45.11 : seulement un tout-petit (un monde enregistré avant pouvait garder la manière de coucher d'un enfant qui a grandi).
+  const toutPetit = s.age < 2;
+  if (toutPetit && (s.coucher === COUCHER.Contre || s.coucher === COUCHER.Confie)) return "porte";
+  if (toutPetit && (s.coucher === COUCHER.ACote || s.coucher === COUCHER.AEcart)) return "couche";
   if (s.etat & 32 || s.activite === A.PorteParSaMere) return "porte";
   if (dansLEau) return "nage";
   if (enMouvement) return "marche";
@@ -675,9 +677,22 @@ export class Foule {
   tRejeu = 0;
   readonly gisants = new Map<number, { x: number; z: number; cap: number }>();
 
+  /**
+   * 0.45.11 : ce que la rencontre avec l'Entité lui fait faire (sursaut, recul, agenouillement, fuite…), joué comme un rôle
+   * d'assaut ; null hors rencontre. Un assaut rejoué passe avant.
+   */
+  rencontre: ((c: Corps) => Role | null) | null = null;
+  /** 0.45.11 : où se tient l'Entité apparue (sa lumière) : celui qui l'écoute se tourne vers elle, et non vers la caméra. */
+  entite: THREE.Vector3 | null = null;
+  /**
+   * 0.45.11 : visage du moment devant l'Entité (surprise, effroi, émerveillement, doute), par humain : valeurs des expressions
+   * (joie, triste, colere, peur, bouche, de 0 à 1) qui remplacent celles de son humeur tant qu'elles sont là.
+   */
+  readonly emotions = new Map<number, Record<string, number>>();
+
   /** Rôle d'un humain dans l'assaut rejoué ; un mort, hors rejeu, gît là où il est tombé. */
   private roleDe(c: Corps): Role | null {
-    const r = this.rejeu?.role(c.s.id, this.tRejeu) ?? null;
+    const r = this.rejeu?.role(c.s.id, this.tRejeu) ?? (c.s.activite !== A.Mort ? this.rencontre?.(c) : null) ?? null;
     if (r) {
       if (r.mort) this.gisants.set(c.s.id, { x: r.x, z: r.z, cap: r.cap ?? c.cap });
       return r;
@@ -709,7 +724,7 @@ export class Foule {
         c.z = tz;
       }
       // Celui à qui l'Entité parle s'arrête pour l'écouter.
-      if (ecoute && !Number.isNaN(c.x)) [tx, tz] = [c.x, c.z];
+      if (ecoute && !c.role && !Number.isNaN(c.x)) [tx, tz] = [c.x, c.z];
       const dx = tx - c.x;
       const dz = tz - c.z;
       const d = Math.hypot(dx, dz);
@@ -724,7 +739,8 @@ export class Foule {
       // Il ne marche que si son corps se déplace vraiment (avec un peu d'hystérésis) : plus de marche sur place quand le monde
       // est arrêté, qu'il attend au bout de son chemin ou qu'il est bloqué.
       c.enMarche = c.enMarche ? c.vitesse > 0.12 : c.vitesse > 0.25;
-      const voulu = ecoute ? Math.atan2(camera.x - c.x, camera.z - c.z) : d > 0.05 && c.vitesse > 0.15 ? Math.atan2(dx, dz) : null;
+      const vers = this.entite ?? camera;
+      const voulu = ecoute ? Math.atan2(vers.x - c.x, vers.z - c.z) : d > 0.05 && c.vitesse > 0.15 ? Math.atan2(dx, dz) : null;
       const vouluCombat = c.role && c.role.cap !== null && !(c.role.court && d > 0.3) ? c.role.cap : null;
       const vise = vouluCombat ?? voulu;
       if (vise !== null) {
@@ -883,7 +899,7 @@ export class Foule {
 
   /** Où est posé un humain : à sa place, ou contre sa mère s'il est porté. */
   placement(c: Corps): { x: number; y: number; z: number; cap: number } {
-    if (c.s.coucher === COUCHER.ACote || c.s.coucher === COUCHER.AEcart) {
+    if (c.s.age < 2 && (c.s.coucher === COUCHER.ACote || c.s.coucher === COUCHER.AEcart)) {
       // 0.45.0 : à côté d'elle, à portée de main devant sa poitrine ; à l'écart, à quelques pas, seul.
       const mere = this.corps.get(porteurDe(c.s));
       if (mere && !Number.isNaN(mere.x)) {

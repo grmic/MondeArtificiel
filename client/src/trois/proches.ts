@@ -230,7 +230,10 @@ export class CorpsProches {
       anim.ecoute = c.ecoute > 0.3;
       // En combat (0.42.0), on ne quitte pas l'adversaire des yeux.
       const adversaire = c.role?.face ? this.foule.position(c.role.face) : null;
-      anim.regard = adversaire && !dort ? adversaire : c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, c.interlocuteur, places, pl, temps, arrivants);
+      // Devant l'Entité apparue (0.45.11), on regarde sa lumière ; qui ne comprend pas d'où vient la voix cherche des yeux.
+      const versEntite = !dort && this.foule.entite && (c.role?.entite || c.ecoute > 0.3) ? this.foule.entite : null;
+      anim.regard = adversaire && !dort ? adversaire : versEntite ?? (c.ecoute > 0.3 ? camera : dort ? null : this.choisirRegard(s.id, s.mere, enfant?.s.id ?? 0, c.interlocuteur, places, pl, temps, arrivants));
+      if (c.role?.geste === "chercher") anim.regard = null;
       // Un phénomène du ciel : huit sur dix lèvent les yeux (les autres ne l'ont pas remarqué, ou s'en détournent).
       if (this.regardCiel && !dort && !adversaire && c.ecoute <= 0.3 && unite(hacher(s.id, 77, 5)) < 0.8) {
         anim.regard = new THREE.Vector3(pl.x, pl.y + 1.5, pl.z).addScaledVector(this.regardCiel, 1000);
@@ -433,11 +436,14 @@ export class CorpsProches {
   /** Expressions qui suivent l'humeur sans à-coups ; bouche qui bouge quand il répond à l'Entité. */
   private expressionsDuMoment(c: Etat, temps: number): Record<Expression, number> {
     const voulu = expressionsDe(c.s.humeur, c.s.peur);
+    // Devant l'Entité (0.45.11) : la surprise vient en une fraction de seconde, puis s'efface lentement quand elle n'est plus là.
+    const vive = this.foule.emotions.get(c.s.id);
+    if (vive) for (const k of Object.keys(voulu) as Expression[]) if (k in vive) voulu[k] = vive[k];
     const e = this.expressions.get(c.s.id) ?? { ...voulu };
-    for (const k of Object.keys(voulu) as Expression[]) e[k] += (voulu[k] - e[k]) * 0.04;
+    for (const k of Object.keys(voulu) as Expression[]) e[k] += (voulu[k] - e[k]) * (vive ? 0.15 : 0.04);
     this.expressions.set(c.s.id, e);
     const parle = c.s.id === echange.humain && performance.now() < echange.parleJusqua;
-    const bouche = parle ? 0.25 + 0.45 * Math.abs(Math.sin(temps * 9.5)) * (0.6 + 0.4 * Math.sin(temps * 2.3)) : 0;
+    const bouche = parle ? 0.25 + 0.45 * Math.abs(Math.sin(temps * 9.5)) * (0.6 + 0.4 * Math.sin(temps * 2.3)) : e.bouche;
     return { ...e, bouche };
   }
 

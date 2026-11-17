@@ -358,12 +358,17 @@ function choisir(l: Variante[], s: Situation, epoque: number, sel: number): stri
   return l[l.length - 1].nom;
 }
 
+/** Gestes de la rencontre avec l'Entité (0.45.11), joués comme ceux d'un assaut mais à l'allure des gestes ordinaires. */
+const REACTIONS = new Set(["sursaut", "effroi", "couvrir", "tombeAssis", "bouche", "tendre", "genoux", "prosterne", "hausser", "chercher", "hesiter",
+  "refuser", "fixer"]);
+
 /** Les familles de postures, pour les passages. */
 function famille(cle: string): "debout" | "sol" | "couche" | "eau" | "porte" | "quatre" {
   if (cle === "debout" || cle === "marche") return "debout";
   if (cle.startsWith("combat.")) {
     const g = cle.slice(7);
-    return g === "chute" || g === "gisant" ? "couche" : g === "cache" || g === "blesse" || g === "reveil" ? "sol" : "debout";
+    return g === "chute" || g === "gisant" ? "couche"
+      : g === "cache" || g === "blesse" || g === "reveil" || g === "genoux" || g === "prosterne" || g === "tombeAssis" ? "sol" : "debout";
   }
   if (cle.startsWith("couche")) return "couche";
   if (cle === "nage") return "eau";
@@ -509,7 +514,10 @@ export class Animateur {
     const k = (s.age < 12 ? 0.75 : 1) * (1 + 0.6 * lisser(55, 80, s.age)) * (0.85 + 0.3 * unite(hacher(s.id, 85)));
     if (!de) return [{ cle: vers, duree: 0.01 }];
     // Combat (0.42.0) : tout va vite. La chute s'anime d'elle-même ; le dormeur se lève en sursaut.
-    if (vers.startsWith("combat.") || de.startsWith("combat.")) {
+    // Face à face (0.45.11) : on tombe assis d'un coup ; s'agenouiller, se prosterner, se relever vont à l'allure ordinaire.
+    if (vers === "combat.tombeAssis") return [{ cle: vers, duree: 0.45 }];
+    const assaut = (x: string) => x.startsWith("combat.") && !REACTIONS.has(x.slice(7));
+    if (assaut(vers) || assaut(de)) {
       if (vers === "combat.chute" || vers === "combat.gisant") return [{ cle: vers, duree: 0.12 }];
       if (a === "couche" && b === "debout") return [{ cle: "assis.genoux", duree: 0.45 }, { cle: "releve", duree: 0.4 }, { cle: vers, duree: 0.25 }];
       if (a === "debout" && b === "sol") return [{ cle: vers, duree: 0.35 }];
@@ -1318,6 +1326,21 @@ export class Animateur {
         p.colonne("tete", 0, (h(157) < 0.5 ? 1 : -1) * 0.7, 0);
         break;
       }
+      case "sursaut":
+      case "effroi":
+      case "couvrir":
+      case "tombeAssis":
+      case "bouche":
+      case "tendre":
+      case "genoux":
+      case "prosterne":
+      case "hausser":
+      case "chercher":
+      case "hesiter":
+      case "refuser":
+      case "fixer":
+        this.reagir(p, geste, s, t, u);
+        break;
       case "cache":
         // Accroupi, ramassé, la tête rentrée : se faire petit.
         this.accroupi(p, "pointes", s, t);
@@ -1355,6 +1378,171 @@ export class Animateur {
   }
 
   /** Garde : genoux fléchis, pied gauche devant, buste penché, poings ou arme levés. */
+  // ——— Face à face avec l'Entité (0.45.11) : ce que fait l'humain devant elle, selon ce que les règles ont décidé ———
+
+  /**
+   * Gestes de la rencontre (rencontre.ts choisit lequel et quand) : sursaut, effroi (avant-bras devant le visage), mains sur le
+   * visage, tomber assis, bouche bée, main tendue, à genoux mains ouvertes, prosterné, haussement d'épaules, chercher d'où vient
+   * la voix, main sur la nuque (il hésite), bras croisés en secouant la tête (il refuse), fixer sans bouger. `u` : temps écoulé
+   * dans le geste (s).
+   */
+  private reagir(p: Pose, geste: string, s: Situation, t: number, u: number): void {
+    const vieux = lisser(55, 85, s.age);
+    const petit = 1 - lisser(1, 3, s.age);
+    const g = this.graine;
+    // Le geste vient en un tiers de seconde (plus lentement chez le vieux), puis tient.
+    const w = ease(Math.min(1, u / (0.3 + 0.3 * vieux)));
+    const vider = () => {
+      p.mains[0].length = 0;
+      p.mains[1].length = 0;
+    };
+    switch (geste) {
+      case "sursaut":
+        // Le buste part en arrière, les épaules montent, les mains se lèvent paumes en avant.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        p.colonne("poitrine", -0.14 * w, 0, 0);
+        p.colonne("cou", -0.12 * w);
+        for (const c of COTES) {
+          p.clavicule(c, 0.18 * w, 0.05 * w);
+          p.epaule(c, 0.85 * w, 0.22 * w, -0.25 * w);
+          p.coude(c, 0.2 + 1.3 * w, 0.4);
+          p.poignet(c, -0.55 * w);
+          p.main(c, 0.1, 0.1, 0.12);
+          p.genou(c, 0.12 + 0.15 * w);
+        }
+        break;
+      case "effroi":
+        // Les avant-bras devant le visage, le buste en arrière, les genoux fléchis, prêt à fuir.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        for (const c of COTES) {
+          p.epaule(c, 1.4 * w, 0.25, -0.3);
+          p.coude(c, 1.85 * w, 0.2);
+          p.poignet(c, 0.2);
+          p.main(c, 0.5);
+          p.genou(c, 0.3 * w);
+          p.hanche(c, 0.2 * w, 0.06);
+        }
+        p.colonne("poitrine", -0.14 * w, 0.05 * Math.sin(t * 7 + g));
+        p.colonne("tete", 0.25 * w);
+        break;
+      case "couvrir":
+        // Les mains sur le visage, la tête basse.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        for (const c of COTES) {
+          p.epaule(c, 1.0, 0.15, -0.2);
+          p.coude(c, 2.0, 0.6);
+          p.viserMain(c, PO.tete, SIGNE[c] * 0.035, 0.03, 0.1, 2 * w);
+          p.main(c, 0.25, 0.2);
+        }
+        p.colonne("poitrine", 0.22 * w);
+        p.colonne("tete", 0.3 * w);
+        break;
+      case "tombeAssis":
+        // Les jambes cèdent : il tombe assis, penché en arrière sur les mains, la tête levée vers elle.
+        this.assis(p, "allonge", s, t);
+        p.colonne("cou", -0.18);
+        break;
+      case "bouche":
+        // Émerveillé : immobile, bras un peu écartés, paumes en avant, la tête levée.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        for (const c of COTES) {
+          p.epaule(c, 0.22 * w, 0.32 * w, 0.55 * w);
+          p.coude(c, 0.3 + 0.1 * w, 1.0 * w);
+          p.main(c, 0.15, 0.1, 0.1);
+        }
+        p.colonne("cou", -0.08 * w);
+        break;
+      case "tendre":
+        // Il tend la main droite vers elle, paume ouverte, le buste un peu penché.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        p.epaule("D", 1.25 * w, 0.08, 0);
+        p.coude("D", 0.6 - 0.35 * w, 1.2 * w);
+        p.poignet("D", -0.15);
+        p.main("D", 0.15, 0.1, 0.12);
+        p.colonne("poitrine", 0.1 * w);
+        break;
+      case "genoux":
+        // À genoux, assis sur les talons ; les mains s'ouvrent vers elle, paumes en haut, ou se joignent sur la poitrine.
+        this.assis(p, "talons", s, t);
+        vider();
+        if (unite(hacher(s.id, 251)) < 0.6) {
+          for (const c of COTES) {
+            p.epaule(c, 0.75, 0.3, 0.5);
+            p.coude(c, 0.55, 1.3);
+            p.main(c, 0.2, 0.1, 0.1);
+          }
+        } else {
+          for (const c of COTES) {
+            p.epaule(c, 0.55, 0.15, -0.35);
+            p.coude(c, 1.9, 0.3);
+            p.viserMain(c, PO.poitrine, SIGNE[c] * 0.004, 0.1, 0.14, 2);
+            p.main(c, 0.05, 0.1, 0);
+          }
+        }
+        p.colonne("cou", -0.1);
+        break;
+      case "prosterne":
+        // Prosterné : à genoux, le front vers le sol, les bras tendus devant lui.
+        this.assis(p, "talons", s, t);
+        vider();
+        p.bassin(0.95 * w);
+        p.colonne("ventre", 0.3 * w);
+        p.colonne("poitrine", 0.25 * w);
+        p.colonne("cou", -0.25 * w);
+        for (const c of COTES) {
+          p.epaule(c, 2.3 * w, 0.2, 0);
+          p.coude(c, 0.25, 0.2);
+          p.poignet(c, -0.6 * w);
+          p.main(c, 0.05, 0.1, 0.12);
+        }
+        break;
+      case "hausser": {
+        // Il hausse les épaules, paumes en l'air, la tête penchée : « et alors ? ».
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        const h = Math.sin(Math.min(1, u / 1.2) * Math.PI);
+        for (const c of COTES) {
+          p.clavicule(c, 0.22 * h, 0);
+          p.epaule(c, 0.25 * h, 0.2 * h, 0.4 * h);
+          p.coude(c, 0.25 + 1.2 * h, 1.3 * h);
+          p.main(c, 0.15, 0.1, 0.1);
+        }
+        p.colonne("tete", 0, 0, 0.18 * h);
+        break;
+      }
+      case "chercher":
+        // Il ne comprend pas d'où vient la voix : la tête cherche d'un côté puis de l'autre, les sourcils froncés.
+        this.debout(p, s, t, vieux, petit);
+        p.colonne("cou", 0, 0.35 * Math.sin(u * 1.7 + g), 0);
+        p.colonne("tete", -0.05, 0.4 * Math.sin(u * 1.7 + g + 0.4), 0.06 * Math.sin(u * 0.9));
+        break;
+      case "hesiter":
+        // Il hésite : la main droite sur la nuque, la tête basse.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        p.epaule("D", 1.7 * w, 0.75 * w, 0.2);
+        p.coude("D", 2.1 * w, 0.3);
+        p.viserMain("D", PO.tete, -0.02, -0.03, -0.09, 2 * w);
+        p.main("D", 0.4);
+        p.colonne("tete", 0.18 * w, -0.1 * w);
+        break;
+      case "refuser":
+        // Il refuse : bras croisés, il secoue la tête deux ou trois fois.
+        this.debout(p, s, t, vieux, petit, "croises");
+        p.colonne("tete", -0.05, 0.3 * Math.sin(u * 9) * Math.max(0, 1 - u / 2.2));
+        break;
+      default:
+        // Fixer : immobile, il la regarde (la tête suit le regard).
+        this.debout(p, s, t, vieux, petit);
+        break;
+    }
+  }
+
   private garde(p: Pose, s: Situation, t: number, arme: number): void {
     const g = this.graine;
     const balance = 0.03 * Math.sin(t * 3.1 + g);
