@@ -6473,7 +6473,7 @@
   "trois.portraitDebut": "Portrait de {nom} : glisser pour tourner autour de son visage, molette pour s'approcher (de 30 cm à 3 m). P, F ou Échap pour sortir.",
   "trois.portraitSansHumain": "Personne d'assez proche devant vous : ouvrez la fiche d'un humain, ou approchez-vous, pour faire son portrait.",
   "trois.aide.portrait": "Portrait : glisser pour tourner autour du visage (et au-dessus ou en dessous) · molette : de 30 cm à 3 m · P, F ou Échap : sortir · I : images par seconde",
-  "trois.perf": "{images} images/s\nimage : {moyenne} ms en moyenne, {pire} ms au plus (processeur)\n{appels} appels de dessin · {triangles} k triangles\nQualité {qualite} · {moteur}\nCarte : {carte}\nTapis du sol : {tapis} k emplacements, {sommets} M sommets\nI pour masquer",
+  "trois.perf": "{images} images/s\nimage : {moyenne} ms en moyenne, {pire} ms au plus (processeur) · carte graphique : {carteMs} ms\nRésolution : {resolution} %\n{appels} appels de dessin · {triangles} k triangles\nQualité {qualite} · {moteur}\nCarte : {carte}\nTapis du sol : {tapis} k emplacements, {sommets} M sommets\nI pour masquer",
   "trois.allerVoir": "Aller voir",
   "trois.allerVoirNom": "Nom d'un humain",
   "trois.allerVoirFiche": "Aller voir {nom}",

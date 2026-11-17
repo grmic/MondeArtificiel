@@ -312,6 +312,16 @@ export class Vue3D {
   private images = 0;
   private imagesDepuis = performance.now();
   private parSeconde = 0;
+  /**
+   * Résolution adaptative (0.45.4) : quand la carte graphique est le frein (son temps par image approche l'intervalle entre deux
+   * images) et que l'on tombe sous 30 images/s, l'image est calculée en moins de pixels (jusqu'à la moitié de côté), puis
+   * remonte quand la marge revient. `pixelsBase` : densité choisie par la Qualité ; `echelle` : part gardée.
+   */
+  private pixelsBase = 1;
+  private echelle = 1;
+  /** Temps de la carte graphique par image (ms), lissé ; NaN : inconnu (WebGL, ou navigateur qui ne le donne pas). */
+  private tempsCarte = NaN;
+  private lectureCarte = false;
   private jourTemperatures = -1;
   private saisonVue = -1;
   private minuteurs: number[] = [];
@@ -411,11 +421,13 @@ export class Vue3D {
     if (Number.isInteger(allure) && allure >= 0 && allure < ALLURES.length) this.allure = allure;
     this.perf = document.createElement("div");
     this.perf.className = "perf3d";
-    this.perf.hidden = lireStockage("monde.perf3d") !== "1";
+    this.perf.hidden = true;
     this.ficheBete = document.createElement("div");
     this.ficheBete.className = "fiche-bete3d";
     this.ficheBete.hidden = true;
-    hote.append(this.etiquettes, this.bulle, this.hud, this.mini.element, this.perf, this.ficheBete);
+    hote.append(this.etiquettes, this.bulle, this.hud, this.mini.element, this.ficheBete);
+    // Compteur (touche I) posé sur la page elle-même, au-dessus des barres de la simulation.
+    document.body.append(this.perf);
     this.construireHud();
     this.brancherSouris();
     this.appliquerQualite();
@@ -454,6 +466,8 @@ export class Vue3D {
     const renderer = new THREE.WebGPURenderer({
       antialias: true, forceWebGL: !webgpu, powerPreference: "high-performance", canvas, context,
       reversedDepthBuffer: webgpu && !lineaire && !log, logarithmicDepthBuffer: (!webgpu || log) && !lineaire,
+      // Temps passé par la carte graphique (touche I et résolution adaptative), quand le navigateur le donne.
+      trackTimestamp: webgpu,
     } as ConstructorParameters<typeof THREE.WebGPURenderer>[0]);
     await renderer.init();
     Vue3D.nomCarte = Vue3D.lireCarte(renderer, adaptateur);
@@ -620,7 +634,9 @@ export class Vue3D {
 
   private appliquerQualite(): void {
     const q = QUALITES[this.qualite];
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, q.pixels));
+    this.pixelsBase = Math.min(window.devicePixelRatio || 1, q.pixels);
+    this.echelle = 1;
+    this.renderer.setPixelRatio(this.pixelsBase);
     this.reglerLumiere(q);
     this.terrain.facteur = q.finesse;
     this.nature.portee = q.vegetation;
@@ -1023,6 +1039,7 @@ export class Vue3D {
     if (this.ouverte) return;
     this.ouverte = true;
     this.hote.hidden = false;
+    this.perf.hidden = lireStockage("monde.perf3d") !== "1";
     window.addEventListener("keydown", this.surTouche);
     window.addEventListener("keyup", this.surRelache);
     window.addEventListener("resize", this.surTaille);
@@ -1058,6 +1075,7 @@ export class Vue3D {
     this.ouverte = false;
     this.renderer.setAnimationLoop(null);
     this.hote.hidden = true;
+    this.perf.hidden = true;
     window.removeEventListener("keydown", this.surTouche);
     window.removeEventListener("keyup", this.surRelache);
     window.removeEventListener("resize", this.surTaille);
@@ -2331,6 +2349,7 @@ export class Vue3D {
     this.ciel.rendreNuages(this.renderer, this.camera);
     if (this.chaine) this.chaine.render();
     else this.renderer.render(this.scene, this.camera);
+    this.lireTempsCarte();
     if (this.decalage.lengthSq() > 0) {
       this.camera.position.sub(this.decalage);
       this.camera.updateMatrixWorld();
@@ -2350,8 +2369,32 @@ export class Vue3D {
       this.images = 0;
       this.imagesDepuis = maintenant;
       this.majEtat();
+      this.adapterResolution();
       this.majPerf();
     }
+  }
+
+  /** Relève le temps de la carte graphique de la dernière image lue (sans attendre : le résultat arrive une ou deux images plus tard). */
+  private lireTempsCarte(): void {
+    const backend = this.renderer.backend as { trackTimestamp?: boolean };
+    if (!backend.trackTimestamp || this.lectureCarte) return;
+    this.lectureCarte = true;
+    this.renderer.resolveTimestampsAsync("render").then((ms) => {
+      if (typeof ms === "number" && ms > 0 && Number.isFinite(ms)) this.tempsCarte = Number.isNaN(this.tempsCarte) ? ms : this.tempsCarte * 0.9 + ms * 0.1;
+    }).catch(() => undefined).finally(() => { this.lectureCarte = false; });
+  }
+
+  private adapterResolution(): void {
+    if (Number.isNaN(this.tempsCarte) || this.parSeconde <= 0) return;
+    const intervalle = 1000 / this.parSeconde;
+    const carteFreine = this.tempsCarte > intervalle * 0.7;
+    let e = this.echelle;
+    if (this.parSeconde < 30 && carteFreine) e = Math.max(0.5, e * Math.max(0.7, Math.sqrt((this.parSeconde / 40))));
+    else if (this.parSeconde > 50 || (!carteFreine && this.parSeconde > 30)) e = Math.min(1, e * 1.1);
+    if (Math.abs(e - this.echelle) < 0.02) return;
+    this.echelle = e;
+    this.renderer.setPixelRatio(this.pixelsBase * e);
+    this.cadrer();
   }
 
   /** Le tapis du sol (0.41.9) : lieux usés (relus chaque seconde) et pas des humains et des bêtes proches. */
@@ -2402,6 +2445,8 @@ export class Vue3D {
     this.perf.textContent = t("trois.perf", {
       images: Math.round(this.parSeconde),
       moyenne: nombre(moyenne, 1),
+      carteMs: Number.isNaN(this.tempsCarte) ? "?" : nombre(this.tempsCarte, 1),
+      resolution: Math.round(this.echelle * 100),
       pire: nombre(pire, 1),
       appels: nombre(info.drawCalls ?? info.calls ?? 0),
       triangles: nombre(Math.round((info.triangles ?? 0) / 1000)),
