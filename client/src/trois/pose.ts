@@ -281,6 +281,8 @@ export interface Situation {
   enlace: number;
   /** 0.42.0 : geste de combat du rejeu d'un assaut (voir combat.ts), où il en est (0 à 1) et l'arme en main ; mort : plus de souffle. */
   combat?: { geste: string; u: number; arme: number; mort: boolean } | null;
+  /** 0.45.10 : l'outil ou l'arme taillée qu'il tient hors combat (debout, en marche ; 0 : mains libres). */
+  outil?: number;
 }
 
 /** Abattement (F1) : fatigue, faim, tristesse, maladie ; 0 à 1. */
@@ -624,6 +626,17 @@ export class Animateur {
     if (s.enfant !== null && famille_ !== "couche" && famille_ !== "nage" && famille_ !== "descente" && famille_ !== "releve"
       && !(famille_ === "combat" && (variante === "gisant" || variante === "chute"))) {
       porterEnfant(p, s.enfant, famille_, s.allaite === true);
+    }
+    // 0.45.10 : un outil court en main droite (hache, bâton), hors combat : bras un peu écarté de la cuisse, coude à peine plié,
+    // l'outil tenu vers l'avant au lieu de pendre contre la jambe ; le balancier de ce bras est moitié moindre (on retient ce qu'on porte).
+    if (s.outil && s.outil !== 3 && s.outil !== 4 && (famille_ === "debout" || famille_ === "marche")) {
+      const phi = s.phase + Math.PI;
+      const balancier = famille_ === "marche" ? -0.13 * Math.max(0.45, Math.min(1.25, s.vitesse / 1.25)) * Math.cos(phi) : 0;
+      p.epaule("D", 0.08 + balancier, 0.16, 0.1);
+      p.coude("D", 0.45, 0.35);
+      p.poignet("D", 0.1);
+      p.main("D", 1.35, 0.9);
+      p.mains[1].length = 0;
     }
     // Les vieux : dos voûté, genoux un peu fléchis.
     if (s.voute > 0) {
@@ -1764,8 +1777,9 @@ function porterEnfant(p: Pose, age: number, posture: string, allaite = false): v
     return;
   }
   // Sur la hanche gauche : bras gauche autour de l'enfant, hanche gauche relevée, buste penché à droite.
-  p.epaule("G", 0.3, 0.35, -0.6);
-  p.coude("G", 1.5, 0.3);
+  // 0.45.10 : bras écarté (le coude passe en dehors de l'enfant) pour l'entourer, au lieu de le traverser.
+  p.epaule("G", -0.4, 0.55, -0.2);
+  p.coude("G", 1.2, 0.3);
   p.poignet("G", 0.2);
   p.main("G", 0.7, 0.5);
   p.mains[0].length = 0;
@@ -2106,7 +2120,7 @@ function garderOrientation(os: THREE.Bone, monde: THREE.Quaternion): void {
  * Porte la paume d'une main (0 : gauche, 1 : droite) vers un point du repère des os (taille 1), après la pose : la mère qui tient
  * son enfant (D1). Les matrices sont à jour au retour.
  */
-export function mainVersPoint(corps: Corps, k: number, cible: THREE.Vector3, poids = 1): void {
+export function mainVersPoint(corps: Corps, k: number, cible: THREE.Vector3, poids = 1, coude?: THREE.Vector3): void {
   if (corps.idx[MAINS[k][2]] < 0) return;
   const [ia, ib, ic] = MAINS[k].map((i) => corps.os[corps.idx[i]]);
   V4.copy(corps.paume);
@@ -2115,6 +2129,30 @@ export function mainVersPoint(corps: Corps, k: number, cible: THREE.Vector3, poi
   V2.setFromMatrixPosition(ic.matrixWorld);
   V3.copy(cible).add(V2.sub(V4));
   deuxOs(ia, ib, ic, V3, poids);
+  if (coude) tournerCoude(ia, ib, ic, coude);
+}
+
+/**
+ * 0.45.10 : la main restant où elle est, le bras tourne autour de la ligne épaule-main jusqu'à ce que le coude aille du côté de
+ * `vers` (ex. derrière l'enfant porté plutôt qu'à travers lui).
+ */
+function tournerCoude(A: THREE.Bone, B: THREE.Bone, C: THREE.Bone, vers: THREE.Vector3): void {
+  const a = IK_A.setFromMatrixPosition(A.matrixWorld);
+  const b = IK_B.setFromMatrixPosition(B.matrixWorld);
+  const c = IK_C.setFromMatrixPosition(C.matrixWorld);
+  const axe = IK_1.subVectors(c, a);
+  if (axe.lengthSq() < 1e-10) return;
+  axe.normalize();
+  const vb = IK_2.subVectors(b, a);
+  vb.addScaledVector(axe, -vb.dot(axe));
+  const vp = IK_3.subVectors(vers, a);
+  vp.addScaledVector(axe, -vp.dot(axe));
+  if (vb.lengthSq() < 1e-10 || vp.lengthSq() < 1e-10) return;
+  const ang = Math.atan2(IK_4.crossVectors(vb, vp).dot(axe), vb.dot(vp));
+  rotationMonde(A.matrixWorld, QA);
+  QC.setFromAxisAngle(IK_6.copy(axe).applyQuaternion(QA.invert()), ang);
+  A.quaternion.multiply(QC);
+  A.updateMatrixWorld(true);
 }
 
 /** Position d'un os des poses dans le repère des os (taille 1). */

@@ -384,10 +384,14 @@ export interface ArmeEnMain {
   poing: THREE.Vector3;
   coude: THREE.Vector3;
   droite: THREE.Vector3;
+  /** 0.45.10 : hors combat, où se tient celui qui la porte (pieds) : l'outil court est tenu levé et à l'écart du corps. */
+  porte?: THREE.Vector3;
 }
 
 const NB_ARMES = 96;
 const Y = new THREE.Vector3(0, 1, 0);
+const dehors = new THREE.Vector3();
+const tenu = new THREE.Vector3();
 
 /**
  * Armes tenues en main (D1) : pierre, branche, épieu durci au feu, lance à pointe de pierre, hache emmanchée. Quelques maillages
@@ -431,17 +435,28 @@ export class Armes3D {
       // Une arme longue prolonge l'avant-bras ; une branche ou une hache sort du poing, en travers.
       if (longue) axe.copy(avantBras);
       else axe.crossVectors(avantBras, a.droite).normalize();
+      let poing = a.poing;
+      if (a.porte && !longue) {
+        // Le manche part du poing vers l'avant, à peine incliné vers le bas, un peu en dehors du corps : il ne croise jamais la cuisse.
+        axe.crossVectors(a.droite, Y).setY(-0.25).normalize();
+        dehors.copy(a.poing).sub(a.porte).setY(0);
+        if (dehors.lengthSq() > 1e-6) {
+          dehors.normalize();
+          axe.addScaledVector(dehors, 0.22).normalize();
+          poing = tenu.copy(a.poing).addScaledVector(dehors, 0.02);
+        }
+      }
       q.setFromUnitVectors(Y, axe);
       if (a.arme === ARME.Pierre) {
-        m.compose(a.poing, q, e.set(1, 1, 1));
+        m.compose(poing, q, e.set(1, 1, 1));
         this.pierres.setMatrixAt(nr++, m);
         continue;
       }
       const longueur = longue ? 1.9 : a.arme === ARME.Hache ? 0.62 : 0.9;
       const avant = longue ? 0.4 : longueur * 0.32;
-      m.compose(p.copy(a.poing).addScaledVector(axe, avant), q, e.set(1, longueur, 1));
+      m.compose(p.copy(poing).addScaledVector(axe, avant), q, e.set(1, longueur, 1));
       this.manches.setMatrixAt(nm++, m);
-      const bout = p.copy(a.poing).addScaledVector(axe, avant + longueur / 2);
+      const bout = p.copy(poing).addScaledVector(axe, avant + longueur / 2);
       if (longue) {
         m.compose(bout.addScaledVector(axe, 0.06), q, e.set(a.arme === ARME.Lance ? 1 : 0.6, a.arme === ARME.Lance ? 1 : 0.8, a.arme === ARME.Lance ? 1 : 0.6));
         this.pointes.setMatrixAt(np++, m);

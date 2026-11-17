@@ -224,6 +224,7 @@ export class CorpsProches {
         parle: c.parle, converse: c.interlocuteur > 0 && c.posture !== "enlace",
         enlace: c.posture === "enlace" && c.partenaire ? (s.id < c.partenaire ? 1 : -1) : 0,
         combat: c.posture === "combat" && c.role?.geste ? { geste: c.role.geste, u: c.role.u, arme: c.role.arme, mort: c.role.mort } : null,
+        outil: c.posture === "debout" || c.posture === "marche" ? (s.etat >> 11) & 7 : 0,
       };
       // Ce qu'il regarde (E1) : l'Entité qui lui parle, sinon tour à tour les gens proches, sa mère, son enfant.
       anim.ecoute = c.ecoute > 0.3;
@@ -291,7 +292,7 @@ export class CorpsProches {
     const poing = m.localToWorld(osEn(corps, "mainD", new THREE.Vector3()));
     const coude = m.localToWorld(osEn(corps, "avantBrasD", new THREE.Vector3()));
     const cap = m.rotation.y;
-    this.enMain.push({ arme, poing, coude, droite: new THREE.Vector3(Math.cos(cap), 0, -Math.sin(cap)) });
+    this.enMain.push({ arme, poing, coude, droite: new THREE.Vector3(Math.cos(cap), 0, -Math.sin(cap)), porte: !combat ? m.position : undefined });
   }
 
   /** Change de temps en temps ce qu'un humain regarde : quelqu'un de proche (sa mère, son enfant d'abord), ou rien. */
@@ -390,12 +391,14 @@ export class CorpsProches {
       aligner(new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), haut, avant, em.quaternion);
     } else {
       // À califourchon sur la hanche gauche, tourné vers sa mère.
+      // 0.45.10 : assez en dehors pour que son buste ne rentre pas dans le flanc de sa mère et que sa tête reste à côté de la
+      // sienne ; presque droit (penché vers elle, il lui rentrait dans le cou).
       ancre.copy(osEn(mere, "cuisseG", new THREE.Vector3()));
-      ancre.x += 0.1;
+      ancre.x += 0.13 + 0.008 * Math.min(age, 5);
       ancre.y += 0.035;
-      ancre.z += 0.0;
+      ancre.z += 0.02;
       mm.localToWorld(ancre);
-      haut.set(-0.25, 1, 0).applyQuaternion(qMere).normalize();
+      haut.set(-0.12, 1, 0).applyQuaternion(qMere).normalize();
       avant.set(-0.9, 0, 0.42).applyQuaternion(qMere).normalize();
       osEn(enfant, "bassin", point);
       point.y -= 0.06;
@@ -419,8 +422,9 @@ export class CorpsProches {
       mainVersPoint(mere, 0, versMere("ventre", 0.07, 0, 0.08));
       mainVersPoint(mere, 1, versMere("ventre", -0.07, 0.02, 0.08));
     } else {
-      // L'avant-bras sous les fesses, la main sur la cuisse de devant.
-      mainVersPoint(mere, 0, versMere("cuisseG", 0.0, -0.06, -0.02));
+      // 0.45.10 : le bras passe dans son dos (par-dessus, jamais à travers lui), la main sous ses fesses, côté dehors.
+      // Le coude va derrière elle, en arrière de l'enfant.
+      mainVersPoint(mere, 0, versMere("bassin", -0.08, -0.03, -0.08), 1, osEn(mere, "brasG", new THREE.Vector3()).add(new THREE.Vector3(0.03, -0.12, -0.12)));
     }
     mere.armature.updateMatrixWorld(true);
     void hm;
