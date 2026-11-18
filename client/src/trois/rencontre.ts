@@ -748,15 +748,17 @@ export class Rencontre {
 
   /**
    * L'humain dit tout haut ses mots, dans sa langue, avec sa voix (A1, 0.45.14) : rien en rêve (il répond en esprit), rien s'il
-   * n'a rien dit tout haut. Ses lèvres bougent le temps qu'il parle vraiment.
+   * n'a rien dit du tout ; sans mots à lui, c'est la traduction qui est dite. Ses lèvres bougent le temps qu'il parle vraiment.
    */
   private entendre(d: Dialogue, r: Replique): void {
-    if (!this.caseVoixHumains.checked || d.mode === "Reve" || !r.mots.trim()) return;
+    // Sans mots à lui (pas de langue encore, ou rien d'articulé), il dit la traduction de ce qu'il veut dire (0.45.17).
+    const texte = r.mots.trim() || r.sens.trim();
+    if (!this.caseVoixHumains.checked || d.mode === "Reve" || !texte) return;
     const c = this.corps(d.humain);
     if (!c) return;
     // Il attend que l'Entité ait fini : ses lèvres ne bougent qu'une fois qu'il parle.
     echange.parleJusqua = 0;
-    const p = voixHumain(c.s, r.mots, this.codeVoix(), r.reaction?.emotion ?? "");
+    const p = voixHumain(c.s, texte, this.codeVoix(), r.reaction?.emotion ?? "");
     p.debut = () => {
       echange.parleJusqua = performance.now() + 60_000;
     };

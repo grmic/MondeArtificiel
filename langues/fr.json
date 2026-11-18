@@ -6969,7 +6969,7 @@
   "rencontre.voixEntite.femme": "Voix de femme",
   "rencontre.voixEntiteAide": "La voix de l'Entité : d'homme ou de femme, toujours lente et basse",
   "rencontre.voixHumains": "Voix des humains",
-  "rencontre.voixHumainsAide": "Ce que l'humain dit tout haut, dans sa langue, est dit par la voix du système, une voix à lui (selon son âge, son corps et son caractère). Rien en rêve : il répond en esprit.",
+  "rencontre.voixHumainsAide": "Ce que l'humain dit tout haut, dans sa langue, est dit par la voix du système, une voix à lui (selon son âge, son corps et son caractère). S'il n'a pas de mots à lui, c'est la traduction qui est dite. Rien en rêve : il répond en esprit.",
   "rencontre.pense": "Il pense : {texte}",
   "trois.manette.long": "{b} tenu",
   "trois.manette.rencontre": "s'adresser à l'humain devant soi (parler, apparaître, rêve)"
