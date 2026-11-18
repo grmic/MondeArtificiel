@@ -615,3 +615,6 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 .rencontre3d .etat { margin: 0; font-size: 0.8rem; color: #ffb4a0; }
 .rencontre3d .etat:empty { display: none; }
 .invite3d[hidden], .choix3d[hidden], .rencontre3d[hidden] { display: none; }
+
+/* 0.45.14 : dialogue mené depuis la fenêtre : seules les cases des voix restent en bas de l'écran. */
+.rencontre3d.options-seules .sous-titres, .rencontre3d.options-seules form, .rencontre3d.options-seules .etat { display: none; }

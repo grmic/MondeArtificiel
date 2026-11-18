@@ -258,7 +258,10 @@ class Presence {
     this.uForce.value = this.force * this.force * (3 - 2 * this.force);
     this.uEclat.value = 1.2 / Math.pow(Math.max(exposition, 0.01), 0.85);
     this.lumiere.position.set(this.centre.x, this.centre.y + 1.3, this.centre.z);
-    this.lumiere.intensity = 4 * this.uForce.value * (0.92 + 0.08 * Math.sin(secondes * 1.3));
+    // De jour, l'œil adapté au soleil la verrait à peine : elle éclaire plus fort (jusqu'à quatre fois), pour rester une présence
+    // qui illumine et fait des ombres même en plein jour ; la nuit, l'œil adapté à l'obscurité la voit déjà éblouissante.
+    const jour = Math.max(1, Math.min(4, 2 / Math.max(exposition, 0.01)));
+    this.lumiere.intensity = 4 * jour * this.uForce.value * (0.92 + 0.08 * Math.sin(secondes * 1.3));
     // Les humains bougent : l'ombre est redessinée à chaque image tant que la présence est là.
     if (this.lumiere.castShadow) this.lumiere.shadow.needsUpdate = true;
   }
@@ -533,6 +536,7 @@ export class Rencontre {
     this.dialogue = d;
     this.jouees = d.liste.length;
     this.dejaCru = d.liste.some((r) => r.reaction?.croit);
+    this.bande.classList.remove("options-seules");
     this.bande.hidden = false;
     this.saisie.placeholder = t("rencontre.saisie", { nom: d.nom });
     echange.humain = d.humain;
@@ -611,10 +615,18 @@ export class Rencontre {
   private suivreFenetre(d: Dialogue | null): void {
     if (!d || !d.enCours) {
       if (this.fenetre && (!d || d.id === this.fenetre.id)) {
+        if (d) for (const r of d.liste.slice(this.jouees)) this.entendre(d, r);
         this.fenetre = null;
         this.relacher();
+        this.optionsSeules(false);
       }
       return;
+    }
+    // 0.45.14 : les voix aussi pour un dialogue mené depuis la fenêtre ; les deux cases s'affichent seules en bas de l'écran.
+    this.optionsSeules(true);
+    if (d.attend && d.attend !== this.ditFenetre) {
+      this.ditFenetre = d.attend;
+      this.parler(d.attend, d.mode as Voie);
     }
     if (!this.fenetre || this.fenetre.id !== d.id) {
       this.fenetre = d;
@@ -630,8 +642,21 @@ export class Rencontre {
       return;
     }
     this.fenetre = d;
-    for (const r of d.liste.slice(this.jouees)) if (r.reaction) this.reagir(d, r.reaction, r.rang === 1);
+    for (const r of d.liste.slice(this.jouees)) {
+      if (r.reaction) this.reagir(d, r.reaction, r.rang === 1);
+      this.entendre(d, r);
+    }
     this.jouees = d.liste.length;
+  }
+
+  /** Dernière phrase de l'Entité déjà dite tout haut pour un dialogue de la fenêtre. */
+  private ditFenetre = "";
+
+  /** La bande réduite à ses cases (voix), pour un dialogue mené depuis la fenêtre. */
+  private optionsSeules(oui: boolean): void {
+    if (this.dialogue) return;
+    this.bande.classList.toggle("options-seules", oui);
+    this.bande.hidden = !oui;
   }
 
   private recevoir(d: Dialogue): void {
