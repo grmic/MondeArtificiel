@@ -53,6 +53,8 @@ export class Pose {
   plantes: [number, number] = [1, 1];
   /** Le corps n'a pas de sol (porté, dans l'eau). */
   libre = false;
+  /** Hauteur (m) dont le corps quitte le sol : un saut (0.45.19). */
+  envol = 0;
 
   zero(): this {
     for (let i = 0; i < NB; i++) {
@@ -65,6 +67,7 @@ export class Pose {
     this.appuis = APPUI_PIEDS;
     this.plantes = [1, 1];
     this.libre = false;
+    this.envol = 0;
     return this;
   }
 
@@ -79,6 +82,7 @@ export class Pose {
     this.appuis = p.appuis;
     this.plantes = [p.plantes[0], p.plantes[1]];
     this.libre = p.libre;
+    this.envol = p.envol;
     return this;
   }
 
@@ -107,6 +111,7 @@ export class Pose {
     this.appuis = t < 0.5 ? a.appuis | (t > 0.15 ? b.appuis : 0) : b.appuis | (t < 0.85 ? a.appuis : 0);
     this.plantes = [a.plantes[0] * u + b.plantes[0] * t, a.plantes[1] * u + b.plantes[1] * t];
     this.libre = t < 0.5 ? a.libre : b.libre;
+    this.envol = a.envol * u + b.envol * t;
     return this;
   }
 
@@ -1371,6 +1376,21 @@ export class Animateur {
       case "hesiter":
       case "refuser":
       case "fixer":
+      // Gestes demandés (0.45.19).
+      case "sAsseoir":
+      case "coucheDos":
+      case "coucheVentre":
+      case "recroqueville":
+      case "cacherYeux":
+      case "ciel":
+      case "sol":
+      case "leverBras":
+      case "montrer":
+      case "frapperSol":
+      case "sauter":
+      case "danser":
+      case "pleurer":
+      case "crier":
         this.reagir(p, geste, s, t, u);
         break;
       case "cache":
@@ -1567,6 +1587,146 @@ export class Animateur {
         // Il refuse : bras croisés, il secoue la tête deux ou trois fois.
         this.debout(p, s, t, vieux, petit, "croises");
         p.colonne("tete", -0.05, 0.3 * Math.sin(u * 9) * Math.max(0, 1 - u / 2.2));
+        break;
+      // ——— Gestes demandés (0.45.19) : ce qu'il dit faire de son corps en répondant ———
+      case "sAsseoir":
+        // Assis par terre en tailleur (l'enfant), ou les jambes allongées devant lui, appuyé sur les mains (l'adulte, le vieux).
+        this.assis(p, s.age < 12 || unite(hacher(s.id, 291)) < 0.45 ? "tailleur" : "allonge", s, t);
+        break;
+      case "coucheDos":
+        this.couche(p, "dos", s, t);
+        break;
+      case "coucheVentre":
+        this.couche(p, "ventre", s, t);
+        break;
+      case "recroqueville":
+        this.couche(p, "fusil", s, t);
+        break;
+      case "cacherYeux":
+        // Les paumes sur les yeux, les coudes en avant, la tête à peine baissée.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        for (const c of COTES) {
+          p.epaule(c, 1.15 * w, 0.12, -0.15);
+          p.coude(c, 2.1 * w, 0.7);
+          p.viserMain(c, PO.tete, SIGNE[c] * 0.035, 0.09, 0.1, 2 * w);
+          p.main(c, 0.15, 0.15);
+        }
+        p.colonne("tete", 0.12 * w);
+        break;
+      case "ciel":
+        // La tête renversée vers le ciel, les bras le long du corps.
+        this.debout(p, s, t, vieux, petit);
+        p.colonne("poitrine", -0.08 * w);
+        p.colonne("cou", -0.45 * w);
+        p.colonne("tete", -0.35 * w);
+        break;
+      case "sol":
+        // Les yeux au sol : la tête basse, les épaules rentrées.
+        this.debout(p, s, t, vieux, petit);
+        for (const c of COTES) p.clavicule(c, -0.05 * w, 0.08 * w);
+        p.colonne("cou", 0.35 * w);
+        p.colonne("tete", 0.3 * w);
+        break;
+      case "leverBras": {
+        // Les deux bras levés au-dessus de la tête, paumes ouvertes ; ils fléchissent un peu à mesure que l'épaule se lasse.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        const las = Math.min(0.5, u / 120) * (0.6 + 0.8 * vieux);
+        for (const c of COTES) {
+          p.clavicule(c, 0.3 * w, 0);
+          p.epaule(c, (2.75 - 0.9 * las) * w, 0.28, 0.4);
+          p.coude(c, 0.15 + 0.4 * las, 1.2);
+          p.main(c, 0.1, 0.1, 0.12);
+        }
+        p.colonne("cou", -0.2 * w);
+        break;
+      }
+      case "montrer":
+        // Le bras droit tendu, l'index pointé devant lui.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        p.epaule("D", 1.45 * w, 0.12, 0);
+        p.coude("D", 0.08, 0.2);
+        p.main("D", 1.3, 1.0, 0.04, 0);
+        p.colonne("poitrine", 0, -0.12 * w);
+        break;
+      case "frapperSol": {
+        // Il frappe le sol du pied droit, deux fois par seconde environ, le poing serré.
+        this.debout(p, s, t, vieux, petit);
+        const f = Math.max(0, Math.sin(u * Math.PI * 2 * (1.6 + 0.6 * (1 - vieux))));
+        p.hanche("D", 0.55 * f, 0.05);
+        p.genou("D", 0.8 * f);
+        p.cheville("D", 0.1 * f);
+        p.plantes = [1, f > 0.1 ? 0 : 1];
+        for (const c of COTES) p.main(c, 1.3, 0.9);
+        p.colonne("poitrine", 0.06 * f);
+        break;
+      }
+      case "sauter": {
+        // Sauts sur place : il plie les genoux, s'élève, retombe. Saut répété sur place d'un adulte : 20 à 30 cm environ (moins
+        // que le saut vertical d'élan, 30 à 45 cm) ; l'enfant et le vieux sautent bien moins haut.
+        const periode = 0.75 + 0.25 * vieux;
+        const ph = (u % periode) / periode;
+        const haut = 0.24 * (1 - 0.65 * vieux) * (s.age < 12 ? 0.6 : 1);
+        const vol = ph > 0.35 && ph < 0.85 ? Math.sin(((ph - 0.35) / 0.5) * Math.PI) : 0;
+        const plie = ph <= 0.35 ? Math.sin((ph / 0.35) * Math.PI) : ph >= 0.85 ? Math.sin(((ph - 0.85) / 0.15) * Math.PI) * 0.6 : 0;
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        for (const c of COTES) {
+          p.hanche(c, 0.6 * plie + 0.15 * vol, 0.05);
+          p.genou(c, 1.0 * plie + 0.25 * vol);
+          p.cheville(c, 0.35 * plie - 0.5 * vol);
+          p.epaule(c, -0.3 * plie + 1.3 * vol, 0.25 * vol, 0);
+          p.coude(c, 0.3 + 0.3 * vol, 0.2);
+        }
+        p.colonne("poitrine", 0.2 * plie);
+        p.envol = haut * vol;
+        if (vol > 0) p.plantes = [0, 0];
+        break;
+      }
+      case "danser": {
+        // Une danse simple, à son rythme : les hanches se balancent, les genoux rebondissent, les bras se lèvent tour à tour.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        const bpm = 90 + 40 * unite(hacher(s.id, 293)) - 25 * vieux;
+        const a = u * Math.PI * 2 * (bpm / 60) / 2;
+        p.bassin(0, 0, 0.12 * Math.sin(a));
+        for (const c of COTES) {
+          const sg = c === "G" ? 1 : -1;
+          p.genou(c, 0.25 + 0.2 * Math.max(0, Math.sin(a * 2 + (sg > 0 ? 0 : Math.PI))));
+          p.hanche(c, 0.15 + 0.12 * Math.max(0, Math.sin(a * 2 + (sg > 0 ? 0 : Math.PI))), 0.06);
+          p.epaule(c, 1.2 + 0.9 * Math.sin(a + (sg > 0 ? 0 : Math.PI)), 0.5, 0.3);
+          p.coude(c, 0.9 + 0.4 * Math.sin(a * 2), 0.8);
+          p.main(c, 0.2, 0.1, 0.1);
+        }
+        p.colonne("poitrine", 0, 0.15 * Math.sin(a));
+        p.colonne("tete", 0, 0, 0.1 * Math.sin(a + 0.5));
+        break;
+      }
+      case "pleurer":
+        // Il pleure : la tête basse, une main sur les yeux, les épaules secouées par les sanglots.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        p.epaule("D", 1.1 * w, 0.15, -0.15);
+        p.coude("D", 2.1 * w, 0.6);
+        p.viserMain("D", PO.tete, -0.02, 0.07, 0.11, 2 * w);
+        p.main("D", 0.3, 0.2);
+        for (const c of COTES) p.clavicule(c, 0.07 * Math.max(0, Math.sin(u * 7 + g)) * w, 0.06);
+        p.colonne("cou", 0.3 * w);
+        p.colonne("tete", 0.15 * w);
+        break;
+      case "crier":
+        // Il crie : la tête en avant puis renversée, les poings serrés, les bras tendus vers le bas.
+        this.debout(p, s, t, vieux, petit);
+        vider();
+        for (const c of COTES) {
+          p.epaule(c, 0.15, 0.25 * w, 0);
+          p.coude(c, 0.2, 0.2);
+          p.main(c, 1.4, 0.9);
+        }
+        p.colonne("poitrine", -0.12 * w);
+        p.colonne("cou", -0.25 * w);
         break;
       default:
         // Fixer : immobile, il la regarde (la tête suit le regard).
@@ -2088,6 +2248,11 @@ export function poser(corps: Corps, p: Pose, sol: SolLocal | null): void {
     }
     // Pieds : posés (ou au moins jamais sous le sol).
     for (let k = 0; k < 2; k++) piedAuSol(corps, p, k, sol);
+    // En l'air (un saut) : tout le corps monte, pieds compris.
+    if (p.envol > 0) {
+      corps.os[0].position.y += p.envol;
+      decaler(corps, p.envol);
+    }
   }
   // Mains : vers leurs cibles, et jamais sous le sol.
   for (let k = 0; k < 2; k++) {

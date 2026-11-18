@@ -121,6 +121,18 @@ public sealed partial class MondeSimule
     }
 
     /// <summary>Au cours d'un dialogue, il promet un geste à l'Entité. Rend la ligne du journal (0 : rien de promis).</summary>
+    /// <summary>Ce que son corps a fait en répondant à l'Entité, au journal (0.45.19) ; renvoie l'événement (0 : rien).</summary>
+    public long NoterGestes(int humainId, IReadOnlyList<string> gestes, long cause)
+    {
+        lock (_verrou)
+        {
+            if (humainId < 1 || humainId > _humains.Count) throw new ArgumentException("humain");
+            var id = _comportement.NoterGestes(_humains[humainId - 1], gestes, cause, _secondes);
+            VerserJournal();
+            return id;
+        }
+    }
+
     public long Promettre(int humainId, Parole parole, ModeParole mode, long cause)
     {
         lock (_verrou)

@@ -40,7 +40,10 @@ export const ARME = { Poings: 0, Pierre: 1, Baton: 2, Epieu: 3, Lance: 4, Hache:
 export type GesteCombat = "garde" | "frappe" | "estoc" | "lancer" | "parer" | "touche" | "blesse" | "chute" | "gisant" | "cache" | "reveil" | "tire" | "tiree"
   // Face à face avec l'Entité (0.45.11, rencontre.ts) : réactions jouées comme les gestes d'un assaut.
   | "sursaut" | "effroi" | "couvrir" | "tombeAssis" | "bouche" | "tendre" | "genoux" | "prosterne" | "hausser" | "chercher" | "hesiter"
-  | "refuser" | "fixer";
+  | "refuser" | "fixer"
+  // Gestes demandés (0.45.19) : ce que l'humain dit faire de son corps en répondant.
+  | "sAsseoir" | "coucheDos" | "coucheVentre" | "recroqueville" | "cacherYeux" | "ciel" | "sol" | "leverBras" | "montrer" | "frapperSol"
+  | "sauter" | "danser" | "pleurer" | "crier";
 
 /** Ce que le rejeu impose à un humain à cet instant. */
 export interface Role {

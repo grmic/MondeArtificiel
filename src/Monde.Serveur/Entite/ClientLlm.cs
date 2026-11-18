@@ -153,7 +153,11 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
     /// </summary>
     public const double PenaliteReprise = 1.15, TemperatureReprise = 0.6, Temperature = 0.8;
 
-    /// <summary>Services qui ont refusé le schéma JSON imposé : on leur demande ensuite du JSON par la consigne seule.</summary>
+    /// <summary>
+    /// Schémas qu'un service a refusés (service et schéma) : on lui demande ensuite ce JSON-là par la consigne seule. Par schéma
+    /// depuis 0.45.19 : vu le 18/11, un refus valait pour tous les échanges de ce service, et gemma-4-e4b, sans grammaire imposée,
+    /// bouclait dans le champ « cible » jusqu'à la borne de jetons.
+    /// </summary>
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _sansSchema = new();
 
     /// <summary>
@@ -205,10 +209,13 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
             {
                 corps["temperature"] = reprise ? TemperatureReprise : Temperature;
                 corps["max_tokens"] = c.EstCloud ? ReponseMaxCloud : ReponseMax;
+                // LM Studio et llama.cpp en local : une légère pénalité de répétition dès le premier essai (0.45.19), contre les
+                // boucles d'un petit modèle (« uainumains… » sur 1 600 jetons, vu le 18/11) ; plus forte à la reprise.
+                if (!c.EstCloud && c.Fournisseur is ConnexionLlm.LMStudio or ConnexionLlm.LlamaCpp) corps["repeat_penalty"] = reprise ? 1.15 : 1.08;
                 // Style OpenAI : la pénalité de fréquence (0 à 2) tient le rôle de repeat_penalty.
                 if (reprise) corps["frequency_penalty"] = 0.4;
             }
-            if (!_sansSchema.ContainsKey(CleService(c)))
+            if (!_sansSchema.ContainsKey(CleSchema(c, schema)))
                 corps["response_format"] = new JsonObject
                 {
                     ["type"] = "json_schema",
@@ -326,7 +333,7 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
             if (code is 400 or 422 && corps.ContainsKey("response_format") && c.Fournisseur != ConnexionLlm.Ollama
                 && texte.Contains("response_format", StringComparison.OrdinalIgnoreCase) | texte.Contains("json_schema", StringComparison.OrdinalIgnoreCase))
             {
-                _sansSchema[CleService(c)] = true;
+                _sansSchema[CleSchema(c, corps["response_format"]?["json_schema"]?["schema"])] = true;
                 corps.Remove("response_format");
                 continue;
             }
@@ -335,6 +342,8 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
     }
 
     private static string CleService(ConnexionLlm c) => c.Adresse + "|" + c.Modele;
+
+    private static string CleSchema(ConnexionLlm c, JsonNode? schema) => CleService(c) + "|" + (schema?.ToJsonString() ?? "");
 
     private static long Entier(JsonNode? n) => n is JsonValue v && v.TryGetValue<long>(out var x) ? Math.Max(0, x) : 0;
 
@@ -363,7 +372,7 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
         var liste = messages.Select(m => m.Role == "assistant"
             ? (global::Anthropic.Models.Messages.MessageParam)new global::Anthropic.Models.Messages.AssistantMessageParam { Content = m.Texte }
             : new global::Anthropic.Models.Messages.UserMessageParam { Content = m.Texte }).ToList();
-        var avecSchema = !_sansSchema.ContainsKey(CleService(c));
+        var avecSchema = !_sansSchema.ContainsKey(CleSchema(c, schema));
         for (var essai = 0; ; essai++)
         {
             var p = new global::Anthropic.Models.Messages.MessageCreateParams
@@ -392,7 +401,7 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
             {
                 // Schéma refusé (mot-clé non pris en charge) : une fois sans, la consigne demande déjà du JSON.
                 avecSchema = false;
-                _sansSchema[CleService(c)] = true;
+                _sansSchema[CleSchema(c, schema)] = true;
             }
             catch (global::Anthropic.Exceptions.AnthropicApiException e)
             {

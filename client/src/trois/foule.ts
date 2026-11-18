@@ -184,9 +184,12 @@ function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Postu
   }
 }
 
+/** Gestes où il est étendu au sol (combat ; rencontre, 0.45.19). */
+const A_TERRE = new Set(["gisant", "chute", "coucheDos", "coucheVentre", "recroqueville"]);
+
 /** Couché (endormi, au repos, ou à terre dans un combat). */
 export function aTerre(c: Corps): boolean {
-  return c.posture === "couche" || (c.posture === "combat" && (c.role?.geste === "gisant" || c.role?.geste === "chute"));
+  return c.posture === "couche" || (c.posture === "combat" && A_TERRE.has(c.role?.geste ?? ""));
 }
 
 /** Où se tient, dans sa case, quelqu'un qui ne marche pas : autour du camp, plus loin pour cueillir ou chasser. */
@@ -841,10 +844,10 @@ export class Foule {
           break;
         case "combat": {
           const g = c.role?.geste;
-          if (g === "gisant" || g === "chute") {
+          if (g === "gisant" || g === "chute" || g === "coucheDos" || g === "coucheVentre" || g === "recroqueville") {
             racine.multiply(t.makeTranslation(0, 0.09 * h, 0.45 * h)).multiply(r.makeRotationX(-Math.PI / 2));
             bras = [0.4, 0.5];
-          } else if (g === "cache" || g === "blesse" || g === "reveil") {
+          } else if (g === "cache" || g === "blesse" || g === "reveil" || g === "sAsseoir" || g === "genoux" || g === "prosterne" || g === "tombeAssis") {
             racine.multiply(t.makeTranslation(0, -0.27 * h, 0));
             jambes = [-1.1, -0.8];
             bras = [-0.9, -0.8];

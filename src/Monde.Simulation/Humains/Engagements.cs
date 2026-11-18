@@ -122,6 +122,23 @@ public sealed partial class Comportement
     /// Il promet à l'Entité un geste de tous les jours (prier, veiller le feu, jeûner…). Il compte le faire bientôt : au moment
     /// venu, il tient parole ou non (voir <see cref="TenirParole"/>). Rend la ligne du journal.
     /// </summary>
+    /// <summary>
+    /// Ce que son corps a fait en répondant à l'Entité (0.45.19) : « Meisen ferme les yeux, en répondant à l'Entité ». Un acte qu'il
+    /// choisit de faire : journalisé avec sa cause, la réplique de l'Entité. Rien d'autre ne change dans le monde.
+    /// </summary>
+    public long NoterGestes(Humain h, IReadOnlyList<string> gestes, long cause, long maintenant)
+    {
+        if (!h.EstVivant || gestes.Count == 0) return 0;
+        var g = gestes.Take(3).Select(x => new Recit($"gesteFait.{x}")).ToList();
+        var texte = g.Count switch
+        {
+            1 => new Recit("dlg.fait1", ("h", h), ("a", g[0])),
+            2 => new Recit("dlg.fait2", ("h", h), ("a", g[0]), ("b", g[1])),
+            _ => new Recit("dlg.fait3", ("h", h), ("a", g[0]), ("b", g[1]), ("c", g[2])),
+        };
+        return NoterEntite(maintenant, TypeEvenement.Parole, h, null, texte, cause);
+    }
+
     public long Promettre(Humain h, Parole parole, ModeParole mode, long cause, long maintenant)
     {
         _maintenant = maintenant;
