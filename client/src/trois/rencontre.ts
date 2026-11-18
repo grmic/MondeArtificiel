@@ -35,8 +35,9 @@ interface Reaction {
   extraversion: number;
   agreabilite: number;
   temoins: { humain: number; croit: boolean }[];
-  /** Le geste qu'il dit faire en répondant (Genoux, Prosterne, Debout, Tendre, Reculer, Couvrir, Hausser, Refuser), ou "". */
+  /** Les gestes qu'il dit faire en répondant, à la suite, séparés par des virgules (0.45.19 ; voir Dialogues.Gestes), ou "". */
   geste?: string;
+  conscience?: number;
 }
 
 interface Replique {
@@ -99,12 +100,24 @@ interface Etape {
   court: boolean;
   /** Il tourne le dos à l'Entité (il s'en va) ; sinon il lui fait face, sauf en marchant. */
   dos?: boolean;
+  /** D'où il part (0.45.19) : il va de là jusqu'à (x, z) à son pas, pendant toute l'étape, au lieu d'y être aussitôt. */
+  depuis?: [number, number];
+  /** Il tourne sur lui-même (radians par seconde). */
+  tourne?: number;
+}
+
+/** Un visage tenu un moment, à partir de `debut` secondes du jeu (yeux fermés, sourire…). */
+interface VisageTenu {
+  debut: number;
+  duree: number;
+  expr: Record<string, number>;
 }
 
 interface Jeu {
   etapes: Etape[];
   debut: number;
   emotion: Record<string, number>;
+  visages?: VisageTenu[];
 }
 
 /** Visages du moment : expressions de la tête (joie, triste, colere, peur, bouche). */
@@ -312,6 +325,8 @@ export class Rencontre {
   private jouees = 0;
   private dejaCru = false;
   private readonly jeux = new Map<number, Jeu>();
+  /** Où chacun se tenait à sa première réaction (« je reviens à ma place », 0.45.19). */
+  private readonly departs = new Map<number, [number, number]>();
   private llm: boolean | null = null;
   private tenuA = 0;
   private longA = false;
@@ -427,6 +442,7 @@ export class Rencontre {
     this.h.foule.entite = null;
     for (const [id] of this.jeux) this.h.foule.emotions.delete(id);
     this.jeux.clear();
+    this.departs.clear();
   }
 
   // ——— Invite et choix (B1) ———
@@ -453,6 +469,12 @@ export class Rencontre {
       if (maintenant - j.debut > total) {
         this.jeux.delete(hid);
         this.h.foule.emotions.delete(hid);
+      } else if (j.visages?.length) {
+        // Yeux fermés, sourire… le temps qu'il les tient (0.45.19).
+        const u = maintenant - j.debut;
+        const e = { ...j.emotion };
+        for (const v of j.visages) if (u >= v.debut && u < v.debut + v.duree) Object.assign(e, v.expr);
+        this.h.foule.emotions.set(hid, e);
       }
     }
   }
@@ -771,7 +793,7 @@ export class Rencontre {
   // ——— Réactions (D1, E1) ———
 
   /** Joue une suite de gestes chez un humain affiché (x ou z NaN : il reste où il est). */
-  private jouer(id: number, etapes: Etape[], emotion: Record<string, number>): void {
+  private jouer(id: number, etapes: Etape[], emotion: Record<string, number>, visages?: VisageTenu[]): void {
     const c = this.corps(id);
     if (!c) return;
     let x = c.x;
@@ -780,7 +802,7 @@ export class Rencontre {
       if (Number.isNaN(e.x)) [e.x, e.z] = [x, z];
       [x, z] = [e.x, e.z];
     }
-    this.jeux.set(id, { etapes, debut: performance.now() / 1000, emotion });
+    this.jeux.set(id, { etapes, debut: performance.now() / 1000, emotion, visages });
     this.h.foule.emotions.set(id, emotion);
   }
 
@@ -800,6 +822,7 @@ export class Rencontre {
   private reagir(d: Dialogue, r: Reaction, premiere: boolean): void {
     const c = this.corps(d.humain);
     if (!c) return;
+    if (!this.departs.has(d.humain)) this.departs.set(d.humain, [c.x, c.z]);
     const age = c.s.age;
     const h = (n: number) => unite(hacher(d.humain, d.id, n));
     const reve = d.mode === "Reve";
@@ -865,42 +888,170 @@ export class Rencontre {
     // Le geste qu'il dit faire en répondant passe avant celui que l'on devine de son caractère (« Je me mets à genou » : il
     // s'agenouille). Fuir et se détourner restent ce que les règles ont décidé.
     if (r.geste && (r.fin === "Aucune" || r.fin === "Joueur")) {
-      const dit = this.gesteDit(c, r.geste);
+      const dit = this.gestesDits(c, r);
       if (dit) {
         const debut = etapes.length > 1 && etapes[0].duree < 1 ? [etapes[0]] : [];
-        etapes.splice(0, etapes.length, ...debut, ...dit);
+        if (dit.etapes.length > 0) etapes.splice(0, etapes.length, ...debut, ...dit.etapes);
+        this.jouer(d.humain, etapes, visage, dit.visages.map((v) => ({ ...v, debut: v.debut + debut.reduce((x, e) => x + e.duree, 0) })));
+        if (premiere && r.temoins.length > 0) this.temoins(c, r.temoins);
+        return;
       }
     }
     this.jouer(d.humain, etapes, visage);
     if (premiere && r.temoins.length > 0) this.temoins(c, r.temoins);
   }
 
-  /** Les étapes du geste qu'il dit faire, ou null s'il est inconnu. */
-  private gesteDit(c: Corps, geste: string): Etape[] | null {
-    const tenir = (g: GesteCombat, x = NaN, z = NaN): Etape => ({ geste: g, duree: Infinity, x, z, court: false });
-    const puis = (g: GesteCombat, duree: number): Etape[] => [{ geste: g, duree, x: NaN, z: NaN, court: false }, tenir("fixer")];
-    switch (geste) {
-      case "Genoux":
-        return [tenir("genoux")];
-      case "Prosterne":
-        return [tenir("prosterne")];
-      case "Tendre":
-        return [tenir("tendre")];
-      case "Debout":
-        return [tenir("fixer")];
-      case "Couvrir":
-        return puis("couvrir", 3);
-      case "Hausser":
-        return puis("hausser", 1.6);
-      case "Refuser":
-        return puis("refuser", 3);
-      case "Reculer": {
-        const [x, z] = this.recul(c, 1.2 + 0.6 * unite(hacher(c.s.id, 271)));
-        return [{ geste: null, duree: 1.6, x, z, court: false, dos: false }, tenir("fixer", x, z)];
+  /**
+   * Les gestes qu'il dit faire en répondant (0.45.19), à la suite : les étapes du corps et les visages tenus (yeux fermés…), ou
+   * null s'il n'en dit aucun de connu. Une posture ne dure pas sans fin : il la tient d'autant plus longtemps qu'il est
+   * consciencieux et croyant, moins s'il a peur ; l'enfant bien moins (vers 3 ans, la plupart des enfants regardent en moins d'une
+   * minute quand on leur demande de ne pas le faire : Lewis, Stanger et Sullivan, 1989). Bras levés : l'épaule se lasse en une
+   * ou deux minutes (Rohmert, 1960), plus vite chez le vieux. Puis il revient debout face à elle.
+   */
+  private gestesDits(c: Corps, r: Reaction): { etapes: Etape[]; visages: VisageTenu[] } | null {
+    const liste = (r.geste ?? "").split(",").map((x) => x.trim()).filter((x) => x.length > 0);
+    if (liste.length === 0) return null;
+    const s = c.s;
+    const vieux = Math.max(0, Math.min(1, (s.age - 55) / 30));
+    const h = (n: number) => unite(hacher(s.id, n, Math.floor(performance.now() / 1000)));
+    const tenue = (base: number) => {
+      const age = Math.max(0.15, Math.min(1, (s.age - 3) / 12));
+      return base * (0.5 + (r.conscience ?? 0.5)) * (0.7 + 0.6 * r.transcendance) * age * (1 - 0.4 * r.peur) * (0.8 + 0.4 * h(1));
+    };
+    // Vitesses de marche et de course (m/s) : 1,3 à 1,4 pour un adulte, moins chez le vieux et le petit ; course 3 à 5.
+    const pas = (court: boolean) => (court ? 3.2 + 1.5 * (1 - vieux) : 1.35 - 0.4 * vieux) * (s.age < 8 ? 0.7 : 1);
+    const presence = this.presence.force > 0 || (this.dialogue ?? this.fenetre)?.mode === "Apparition" ? this.presence.centre : this.h.camera.position;
+    const etapes: Etape[] = [];
+    const visages: VisageTenu[] = [];
+    let [x, z] = [c.x, c.z];
+    let t = 0;
+    const tenir = (g: GesteCombat | null, duree = Infinity, plus: Partial<Etape> = {}) => {
+      etapes.push({ geste: g, duree, x, z, court: false, ...plus });
+      t += Number.isFinite(duree) ? duree : 0;
+    };
+    const aller = (vx: number, vz: number, court: boolean, dos = false) => {
+      const d = Math.hypot(vx - x, vz - z);
+      if (d < 0.2) return;
+      const duree = Math.max(0.6, d / pas(court));
+      etapes.push({ geste: null, duree, x: vx, z: vz, court, dos, depuis: [x, z] });
+      [x, z] = [vx, vz];
+      t += duree;
+    };
+    // Point sur la ligne qui va de la présence à lui, à `d` m de la présence (déviée de `a` radians).
+    const autour = (d: number, a = 0): [number, number] => {
+      const ang = Math.atan2(x - presence.x, z - presence.z) + a;
+      return [presence.x + Math.sin(ang) * d, presence.z + Math.cos(ang) * d];
+    };
+    const visage = (expr: Record<string, number>, duree: number) => visages.push({ debut: t, duree, expr });
+    const POSTURE: Record<string, [GesteCombat, number]> = {
+      CacherYeux: ["cacherYeux", 30], Couvrir: ["couvrir", 20], RegarderCiel: ["ciel", 15], RegarderSol: ["sol", 25],
+      Asseoir: ["sAsseoir", 150], CoucherDos: ["coucheDos", 150], CoucherVentre: ["coucheVentre", 120], Recroqueviller: ["recroqueville", 90],
+      Genoux: ["genoux", 240], Prosterne: ["prosterne", 180], LeverBras: ["leverBras", 60 * (1 - 0.5 * vieux)], Tendre: ["tendre", 12],
+      Montrer: ["montrer", 6],
+    };
+    for (const g of liste) {
+      const posture = POSTURE[g];
+      if (posture) {
+        tenir(posture[0], tenue(posture[1]));
+        continue;
       }
-      default:
-        return null;
+      switch (g) {
+        case "FermerYeux":
+          visage({ cligne: 1 }, tenue(45));
+          break;
+        case "OuvrirYeux":
+          visage({ cligne: 0 }, 1);
+          break;
+        case "Sourire":
+          visage({ joie: 0.9, triste: 0, colere: 0, peur: 0 }, 6 + 6 * r.extraversion);
+          break;
+        case "Pleurer":
+          visage({ triste: 1, joie: 0, cligne: 0.4 }, tenue(20));
+          tenir("pleurer", tenue(20));
+          break;
+        case "Crier":
+          visage({ bouche: 1, colere: 0.5, joie: 0 }, 2.5);
+          tenir("crier", 2.5);
+          break;
+        case "Debout":
+          tenir("fixer", 1);
+          break;
+        case "Sauter":
+          tenir("sauter", (2 + Math.round(3 * r.extraversion)) * (0.75 + 0.25 * vieux));
+          break;
+        case "Danser":
+          tenir("danser", (8 + 20 * r.extraversion) * (1 - 0.5 * vieux), { tourne: 0.35 * (h(2) < 0.5 ? 1 : -1) });
+          break;
+        case "TournerSurSoi":
+          tenir("fixer", 2.6 + 1.2 * vieux, { tourne: (Math.PI * 2) / (2.6 + 1.2 * vieux) });
+          break;
+        case "FrapperSol":
+          tenir("frapperSol", 2.5);
+          break;
+        case "TournerDos":
+          tenir("fixer", tenue(20), { dos: true });
+          break;
+        case "Hausser":
+          tenir("hausser", 1.6);
+          break;
+        case "Refuser":
+          tenir("refuser", 3);
+          break;
+        case "Reculer": {
+          const [vx, vz] = autour(Math.hypot(x - presence.x, z - presence.z) + 1.2 + 0.6 * h(3));
+          aller(vx, vz, false);
+          break;
+        }
+        case "MarcherVers":
+        case "CourirVers": {
+          const [vx, vz] = autour(0.9);
+          aller(vx, vz, g === "CourirVers");
+          break;
+        }
+        case "Eloigner":
+        case "Fuir": {
+          const loin = g === "Fuir" ? 20 + 15 * h(4) : 8 + 6 * h(4);
+          const [vx, vz] = autour(Math.hypot(x - presence.x, z - presence.z) + loin, (h(5) - 0.5) * 0.6);
+          aller(vx, vz, g === "Fuir", true);
+          break;
+        }
+        case "TournerAutour": {
+          const rayon = Math.max(1.5, Math.min(6, Math.hypot(x - presence.x, z - presence.z)));
+          const sens = h(6) < 0.5 ? 1 : -1;
+          for (let k = 1; k <= 8; k++) {
+            const [vx, vz] = autour(rayon, (sens * Math.PI) / 4);
+            aller(vx, vz, false);
+          }
+          break;
+        }
+        case "Rejoindre": {
+          // Le plus proche des autres (sa mère d'abord pour un enfant), à moins de 40 m.
+          let meilleur: Corps | null = s.age < 10 && s.mere ? this.corps(s.mere) : null;
+          if (!meilleur) {
+            let dmin = 40;
+            for (const o of this.h.foule.liste) {
+              if (o === c || Number.isNaN(o.x)) continue;
+              const d = Math.hypot(o.x - x, o.z - z);
+              if (d < dmin) [dmin, meilleur] = [d, o];
+            }
+          }
+          if (meilleur) {
+            const a = Math.atan2(x - meilleur.x, z - meilleur.z);
+            aller(meilleur.x + Math.sin(a) * 0.8, meilleur.z + Math.cos(a) * 0.8, false);
+          }
+          break;
+        }
+        case "Revenir": {
+          const depart = this.departs.get(s.id);
+          if (depart) aller(depart[0], depart[1], false);
+          break;
+        }
+      }
     }
+    // Puis il reste debout, face à elle, là où il est arrivé. Un visage seul (yeux fermés, sourire) ne change pas ce que fait son corps.
+    if (etapes.length > 0 && Number.isFinite(etapes[etapes.length - 1].duree)) tenir("fixer");
+    if (etapes.length === 0 && visages.length === 0) return null;
+    return { etapes, visages };
   }
 
   /** Le geste qu'il tient en ce moment (dernière étape d'une réaction en cours), ou null. */
@@ -963,8 +1114,17 @@ export class Rencontre {
       u -= x.duree;
     }
     const p = this.h.foule.entite ?? this.h.camera.position;
-    const enMarche = e.geste === null && Math.hypot(e.x - c.x, e.z - c.z) > 0.3;
-    const cap = e.dos || enMarche ? null : Math.atan2(p.x - c.x, p.z - c.z);
-    return { x: e.x, z: e.z, cap, geste: e.geste, u, arme: 0, court: e.court, mort: false, face: 0, entite: !e.dos };
+    let [x, z] = [e.x, e.z];
+    if (e.depuis && Number.isFinite(e.duree)) {
+      // Il y va à son pas (0.45.19) : le long du chemin, pendant l'étape.
+      const k = Math.min(1, u / e.duree);
+      x = e.depuis[0] + (e.x - e.depuis[0]) * k;
+      z = e.depuis[1] + (e.z - e.depuis[1]) * k;
+    }
+    const enMarche = e.geste === null && Math.hypot(x - c.x, z - c.z) > 0.3;
+    const face = Math.atan2(p.x - c.x, p.z - c.z);
+    // Le dos tourné sur place : face opposée à la présence ; en tournant sur lui-même : son cap avance avec le temps.
+    const cap = enMarche ? null : e.tourne ? face + e.tourne * u : e.dos ? (e.depuis ? null : face + Math.PI) : face;
+    return { x, z, cap, geste: e.geste, u, arme: 0, court: e.court, mort: false, face: 0, entite: !e.dos };
   }
 }
