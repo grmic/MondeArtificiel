@@ -9,7 +9,7 @@ import { hacher, unite } from "./bruit";
 import type { GesteCombat, Role } from "./combat";
 import type { Corps, Foule } from "./foule";
 import { BOUTON } from "./manette";
-import { Nappe, Voix, voixEntite, voixHumain, type Voie } from "./sons";
+import { Nappe, Voix, voixEntite, voixHumain, type GenreVoix, type Voie } from "./sons";
 
 /**
  * Face à face avec l'Entité (0.45.11, propositions A1 à F2 validées par zem le 17/11).
@@ -121,6 +121,17 @@ function lire(cle: string): boolean {
     return localStorage.getItem(cle) === "1";
   } catch {
     return false;
+  }
+}
+
+const CLE_GENRE = "monde.rencontre.voixEntite";
+
+/** La voix choisie pour l'Entité ; d'homme tant que rien n'a été choisi (la voix des versions d'avant). */
+function lireGenre(): GenreVoix {
+  try {
+    return localStorage.getItem(CLE_GENRE) === "femme" ? "femme" : "homme";
+  } catch {
+    return "homme";
   }
 }
 
@@ -285,6 +296,8 @@ export class Rencontre {
   private readonly caseVoix = el("input");
   /** 0.45.14 (A1) : entendre les humains dire leurs mots, chacun avec sa voix. */
   private readonly caseVoixHumains = el("input");
+  /** 0.45.16 : voix d'homme ou de femme pour l'Entité. */
+  private readonly genreEntite = el("select");
   private readonly voix = new Voix();
   private readonly nappe = new Nappe();
   /** Humain à qui l'on peut s'adresser (0 : personne à portée). */
@@ -356,6 +369,19 @@ export class Rencontre {
     options.append(caseLabel(this.casePensees, "monde.rencontre.pensees", t("rencontre.pensees"), t("rencontre.penseesAide")));
     if ("speechSynthesis" in window) {
       options.append(caseLabel(this.caseVoix, "monde.rencontre.voix", t("rencontre.voix"), t("rencontre.voixAide")));
+      for (const g of ["homme", "femme"] as const) this.genreEntite.append(new Option(t(`rencontre.voixEntite.${g}`), g));
+      this.genreEntite.value = lireGenre();
+      this.genreEntite.title = t("rencontre.voixEntiteAide");
+      this.genreEntite.setAttribute("aria-label", t("rencontre.voixEntiteAide"));
+      this.genreEntite.addEventListener("keydown", (e) => e.stopPropagation());
+      this.genreEntite.addEventListener("change", () => {
+        try {
+          localStorage.setItem(CLE_GENRE, this.genreEntite.value);
+        } catch {
+          // Stockage refusé : le choix vaut pour cette session.
+        }
+      });
+      options.append(this.genreEntite);
       options.append(caseLabel(this.caseVoixHumains, "monde.rencontre.voixHumains", t("rencontre.voixHumains"), t("rencontre.voixHumainsAide")));
     }
     this.bande.append(this.sousTitres, form, options, this.etat);
@@ -714,7 +740,7 @@ export class Rencontre {
     if (!this.caseVoix.checked || !("speechSynthesis" in window)) return;
     // Le clic sur « Dire » ou la touche Entrée : le seul moment où le navigateur laisse naître le son.
     this.nappe.eveiller();
-    const p = voixEntite(texte, this.codeVoix());
+    const p = voixEntite(texte, this.codeVoix(), this.genreEntite.value === "femme" ? "femme" : "homme");
     p.debut = () => this.nappe.monter(voie);
     p.fin = () => this.nappe.descendre();
     this.voix.dire(p);

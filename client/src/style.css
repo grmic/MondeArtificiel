@@ -612,6 +612,7 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 .rencontre3d .saisie { display: flex; gap: 6px; }
 .rencontre3d .saisie input { flex: 1; min-width: 0; }
 .rencontre3d .options { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.8rem; opacity: 0.85; }
+.rencontre3d .options select { font: inherit; background: rgba(0,0,0,0.35); color: inherit; border: 1px solid rgba(255,255,255,0.25); border-radius: 4px; padding: 0 4px; }
 .rencontre3d .etat { margin: 0; font-size: 0.8rem; color: #ffb4a0; }
 .rencontre3d .etat:empty { display: none; }
 .invite3d[hidden], .choix3d[hidden], .rencontre3d[hidden] { display: none; }

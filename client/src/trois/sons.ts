@@ -34,10 +34,18 @@ function voixDe(lang: string): SpeechSynthesisVoice[] {
   return speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(code));
 }
 
-/** La voix de l'Entité : grave et lente (une voix d'homme si le système en a une). */
-export function voixEntite(texte: string, lang: string): Parole {
+export type GenreVoix = "homme" | "femme";
+
+/**
+ * La voix de l'Entité, lente et basse : une voix d'homme ou de femme du système, au choix (0.45.16). Sans voix du genre voulu,
+ * la hauteur fait la différence (une voix de femme reste plus haute qu'une voix d'homme baissée, mais plus grave que l'ordinaire).
+ */
+export function voixEntite(texte: string, lang: string, genre: GenreVoix = "homme"): Parole {
   const liste = voixDe(lang);
-  return { texte, lang, voix: liste.find((v) => HOMMES.test(v.name)) ?? liste[0] ?? null, rate: 0.82, pitch: 0.6 };
+  const motif = genre === "femme" ? FEMMES : HOMMES;
+  const trouvee = liste.find((v) => motif.test(v.name));
+  const pitch = genre === "femme" ? (trouvee ? 0.8 : 1.15) : trouvee ? 0.6 : 0.45;
+  return { texte, lang, voix: trouvee ?? liste[0] ?? null, rate: 0.82, pitch };
 }
 
 /**

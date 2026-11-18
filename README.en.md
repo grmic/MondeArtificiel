@@ -328,6 +328,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.45.16** (18 Nov 2026): a list next to the “Voice of the Entity” checkbox lets you choose a male or female system voice for it, always slow and low (male until you choose, as before).
 - **0.45.15** (18 Nov 2026): voices also work for a dialogue opened from the profile window (the two checkboxes “Voice of the Entity” and “Humans' voices” then appear alone at the bottom of the screen); by day, the presence shines up to four times brighter, so its light and shadows show even in broad daylight.
 - **0.45.14** (18 Nov 2026): face to face, continued. **Humans' voices** (checkbox, unchecked by default): what the human says aloud in their own language is spoken by speech synthesis, with a voice of their own drawn from their age, body and character; nothing in a dream. **Sound drone** under the Entity's voice: a deep chord that swells and fades, large-space reverb, fuller when appearing, muffled in a dream (the system voice cannot be given an echo). **Shadows of the presence** in High and Ultra quality: nearby humans, trees and animals cast their shadow away from the light, recomputed only during an apparition.
 - **0.45.13** (18 Nov 2026): the humans' calls (“… is calling you”, at the bottom of the screen) are no longer shown by default; checkbox **“Show at the bottom of the screen the humans calling you”** in the Prayers panel to bring them back (choice kept by the browser).
