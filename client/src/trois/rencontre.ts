@@ -949,10 +949,11 @@ export class Rencontre {
       Genoux: ["genoux", 240], Prosterne: ["prosterne", 180], LeverBras: ["leverBras", 60 * (1 - 0.5 * vieux)], Tendre: ["tendre", 12],
       Montrer: ["montrer", 6],
     };
-    for (const g of liste) {
+    for (const [i, g] of liste.entries()) {
       const posture = POSTURE[g];
       if (posture) {
-        tenir(posture[0], tenue(posture[1]));
+        // Suivie d'un autre geste (« je m'assieds, puis je me lève »), la posture ne dure que le temps de la prendre.
+        tenir(posture[0], i < liste.length - 1 ? Math.min(tenue(posture[1]), 2.5 + 1.5 * h(7)) : tenue(posture[1]));
         continue;
       }
       switch (g) {

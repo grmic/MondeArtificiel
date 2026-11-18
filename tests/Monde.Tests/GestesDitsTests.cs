@@ -18,6 +18,10 @@ public sealed class GestesDitsTests
     [InlineData("I close my eyes and kneel down.", "FermerYeux,Genoux")]
     [InlineData("I won't close my eyes.", "")]
     [InlineData("I raise my arms to you, then I run away.", "LeverBras,Fuir")]
+    [InlineData("Lève-toi et lève tes bras vers le ciel.", "Debout,LeverBras")]
+    [InlineData("Je vais obéir à ta parole et les élever vers le ciel.", "LeverBras")]
+    [InlineData("Je vais obéir et je m'assoirai, puis me lèverai comme tu le souhaites.", "Asseoir,Debout")]
+    [InlineData("Je lève les yeux au ciel.", "RegarderCiel")]
     public void LesGestesDitsDansLaReponse_SontLus(string texte, string attendus)
     {
         Assert.Equal(attendus, string.Join(",", GestesDits.Lire(texte)));

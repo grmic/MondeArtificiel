@@ -501,8 +501,10 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                     // Ce qu'il demande de lui-même à l'Entité devient une prière ; ce qu'il lui promet, il le tiendra ou non (0.42.9).
                     LireEngagements(reponse, out var demandeLui, out var pour, out var promesse);
                     // Ce que son corps fait (0.45.19) : les gestes de sa réponse, sinon ceux que son texte dit faire (« je ferme les yeux »).
-                    var gestes = LireGestes(reponse);
-                    if (gestes.Count == 0) gestes = GestesDits.Lire(se);
+                    // Ce que dit son texte passe d'abord, dans l'ordre où il le dit (0.45.23) : vu le 18/11, « je m'assoirai, puis me
+                    // lèverai » n'avait que « Asseoir » dans les gestes ; les gestes nommés que le texte ne dit pas viennent ensuite.
+                    var dits = GestesDits.Lire(se);
+                    var gestes = dits.Concat(LireGestes(reponse).Where(x => !dits.Contains(x))).Take(GestesMax).ToList();
                     Gesticuler(c.Id, rang, string.Join(",", gestes));
                     if (gestes.Count > 0 && c.Mode != ModeParole.Reve && ReferenceEquals(monde, service.Monde) && h.EstVivant)
                     {
@@ -661,6 +663,21 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
         {
             brut.AppendLine($"---- {L.T("dlg.trace.revelationQuestion")} ----").AppendLine(revelation);
             revelation = "";
+        }
+        // Un geste du corps seul (« lève-toi et lève tes bras vers le ciel ») n'est pas une parole du monde (0.45.23) : vu le 18/11,
+        // le traducteur en avait fait « Assieds-toi · Prie », un contresens. Un geste de tous les jours que le texte ne dit pas en
+        // toutes lettres est écarté quand l'Entité demande un geste du corps ; l'humain répond par ses gestes, s'il le veut.
+        var corps = GestesDits.Lire(texte);
+        if (corps.Count > 0)
+        {
+            var lus = GestesLus.Lire(texte).Select(x => x.ToString()).ToHashSet();
+            var ecartes = valides.Where(v => Enum.TryParse<Parole>(v.Parole, out var pv) && Paroles.Demande(pv) && !lus.Contains(v.Parole)).ToList();
+            foreach (var v in ecartes)
+            {
+                valides.Remove(v);
+                brut.AppendLine($"---- {L.T("dlg.trace.ecarte")} ----").AppendLine(v.Parole);
+            }
+            impossible = "";
         }
         // Les gestes demandés en toutes lettres que la traduction a manqués (0.44.4) : sans eux, « assieds-toi et prie » restait sans effet.
         foreach (var g in GestesLus.Lire(texte))
