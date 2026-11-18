@@ -9,6 +9,7 @@ import { hacher, unite } from "./bruit";
 import type { GesteCombat, Role } from "./combat";
 import type { Corps, Foule } from "./foule";
 import { BOUTON } from "./manette";
+import { Nappe, Voix, voixEntite, voixHumain, type Voie } from "./sons";
 
 /**
  * Face à face avec l'Entité (0.45.11, propositions A1 à F2 validées par zem le 17/11).
@@ -163,6 +164,13 @@ class Presence {
    */
   constructor(scene: THREE.Scene) {
     scene.add(this.lumiere);
+    // Ombres (C1, 0.45.14) : une carte de 512 px par face, jusqu'à 22 m ; recalculée seulement pendant une apparition.
+    this.lumiere.shadow.mapSize.set(512, 512);
+    this.lumiere.shadow.camera.near = 0.2;
+    this.lumiere.shadow.camera.far = 22;
+    this.lumiere.shadow.bias = -0.002;
+    this.lumiere.shadow.normalBias = 0.03;
+    this.lumiere.shadow.autoUpdate = false;
     const quad = () => new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0);
     const additif = () => new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false });
     const c = this.uCentre;
@@ -228,6 +236,15 @@ class Presence {
     this.groupe.visible = false;
   }
 
+  /**
+   * Ombres de la présence (C1) en qualité Haute et Ultra. Changer d'avis recompile les matériaux de la scène : on ne le fait qu'au
+   * changement de qualité, qui les recompile de toute façon.
+   */
+  ombres(actif: boolean): void {
+    if (this.lumiere.castShadow === actif) return;
+    this.lumiere.castShadow = actif;
+  }
+
   /** `exposition` : l'œil adapté à la lumière du moment ; la présence paraît aveuglante la nuit, pâle en plein jour. */
   animer(dt: number, exposition: number, secondes: number): void {
     const vitesse = this.voulue > this.force ? 1 / 1.2 : 1 / 1.6;
@@ -242,6 +259,8 @@ class Presence {
     this.uEclat.value = 1.2 / Math.pow(Math.max(exposition, 0.01), 0.85);
     this.lumiere.position.set(this.centre.x, this.centre.y + 1.3, this.centre.z);
     this.lumiere.intensity = 4 * this.uForce.value * (0.92 + 0.08 * Math.sin(secondes * 1.3));
+    // Les humains bougent : l'ombre est redessinée à chaque image tant que la présence est là.
+    if (this.lumiere.castShadow) this.lumiere.shadow.needsUpdate = true;
   }
 }
 
@@ -261,6 +280,10 @@ export class Rencontre {
   private readonly etat = el("p", "etat");
   private readonly casePensees = el("input");
   private readonly caseVoix = el("input");
+  /** 0.45.14 (A1) : entendre les humains dire leurs mots, chacun avec sa voix. */
+  private readonly caseVoixHumains = el("input");
+  private readonly voix = new Voix();
+  private readonly nappe = new Nappe();
   /** Humain à qui l'on peut s'adresser (0 : personne à portée). */
   private cible = 0;
   private choixBoutons: HTMLButtonElement[] = [];
@@ -316,7 +339,11 @@ export class Rencontre {
       c.addEventListener("change", () => {
         ecrire(cle, c.checked);
         if (c === this.casePensees) this.montrer();
-        if (c === this.caseVoix && !c.checked) window.speechSynthesis?.cancel();
+        if ((c === this.caseVoix || c === this.caseVoixHumains) && !c.checked) {
+          this.voix.taire();
+          this.nappe.couper();
+        }
+        if ((c === this.caseVoix || c === this.caseVoixHumains) && c.checked) this.nappe.eveiller();
       });
       const l = el("label");
       l.title = aide;
@@ -324,11 +351,19 @@ export class Rencontre {
       return l;
     };
     options.append(caseLabel(this.casePensees, "monde.rencontre.pensees", t("rencontre.pensees"), t("rencontre.penseesAide")));
-    if ("speechSynthesis" in window) options.append(caseLabel(this.caseVoix, "monde.rencontre.voix", t("rencontre.voix"), t("rencontre.voixAide")));
+    if ("speechSynthesis" in window) {
+      options.append(caseLabel(this.caseVoix, "monde.rencontre.voix", t("rencontre.voix"), t("rencontre.voixAide")));
+      options.append(caseLabel(this.caseVoixHumains, "monde.rencontre.voixHumains", t("rencontre.voixHumains"), t("rencontre.voixHumainsAide")));
+    }
     this.bande.append(this.sousTitres, form, options, this.etat);
     hote.append(this.invite, this.choix, this.bande);
     connexion.on("Dialogue", this.surDialogue);
     this.h.foule.rencontre = (c) => this.role(c);
+  }
+
+  /** Qualité Haute ou Ultra : la présence fait des ombres (0.45.14). */
+  ombres(actif: boolean): void {
+    this.presence.ombres(actif);
   }
 
   /** Le dialogue est-il mené depuis la bande ? */
@@ -347,7 +382,8 @@ export class Rencontre {
     this.invite.remove();
     this.choix.remove();
     this.bande.remove();
-    window.speechSynthesis?.cancel();
+    this.voix.taire();
+    this.nappe.couper();
   }
 
   /** La vue se ferme : on quitte la bande (le dialogue continue dans la fenêtre si on l'ouvre). */
@@ -356,6 +392,8 @@ export class Rencontre {
     this.bande.hidden = true;
     this.invite.hidden = true;
     this.dialogue = null;
+    this.voix.taire();
+    this.nappe.couper();
     this.presence.voulue = 0;
     this.h.foule.entite = null;
     for (const [id] of this.jeux) this.h.foule.emotions.delete(id);
@@ -524,7 +562,7 @@ export class Rencontre {
     if (!texte || !d) return;
     this.dire.disabled = true;
     try {
-      this.parler(texte);
+      this.parler(texte, d.mode as Voie);
       const r = await connexion.invoke<Dialogue>("DireAuDialogue", d.id, texte);
       this.saisie.value = "";
       this.recevoir(r);
@@ -604,6 +642,7 @@ export class Rencontre {
     for (const r of d.liste.slice(this.jouees)) {
       if (r.reaction) this.reagir(d, r.reaction, r.rang === 1);
       if (r.mots) echange.parleJusqua = performance.now() + Math.min(9000, 900 + r.mots.length * 70);
+      this.entendre(d, r);
     }
     this.jouees = d.liste.length;
     if (!d.enCours) this.relacher();
@@ -640,18 +679,40 @@ export class Rencontre {
 
   // ——— Voix de l'Entité (F2) ———
 
-  private parler(texte: string): void {
-    if (!this.caseVoix.checked || !("speechSynthesis" in window)) return;
+  private codeVoix(): string {
     const code = langue();
-    const u = new SpeechSynthesisUtterance(texte);
-    u.lang = code === "en" ? "en-US" : code === "fr" ? "fr-FR" : code;
-    const voix = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith(code));
-    // Une voix grave si le système en a une (les voix d'homme sont souvent nommées ainsi), sinon la première de la langue.
-    u.voice = voix.find((v) => /thomas|daniel|male|homme|grave|nicolas|alex/i.test(v.name)) ?? voix[0] ?? null;
-    u.rate = 0.82;
-    u.pitch = 0.6;
-    speechSynthesis.cancel();
-    speechSynthesis.speak(u);
+    return code === "en" ? "en-US" : code === "fr" ? "fr-FR" : code;
+  }
+
+  /** La voix de l'Entité (F2), enveloppée de sa nappe (B1, 0.45.14) ; elle attend que l'humain ait fini de parler. */
+  private parler(texte: string, voie: Voie): void {
+    if (!this.caseVoix.checked || !("speechSynthesis" in window)) return;
+    // Le clic sur « Dire » ou la touche Entrée : le seul moment où le navigateur laisse naître le son.
+    this.nappe.eveiller();
+    const p = voixEntite(texte, this.codeVoix());
+    p.debut = () => this.nappe.monter(voie);
+    p.fin = () => this.nappe.descendre();
+    this.voix.dire(p);
+  }
+
+  /**
+   * L'humain dit tout haut ses mots, dans sa langue, avec sa voix (A1, 0.45.14) : rien en rêve (il répond en esprit), rien s'il
+   * n'a rien dit tout haut. Ses lèvres bougent le temps qu'il parle vraiment.
+   */
+  private entendre(d: Dialogue, r: Replique): void {
+    if (!this.caseVoixHumains.checked || d.mode === "Reve" || !r.mots.trim()) return;
+    const c = this.corps(d.humain);
+    if (!c) return;
+    // Il attend que l'Entité ait fini : ses lèvres ne bougent qu'une fois qu'il parle.
+    echange.parleJusqua = 0;
+    const p = voixHumain(c.s, r.mots, this.codeVoix(), r.reaction?.emotion ?? "");
+    p.debut = () => {
+      echange.parleJusqua = performance.now() + 60_000;
+    };
+    p.fin = () => {
+      echange.parleJusqua = performance.now();
+    };
+    this.voix.dire(p);
   }
 
   // ——— Réactions (D1, E1) ———

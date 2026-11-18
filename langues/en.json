@@ -6964,7 +6964,9 @@
   "rencontre.pensees": "Read their thoughts",
   "rencontre.penseesAide": "Show in grey what they think without saying it (the Entity knows)",
   "rencontre.voix": "Voice of the Entity",
-  "rencontre.voixAide": "What you type is spoken aloud by the system voice, deep and slow",
+  "rencontre.voixAide": "What you type is spoken aloud by the system voice, deep and slow, wrapped in a sound drone (fuller when you appear, muffled in a dream)",
+  "rencontre.voixHumains": "Humans' voices",
+  "rencontre.voixHumainsAide": "What the human says aloud, in their own language, is spoken by the system voice, a voice of their own (from their age, body and character). Nothing in a dream: they answer in spirit.",
   "rencontre.pense": "They think: {texte}",
   "trois.manette.long": "{b} held",
   "trois.manette.rencontre": "speak to the human in front of you (voice, appear, dream)"

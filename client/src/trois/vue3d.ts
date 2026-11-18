@@ -701,6 +701,7 @@ export class Vue3D {
     this.echelle = 1;
     this.renderer.setPixelRatio(this.pixelsBase);
     this.reglerLumiere(q);
+    this.rencontre?.ombres(q.ombres >= 2048);
     this.terrain.facteur = q.finesse;
     this.nature.portee = q.vegetation;
     // Une ombre d'arbre s'étire loin quand le soleil est bas : on garde une marge au-delà de la dernière cascade.
