@@ -207,30 +207,50 @@ public sealed partial class MondeSimule
             var carte = Carte;
             // Saison des naissances (printemps et été, comme pour les petits que rapportent les chasseurs) : les petits suivent leur mère.
             var saison = (int)(_secondes % Temps.Calendrier.SecondesParAn / (Temps.Calendrier.JoursParSaison * Temps.Calendrier.SecondesParJour));
-            for (var cy = Math.Max(0, y - rayon); cy <= Math.Min(carte.Hauteur - 1, y + rayon); cy++)
+            // 0.45.18 : toutes les espèces de chaque case proche, au nombre que donne l'estimation de la fenêtre Faune (la vue 3D les
+            // répartit dans la case et n'en dessine que les plus proches de la caméra). Un nombre sous 1 se montre avec cette chance,
+            // toujours sur la même case. Les grands nageurs restent ceux d'AjouterFauves.
+            var proche = Math.Min(rayon, RayonSauvagesScene);
+            for (var cy = Math.Max(0, y - proche); cy <= Math.Min(carte.Hauteur - 1, y + proche); cy++)
             {
-                for (var cx = Math.Max(0, x - rayon); cx <= Math.Min(carte.Largeur - 1, x + rayon); cx++)
+                for (var cx = Math.Max(0, x - proche); cx <= Math.Min(carte.Largeur - 1, x + proche); cx++)
                 {
                     var i = cy * carte.Largeur + cx;
-                    var gibier = _ecosysteme.Gibier[i];
-                    if (gibier < 500) continue;
-                    // Une espèce par case, toujours la même (tirée de la case) : quelques bêtes, plus nombreuses où le gibier abonde ;
-                    // celles qui vivent en troupeau se montrent ensemble, les grands chasseurs seuls.
-                    if (Faune.VueSur((Biome)carte.Biomes[i], cx, cy) is not { } b) continue;
-                    // Les espèces qui vivent en troupeau se rassemblent : un troupeau toutes les trois cases environ, qui réunit les bêtes
-                    // des cases voisines (la densité reste celle du gibier).
-                    var hache = (uint)(cx * 2654435761u ^ cy * 40503u) >> 7;
-                    if (b.Hierarchie && hache % 3 != 0) continue;
-                    var groupe = b.Forme == 5 ? 0.25 : b.Hierarchie ? 3 : 0.6;
-                    var adultes = (int)Math.Clamp(Math.Round(gibier / 1500.0 * (b.Poids < 30 ? 2 : 1) * groupe), 1, b.Forme == 5 ? 2 : 14);
-                    var petits = saison <= 1 && b.Forme != 5 ? (int)Math.Round(adultes * 0.5 * Math.Min(1, b.Portee / 2)) : 0;
-                    betes.Add(new BetesScene(-(i + 1), cx, cy, b.Numero, b.Forme, b.Poids, adultes, petits, false, 0, 0));
+                    var k = 0;
+                    foreach (var (b, estime) in SauvagesDeLaCase(i))
+                    {
+                        var rang = k++;
+                        if (b.Eau || rang >= EspecesParCaseScene) continue;
+                        var nombre = NombreMontre(cx, cy, rang, estime);
+                        if (nombre < 1) continue;
+                        // Les petits de l'année, au printemps et en été, font partie du compte.
+                        var partPetits = saison <= 1 && b.Forme != 5 ? 0.5 * Math.Min(1, b.Portee / 2) / (1 + 0.5 * Math.Min(1, b.Portee / 2)) : 0;
+                        var petits = (int)Math.Round(nombre * partPetits);
+                        betes.Add(new BetesScene(-(IdSauvageScene + i * EspecesParCaseScene + rang), cx, cy, b.Numero, b.Forme, b.Poids,
+                            Math.Max(1, nombre - petits), petits, false, 0, 0));
+                    }
                 }
             }
             if ((Configuration?.Generation ?? 0) >= 2) AjouterFauves(betes, x, y, rayon);
             return (huttes, champs, betes);
         }
     }
+
+    /// <summary>
+    /// Bêtes sauvages du flux Camp (0.45.18) : −(10 000 000 + indice de la case × 16 + rang de l'espèce dans la case), sur les cases
+    /// à deux cases au plus de la caméra, et pas plus de 5 000 bêtes par groupe.
+    /// </summary>
+    public const int IdSauvageScene = 10_000_000;
+
+    /// <summary>Bêtes d'une espèce montrées sur une case : la partie entière de l'estimation, plus une avec la chance du reste (tirée de la case).</summary>
+    private static int NombreMontre(int cx, int cy, int rang, double estime)
+    {
+        var tirage = ((uint)((cx + 7 * rang) * 2246822519u ^ cy * 3266489917u) >> 8) / (double)(1 << 24);
+        return (int)Math.Min(MaxSauvagesParGroupeScene, Math.Floor(estime) + (tirage < estime - Math.Floor(estime) ? 1 : 0));
+    }
+    public const int EspecesParCaseScene = 16;
+    public const int RayonSauvagesScene = 2;
+    public const int MaxSauvagesParGroupeScene = 5000;
 
     /// <summary>Premier numéro des bêtes connues dans le flux Camp (0.45.1) : −(2 000 000 + numéro de la bête).</summary>
     public const int IdFauveScene = 2_000_000;

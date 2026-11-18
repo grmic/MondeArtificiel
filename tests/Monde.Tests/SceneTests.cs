@@ -87,19 +87,25 @@ public sealed class SceneTests
     {
         var monde = NouveauMonde();
         monde.AvancerDe(Calendrier.SecondesParJour);
-        var (huttes, champs, betes) = monde.Camp(monde.Carte.Largeur / 2, monde.Carte.Hauteur / 2, 6);
+        // 0.45.18 : les bêtes sauvages viennent des cases à deux cases au plus, au nombre de l'estimation de la fenêtre Faune.
+        var h = monde.InstantaneHumains().Humains.First(x => x.EstVivant);
+        var (huttes, champs, betes) = monde.Camp(h.X, h.Y, 6);
         Assert.NotEmpty(betes);
         Assert.All(betes, b =>
         {
-            Assert.InRange(b.X, monde.Carte.Largeur / 2 - 6, monde.Carte.Largeur / 2 + 6);
+            Assert.InRange(b.X, h.X - MondeSimule.RayonSauvagesScene, h.X + MondeSimule.RayonSauvagesScene);
             Assert.InRange(b.Forme, 0, Faune.NombreDeFormes - 1);
-            Assert.InRange(b.Nombre, 1, 400);
+            Assert.InRange(b.Nombre, 1, MondeSimule.MaxSauvagesParGroupeScene);
             Assert.True(b.Poids > 0);
             // 0.44.0 : l'espèce donnée est bien celle de la forme, et les sauvages n'ont ni gardien ni docilité.
             Assert.Equal(monde.Faune.Get(b.Espece).Forme, b.Forme);
             Assert.False(b.Gardees);
             Assert.Equal(0, b.GardienId);
         });
+        // Sur la case de l'humain, plusieurs espèces et des dizaines de bêtes (et non plus une espèce, quelques bêtes).
+        var ici = betes.Where(b => b.X == h.X && b.Y == h.Y && b.Id <= -MondeSimule.IdSauvageScene).ToList();
+        Assert.True(ici.Count >= 2);
+        Assert.True(ici.Sum(b => b.Nombre) >= 20);
         Assert.All(huttes, h => Assert.InRange(h.Solidite, 0, 1));
         Assert.All(champs, c => Assert.InRange(c.Ares, 0, 10_000));
     }

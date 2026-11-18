@@ -29,23 +29,30 @@ public sealed partial class MondeSimule
     private double[] EstimerSauvages()
     {
         var resultat = new double[Faune.Betes.Count + Faune.Nageurs.Count];
-        var biomes = Carte.Biomes;
-        var gibier = _ecosysteme.Gibier;
-        var predateurs = (Configuration?.Generation ?? 0) >= 2;
-        for (var i = 0; i < gibier.Length; i++)
-        {
-            var especes = Faune.Sur((Biome)biomes[i]);
-            if (predateurs)
-            {
-                foreach (var (b, nombre, _) in _comportement.Carnassiers(i % Carte.Largeur, i / Carte.Largeur))
-                    resultat[Index(b.Numero)] += nombre;
-                especes = [.. especes.Where(b => b.Regime != RegimeBete.Carnivore)];
-            }
-            if (gibier[i] == 0 || especes.Count == 0) continue;
-            var kg = gibier[i] * KgVifParPartDeGibier / especes.Count;
-            foreach (var b in especes) resultat[b.Numero - 1] += kg / Math.Max(1, b.Poids);
-        }
+        for (var i = 0; i < Carte.Biomes.Length; i++)
+            foreach (var (b, nombre) in SauvagesDeLaCase(i)) resultat[Index(b.Numero)] += nombre;
         return resultat;
+    }
+
+    /// <summary>
+    /// Bêtes sauvages estimées d'une case, espèce par espèce (la règle de la fenêtre Faune, reprise par la vue 3D depuis la 0.45.18) :
+    /// le gibier partagé entre les espèces du terrain, en poids vivant ; les carnassiers et le grand nageur comptés d'après les proies
+    /// là où vivent les prédateurs. À appeler sous le verrou.
+    /// </summary>
+    private List<(Bete Bete, double Nombre)> SauvagesDeLaCase(int i)
+    {
+        var liste = new List<(Bete, double)>();
+        var especes = Faune.Sur((Biome)Carte.Biomes[i]);
+        if ((Configuration?.Generation ?? 0) >= 2)
+        {
+            foreach (var (b, nombre, _) in _comportement.Carnassiers(i % Carte.Largeur, i / Carte.Largeur)) liste.Add((b, nombre));
+            especes = [.. especes.Where(b => b.Regime != RegimeBete.Carnivore)];
+        }
+        var gibier = _ecosysteme.Gibier[i];
+        if (gibier == 0 || especes.Count == 0) return liste;
+        var kg = gibier * KgVifParPartDeGibier / especes.Count;
+        foreach (var b in especes) liste.Add((b, kg / Math.Max(1, b.Poids)));
+        return liste;
     }
 
     /// <summary>Place d'une espèce dans les relevés : les bêtes de la faune, puis les grands nageurs.</summary>
@@ -140,11 +147,14 @@ public sealed partial class MondeSimule
                     if (tirage < nombre) Voir(cx, cy, -(IdNageurScene + i));
                     continue;
                 }
-                if (_ecosysteme.Gibier[i] < 500 || Faune.VueSur((Biome)carte.Biomes[i], cx, cy) != b) continue;
-                // Comme dans le flux Camp : un troupeau sur trois cases environ.
-                var hache = (uint)(cx * 2654435761u ^ cy * 40503u) >> 7;
-                if (b.Hierarchie && hache % 3 != 0) continue;
-                Voir(cx, cy, -(i + 1));
+                // Comme dans le flux Camp (0.45.18) : là où l'estimation de la case en montre au moins une.
+                if (Math.Abs(cx - x) + Math.Abs(cy - y) >= dMin || Faune.Sur((Biome)carte.Biomes[i]).All(e => e.Numero != numero)) continue;
+                var rang = 0;
+                foreach (var (e, estime) in SauvagesDeLaCase(i))
+                {
+                    if (e.Numero == numero && NombreMontre(cx, cy, rang, estime) >= 1) Voir(cx, cy, -(IdSauvageScene + i * EspecesParCaseScene + rang));
+                    rang++;
+                }
             }
             return meilleur;
         }

@@ -54,6 +54,8 @@ interface Bete {
 
 interface Groupe {
   id: number;
+  /** Numéro du groupe dans le flux Camp (pour la fiche et « Aller voir ») ; un petit groupe sauvage a son propre `id`. */
+  serveur: number;
   espece: Espece;
   /** Longueur d'un adulte (m). */
   L: number;
@@ -150,6 +152,13 @@ class Rendu {
 /** Distances (m) où l'on passe d'un degré de détail au suivant, pour une bête de 2 m (proportionnelles à la taille). */
 const SEUILS = [45, 220];
 
+/** Bêtes sauvages du flux Camp (MondeSimule.IdSauvageScene), et ce qu'on en montre autour de la caméra (0.45.18). */
+const ID_SAUVAGE = 10_000_000;
+const PORTEE_SAUVAGES = 600;
+const PLAFOND_SAUVAGES = 150;
+/** Rayon (m) où erre un petit groupe sauvage autour de sa place. */
+const RAYON_SOUS_GROUPE = 120;
+
 const DEUX_PI = Math.PI * 2;
 
 function angle(a: number): number {
@@ -217,68 +226,117 @@ export class Faune3D {
     return r;
   }
 
-  /** Nouvelles données du serveur (CampDto.Betes) : les groupes gardent leurs bêtes et leur état ; on ajoute ou retire des bêtes. */
+  /**
+   * Nouvelles données du serveur (CampDto.Betes) : les groupes gardent leurs bêtes et leur état ; on ajoute ou retire des bêtes.
+   * 0.45.18 : les bêtes sauvages d'une case arrivent au nombre de l'estimation (des centaines parfois) ; on les répartit en petits
+   * groupes posés dans la case, et l'on ne garde que les plus proches de la caméra, à 600 m au plus, jusqu'au plafond (150 bêtes,
+   * moitié en Qualité Basse) : près de la caméra, on voit autant de bêtes que la fenêtre Faune en compte.
+   */
   recevoir(betes: number[]): void {
     const rel = this.relief;
     const vus = new Set<number>();
-    const maintenant = this.temps;
+    const o = this.origine;
+    const candidats: { cle: number; serveur: number; champs: number[]; x: number; z: number; adultes: number; petits: number; d: number }[] = [];
     for (let k = 0; k + CHAMPS_BETES <= betes.length; k += CHAMPS_BETES) {
-      const [id, x, y, numero, forme, poids, adultes0, petits0, gardees, gardien, docilite, fauve, minutes] = betes.slice(k, k + CHAMPS_BETES);
+      const champs = betes.slice(k, k + CHAMPS_BETES);
+      const [id, x, y, numero, , , adultes0, petits0, gardees] = champs;
       const s = this.especes.get(numero);
       if (!s) continue;
-      vus.add(id);
-      const L = longueur(forme, poids);
-      const chiens = gardees === 1 && forme === 4;
-      // Bêtes gardées : on en montre jusqu'à 30 ; sauvages : ce que donne le serveur (12 au plus).
-      const adultes = Math.max(gardees ? 1 : 1, Math.ceil(Math.min(gardees ? 30 : 12, adultes0) * this.part));
-      const petits = Math.ceil(Math.min(gardees ? 20 : 8, petits0) * this.part);
-      let g = this.groupes.get(id);
-      if (!g) {
-        let cx: number;
-        let cz: number;
-        let enclos: Groupe["enclos"] = null;
-        if (gardees === 1) {
-          const [ex, ez, r] = enclosDe(rel, id, x, y, adultes + petits, L);
-          [cx, cz] = [ex, ez];
-          if (!chiens) enclos = { x: ex, z: ez, r };
-        } else {
-          cx = (x + 0.5) * rel.m + (unite(hacher(x, y, 59)) - 0.5) * rel.m * 0.7;
-          cz = (y + 0.5) * rel.m + (unite(hacher(x, y, 61)) - 0.5) * rel.m * 0.7;
-          // Le grand nageur guette au bord de l'eau : sur la rive la plus proche du milieu de la case.
-          if (forme === 8) [cx, cz] = aPiedSec(rel, cx, cz, 0.05, hacher(x, y, 67));
-        }
-        g = {
-          id, espece: s.e, L, cx, cz, rayon: gardees ? enclos?.r ?? 20 : rel.m * 0.45, gardee: gardees === 1, gardien, docilite: docilite / 1000, chiens,
-          enclos, adultes: 0, petits: 0, betes: [], but: null, butJusqua: 0, alerte: 0, alerteX: 0, alerteZ: 0, vu: maintenant, fauve: 0, attaque: -2,
-        };
-        this.groupes.set(id, g);
+      if (gardees === 1 || id > -ID_SAUVAGE) {
+        vus.add(id);
+        this.prendre(champs, id, null);
+        continue;
       }
-      // 0.45.1 : une bête connue qui vient d'attaquer (le jour même) rôde autour du camp de la case, puis s'éloigne.
-      g.fauve = fauve ?? 0;
-      const attaque = fauve > 0 && minutes >= 0 ? minutes : -1;
-      if (attaque !== g.attaque) {
-        g.attaque = attaque;
-        if (attaque >= 0 && attaque < 180) {
-          const [ax, az] = rel.camp(x, y);
-          const a = unite(hacher(id, 71)) * DEUX_PI;
-          const r = attaque < 30 ? 18 : 18 + attaque * 1.5;
-          [g.cx, g.cz] = [ax + Math.cos(a) * r, az + Math.sin(a) * r];
-          g.rayon = 12 + attaque * 0.5;
-          g.but = null;
-        } else if (fauve > 0) {
-          g.cx = (x + 0.5) * rel.m;
-          g.cz = (y + 0.5) * rel.m;
-          g.rayon = rel.m * 0.45;
-        }
+      // Petits groupes : un troupeau de 6 à 20 bêtes pour les espèces qui vivent en troupeau, un grand chasseur seul, sinon 1 à 3.
+      const total = adultes0 + petits0;
+      const taille = (j: number) => s.e.troupeau ? 6 + Math.floor(unite(hacher(id, j, 81)) * 15) : s.e.forme === 5 ? 1 : 1 + Math.floor(unite(hacher(id, j, 83)) * 3);
+      let reste = total;
+      for (let j = 0; reste > 0; j++) {
+        const n = Math.min(reste, taille(j));
+        reste -= n;
+        // Le premier groupe reste au milieu de la case (là où « Aller voir » mène) ; les autres, n'importe où dans la case.
+        const gx = j === 0 ? (x + 0.5) * rel.m + (unite(hacher(x, y, 59)) - 0.5) * rel.m * 0.7 : (x + unite(hacher(id, j, 85))) * rel.m;
+        const gz = j === 0 ? (y + 0.5) * rel.m + (unite(hacher(x, y, 61)) - 0.5) * rel.m * 0.7 : (y + unite(hacher(id, j, 87))) * rel.m;
+        const d = Math.hypot(gx - o.x, gz - o.z);
+        if (d > PORTEE_SAUVAGES) continue;
+        const petits = Math.round((n * petits0) / Math.max(1, total));
+        candidats.push({ cle: j === 0 ? id : id * 1024 - j, serveur: id, champs, x: gx, z: gz, adultes: Math.max(1, n - petits), petits, d });
       }
-      g.espece = s.e;
-      g.gardien = gardien;
-      g.docilite = docilite / 1000;
-      g.L = L;
-      g.vu = maintenant;
-      this.ajuster(g, adultes, petits);
+    }
+    // Les plus proches d'abord, jusqu'au plafond.
+    candidats.sort((a, b) => a.d - b.d);
+    let montrees = 0;
+    const plafond = Math.round(PLAFOND_SAUVAGES * this.part);
+    for (const c of candidats) {
+      if (montrees + c.adultes + c.petits > plafond) break;
+      montrees += c.adultes + c.petits;
+      vus.add(c.cle);
+      const champs = [...c.champs];
+      champs[6] = c.adultes;
+      champs[7] = c.petits;
+      this.prendre(champs, c.cle, [c.x, c.z], c.serveur);
     }
     for (const id of [...this.groupes.keys()]) if (!vus.has(id)) this.groupes.delete(id);
+  }
+
+  /** Crée ou met à jour un groupe d'après ses nombres du flux Camp ; `centre` : où le poser (petits groupes sauvages). */
+  private prendre(champs: number[], id: number, centre: [number, number] | null, serveur = id): void {
+    const rel = this.relief;
+    const maintenant = this.temps;
+    const [, x, y, numero, forme, poids, adultes0, petits0, gardees, gardien, docilite, fauve, minutes] = champs;
+    const s = this.especes.get(numero);
+    if (!s) return;
+    const L = longueur(forme, poids);
+    const chiens = gardees === 1 && forme === 4;
+    // Bêtes gardées : on en montre jusqu'à 30 ; bêtes connues : ce que donne le serveur (12 au plus) ; petits groupes sauvages : tout
+    // (le plafond a déjà été appliqué).
+    const adultes = centre ? Math.max(1, adultes0) : Math.max(1, Math.ceil(Math.min(gardees ? 30 : 12, adultes0) * this.part));
+    const petits = centre ? petits0 : Math.ceil(Math.min(gardees ? 20 : 8, petits0) * this.part);
+    let g = this.groupes.get(id);
+    if (!g) {
+      let cx: number;
+      let cz: number;
+      let enclos: Groupe["enclos"] = null;
+      if (gardees === 1) {
+        const [ex, ez, r] = enclosDe(rel, id, x, y, adultes + petits, L);
+        [cx, cz] = [ex, ez];
+        if (!chiens) enclos = { x: ex, z: ez, r };
+      } else {
+        cx = centre ? centre[0] : (x + 0.5) * rel.m + (unite(hacher(x, y, 59)) - 0.5) * rel.m * 0.7;
+        cz = centre ? centre[1] : (y + 0.5) * rel.m + (unite(hacher(x, y, 61)) - 0.5) * rel.m * 0.7;
+        // Le grand nageur guette au bord de l'eau : sur la rive la plus proche du milieu de la case.
+        if (forme === 8) [cx, cz] = aPiedSec(rel, cx, cz, 0.05, hacher(x, y, 67));
+      }
+      g = {
+        id, espece: s.e, L, cx, cz, rayon: gardees ? enclos?.r ?? 20 : centre ? RAYON_SOUS_GROUPE : rel.m * 0.45, serveur, gardee: gardees === 1, gardien, docilite: docilite / 1000, chiens,
+        enclos, adultes: 0, petits: 0, betes: [], but: null, butJusqua: 0, alerte: 0, alerteX: 0, alerteZ: 0, vu: maintenant, fauve: 0, attaque: -2,
+      };
+      this.groupes.set(id, g);
+    }
+    // 0.45.1 : une bête connue qui vient d'attaquer (le jour même) rôde autour du camp de la case, puis s'éloigne.
+    g.fauve = fauve ?? 0;
+    const attaque = fauve > 0 && minutes >= 0 ? minutes : -1;
+    if (attaque !== g.attaque) {
+      g.attaque = attaque;
+      if (attaque >= 0 && attaque < 180) {
+        const [ax, az] = rel.camp(x, y);
+        const a = unite(hacher(id, 71)) * DEUX_PI;
+        const r = attaque < 30 ? 18 : 18 + attaque * 1.5;
+        [g.cx, g.cz] = [ax + Math.cos(a) * r, az + Math.sin(a) * r];
+        g.rayon = 12 + attaque * 0.5;
+        g.but = null;
+      } else if (fauve > 0) {
+        g.cx = (x + 0.5) * rel.m;
+        g.cz = (y + 0.5) * rel.m;
+        g.rayon = rel.m * 0.45;
+      }
+    }
+    g.espece = s.e;
+    g.gardien = gardien;
+    g.docilite = docilite / 1000;
+    g.L = L;
+    g.vu = maintenant;
+    this.ajuster(g, adultes, petits);
   }
 
   /** Ajoute ou retire des bêtes pour en avoir le nombre voulu (les nouvelles apparaissent près des autres). */
@@ -645,7 +703,7 @@ export class Faune3D {
     const s = g ? this.especes.get(g.espece.numero) : null;
     if (!g || !b || !s) return null;
     const L = g.L * b.taille;
-    return { centre: new THREE.Vector3(b.x, b.y + s.gab.dos * L * (1 - 0.5 * b.couche), b.z), cap: b.cap, longueur: L, groupe: g.id, espece: g.espece.numero, enMarche: b.v > 0.1 };
+    return { centre: new THREE.Vector3(b.x, b.y + s.gab.dos * L * (1 - 0.5 * b.couche), b.z), cap: b.cap, longueur: L, groupe: g.serveur, espece: g.espece.numero, enMarche: b.v > 0.1 };
   }
 
   /** Nombre de bêtes montrées à la dernière image (compteur, touche I). */
