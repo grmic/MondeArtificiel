@@ -382,6 +382,15 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
                         messages.Add(("user", L.T("llm.d.corriger", ("erreurs", faute))));
                         continue;
                     }
+                    // Une autre écriture que celle de la partie (0.45.20) : vu le 18/11, gemma-4-e4b partait en japonais au milieu de la
+                    // réponse. On redemande une fois, en rappelant la langue.
+                    if (AutreEcriture(se + " " + pe) && essai == 0)
+                    {
+                        erreur = L.T("dlg.erreur.autreEcriture", ("langue", L.Courante.Nom));
+                        messages.Add(("assistant", ClientLlm.Couper(reponse, 400)));
+                        messages.Add(("user", erreur));
+                        continue;
+                    }
                     // En rêve, il répond en esprit : pas de mots dits tout haut (0.42.8).
                     if (c.Mode == ModeParole.Reve) m = "";
                     // Il parle sa langue : seulement ses mots, des noms qu'il connaît, des gestes et des cris (0.36.5).
@@ -1128,6 +1137,10 @@ public sealed class Dialogues(ServiceMonde service, ClientLlm client, EntiteLlm 
     }
 
     /// <summary>Ses mots sans les gestes et cris décrits entre astérisques.</summary>
+    /// <summary>Le texte contient-il une écriture chinoise, japonaise ou coréenne (que ni le français ni l'anglais n'emploient) ?</summary>
+    public static bool AutreEcriture(string texte) =>
+        texte.Any(ch => ch is >= '\u3040' and <= '\u30FF' or >= '\u3400' and <= '\u9FFF' or >= '\uAC00' and <= '\uD7AF' or >= '\uFF00' and <= '\uFFEF');
+
     private static string SansGestes(string mots) => System.Text.RegularExpressions.Regex.Replace(mots, @"\*[^*]*\*", " ");
 
     /// <summary>Les mots qu'il a dits hors de sa langue (ni ses mots, ni des noms connus, hors gestes entre astérisques).</summary>

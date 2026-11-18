@@ -209,9 +209,8 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
             {
                 corps["temperature"] = reprise ? TemperatureReprise : Temperature;
                 corps["max_tokens"] = c.EstCloud ? ReponseMaxCloud : ReponseMax;
-                // LM Studio et llama.cpp en local : une légère pénalité de répétition dès le premier essai (0.45.19), contre les
-                // boucles d'un petit modèle (« uainumains… » sur 1 600 jetons, vu le 18/11) ; plus forte à la reprise.
-                if (!c.EstCloud && c.Fournisseur is ConnexionLlm.LMStudio or ConnexionLlm.LlamaCpp) corps["repeat_penalty"] = reprise ? 1.15 : 1.08;
+                // Pas de pénalité de répétition au premier essai (retirée en 0.45.20) : sur une consigne de 15 000 jetons en français,
+                // elle punissait les mots mêmes de la langue, et gemma-4-e4b (MLX) partait en japonais au milieu du JSON (vu le 18/11).
                 // Style OpenAI : la pénalité de fréquence (0 à 2) tient le rôle de repeat_penalty.
                 if (reprise) corps["frequency_penalty"] = 0.4;
             }
@@ -335,6 +334,8 @@ public sealed partial class ClientLlm(HttpClient http, HttpClient cloud, ClesLlm
             {
                 _sansSchema[CleSchema(c, corps["response_format"]?["json_schema"]?["schema"])] = true;
                 corps.Remove("response_format");
+                // Sans format imposé, un petit modèle peut sortir du JSON (boucles, autre langue) : le dire dans la console du serveur.
+                Console.Error.WriteLine($"[LLM] {c.Modele} refuse le format JSON imposé ({code}) ; réponses demandées sans format : {Couper(texte, 300)}");
                 continue;
             }
             throw new HttpRequestException(L.T("llm.erreur.http", ("code", code), ("texte", Masquer(Couper(texte, 300), cle))));

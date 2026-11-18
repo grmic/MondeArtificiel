@@ -6663,6 +6663,7 @@
   "dlg.humain.esprit": "In a dream, the answer is given in the mind: the Entity hears the intention without any need for words. Leave “mots” empty.",
   "dlg.humain.aVoixHaute": "The human may also speak aloud, in THEIR OWN language, born in this world, not {langue} (stage “{stade}”, {n} known words): in “mots”, write only words from the list “Words of your language” (the form, as is), names of people from the record, and gestures and cries between asterisks (*points at the fire*, *moans*); no other word. Otherwise leave “mots” empty: the Entity understands the answer even without words.",
   "dlg.erreur.motsInconnus2": "These words are not in their language: {liste}. In “mots”, write only forms from the list “Words of your language”, names from the record, and gestures or cries between asterisks (or leave “mots” empty); the answer to the Entity goes in “reponse”, in {langue}.",
+  "dlg.erreur.autreEcriture": "Your answer contains a script other than {langue}. Answer only in {langue}, as JSON, with no commentary.",
   "dlg.erreur.reponseVide": "“reponse” is empty or only repeats the thought: write in {langue} what the human answers the Entity, speaking to it.",
   "dlgc.dansSaLangue": "in their language: “{texte}”",
   "dlgc.penseeTitre": "what {nom} thinks without saying",

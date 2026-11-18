@@ -31,4 +31,11 @@ public sealed class GestesDitsTests
         Assert.Equal(["Sauter", "Danser", "Crier"], Dialogues.LireGestes("""{"gestes":["Sauter","Danser","Crier","Pleurer"]}"""));
         Assert.Empty(Dialogues.LireGestes("pas du JSON"));
     }
+
+    [Fact]
+    public void UneAutreEcriture_EstReperee()
+    {
+        Assert.True(Dialogues.AutreEcriture("Je dois lui dire だが、私は君が指し"));
+        Assert.False(Dialogues.AutreEcriture("Je n'ai pas bien saisi, Entité. « Ça » m'étonne… I see."));
+    }
 }

@@ -6663,6 +6663,7 @@
   "dlg.humain.esprit": "En rêve, il ou elle lui répond en esprit : l'Entité entend son intention sans qu'il faille des mots. Laisse « mots » vide.",
   "dlg.humain.aVoixHaute": "Il ou elle peut aussi parler tout haut, dans SA langue, née dans ce monde, pas le {langue} (stade « {stade} », {n} mots connus) : dans « mots », n'écris que des mots de la liste « Mots de ta langue » (la forme, telle quelle), des noms de personnes de sa fiche, et entre astérisques les gestes et les cris (*montre le feu*, *gémit*) ; aucun autre mot. Sinon, laisse « mots » vide : l'Entité comprend sa réponse même sans mots.",
   "dlg.erreur.motsInconnus2": "Ces mots ne sont pas dans sa langue : {liste}. N'écris dans « mots » que des formes de la liste « Mots de ta langue », des noms de sa fiche, et des gestes ou cris entre astérisques (ou laisse « mots » vide) ; sa réponse à l'Entité va dans « reponse », en {langue}.",
+  "dlg.erreur.autreEcriture": "Ta réponse contient une autre écriture que le {langue}. Réponds seulement en {langue}, en JSON, sans commentaire.",
   "dlg.erreur.reponseVide": "« reponse » est vide ou ne fait que répéter sa pensée : écris en {langue} ce qu'il ou elle répond à l'Entité, en s'adressant à elle.",
   "dlgc.dansSaLangue": "dans sa langue : « {texte} »",
   "dlgc.penseeTitre": "ce qu'{nom} pense sans le dire",
