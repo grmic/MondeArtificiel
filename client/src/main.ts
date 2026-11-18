@@ -25,7 +25,7 @@ import { PanneauTerritoires } from "./territoires";
 import { PanneauParlerMonde } from "./parlermonde";
 import { PanneauRevelations } from "./revelations";
 import { placerSousLaBarre } from "./placement";
-import { nombre, t } from "./langue";
+import { nombre, parOrdreAlphabetique, t } from "./langue";
 import type { Vue3D } from "./trois/vue3d";
 import "./style.css";
 
@@ -525,7 +525,7 @@ async function demarrer(): Promise<void> {
     return undefined;
   };
   definirLiensNoms(idDuNom, (id) => void fiche.ouvrir(id), (id) => nomsParId.get(id) ?? "?");
-  const journal = new PanneauJournal(element("#journal"), idDuNom, () => [...new Set(nomsParId.values())].sort(), (id) => void fiche.ouvrir(id));
+  const journal = new PanneauJournal(element("#journal"), idDuNom, () => parOrdreAlphabetique([...new Set(nomsParId.values())], (n) => n), (id) => void fiche.ouvrir(id));
   // Journal et communautés occupent la même place : ouvrir l'un ferme l'autre.
   element("#boutonJournal").addEventListener("click", () => {
     communautes?.fermer();

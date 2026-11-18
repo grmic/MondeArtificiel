@@ -9,7 +9,7 @@ import { Rayons } from "./rayons";
 import { CSMShadowNode } from "three/addons/csm/CSMShadowNode.js";
 import type { Carte } from "../carte";
 import { connexion } from "../connexion";
-import { nombre, t } from "../langue";
+import { nombre, parOrdreAlphabetique, t } from "../langue";
 import { Bruit, hacher, unite } from "./bruit";
 import { Ciel, type ReglageNuages } from "./ciel";
 import { Camp3D, type CampJson } from "./camp";
@@ -684,7 +684,7 @@ export class Vue3D {
 
   private remplirVivants(): void {
     const liste = this.hud.querySelector("datalist")!;
-    liste.replaceChildren(...this.ctx.vivants().map((v) => Object.assign(document.createElement("option"), { value: v.nom })));
+    liste.replaceChildren(...parOrdreAlphabetique(this.ctx.vivants(), (v) => v.nom).map((v) => Object.assign(document.createElement("option"), { value: v.nom })));
   }
 
   private afficherAide(): void {

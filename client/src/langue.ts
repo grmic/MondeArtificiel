@@ -32,6 +32,15 @@ export const langue = (): string => code;
 /** Locale des nombres et des tris (« fr-FR », « en-GB »…). */
 export const locale = (): string => localeCourante;
 
+/**
+ * Trie des noms par ordre alphabétique de la langue de l'interface (0.45.22) : « Élise » se range avec les E, la casse
+ * ne compte pas et « Ama 2 » passe avant « Ama 10 ». Renvoie une copie.
+ */
+export function parOrdreAlphabetique<T>(liste: readonly T[], nom: (x: T) => string): T[] {
+  const tri = new Intl.Collator(localeCourante, { sensitivity: "base", numeric: true });
+  return [...liste].sort((a, b) => tri.compare(nom(a), nom(b)));
+}
+
 export const languesDisponibles = (): readonly LangueDisponible[] => disponibles;
 
 function lireChoix(): string | null {

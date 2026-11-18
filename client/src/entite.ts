@@ -1,5 +1,5 @@
 import { connexion } from "./connexion";
-import { nombre, t } from "./langue";
+import { nombre, parOrdreAlphabetique, t } from "./langue";
 
 interface Choix {
   cle: string;
@@ -181,7 +181,7 @@ export class Designer {
         o.dataset.nom = t("entite.quelquun");
         options.push(o);
       }
-      for (const h of trouves.filter((x) => !d.humains.includes(x.id))) {
+      for (const h of parOrdreAlphabetique(trouves.filter((x) => !d.humains.includes(x.id)), (x) => x.nom)) {
         const g = h.sexe === "femme" ? "f" : "m";
         const details = [t("entite.sexeAge", { g, age: t("age.ans", { n: h.age }) }), h.communaute, h.seul ? t("entite.seul", { g }) : null,
           d.pres ? t("entite.km", { v: h.distanceKm }) : null, t("entite.karma", { v: signe(h.karma) })].filter((x) => x).join(t("commun.virgule"));

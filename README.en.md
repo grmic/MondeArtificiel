@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.45.18 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.45.22 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -330,6 +330,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.45.22** (18 Nov 2026): lists of human names are in the alphabetical order of the interface language (accents and capitals do not count: “Élise” goes with the E’s): “A human's name” in the journal, “Go and see” in the 3D World and the choice of the Entity’s recipients (“let the world choose” stays first).
 - **0.45.20** (18 Nov 2026): fix for dialogue with a small local model (gemma-4-e4b in LM Studio): no repetition penalty on the first try (it pushed the model into writing Japanese in the middle of its answer); an answer in a script other than the game's language is asked again once; the server console says when a service rejects the imposed JSON format.
 - **0.45.19** (18 Nov 2026): face to face, the human does what they say they do. About thirty actions: close or cover their eyes, look at the sky or the ground, smile, cry out, weep, sit, kneel, prostrate, lie on their back or front, curl up, jump, spin round, dance, raise their arms, reach out, point, stamp, turn their back, walk or run toward the presence, walk away, run away, circle it, join someone, come back to their place; up to three in a row. They obey, hesitate or refuse according to their character; if their answer states a gesture the model forgot to name, the text is enough (“I close my eyes”). A posture does not last forever: a child opens their eyes much sooner than a conscientious believing adult. Each gesture goes to the journal with its cause; the simulation does not change.
 - **0.45.18** (18 Nov 2026): **as many animals in 3D as in the Fauna window**: every species on each nearby tile, at the estimated number, in small groups, the closest to the camera (150 at most, 75 on Low); the nearest animal goes from about 400 m to about twenty meters. Simulation unchanged.
