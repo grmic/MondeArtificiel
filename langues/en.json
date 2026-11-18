@@ -670,6 +670,8 @@
   "priere.enAttenteSeulement": "Waiting only",
   "priere.parUnSigne": "Refuse with a sign",
   "priere.parUnSigneAide": "Ticked: the one praying (or the whole community) understands that the unseen said no. Unticked: the refusal stays secret, they wait in vain.",
+  "prieres.appels": "Show at the bottom of the screen the humans calling you",
+  "prieres.appelsAide": "When a lone human prays to you fervently and an LLM can make them speak, “… is calling you” appears at the bottom of the screen with “Answer”. Unchecked by default.",
   "prieres.aide": "What humans ask of the unseen. Only strong prayers go into the journal. No one answers unless the Entity grants; what comes about by itself, the believer takes for an answer. A prayer that is too old is no longer heard.",
   "prieres.titre": "Prayers",
   "priere.resultat": "{nom}: {texte}",

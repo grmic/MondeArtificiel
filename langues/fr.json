@@ -670,6 +670,8 @@
   "priere.enAttenteSeulement": "En attente seulement",
   "priere.parUnSigne": "Refuser par un signe",
   "priere.parUnSigneAide": "Coché : celui qui prie (ou toute la communauté) comprend que l'invisible a dit non. Décoché : le refus reste secret, il attend en vain.",
+  "prieres.appels": "Montrer en bas de l'écran les humains qui t'appellent",
+  "prieres.appelsAide": "Quand un humain seul te prie avec force et qu'un LLM peut le faire parler, « … t'appelle » s'affiche en bas de l'écran avec « Répondre ». Décoché par défaut.",
   "prieres.aide": "Ce que les humains demandent à l'invisible. Seules les prières fortes vont au journal. Personne ne répond, sauf si l'Entité exauce ; ce qui arrive de soi-même, le croyant le prend pour une réponse. Une prière trop ancienne n'est plus entendue.",
   "prieres.titre": "Prières",
   "priere.resultat": "{nom} : {texte}",

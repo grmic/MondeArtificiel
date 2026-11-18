@@ -1,6 +1,7 @@
 import { connexion } from "./connexion";
 import { el } from "./fiche";
 import { t } from "./langue";
+import { appelsAffiches } from "./cultes";
 import { vignette } from "./visage";
 
 interface Replique {
@@ -352,7 +353,7 @@ const APPELS_MAX = 3;
 export class BandeauAppels {
   constructor(private readonly racine: HTMLElement) {
     connexion.on("Appel", (a: Appel | null) => {
-      if (a) this.montrer(a);
+      if (a && appelsAffiches()) this.montrer(a);
     });
   }
 

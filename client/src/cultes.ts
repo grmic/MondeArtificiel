@@ -136,6 +136,20 @@ export function lignePriere(p: Priere, ouvrirHumain: (id: number) => void, exauc
  * Fenêtre « Prières » : ce que les humains demandent à l'invisible, en attente d'abord (les plus fortes en tête), puis
  * ce qu'il est advenu des prières de l'année. Le bouton « Exaucer » fait arriver ce qui était demandé.
  */
+const CLE_APPELS = "monde.prieres.appels";
+let appelsMemoire: boolean | null = null;
+
+/** Montrer en bas de l'écran les prières fortes (« X t'appelle ») ? Non par défaut (0.45.13). */
+export function appelsAffiches(): boolean {
+  if (appelsMemoire !== null) return appelsMemoire;
+  try {
+    appelsMemoire = localStorage.getItem(CLE_APPELS) === "1";
+  } catch {
+    appelsMemoire = false;
+  }
+  return appelsMemoire;
+}
+
 export class PanneauPrieres {
   private readonly attente = el("input");
   /** Refuser par un signe (un rêve, une voix) ; sinon en secret, par défaut. */
@@ -155,6 +169,21 @@ export class PanneauPrieres {
     const etiquetteSigne = el("label", "case-config");
     etiquetteSigne.append(this.signe, " " + t("priere.parUnSigne"));
     etiquetteSigne.title = t("priere.parUnSigneAide");
+    // 0.45.13 : « X t'appelle » en bas de l'écran, seulement si on le demande (rien n'est activé par défaut).
+    const appels = el("input");
+    appels.type = "checkbox";
+    appels.checked = appelsAffiches();
+    appels.addEventListener("change", () => {
+      appelsMemoire = appels.checked;
+      try {
+        localStorage.setItem(CLE_APPELS, appels.checked ? "1" : "0");
+      } catch {
+        // Stockage du navigateur indisponible : le choix vaut pour cette page seulement.
+      }
+    });
+    const etiquetteAppels = el("label", "case-config");
+    etiquetteAppels.append(appels, " " + t("prieres.appels"));
+    etiquetteAppels.title = t("prieres.appelsAide");
     const toutes = el("div", "boutons prieres-toutes");
     const exaucerToutes = el("button", "exaucer", t("prieres.exaucerToutes"));
     exaucerToutes.type = "button";
@@ -168,7 +197,7 @@ export class PanneauPrieres {
     const corps = el("div", "corps");
     corps.append(
       el("p", "discret", t("prieres.aide")),
-      etiquette, etiquetteSigne, toutes, this.resultat, this.liste,
+      etiquette, etiquetteSigne, etiquetteAppels, toutes, this.resultat, this.liste,
     );
     racine.append(tete(t("prieres.titre"), () => this.fermer()), corps);
   }
