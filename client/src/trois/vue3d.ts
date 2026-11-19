@@ -250,6 +250,8 @@ export class Vue3D {
   private suiviBete: { cle: string; nom: string; angle: number; distance: number; hauteur: number; perdu: number } | null = null;
   /** 0.45.1 : une bête qu'on est allé voir, à suivre dès que le flux Camp l'aura apportée (jusqu'à quand, en ms). */
   private beteAttendue: { cle: string; jusqua: number } | null = null;
+  /** 0.45.24 : redemander le flux Camp sans attendre la fin de la pause (après « Aller voir »). */
+  private campVite = false;
   /** Petite fiche de la bête cliquée (0.44.0). */
   private readonly ficheBete: HTMLElement;
   private ficheBeteCle: string | null = null;
@@ -596,6 +598,29 @@ export class Vue3D {
     return (this.renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend ? "WebGPU" : "WebGL 2";
   }
 
+  /** 0.45.24 : la liste des espèces (par ordre alphabétique, avec leur nombre estimé) pour « Aller voir » depuis la 3D. */
+  private especesListeesA = -Infinity;
+  private async remplirEspeces(choix: HTMLSelectElement): Promise<void> {
+    if (performance.now() - this.especesListeesA < 30000) return;
+    this.especesListeesA = performance.now();
+    const p = await connexion.invoke<{ especes: { numero: number; nom: string; sauvages: number; gardeesAdultes: number; gardeesPetits: number; disparue: boolean }[] }>("PopulationFaune").catch(() => null);
+    if (!p) {
+      this.especesListeesA = -Infinity;
+      return;
+    }
+    const vivantes = p.especes.filter((e) => !e.disparue && e.sauvages + e.gardeesAdultes + e.gardeesPetits >= 1);
+    const noms = new Map(vivantes.map((e) => [e.numero, e.nom.charAt(0).toUpperCase() + e.nom.slice(1)]));
+    const triees = parOrdreAlphabetique(vivantes, (e) => noms.get(e.numero)!);
+    const garde = choix.options[0];
+    choix.replaceChildren(garde);
+    for (const e of triees) {
+      const o = document.createElement("option");
+      o.value = String(e.numero);
+      o.textContent = `${noms.get(e.numero)} (${nombre(Math.round(e.sauvages + e.gardeesAdultes + e.gardeesPetits))})`;
+      choix.append(o);
+    }
+  }
+
   private construireHud(): void {
     this.hud.innerHTML = `
       <button type="button" class="reduire" data-action="reduire"></button>
@@ -618,6 +643,7 @@ export class Vue3D {
         <input list="vivants3d" placeholder="${t("trois.allerVoirNom")}" />
         <datalist id="vivants3d"></datalist>
         <button type="submit">${t("trois.allerVoir")}</button>
+        <select data-action="betes" title="${t("trois.betes.aide")}"><option value="">🐾 ${t("trois.betes.choisir")}</option></select>
         <button type="button" data-action="fiche" hidden></button>
         <button type="button" data-action="suivre" hidden></button>
         <button type="button" data-action="portrait" hidden></button>
@@ -658,6 +684,17 @@ export class Vue3D {
       champ.value = "";
       champ.blur();
       this.allerVoir(h.id);
+    });
+    // 0.45.24 : se téléporter vers une espèce, sans passer par la fenêtre Faune.
+    const betes = q<HTMLSelectElement>('[data-action="betes"]');
+    const remplirBetes = () => void this.remplirEspeces(betes);
+    betes.addEventListener("focus", remplirBetes);
+    betes.addEventListener("pointerdown", remplirBetes);
+    betes.addEventListener("change", () => {
+      const numero = Number(betes.value);
+      betes.value = "";
+      betes.blur();
+      if (numero > 0) void this.allerVoirBete(numero, 0, -1, -1);
     });
     q<HTMLButtonElement>('[data-action="fiche"]').addEventListener("click", () => {
       const id = this.ctx.ficheCourante();
@@ -1443,7 +1480,10 @@ export class Vue3D {
     const sol = Math.max(0, this.relief.hauteur(cx, cz));
     this.camera.position.set(cx + 40, sol + 60, cz + 40);
     this.regarderVers(new THREE.Vector3(cx, sol, cz));
-    this.beteAttendue = { cle: `${groupe}:0`, jusqua: performance.now() + 15000 };
+    // 0.45.24 : le groupe visé est montré même au-delà du plafond, et le flux Camp est redemandé tout de suite.
+    this.faune.vise = groupe;
+    this.campVite = true;
+    this.beteAttendue = { cle: `${groupe}:0`, jusqua: performance.now() + 30000 };
     this.ctx.message(t("trois.bete.enRoute"));
   }
 
@@ -1453,7 +1493,8 @@ export class Vue3D {
     if (!a) return;
     if (this.faune.etat(a.cle)) {
       this.beteAttendue = null;
-      void this.suivreBete(a.cle);
+      // Au sol, à une trentaine de mètres du groupe, puis on le suit (0.45.24).
+      void this.suivreBete(a.cle, undefined, 30);
     } else if (performance.now() > a.jusqua) {
       this.beteAttendue = null;
       this.ctx.message(t("trois.bete.pasVue"));
@@ -1471,12 +1512,12 @@ export class Vue3D {
   }
 
   /** Suivre une bête : de trois quarts, à quelques longueurs de corps. */
-  private async suivreBete(cle: string, nom?: string): Promise<void> {
+  private async suivreBete(cle: string, nom?: string, distance = 0): Promise<void> {
     const b = this.etatBete(cle);
     if (!b) return;
     if (this.suivi) this.arreterSuivi();
     const titre = nom ?? this.decor.fiche(cle)?.titre ?? (await connexion.invoke<{ titre: string } | null>("FicheBete", b.groupe, b.espece).catch(() => null))?.titre ?? "";
-    this.suiviBete = { cle, nom: titre, angle: Math.PI * 0.75, distance: Math.max(3, b.longueur * 2.2), hauteur: b.longueur * 0.4, perdu: 0 };
+    this.suiviBete = { cle, nom: titre, angle: Math.PI * 0.75, distance: Math.max(3, b.longueur * 2.2, distance), hauteur: Math.max(b.longueur * 0.4, distance * 0.12), perdu: 0 };
     this.viser = null;
     this.mode = "vol";
     this.afficherAide();
@@ -2026,7 +2067,9 @@ export class Vue3D {
   /** Huttes, champs et bêtes autour de la caméra, toutes les trois secondes (ils changent lentement). */
   private async boucleCamp(): Promise<void> {
     while (this.ouverte) {
-      const p = this.camera.position;
+      this.campVite = false;
+      // Une copie (0.45.24) : la position elle-même change avec la caméra, et l'on n'aurait jamais vu qu'elle a bougé.
+      const p = this.camera.position.clone();
       const cx = Math.floor(p.x / this.relief.m);
       const cz = Math.floor(p.z / this.relief.m);
       const rayon = Math.min(8, Math.max(2, Math.ceil(this.camp.portee / this.relief.m)));
@@ -2046,7 +2089,7 @@ export class Vue3D {
       // Plus souvent quand on se déplace vite : le camp suit la caméra.
       for (let k = 0; k < 30 && this.ouverte; k++) {
         await new Promise((r) => window.setTimeout(r, 100));
-        if (Math.hypot(this.camera.position.x - p.x, this.camera.position.z - p.z) > this.relief.m) break;
+        if (this.campVite || Math.hypot(this.camera.position.x - p.x, this.camera.position.z - p.z) > this.relief.m) break;
       }
     }
   }
@@ -2585,6 +2628,10 @@ export class Vue3D {
       carte: (Vue3D.nomCarte || "?") + (this.logiciel ? ` (${t("trois.carteLogicielle")})` : ""),
       tapis: nombre(Math.round((this.tapis?.mesure().emplacements ?? 0) / 1000)),
       sommets: nombre((this.tapis?.mesure().sommets ?? 0) / 1e6, 1),
+      // 0.45.24 : si aucune bête n'apparaît, on voit tout de suite pourquoi (aucune reçue, trop loin, flux en retard).
+      betes: nombre(this.faune.montrees),
+      proche: (() => { const d = this.faune.plusProche(this.camera.position); return d < 0 ? t("trois.betes.aucune") : `${nombre(Math.round(d))} m`; })(),
+      flux: this.faune.recuA > 0 ? nombre(Math.round((performance.now() - this.faune.recuA) / 1000)) : "?",
     });
   }
 

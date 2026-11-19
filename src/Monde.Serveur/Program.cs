@@ -13,6 +13,9 @@ builder.Services.AddSignalR(options =>
     options.AddFilter<FiltreLangue>();
     // Limite la taille des messages reçus du navigateur (32 Ko, valeur par défaut explicite).
     options.MaximumReceiveMessageSize = 32 * 1024;
+    // 0.45.24 : quelques appels d'un même navigateur à la fois (comme plusieurs navigateurs ouverts) : le flux des bêtes de la vue
+    // 3D n'attend plus derrière un appel lent (dialogue avec le LLM, grosse lecture).
+    options.MaximumParallelInvocationsPerClient = 4;
 });
 
 builder.Services.AddSingleton<FiltreLangue>();

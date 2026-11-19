@@ -9,6 +9,27 @@ export const connexion: HubConnection = new HubConnectionBuilder()
   .build();
 
 /**
+ * 0.45.24 : une demande identique (même méthode, mêmes arguments) déjà partie et sans réponse n'est pas renvoyée : on attend la
+ * même réponse. Les lectures répétées (feux, météo, scène… toutes les quelques secondes) ne s'empilent plus derrière une réponse
+ * lente, et le flux des bêtes de la vue 3D ne reste plus des dizaines de secondes en file.
+ */
+const enCours = new Map<string, Promise<unknown>>();
+const invokeDirect = connexion.invoke.bind(connexion);
+connexion.invoke = (<T>(methode: string, ...args: unknown[]): Promise<T> => {
+  let cle: string;
+  try {
+    cle = methode + "\u0000" + JSON.stringify(args);
+  } catch {
+    return invokeDirect<T>(methode, ...args);
+  }
+  const deja = enCours.get(cle);
+  if (deja) return deja as Promise<T>;
+  const p = invokeDirect<T>(methode, ...args).finally(() => enCours.delete(cle));
+  enCours.set(cle, p);
+  return p;
+}) as typeof connexion.invoke;
+
+/**
  * Démarre la connexion et affiche son état. `aChaqueConnexion` est rappelée
  * après la première connexion et après chaque reconnexion.
  */

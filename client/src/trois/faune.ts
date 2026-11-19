@@ -178,6 +178,10 @@ export class Faune3D {
   /** Portée (m) au-delà de laquelle on ne montre plus de bêtes, et part des bêtes montrées (Qualité Basse : la moitié). */
   portee = 1500;
   part = 1;
+  /** 0.45.24 : le groupe du serveur qu'on est allé voir (« Aller voir cette espèce ») : montré même au-delà du plafond et de la portée. */
+  vise: number | null = null;
+  /** 0.45.24 : quand le flux Camp a donné ses bêtes pour la dernière fois (ms, performance.now), pour la ligne « Bêtes » (touche I). */
+  recuA = 0;
   /** Bêtes prises à la chasse depuis moins d'un jour, à montrer près de leur chasseur arrêté (0.44.1). */
   prises: { x: number; z: number; cap: number; espece: number }[] = [];
   /** Bêtes proches de la caméra à cette image (x, z, rayon des pas), pour le tapis du sol. */
@@ -257,7 +261,8 @@ export class Faune3D {
         // Le premier groupe reste au milieu de la case (là où « Aller voir » mène) ; les autres, n'importe où dans la case.
         const gx = j === 0 ? (x + 0.5) * rel.m + (unite(hacher(x, y, 59)) - 0.5) * rel.m * 0.7 : (x + unite(hacher(id, j, 85))) * rel.m;
         const gz = j === 0 ? (y + 0.5) * rel.m + (unite(hacher(x, y, 61)) - 0.5) * rel.m * 0.7 : (y + unite(hacher(id, j, 87))) * rel.m;
-        const d = Math.hypot(gx - o.x, gz - o.z);
+        // L'espèce visée (0.45.24) passe avant les autres : distance −1, et ni portée ni plafond pour elle.
+        const d = id === this.vise && j === 0 ? -1 : Math.hypot(gx - o.x, gz - o.z);
         if (d > PORTEE_SAUVAGES) continue;
         const petits = Math.round((n * petits0) / Math.max(1, total));
         candidats.push({ cle: j === 0 ? id : id * 1024 - j, serveur: id, champs, x: gx, z: gz, adultes: Math.max(1, n - petits), petits, d });
@@ -268,7 +273,7 @@ export class Faune3D {
     let montrees = 0;
     const plafond = Math.round(PLAFOND_SAUVAGES * this.part);
     for (const c of candidats) {
-      if (montrees + c.adultes + c.petits > plafond) break;
+      if (c.d >= 0 && montrees + c.adultes + c.petits > plafond) break;
       montrees += c.adultes + c.petits;
       vus.add(c.cle);
       const champs = [...c.champs];
@@ -277,6 +282,14 @@ export class Faune3D {
       this.prendre(champs, c.cle, [c.x, c.z], c.serveur);
     }
     for (const id of [...this.groupes.keys()]) if (!vus.has(id)) this.groupes.delete(id);
+    this.recuA = performance.now();
+  }
+
+  /** 0.45.24 : la bête montrée la plus proche de la caméra (m), ou −1 s'il n'y en a aucune (ligne « Bêtes », touche I). */
+  plusProche(camera: THREE.Vector3): number {
+    let d = Infinity;
+    for (const g of this.groupes.values()) for (const b of g.betes) d = Math.min(d, Math.hypot(b.x - camera.x, b.z - camera.z));
+    return Number.isFinite(d) ? d : -1;
   }
 
   /** Crée ou met à jour un groupe d'après ses nombres du flux Camp ; `centre` : où le poser (petits groupes sauvages). */
