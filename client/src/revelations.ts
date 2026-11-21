@@ -43,7 +43,7 @@ export class PanneauRevelations {
       return l;
     };
     const corps = el("div", "corps");
-    corps.append(el("p", "discret", t("rev.c.aide")), this.texte, ligne(t("rev.c.a"), this.a), ligne(t("agir.comment"), this.mode), this.bouton,
+    corps.append(el("p", "discret", t("rev.c.aide")), this.texte, el("p", "discret", t("rev.c.ordre")), ligne(t("rev.c.a"), this.a), ligne(t("agir.comment"), this.mode), this.bouton,
       this.resultat, el("h3", undefined, t("rev.c.historique")), this.liste);
     racine.append(tete, corps);
   }

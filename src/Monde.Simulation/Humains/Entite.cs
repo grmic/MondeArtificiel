@@ -41,7 +41,7 @@ public sealed partial class Comportement
     /// <param name="cause">La parole au Monde dont celle-ci est la part reçue par <paramref name="h"/> (0.37.1) ; 0 : aucune.</param>
     /// <param name="monde">Dite au Monde entier : la phrase s'adresse à tous.</param>
     public Recit Parler(Humain h, Parole parole, ModeParole mode, Humain? cible, int param, IReadOnlyList<Humain> tous, long maintenant,
-        bool ensemble = false, long dialogue = 0, bool? croyait = null, long cause = 0, bool monde = false)
+        bool ensemble = false, long dialogue = 0, bool? croyait = null, long cause = 0, bool monde = false, bool dejaCompris = false)
     {
         _maintenant = maintenant;
         if (!h.EstVivant) return new Recit("ent.r.mort", ("h", h));
@@ -52,8 +52,8 @@ public sealed partial class Comportement
         var reception = dialogue > 0 ? dialogue : Recevoir(h, mode, phrase, tous, maintenant, ensemble, cause: cause);
         if (dialogue == 0) croyait = null;
 
-        // Comprendre.
-        if (alea.Reel() >= Comprehension(h, mode, cible, maintenant))
+        // Comprendre (déjà fait quand l'ordre vient d'une révélation comprise, 0.45.21).
+        if (!dejaCompris && alea.Reel() >= Comprehension(h, mode, cible, maintenant))
         {
             var texte = mode switch
             {
@@ -391,6 +391,9 @@ public sealed partial class Comportement
     /// ce qu'elle rejoint de ses désirs pousse. Le psychopathe ne suit que ce qui le sert. Les consciencieux agissent vite,
     /// les autres hésitent ; celui qui hésite se décidera plus tard, ou pas.
     /// </summary>
+    /// <summary>Jours de marche jusqu'à <paramref name="x"/>, à 20 km par jour environ (0.45.21) : le temps qu'il garde l'ordre en tête.</summary>
+    private static double JoursDeMarche(Humain h, Humain x) => Nature.Echelle.Kilometres(h.X, h.Y, x.X, x.Y) / 20;
+
     private Recit Obeir(Humain h, Parole parole, ModeParole mode, Humain? x, int param, Recit phrase, double foi, long reception,
         IReadOnlyList<Humain> tous, long maintenant)
     {
@@ -462,7 +465,8 @@ public sealed partial class Comportement
         var duree = (30 + 300 * force * (0.5 + 0.5 * p.Conscience)) * (0.7 + 0.6 * alea.Reel());
         var jusqua = Durable(parole)
             ? maintenant + (long)(duree * Calendrier.SecondesParJour)
-            : agirLe + (long)((parole == Parole.Transmets ? 3 + 9 * p.Conscience : Paroles.Demande(parole) ? 1 : 10 + 30 * p.Conscience) * Calendrier.SecondesParJour);
+            : agirLe + (long)((parole == Parole.Transmets ? 3 + 9 * p.Conscience : parole == Parole.VaVers && x is not null ? 1 + JoursDeMarche(h, x)
+                : Paroles.Demande(parole) ? 1 : 10 + 30 * p.Conscience) * Calendrier.SecondesParJour);
         if (parole is Parole.PartsVers or Parole.CatastropheArrive) param = Destination(h, parole, param);
         if (Paroles.Demande(parole)) param = 0;
         var impulsion = new Impulsion(parole, mode, cibleId, param, force, maintenant, jusqua, agirLe, hesite ? Reponse.Differee : reponse, reception);

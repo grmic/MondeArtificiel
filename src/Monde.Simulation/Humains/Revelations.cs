@@ -117,6 +117,27 @@ public sealed partial class Comportement
     /// non (voir <see cref="Comprehension"/> et <see cref="Foi"/>), et garde ce qu'il a compris. Rend combien l'ont comprise, et
     /// combien y croient.
     /// </summary>
+    /// <summary>Tous les humains (morts compris, rangés par Id), le temps de vivre les révélations : pour l'ordre qu'elles contiennent.</summary>
+    private IReadOnlyList<Humain>? _tousRevelations;
+
+    /// <summary>
+    /// L'ordre que contient la révélation <paramref name="r"/> (0.45.21) : ceux qui l'ont comprise et y croient l'entendent aussi
+    /// comme « Allez vers <paramref name="vers"/> », et chacun décide d'y aller, d'hésiter ou de refuser. Rend ce que chacun en a fait.
+    /// </summary>
+    public List<(int Humain, Recit Resultat)> OrdonnerRevele(IReadOnlyList<Humain> ecoutent, Revelation r, Humain vers, IReadOnlyList<Humain> tous,
+        long maintenant)
+    {
+        _maintenant = maintenant;
+        var resultats = new List<(int, Recit)>();
+        foreach (var h in ecoutent)
+        {
+            if (!h.EstVivant || h.Id == vers.Id || h.Revelations.Find(c => c.Id == r.Id) is not { Croit: true }) continue;
+            resultats.Add((h.Id, Parler(h, Parole.VaVers, r.Mode, vers, 0, tous, maintenant, ensemble: true, dialogue: r.EvenementId,
+                croyait: true, monde: true, dejaCompris: true)));
+        }
+        return resultats;
+    }
+
     public (int Compris, int Crus) RevelerA(IReadOnlyList<Humain> ecoutent, Revelation r, long cause, long maintenant)
     {
         _maintenant = maintenant;
@@ -147,6 +168,7 @@ public sealed partial class Comportement
     {
         if (Cultes is not { Revelations.Count: > 0 } cultes) return;
         _maintenant = maintenant;
+        _tousRevelations = humains;
         var vivants = humains.Vivants().Where(h => h.EstVivant).ToList();
         foreach (var h in vivants)
         {
@@ -227,7 +249,12 @@ public sealed partial class Comportement
                                              - 0.25 * (Croyances.Analytique(auditeur) - 0.5), 0.02, 0.97);
         var id = Noter(maintenant, TypeEvenement.Parole, h, auditeur, new Recit(croit ? "rev.raconte" : "rev.raconteDoute", ("h", h), ("x", auditeur),
             ("t", Court(r.Texte))), r.EvenementId);
-        Apprendre(auditeur, r, croit, fidelite, h.Id, id, maintenant);
+        var nouvelle = Apprendre(auditeur, r, croit, fidelite, h.Id, id, maintenant);
+        // L'ordre qu'elle contient (0.45.21), entendu de bouche en bouche : on y obéit moins volontiers qu'à l'Entité elle-même,
+        // d'autant moins qu'on estime peu le conteur et que le récit s'est déformé.
+        if (nouvelle && croit && _tousRevelations is { } tous && OrdresReveles.VaVers(r.Texte, tous, auditeur.CommunauteId) is { } vers
+            && vers.Id != auditeur.Id && alea.Reel() < (0.25 + 0.45 * estime) * fidelite)
+            Parler(auditeur, Parole.VaVers, r.Mode, vers, 0, tous, maintenant, ensemble: true, dialogue: id, croyait: true, dejaCompris: true);
         var k = h.Revelations.FindIndex(x => x.Id == r.Id);
         if (k >= 0) h.Revelations[k] = h.Revelations[k] with { RaconteLe = maintenant };
     }

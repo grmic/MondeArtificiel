@@ -64,7 +64,21 @@ public sealed partial class Comportement
                     0.5 * faim + 0.15 * Math.Min(3, petits) * p.Attachement - 0.05, new Recit(nuit ? "dem.refus.nuit" : "dem.refus.fatigue", ("h", h)), true);
             }
             case Parole.VaVers when x is not null:
-                return (Math.Clamp(occupe + 0.6 * Math.Max(0, -aff) + 0.2 * fatigue, 0, 1), 0.5 * aff, new Recit("ent.refus.estime", ("h", h), ("x", x)), false);
+            {
+                // La mer entre eux : il ne peut pas y aller à pied (0.45.21, « Allez vers… » dit au Monde entier).
+                var masse = carte.Mer.Masse;
+                if (masse[carte.Indice(h.X, h.Y)] != masse[carte.Indice(x.X, x.Y)]) return (1, 0, new Recit("dem.refus.mer", ("h", h), ("x", x)), false);
+                // Loin : un chasseur-cueilleur parcourt d'ordinaire 10 à 15 km par jour en cherchant sa nourriture, 20 à 30 km pour
+                // un vrai voyage (Kelly, The Lifeways of Hunter-Gatherers, 2013) ; l'endurant va plus loin, le petit, le vieux et celui
+                // qui a des petits à nourrir bien moins. Au-delà de quelques jours de marche, il ne part plus.
+                var km = Nature.Echelle.Kilometres(h.X, h.Y, x.X, x.Y);
+                var age = h.EstEnfant(maintenant) ? 0.35 : h.AgeEnAnnees(maintenant) > 60 ? 0.5 : 1;
+                var petits = tous.Count(o => o.EstVivant && (o.MereId == h.Id || o.PereId == h.Id) && o.EstPetitEnfant(maintenant));
+                var portee = (25 + 50 * p.Endurance) * age / (1 + 0.5 * Math.Min(3, petits) * p.Attachement);
+                var loin = Math.Clamp(km / portee, 0, 1.5);
+                return (Math.Clamp(occupe + 0.6 * Math.Max(0, -aff) + 0.2 * fatigue + 0.7 * loin, 0, 1), 0.5 * aff + 0.2 * nouveaute,
+                    loin > 0.6 ? new Recit("dem.refus.loin", ("h", h), ("x", x), ("km", Math.Round(km))) : new Recit("ent.refus.estime", ("h", h), ("x", x)), false);
+            }
             case Parole.VeilleLeFeu:
                 if (Installations.FoyerEn(h.X, h.Y) is null && !h.Sait(Effet.Foyer)) return (1, 0, new Recit("dem.refus.pasDeFeu", ("h", h)), false);
                 return (Math.Clamp(occupe + (Installations.FoyerEn(h.X, h.Y) is null ? 0.5 : 0) + 0.2 * nouveaute, 0, 1), 0.3 * h.Froid / 100 + 0.2 * p.Conscience - 0.05,

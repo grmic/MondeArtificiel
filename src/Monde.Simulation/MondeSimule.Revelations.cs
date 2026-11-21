@@ -69,7 +69,7 @@ public sealed partial class MondeSimule
     /// chacun, en âge de comprendre, la comprend ou non, y croit ou non, et garde ce qu'il a compris. Une voix ou une apparition
     /// réveille les dormeurs. Rend la révélation, combien l'ont entendue, comprise et crue.
     /// </summary>
-    public (Revelation Revelation, int Entendu, int Compris, int Crus) Reveler(int communaute, string texte, ModeParole mode, int auteur = 0)
+    public (Revelation Revelation, int Entendu, int Compris, int Crus, OrdreRevele? Ordre) Reveler(int communaute, string texte, ModeParole mode, int auteur = 0)
     {
         lock (_verrou)
         {
@@ -91,8 +91,23 @@ public sealed partial class MondeSimule
                 : _comportement.NoterAuMonde(_secondes, new Recit("rev.communaute", ("m", m), ("c", _communautes[communaute - 1]), ("t", texteCourt),
                     ("n", ecoutent.Count)), null, 0, communaute);
             var (compris, crus) = _comportement.RevelerA(ecoutent, r, r.EvenementId, _secondes);
+            // Une révélation qui dit d'aller vers quelqu'un (0.45.21) : ceux qui y croient l'entendent aussi comme cet ordre.
+            OrdreRevele? ordre = null;
+            if (OrdresReveles.VaVers(texte, _humains, communaute) is { } vers)
+            {
+                var faits = _comportement.OrdonnerRevele(ecoutent, r, vers, _humains, _secondes);
+                int veulent = 0, hesitent = 0, refusent = 0;
+                foreach (var (_, f) in faits)
+                {
+                    if (f.Cle is "ent.r.incomprise" or "ent.r.incrue" or "ent.r.mort" or "ent.r.bebe") continue;
+                    if (f.Cle is "ent.r.refusee" or "ent.r.refuseePour" or "ent.r.dementie") refusent++;
+                    else if (f.Cle is "ent.r.hesite" or "ent.r.hesitePour") hesitent++;
+                    else veulent++;
+                }
+                ordre = new OrdreRevele(vers.Id, vers.Nom, veulent, hesitent, refusent);
+            }
             VerserJournal();
-            return (r.Copier(), ecoutent.Count, compris, crus);
+            return (r.Copier(), ecoutent.Count, compris, crus, ordre);
         }
     }
 
@@ -144,3 +159,6 @@ public sealed partial class MondeSimule
         }
     }
 }
+
+/// <summary>L'ordre que contenait une révélation (0.45.21) : vers qui, et combien y vont, hésitent ou refusent.</summary>
+public sealed record OrdreRevele(int Vers, string Nom, int Veulent, int Hesitent, int Refusent);

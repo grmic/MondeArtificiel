@@ -55,7 +55,7 @@ public sealed class RevelationsTests
     {
         var monde = new MondeSimule(Carte, MondeSimule.Nouveau(42));
         monde.AvancerDe(Jour);
-        var (r, entendu, compris, crus) = monde.Reveler(0, Origine, ModeParole.Voix);
+        var (r, entendu, compris, crus, _) = monde.Reveler(0, Origine, ModeParole.Voix);
         Assert.Equal(PorteeRevelation.Monde, r.Portee);
         Assert.True(compris > entendu / 2, $"{compris} sur {entendu}");
         Assert.InRange(crus, 1, compris);

@@ -39,7 +39,7 @@ public static class ParolesMonde
                 Parole.Ecoute => "rubriqueParole.designer",
                 Parole.FaitesLaGuerre or Parole.FaitesLaPaix or Parole.AccueillezLes => "rubriqueParole.monde.communaute",
                 _ => "rubriqueParole.monde.commander",
-            }), p == Parole.Ecoute, p switch
+            }), p is Parole.Ecoute or Parole.VaVers, p switch
             {
                 Parole.PlanteDangereuse => "plante",
                 _ when Paroles.Collective(p) => "communaute",
@@ -73,7 +73,7 @@ public static class ParolesMonde
             || !Enum.TryParse<ModeParole>(d.Mode, true, out var mode) || !Enum.IsDefined(mode) || mode == ModeParole.Penchant)
             throw new ArgumentException(L.T("erreur.paroleMonde", ("liste", string.Join(", ", Enum.GetValues<Parole>().Where(Paroles.AuMonde)))));
         var (_, humains) = monde.InstantaneHumains();
-        if (parole == Parole.Ecoute && (d.Cible < 1 || d.Cible > humains.Count || !humains[d.Cible - 1].EstVivant))
+        if (parole is Parole.Ecoute or Parole.VaVers && (d.Cible < 1 || d.Cible > humains.Count || !humains[d.Cible - 1].EstVivant))
             throw new ArgumentException(L.T("erreur.humainVivant"));
         var communautes = monde.Communautes();
         if (Paroles.Collective(parole) && (d.Communaute < 1 || d.Communaute > communautes.Count || !communautes[d.Communaute - 1].Active))

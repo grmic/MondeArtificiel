@@ -78,7 +78,7 @@ public static class RevelationsDto
     {
         if (!Enum.TryParse<ModeParole>(d.Mode, true, out var mode)) throw new ArgumentException(L.T("rev.erreur.mode"));
         if (string.IsNullOrWhiteSpace(d.Texte)) throw new ArgumentException(L.T("rev.erreur.vide"));
-        (Revelation r, int entendu, int compris, int crus) x;
+        (Revelation r, int entendu, int compris, int crus, OrdreRevele? ordre) x;
         try
         {
             x = monde.Reveler(d.Communaute, d.Texte, mode, auteur);
@@ -87,8 +87,10 @@ public static class RevelationsDto
         {
             throw new ArgumentException(L.T(e.Message == "mode" ? "rev.erreur.mode" : "rev.erreur.personne"));
         }
-        var (r, entendu, compris, crus) = x;
-        return new ResultatRevelationDto(Dto(monde, r), entendu, compris, crus,
-            L.T("rev.resultat", ("n", entendu), ("compris", compris), ("crus", crus)));
+        var (r, entendu, compris, crus, ordre) = x;
+        var texte = L.T("rev.resultat", ("n", entendu), ("compris", compris), ("crus", crus));
+        if (ordre is not null)
+            texte += " " + L.T("rev.ordre", ("x", ordre.Nom), ("v", ordre.Veulent), ("hes", ordre.Hesitent), ("r", ordre.Refusent));
+        return new ResultatRevelationDto(Dto(monde, r), entendu, compris, crus, texte);
     }
 }

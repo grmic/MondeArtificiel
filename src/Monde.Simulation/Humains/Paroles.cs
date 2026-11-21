@@ -195,7 +195,7 @@ public static class Paroles
     public static bool AuMonde(Parole p) => p is Parole.JeSuisCelleQuiVousAFaits or Parole.CatastropheArrive or Parole.PlanteDangereuse
         or Parole.NAiePasPeur or Parole.TuNEsPasSeul or Parole.NeTuezPas or Parole.NeTeVengePas or Parole.PartagezTous
         or Parole.NeVaPasALaGuerre or Parole.PrenezSoinDesFaibles or Parole.Ecoute or Parole.FaitesLaGuerre or Parole.FaitesLaPaix
-        or Parole.AccueillezLes;
+        or Parole.AccueillezLes or Parole.VaVers;
 
     /// <summary>Commandements au Monde : une règle qui dure chez ceux qui l'acceptent, transmise aux enfants par ceux qui la racontent.</summary>
     public static bool Commandement(Parole p) => p is Parole.NeTuezPas or Parole.PartagezTous or Parole.PrenezSoinDesFaibles;

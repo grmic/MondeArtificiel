@@ -63,9 +63,11 @@ public sealed partial class MondeSimule
         lock (_verrou)
         {
             if (!Paroles.AuMonde(parole) || mode == ModeParole.Penchant) return null;
-            var cible = parole == Parole.Ecoute && cibleHumain >= 1 && cibleHumain <= _humains.Count && _humains[cibleHumain - 1].EstVivant
+            // « Écoutez… », « Allez vers… » (0.45.21) : une personne désignée, vivante.
+            var designe = parole is Parole.Ecoute or Parole.VaVers;
+            var cible = designe && cibleHumain >= 1 && cibleHumain <= _humains.Count && _humains[cibleHumain - 1].EstVivant
                 ? _humains[cibleHumain - 1] : null;
-            if (parole == Parole.Ecoute && cible is null) return null;
+            if (designe && cible is null) return null;
             var visee = Paroles.Collective(parole) && cibleCommunaute >= 1 && cibleCommunaute <= _communautes.Count && _communautes[cibleCommunaute - 1].Active
                 ? _communautes[cibleCommunaute - 1] : null;
             if (Paroles.Collective(parole) && visee is null) return null;
@@ -134,8 +136,8 @@ public sealed partial class MondeSimule
                     compris++;
                     if (cle == "ent.r.incrue") continue;
                     crus++;
-                    if (cle is "ent.r.refusee" or "ent.r.groupe.refuse" or "ent.r.dementie") refusent++;
-                    else if (cle is "ent.r.hesite" or "ent.r.groupe.hesite") hesitent++;
+                    if (cle is "ent.r.refusee" or "ent.r.refuseePour" or "ent.r.groupe.refuse" or "ent.r.dementie") refusent++;
+                    else if (cle is "ent.r.hesite" or "ent.r.hesitePour" or "ent.r.groupe.hesite") hesitent++;
                     else if (cle is not ("ent.r.monde.seul" or "ent.r.monde.peur" or "ent.r.monde.espoir")) veulent++;
                 }
                 var estVisee = visee is not null && g.Key == visee.Id;
