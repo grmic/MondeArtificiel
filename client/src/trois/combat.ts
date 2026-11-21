@@ -65,6 +65,20 @@ export interface Role {
   entite?: boolean;
 }
 
+/**
+ * Ce que la foule et la vue 3D attendent d'un rejeu (0.45.25) : un assaut de guerre (Rejeu) ou une attaque de bête (RejeuAttaque).
+ */
+export interface RejeuJouable {
+  /** Ligne du journal rejouée (sert aussi à varier l'angle de la caméra de combat). */
+  readonly id: number;
+  readonly duree: number;
+  readonly centre: THREE.Vector3;
+  /** Où sont tombés les morts (pour qu'ils restent là après le rejeu). */
+  readonly gisants: Map<number, { x: number; z: number; cap: number }>;
+  role(id: number, t: number): Role | null;
+  foyer(t: number): { x: number; z: number; large: boolean };
+}
+
 interface Acteur {
   id: number;
   /** Place au départ et place de repli. */
@@ -104,7 +118,7 @@ const ECHANGE = 5;
 const REPLI = 14;
 
 /** Le plan d'un assaut : chaque acteur, chaque duel, et l'instant où tout s'achève. */
-export class Rejeu {
+export class Rejeu implements RejeuJouable {
   readonly acteurs = new Map<number, Acteur>();
   readonly duels: Duel[] = [];
   readonly duree: number;
@@ -176,6 +190,10 @@ export class Rejeu {
     for (const id of assaut.mortsDeBlessures) this.mortsTard.add(id);
     this.finDuels = fin;
     this.duree = fin + 3 + REPLI;
+  }
+
+  get id(): number {
+    return this.assaut.id;
   }
 
   /** Celui qui ouvre la marche : le chef de la troupe. */

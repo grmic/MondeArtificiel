@@ -30,6 +30,7 @@ import { Terrain3D } from "./tuiles";
 import { Eau, maillageMer } from "./eau3d";
 import { Matieres, Vent } from "./matieres";
 import { Rejeu, type AssautJson } from "./combat";
+import { RejeuAttaque, type AttaqueJson } from "./attaque";
 import { BOUTON, Manette, nomBouton, type EtatManette, type Famille } from "./manette";
 import { decrireFacteur } from "../horloge";
 import { Eclairs, Precipitations, meteoGPU } from "./meteo3d";
@@ -79,6 +80,8 @@ function duree(secondes: number): string {
 /** Vitesses du temps proposées à la manette (croix gauche/droite), jusqu'à la vitesse de promenade. */
 const VITESSES_MANETTE = [1, 2, 5, 10, 20, 30, 60];
 
+/** Bête connue dans le flux Camp : son groupe vaut −(ID_FAUVE_SCENE + son numéro) (MondeSimule.IdFauveScene, 0.45.1). */
+const ID_FAUVE_SCENE = 2_000_000;
 /** Vitesses du rejeu d'un assaut (touche V). */
 const VITESSES_REJEU = [0.5, 1, 2, 4];
 
@@ -282,7 +285,10 @@ export class Vue3D {
   private viser: number | null = null;
   /** 0.42.0 : assauts déjà vus ou proposés, celui qu'on peut revoir (R), vitesse du rejeu, caméra de combat, vitesse du monde à rendre. */
   private readonly assautsConnus = new Set<number>();
-  private aRevoir: AssautJson | null = null;
+  private aRevoir: (() => void) | null = null;
+  /** 0.45.25 : attaques de bêtes déjà vues ou proposées, et les humains qu'un rejeu d'attaque fait venir dans la scène. */
+  private readonly attaquesConnues = new Set<number>();
+  private rejeuAvec: number[] = [];
   private vitesseRejeu = 1;
   private cameraCombat = true;
   private facteurApresRejeu: number | null = null;
@@ -1098,7 +1104,7 @@ export class Vue3D {
       return;
     }
     if (e.key === "r" || e.key === "R") {
-      if (this.aRevoir && !this.foule.rejeu) void this.lancerRejeu(this.aRevoir);
+      if (this.aRevoir && !this.foule.rejeu) this.aRevoir();
       else if (!this.foule.rejeu) this.ctx.message(t("trois.combat.rienARevoir"));
       return;
     }
@@ -1110,6 +1116,11 @@ export class Vue3D {
     }
     if (e.key === "l" || e.key === "L") {
       void this.choisirTempsRejeu(!this.tempsCouleRejeu);
+      return;
+    }
+    if (e.key === "b" || e.key === "B") {
+      // 0.45.25 : le monde file jusqu'à la prochaine attaque de bête, puis s'arrête ; on la rejoue si elle a lieu près d'ici.
+      void connexion.invoke("AllerJusqua", { type: "bete" }).then(() => this.ctx.message(t("trois.attaque.attendre"))).catch(() => undefined);
       return;
     }
     if (e.key === "t" || e.key === "T") {
@@ -1200,7 +1211,7 @@ export class Vue3D {
     this.minuteurs = [];
     this.touches.clear();
     // Un assaut se rejouait : le monde reprend sa vitesse.
-    this.foule.rejeu = null;
+    this.finirRejeu();
     if (this.facteurApresRejeu) {
       const f = this.facteurApresRejeu;
       this.facteurApresRejeu = null;
@@ -1946,7 +1957,7 @@ export class Vue3D {
       const rayon = Math.min(40, Math.max(3, Math.ceil(portee / this.relief.m)));
       const cx = Math.floor(p.x / this.relief.m);
       const cz = Math.floor(p.z / this.relief.m);
-      const scene = await connexion.invoke<SceneJson>("Scene", cx, cz, rayon).catch(() => null);
+      const scene = await connexion.invoke<SceneJson>("Scene", cx, cz, rayon, this.rejeuAvec).catch(() => null);
       if (scene && this.ouverte) {
         this.secondesScene = scene.secondes;
         this.recuA = performance.now();
@@ -1972,7 +1983,7 @@ export class Vue3D {
         for (const a of assauts.sort((x, y) => x.secondes - y.secondes)) {
           if (this.assautsConnus.has(a.id)) continue;
           this.assautsConnus.add(a.id);
-          this.aRevoir = a;
+          this.aRevoir = () => void this.lancerRejeu(a);
           if (!this.foule.rejeu && maintenant - a.secondes < 2 * 3600) {
             // Un assaut commence tout près : la manette tremble un peu plus fort.
             this.manette.vibrer(0.5, 0.7, 600);
@@ -1981,8 +1992,61 @@ export class Vue3D {
           else if (!this.foule.rejeu) this.ctx.message(t("trois.combat.aRevoir", { il: duree(maintenant - a.secondes) }));
         }
       }
+      // 0.45.25 : les attaques de bêtes des deux derniers jours autour de la caméra.
+      const attaques = await connexion.invoke<AttaqueJson[]>("AttaquesDeBetes", cx, cz, 1).catch(() => null);
+      if (attaques && this.ouverte) {
+        const maintenant = this.secondesMonde();
+        for (const a of attaques.sort((x, y) => x.secondes - y.secondes)) {
+          if (this.attaquesConnues.has(a.id)) continue;
+          this.attaquesConnues.add(a.id);
+          this.aRevoir = () => void this.rejouerAttaque(a, false);
+          const r = this.preparerAttaque(a, maintenant - a.secondes < 2 * 3600);
+          // Tout seul si elle vient d'avoir lieu à moins de 500 m environ ; sinon on la propose (R).
+          if (!this.foule.rejeu && maintenant - a.secondes < 2 * 3600 && Math.hypot(r.centre.x - p.x, r.centre.z - p.z) < 550) {
+            this.manette.vibrer(0.5, 0.7, 600);
+            void this.lancerRejeuAttaque(r);
+          } else if (!this.foule.rejeu) this.ctx.message(t("trois.attaque.aRevoir", { il: duree(maintenant - a.secondes) }));
+        }
+      }
       for (let k = 0; k < 20 && this.ouverte; k++) await new Promise((r) => window.setTimeout(r, 100));
     }
+  }
+
+  /** 0.45.25 : le plan du rejeu d'une attaque ; `recente` : les humains de la foule sont à leur vraie place. */
+  private preparerAttaque(a: AttaqueJson, recente: boolean): RejeuAttaque {
+    const places = new Map<number, { x: number; z: number }>();
+    for (const h of this.foule.tous()) places.set(h.id, { x: h.pied.x, z: h.pied.z });
+    return new RejeuAttaque(a, this.relief, this.faune.espece(a.espece)?.forme ?? 5, places, recente);
+  }
+
+  /**
+   * 0.45.25 : aller rejouer une attaque de bête (journal, alerte, Prédateurs connus, R) : la caméra se pose près du lieu, puis le
+   * rejeu commence ; la victime et ceux qui sont accourus viennent dans la scène, où qu'ils soient aujourd'hui.
+   */
+  async rejouerAttaque(a: AttaqueJson, recente = false): Promise<void> {
+    if (!this.ouverte) return;
+    // Vue qui vient de s'ouvrir : on attend les espèces (le rejeu dessine la bête d'après la sienne).
+    for (let k = 0; k < 40 && this.ouverte && !this.faune.espece(a.espece); k++) await new Promise((r) => window.setTimeout(r, 100));
+    if (!this.ouverte) return;
+    const r = this.preparerAttaque(a, recente);
+    this.arreterSuiviBete();
+    if (this.suivi) this.basculerSuivi();
+    const c = r.centre;
+    this.camera.position.set(c.x + 18, Math.max(this.relief.hauteur(c.x + 18, c.z + 18), 0) + 6, c.z + 18);
+    this.regarderVers(new THREE.Vector3(c.x, c.y + 1, c.z));
+    this.campVite = true;
+    void this.lancerRejeuAttaque(r);
+  }
+
+  private async lancerRejeuAttaque(r: RejeuAttaque): Promise<void> {
+    this.attaquesConnues.add(r.id);
+    this.rejeuAvec = r.avec;
+    this.faune.masque = r.attaque.fauve > 0 ? -(ID_FAUVE_SCENE + r.attaque.fauve) : null;
+    this.foule.rejeu = r;
+    this.foule.tRejeu = 0;
+    this.cameraCombat = true;
+    this.ctx.message(t(this.tempsCouleRejeu ? "trois.attaque.debutContinu" : "trois.attaque.debut"));
+    if (!this.tempsCouleRejeu) await this.arreterPourRejeu();
   }
 
   /**
@@ -2035,12 +2099,22 @@ export class Vue3D {
     const r = this.foule.rejeu;
     if (!r) return;
     this.foule.tRejeu += dt * this.vitesseRejeu;
+    if (r instanceof RejeuAttaque) this.faune.jouees = r.betesA(this.foule.tRejeu);
     if (this.foule.tRejeu < r.duree) return;
-    this.foule.rejeu = null;
-    this.ctx.message(t(this.tempsCouleRejeu ? "trois.combat.finContinu" : "trois.combat.fin"));
+    this.finirRejeu();
+    const bete = r instanceof RejeuAttaque;
+    this.ctx.message(t(this.tempsCouleRejeu ? (bete ? "trois.attaque.finContinu" : "trois.combat.finContinu") : bete ? "trois.attaque.fin" : "trois.combat.fin"));
     const f = this.facteurApresRejeu;
     this.facteurApresRejeu = null;
     if (f) void connexion.invoke("ChoisirFacteur", f).catch(() => undefined);
+  }
+
+  /** Fin d'un rejeu : plus de bêtes jouées, la scène ne fait plus venir personne. */
+  private finirRejeu(): void {
+    this.foule.rejeu = null;
+    this.faune.jouees = [];
+    this.faune.masque = null;
+    this.rejeuAvec = [];
   }
 
   /**
@@ -2051,7 +2125,7 @@ export class Vue3D {
     const r = this.foule.rejeu;
     if (!r || !this.cameraCombat || this.suivi) return;
     const f = r.foyer(this.foule.tRejeu);
-    const angle = unite(hacher(r.assaut.id, 41)) * Math.PI * 2 + this.foule.tRejeu * 0.01;
+    const angle = unite(hacher(r.id, 41)) * Math.PI * 2 + this.foule.tRejeu * 0.01;
     const loin = f.large ? 24 : 7.5;
     const x = f.x + Math.cos(angle) * loin;
     const z = f.z + Math.sin(angle) * loin;

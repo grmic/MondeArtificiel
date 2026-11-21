@@ -3,7 +3,7 @@ import { hacher, unite } from "./bruit";
 import type { Relief } from "./relief";
 import { etreAvecLesAutres } from "./social";
 import { teindre } from "./corps";
-import type { Rejeu, Role } from "./combat";
+import type { RejeuJouable, Role } from "./combat";
 
 /** Activités, dans l'ordre de l'énumération Activite du serveur (pour les textes « activite.X »). */
 export const ACTIVITES = [
@@ -676,7 +676,7 @@ export class Foule {
   }
 
   /** 0.42.0 : l'assaut rejoué en ce moment et où il en est (s), et où gisent les morts des assauts déjà vus. */
-  rejeu: Rejeu | null = null;
+  rejeu: RejeuJouable | null = null;
   tRejeu = 0;
   readonly gisants = new Map<number, { x: number; z: number; cap: number }>();
 

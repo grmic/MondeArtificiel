@@ -91,7 +91,7 @@ public sealed record PopulationFauneDto(List<PopulationEspeceDto> Especes, strin
         var maintenant = monde.Secondes;
         return new PopulationFauneDto(especes, Convert.ToBase64String(octets), MondeSimule.KgVifParPartDeGibier, troupeaux, FauveDto.Tous(monde),
             [.. attaques.Select(a => new AttaqueCarteDto(a.X, a.Y, (int)((maintenant - a.Le) / Monde.Simulation.Temps.Calendrier.SecondesParJour), a.Espece, a.Mort,
-                a.EvenementId, connus.Exists(f => f.Id == a.FauveId && f.EnVie) ? -(MondeSimule.IdFauveScene + a.FauveId) : 0))]);
+                a.EvenementId, connus.Exists(f => f.Id == a.FauveId && f.EnVie) ? -(MondeSimule.IdFauveScene + a.FauveId) : 0, a.FauveId))]);
     }
 }
 
@@ -127,4 +127,4 @@ public sealed record FauveDto(int Id, int Espece, string Nom, int X, int Y, int 
 }
 
 /// <summary>Une attaque de l'année, pour la carte (0.45.1) : où, depuis combien de jours, l'espèce, mortelle ou non, la ligne du journal.</summary>
-public sealed record AttaqueCarteDto(int X, int Y, int Jours, int Espece, bool Mort, long Evenement, int Groupe);
+public sealed record AttaqueCarteDto(int X, int Y, int Jours, int Espece, bool Mort, long Evenement, int Groupe, int Fauve = 0);

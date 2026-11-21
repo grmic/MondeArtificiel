@@ -121,6 +121,64 @@ public sealed class PredateursTests : IDisposable
         var a = c.AttaquesRecentes[^1];
         Assert.Equal((f.Id, Fauve.Numero, x, y), (a.FauveId, a.Espece, a.X, a.Y));
         Assert.True(a.EvenementId > 0);
+        // 0.45.25 : le déroulé est noté, cohérent avec l'issue ; seule, personne n'est accouru.
+        Assert.True(a.Deroule);
+        Assert.Equal(1, a.VictimeId);
+        Assert.Equal(a.Mort, a.Issue is IssueAttaque.Tuee or IssueAttaque.Emportee);
+        Assert.Empty(a.Aides!);
+        Assert.Equal(1, c.AttaquesLivrees);
+    }
+
+    /// <summary>0.45.25 : le déroulé d'une attaque est gardé dans la base, et la vue 3D peut le demander, victime morte comprise.</summary>
+    [Fact]
+    public void LeDeroule_EstGardeEtRejouable()
+    {
+        var monde = new MondeSimule(Carte, MondeSimule.Nouveau(ConfigurationMonde.Nouvelle(2)));
+        var (x, y) = Plaine();
+        var victime = monde.Etat.Humains!.First(h => h.EstVivant);
+        var loin = monde.Etat.Humains!.Last(h => h.EstVivant && (Math.Abs(h.X - x) > 3 || Math.Abs(h.Y - y) > 3));
+        var attaque = new AttaqueDeBete(33, monde.Etat.Secondes, x, y, 3, 1, victime.Id, false)
+        {
+            Deroule = true, Dort = true, AuCamp = true, Reaction = ReactionAttaque.SeDefend, ArmeVictime = 3, Aides = [loin.Id], ArmesAides = [-1],
+            Griffes = [loin.Id], Issue = IssueAttaque.Repoussee, BeteBlessee = true, TueurId = 0,
+        };
+        var etat = monde.Etat with { AttaquesRecentes = [attaque] };
+        var fichier = Path.Combine(_dossier, "deroule.db");
+        new DepotMonde(fichier).Enregistrer(etat);
+        var relu = Assert.Single(new DepotMonde(fichier).Charger()!.AttaquesRecentes!);
+        Assert.Equal((true, true, ReactionAttaque.SeDefend, IssueAttaque.Repoussee, true, 3), (relu.Deroule, relu.Dort, relu.Reaction, relu.Issue, relu.BeteBlessee, relu.ArmeVictime));
+        Assert.Equal([loin.Id], relu.Aides);
+        Assert.Equal([-1], relu.ArmesAides);
+
+        var avec = new MondeSimule(Carte, etat);
+        Assert.NotNull(avec.AttaqueDeBete(33));
+        Assert.Null(avec.AttaqueDeBete(34));
+        Assert.Single(avec.AttaquesDeBetes(x, y, 1));
+        Assert.Empty(avec.AttaquesDeBetes(x + 10, y + 10, 1));
+        var dto = Monde.Serveur.AttaqueVueDto.De(avec.AttaqueDeBete(33)!);
+        Assert.Equal((1, 3, -1), (dto.Reaction, dto.Issue, dto.ArmesAides[0]));
+        // Celui qui est accouru vient dans la scène quand le rejeu le demande, même loin d'ici.
+        Assert.DoesNotContain(avec.Scene(x, y, 1).Humains, h => h.Id == loin.Id);
+        Assert.Contains(avec.Scene(x, y, 1, [loin.Id]).Humains, h => h.Id == loin.Id);
+        // Une attaque d'avant la 0.45.25 n'a pas de déroulé : la 3D n'en rejoue que l'issue.
+        var ancienne = Monde.Serveur.AttaqueVueDto.De(new AttaqueDeBete(40, 0, x, y, 3, 1, victime.Id, false));
+        Assert.Equal((false, 4), (ancienne.Deroule, ancienne.Issue));
+    }
+
+    /// <summary>0.45.25 : une attaque de bête sur un suivi prévient (sans pause par défaut), et « Aller jusqu'à » sait l'attendre.</summary>
+    [Fact]
+    public void UneAttaqueSurUnSuivi_Previent()
+    {
+        var veille = new Veille();
+        var h = Adulte(1, 5, 5);
+        veille.Definir([1], [], ReglesAlertes.ParDefaut(), [h], []);
+        veille.Examiner(new EvenementJournal(100, TypeEvenement.Nature, 1, 0, new Recit("fauve.attaque", ("h", h), ("bete", "x"), ("connue", ""), ("circ", "")))
+        {
+            Id = 9,
+        }, [h]);
+        var alerte = Assert.Single(veille.Prendre());
+        Assert.Equal((SorteAlerte.AttaqueDeBete, 9L, false), (alerte.Sorte, alerte.EvenementId, alerte.Pause));
+        Assert.Equal(TypeObjectif.ProchaineAttaqueDeBete, Objectif.Evenement(TypeObjectif.ProchaineAttaqueDeBete, 0).Type);
     }
 
     [Fact]

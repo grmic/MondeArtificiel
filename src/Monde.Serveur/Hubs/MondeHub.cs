@@ -92,6 +92,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
                 "mort" => Objectif.Evenement(TypeObjectif.Mort, maintenant),
                 "alerte" => Objectif.Evenement(TypeObjectif.AlerteSuivi, maintenant),
                 "assaut" => Objectif.Evenement(TypeObjectif.ProchainAssaut, maintenant),
+                "bete" => Objectif.Evenement(TypeObjectif.ProchaineAttaqueDeBete, maintenant),
                 _ => throw new HubException(L.T("erreur.objectif")),
             };
             monde.FixerObjectif(objectif);
@@ -936,7 +937,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     public FeuxDto Feux() => FeuxDto.Depuis(service.Monde);
 
     /// <summary>Flux « Scène » de la vue 3D : les vivants à moins de <paramref name="rayon"/> cases de la caméra (0.41.0).</summary>
-    public SceneDto Scene(int x, int y, int rayon) => SceneDto.Depuis(service, x, y, rayon);
+    /// <summary>Humains autour de la caméra ; <paramref name="avec"/> (0.45.25) : ceux qu'un rejeu d'attaque demande, où qu'ils soient.</summary>
+    public SceneDto Scene(int x, int y, int rayon, int[]? avec) => SceneDto.Depuis(service, x, y, rayon, avec);
 
     /// <summary>Huttes, champs et bêtes autour d'une case, pour la vue 3D (0.41.1).</summary>
     public CampDto Camp(int x, int y, int rayon) => CampDto.Depuis(service.Monde, x, y, rayon);
@@ -961,6 +963,13 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
 
     /// <summary>Assauts des deux derniers jours autour de la caméra, pour les rejouer dans la vue 3D (0.42.0).</summary>
     public AssautDto[] Assauts(int x, int y, int rayon) => AssautDto.Depuis(service.Monde, x, y, rayon);
+
+    /// <summary>Attaques de bêtes des deux derniers jours autour de la caméra, pour les rejouer (0.45.25).</summary>
+    public AttaqueVueDto[] AttaquesDeBetes(int x, int y, int rayon) =>
+        [.. service.Monde.AttaquesDeBetes(x, y, Math.Clamp(rayon, 0, SceneDto.RayonMax)).Select(AttaqueVueDto.De)];
+
+    /// <summary>Une attaque de l'année d'après sa ligne du journal, pour la rejouer (0.45.25) ; null si elle n'est plus gardée.</summary>
+    public AttaqueVueDto? AttaqueDeBete(long evenement) => service.Monde.AttaqueDeBete(evenement) is { } a ? AttaqueVueDto.De(a) : null;
 
     /// <summary>Températures du jour sur chaque case, pour la neige de la vue 3D.</summary>
     public TemperaturesDto Temperatures() => TemperaturesDto.Depuis(service.Monde);

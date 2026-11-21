@@ -55,6 +55,8 @@ export interface AttaqueCarte {
   mort: boolean;
   evenement: number;
   groupe: number;
+  /** 0.45.25 : la bête connue qui a attaqué. */
+  fauve?: number;
 }
 
 interface PopulationJson {
@@ -168,6 +170,8 @@ export class PanneauFaune {
   private descendant = true;
   private population: Population | null = null;
   private minuteur?: number;
+  /** 0.45.25 : rejoue en 3D une attaque d'après sa ligne du journal. */
+  rejouer: ((evenement: number) => void) | null = null;
 
   constructor(
     private readonly racine: HTMLElement,
@@ -331,6 +335,14 @@ export class PanneauFaune {
         voir.type = "button";
         voir.addEventListener("click", () => this.allerVoir?.(f.espece, f.groupe, f.x, f.y));
         li.append(voir);
+      }
+      // 0.45.25 : rejouer sa dernière attaque de l'année dans la vue 3D.
+      const derniere = p.attaques.filter((a) => a.fauve === f.id).at(-1);
+      if (derniere && this.rejouer) {
+        const revoir = el("button", "lien voir3d", ` 🎥 ${t("faune.revoirAttaque")}`);
+        revoir.type = "button";
+        revoir.addEventListener("click", () => this.rejouer?.(derniere.evenement));
+        li.append(revoir);
       }
       li.append(el("div", "discret", f.details.join(" ")));
       ul.append(li);

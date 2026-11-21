@@ -27,6 +27,7 @@ import { PanneauRevelations } from "./revelations";
 import { placerSousLaBarre } from "./placement";
 import { nombre, parOrdreAlphabetique, t } from "./langue";
 import type { Vue3D } from "./trois/vue3d";
+import type { AttaqueJson } from "./trois/attaque";
 import "./style.css";
 
 const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
@@ -484,12 +485,24 @@ async function demarrer(): Promise<void> {
     }
     await vue3d?.allerVoirBete(espece, groupe, x, y);
   };
-  voirAttaque.faire = (evenement) => void connexion.invoke<number[] | null>("AttaqueDuJournal", evenement).catch(() => null).then((a) => {
-    if (a) void voirBete3d(a[0], a[1], a[2], a[3]);
-    else infos.textContent = t("evenement.attaqueAncienne");
-  });
+  // 0.45.25 : une attaque de l'année se rejoue dans la vue 3D, là où elle a eu lieu ; plus ancienne, elle n'est plus gardée.
+  const rejouerAttaque3d = async (evenement: number) => {
+    const a = await connexion.invoke<AttaqueJson | null>("AttaqueDeBete", evenement).catch(() => null);
+    if (!a) {
+      infos.textContent = t("evenement.attaqueAncienne");
+      return;
+    }
+    if (!bouton3d.classList.contains("actif") || !vue3d) {
+      bouton3d.click();
+      for (let k = 0; k < 100 && !(bouton3d.classList.contains("actif") && vue3d); k++) await new Promise((r) => window.setTimeout(r, 100));
+    }
+    await vue3d?.rejouerAttaque(a);
+  };
+  voirAttaque.faire = (evenement) => void rejouerAttaque3d(evenement);
+  alertesSuivis.voirAttaque = (evenement) => void rejouerAttaque3d(evenement);
   const faune = new PanneauFaune(element("#faune"), (numero) => void calques.montrerAnimaux(numero),
     (espece, groupe, x, y) => void voirBete3d(espece, groupe, x, y));
+  faune.rejouer = (evenement) => void rejouerAttaque3d(evenement);
   element("#boutonFaune").addEventListener("click", () => {
     remarquables.fermer();
     demographie.fermer();

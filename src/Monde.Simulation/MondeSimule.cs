@@ -806,6 +806,7 @@ public sealed partial class MondeSimule
         var vivantsAvant = objectif?.Type == TypeObjectif.Mort ? _humains.Vivants().Count(h => h.EstVivant) : 0;
         var alertesAvant = _veille.Produites;
         var assautsAvant = _comportement.AssautsLivres;
+        var attaquesAvant = _comportement.AttaquesLivrees;
 
         var pas = 0;
         var evenement = false;
@@ -855,6 +856,7 @@ public sealed partial class MondeSimule
                     TypeObjectif.Mort => _humains.Vivants().Count(h => h.EstVivant) < vivantsAvant + (_humains.Count - nombreAvant),
                     TypeObjectif.AlerteSuivi => _veille.Produites > alertesAvant,
                     TypeObjectif.ProchainAssaut => _comportement.AssautsLivres > assautsAvant,
+                    TypeObjectif.ProchaineAttaqueDeBete => _comportement.AttaquesLivrees > attaquesAvant,
                     _ => false,
                 };
                 if (evenement)

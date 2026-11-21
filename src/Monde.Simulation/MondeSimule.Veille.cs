@@ -79,6 +79,19 @@ public sealed partial class MondeSimule
         troupes.Clear();
     }
 
+    /// <summary>Attaques de bêtes des deux derniers jours autour de (x, y), pour les rejouer dans la vue 3D (0.45.25).</summary>
+    public List<AttaqueDeBete> AttaquesDeBetes(int x, int y, int rayon)
+    {
+        lock (_verrou)
+            return [.. _comportement.AttaquesRecentes.Where(a => _secondes - a.Le <= AssautVu.Duree && Math.Abs(a.X - x) <= rayon && Math.Abs(a.Y - y) <= rayon)];
+    }
+
+    /// <summary>Une attaque de l'année d'après sa ligne du journal (0.45.25), pour la rejouer ; null si elle n'est plus gardée.</summary>
+    public AttaqueDeBete? AttaqueDeBete(long evenement)
+    {
+        lock (_verrou) return _comportement.AttaquesRecentes.Find(a => a.EvenementId == evenement);
+    }
+
     /// <summary>Déroulés des assauts des deux derniers jours autour de (x, y), pour la vue 3D (0.42.0).</summary>
     public List<AssautVu> Assauts(int x, int y, int rayon)
     {

@@ -48,6 +48,9 @@ public enum SorteAlerte : byte
     TroupeEnMarche = 18,
     /// <summary>Une troupe attend l'aube près du camp qu'elle va attaquer (0.42.0) : toutes les guerres.</summary>
     TroupeAuxPortes = 19,
+
+    /// <summary>Une bête attaque un suivi, ou quelqu'un d'une communauté suivie (0.45.25).</summary>
+    AttaqueDeBete = 20,
 }
 
 /// <summary>Une alerte : ce qui est arrivé à un suivi, la ligne du journal qui le dit (0 : aucune) ou un texte à elle.</summary>
@@ -185,6 +188,9 @@ internal sealed class Veille
                 case TypeEvenement.Exclusion when cle.StartsWith("j.exil.", StringComparison.Ordinal) && (_humains.Contains(h) || _humains.Contains(a)):
                     (sorte, qui) = (SorteAlerte.Exil, _humains.Contains(h) ? h : a);
                     break;
+                case TypeEvenement.Nature when cle.StartsWith("fauve.attaque", StringComparison.Ordinal) && _humains.Contains(h):
+                    (sorte, qui) = (SorteAlerte.AttaqueDeBete, h);
+                    break;
                 case TypeEvenement.Mer when e.Significatif && _humains.Contains(h):
                     (sorte, qui) = (SorteAlerte.Mer, h);
                     break;
@@ -205,6 +211,7 @@ internal sealed class Veille
             SorteAlerte? sorte = e.Type switch
             {
                 TypeEvenement.Guerre when e.Significatif => SorteAlerte.Guerre,
+                TypeEvenement.Nature when cle.StartsWith("fauve.attaque", StringComparison.Ordinal) => SorteAlerte.AttaqueDeBete,
                 TypeEvenement.Catastrophe when e.Significatif => SorteAlerte.Catastrophe,
                 TypeEvenement.Religion when e.Significatif => SorteAlerte.Religion,
                 TypeEvenement.Communaute when ClesGroupe.Contains(cle) => SorteAlerte.Groupe,

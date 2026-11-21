@@ -26,7 +26,54 @@ public sealed record Fauve(int Id, int Espece, int X, int Y, double Age, double 
 /// Une attaque de bête gardée un an pour la carte et la vue 3D (0.45.1) : où, quand, l'espèce, la bête connue, la victime, et si elle
 /// en est morte. <paramref name="EvenementId"/> : la ligne du journal qui la raconte.
 /// </summary>
-public sealed record AttaqueDeBete(long EvenementId, long Le, int X, int Y, int Espece, int FauveId, int VictimeId, bool Mort);
+public sealed record AttaqueDeBete(long EvenementId, long Le, int X, int Y, int Espece, int FauveId, int VictimeId, bool Mort)
+{
+    /// <summary>
+    /// 0.45.25 : le déroulé est noté (les attaques d'avant n'ont que le lieu, la victime et l'issue). Tout ce qui suit est la trace de
+    /// ce que la simulation a tiré, pour le rejouer dans la vue 3D ; rien n'y est décidé.
+    /// </summary>
+    public bool Deroule { get; init; }
+    /// <summary>Celui que la bête visait, quand elle a pris le tout-petit qui dormait contre lui (sinon 0).</summary>
+    public int CibleId { get; init; }
+    public bool Dort { get; init; }
+    public bool AuCamp { get; init; }
+    public bool Eau { get; init; }
+    public ReactionAttaque Reaction { get; init; }
+    /// <summary>Arme de la victime (<see cref="Arme"/>).</summary>
+    public int ArmeVictime { get; init; }
+    /// <summary>Ceux qui sont accourus, dans l'ordre, et ce qu'ils tenaient : une arme (<see cref="Arme"/>) ou −1 pour un tison du feu.</summary>
+    public int[]? Aides { get; init; }
+    public int[]? ArmesAides { get; init; }
+    /// <summary>Ceux qui ont pris un coup de griffes.</summary>
+    public int[]? Griffes { get; init; }
+    public IssueAttaque Issue { get; init; }
+    public bool BeteBlessee { get; init; }
+    /// <summary>Celui qui a tué la bête (0 : elle a survécu).</summary>
+    public int TueurId { get; init; }
+}
+
+/// <summary>Ce que fait la victime quand la bête bondit (0.45.25).</summary>
+public enum ReactionAttaque : byte
+{
+    SeFige = 0,
+    SeDefend = 1,
+    Fuit = 2,
+}
+
+/// <summary>Comment finit l'attaque (0.45.25).</summary>
+public enum IssueAttaque : byte
+{
+    /// <summary>La victime meurt sur place.</summary>
+    Tuee = 0,
+    /// <summary>La bête l'emporte (ou l'entraîne sous l'eau).</summary>
+    Emportee = 1,
+    /// <summary>La bête lâche prise d'elle-même.</summary>
+    Lachee = 2,
+    /// <summary>La victime ou ceux qui accourent la font lâcher.</summary>
+    Repoussee = 3,
+    /// <summary>La victime s'échappe, blessée.</summary>
+    Echappee = 4,
+}
 
 /// <summary>
 /// Les prédateurs qui attaquent (0.45.0, mondes à relief). Chaque heure, chacun court un risque qui tient à sa situation : la nuit
@@ -63,6 +110,9 @@ public sealed partial class Comportement
 
     /// <summary>Les attaques de l'année écoulée (0.45.1), de la plus ancienne à la plus récente.</summary>
     public List<AttaqueDeBete> AttaquesRecentes { get; private set; } = [];
+
+    /// <summary>Attaques de bêtes notées depuis le lancement (0.45.25, pour « Aller jusqu'à la prochaine attaque de bête »).</summary>
+    public long AttaquesLivrees { get; private set; }
 
     /// <summary>Carnassiers manquants par case (indice → part de la population tuée), qui se comble en quelques mois.</summary>
     public Dictionary<int, double> FauvesManquants { get; private set; } = [];
@@ -386,13 +436,15 @@ public sealed partial class Comportement
 
         // La victime : se défendre, fuir, se figer (Beier, 1991 : se défendre fait souvent lâcher prise).
         var force = age < 12 ? 0.25 + 0.05 * age : age >= 65 ? 0.6 : 1.0;
-        var arme = (int)MondeSimule.ArmePortee(victime) > 0 ? 1.8 : 1;
+        var armeVictime = (int)MondeSimule.ArmePortee(victime);
+        var arme = armeVictime > 0 ? 1.8 : 1;
         var seDefend = age >= 10 && alea.Reel() < Math.Clamp((0.25 + 0.4 * (1 - p.Nevrosisme) + 0.3 * p.Endurance + (victime.Sexe == Sexe.Homme ? 0.1 : 0)
                                                               - (victime.EstMalade(maintenant) ? 0.3 : 0)) * (dort ? 0.6 : 1), 0.05, 0.9);
         var fuit = !seDefend && age >= 4 && alea.Reel() < 0.3 + 0.5 * p.Nevrosisme;
 
         // Ceux qui sont là : au camp, les éveillés et les dormeurs que les cris réveillent ; au loin, ceux de la case.
         var aides = new List<Humain>();
+        var armesAides = new List<int>();
         var defense = seDefend ? (0.5 + 0.8 * p.Endurance) * force * arme : 0;
         var armes = seDefend && arme > 1 ? 1.0 : 0;
         foreach (var o in _tous.Vivants())
@@ -410,6 +462,7 @@ public sealed partial class Comportement
             if (alea.Reel() >= Math.Clamp(courage, 0, 0.95)) continue;
             aides.Add(o);
             var oArme = (int)MondeSimule.ArmePortee(o) > 0 ? 2.2 : s.Feu && oAuCamp ? 1.5 : 1;
+            armesAides.Add((int)MondeSimule.ArmePortee(o) > 0 ? (int)MondeSimule.ArmePortee(o) : s.Feu && oAuCamp ? -1 : 0);
             defense += (0.6 + 0.8 * q.Endurance) * (oAge < 15 ? 0.4 : 1) * oArme;
             if (oArme > 1.6) armes += 1;
         }
@@ -430,9 +483,10 @@ public sealed partial class Comportement
         // La clémence du monde laisse en vie une part de ceux que la bête aurait tués.
         if (tue && Clemence > 0 && alea.Reel() < Clemence) tue = false;
         var victimes = fauve.Victimes;
+        var emporte = false;
         if (tue)
         {
-            var emporte = alea.Reel() < (b.Eau ? 0.7 : age < 12 ? 0.6 : 0.25) * (aides.Count == 0 ? 1 : 0.3);
+            emporte = alea.Reel() < (b.Eau ? 0.7 : age < 12 ? 0.6 : 0.25) * (aides.Count == 0 ? 1 : 0.3);
             var recit = new Recit(emporte ? (b.Eau ? "fauve.mort.eau" : "fauve.mort.emporte") : "fauve.mort", ("h", victime), ("bete", b.Dit),
                 ("age", AgeEnMots(victime, maintenant)));
             Tuer(victime, maintenant, CauseDeMort.Bete, recit, attaque);
@@ -449,9 +503,11 @@ public sealed partial class Comportement
                 new Recit(lacheprise ? (aides.Count > 0 || seDefend ? "fauve.repousse" : "fauve.lache") : "fauve.echappe", ("h", victime), ("bete", b.Dit)), attaque);
         }
         // Les aides qui s'approchent trop prennent des coups de griffes.
+        var griffes = new List<int>();
         foreach (var a in aides)
         {
             if (alea.Reel() >= 0.12 * puissance / (puissance + 1)) continue;
+            griffes.Add(a.Id);
             var g = 5 + 20 * alea.Reel();
             a.Sante -= g;
             if (a.Sante <= 0) a.Sante = 1;
@@ -482,7 +538,17 @@ public sealed partial class Comportement
         }
         else if (blessee) Noter(maintenant, TypeEvenement.Nature, aides.FirstOrDefault() ?? victime, null, new Recit("fauve.blessee", ("bete", b.Dit)), attaque);
         Garder(nouvelle);
-        AttaquesRecentes.Add(new AttaqueDeBete(attaque, maintenant, victime.X, victime.Y, b.Numero, nouvelle.Id, victime.Id, tue));
+        AttaquesRecentes.Add(new AttaqueDeBete(attaque, maintenant, victime.X, victime.Y, b.Numero, nouvelle.Id, victime.Id, tue)
+        {
+            Deroule = true, CibleId = victime.Id == cible.Id ? 0 : cible.Id, Dort = dort, AuCamp = auCamp, Eau = b.Eau,
+            Reaction = seDefend ? ReactionAttaque.SeDefend : fuit ? ReactionAttaque.Fuit : ReactionAttaque.SeFige,
+            ArmeVictime = armeVictime, Aides = [.. aides.Select(a => a.Id)], ArmesAides = [.. armesAides],
+            Griffes = griffes.Count == 0 ? null : [.. griffes],
+            Issue = tue ? emporte ? IssueAttaque.Emportee : IssueAttaque.Tuee
+                : lacheprise ? aides.Count > 0 || seDefend ? IssueAttaque.Repoussee : IssueAttaque.Lachee : IssueAttaque.Echappee,
+            BeteBlessee = blessee, TueurId = tuee && tueur is not null ? tueur.Id : 0,
+        });
+        AttaquesLivrees++;
 
         // La peur, le lieu redouté, et peut-être une idée pour s'en garder.
         Effrayer(victime, aides, b, tue, attaque, maintenant);

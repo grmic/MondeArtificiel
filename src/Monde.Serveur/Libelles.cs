@@ -18,6 +18,7 @@ public static partial class Lib
         TypeObjectif.Naissance => L.T("objectif.naissance"),
         TypeObjectif.AlerteSuivi => L.T("objectif.alerte"),
         TypeObjectif.ProchainAssaut => L.T("objectif.assaut"),
+        TypeObjectif.ProchaineAttaqueDeBete => L.T("objectif.bete"),
         _ => L.T("objectif.mort"),
     };
 

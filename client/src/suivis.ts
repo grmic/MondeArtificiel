@@ -174,6 +174,8 @@ export class AlertesSuivis {
   private nonLues = 0;
   /** 0.42.0 : ouvre la vue 3D près de cet humain (le chef d'une troupe en marche ou aux portes d'un camp). */
   allerVoir: ((id: number) => void) | null = null;
+  /** 0.45.25 : rejoue en 3D l'attaque de bête dont parle l'alerte (sa ligne du journal). */
+  voirAttaque: ((evenement: number) => void) | null = null;
   private readonly titreBouton: string;
 
   constructor(
@@ -238,6 +240,13 @@ export class AlertesSuivis {
       const b = el("button", "proche", t("suivis.allerVoirTroupe"));
       b.type = "button";
       b.addEventListener("click", () => this.allerVoir?.(troupe.humain));
+      proches.push(b);
+    }
+    const attaque = alertes.filter((x) => x.sorte === "AttaqueDeBete" && x.evenement > 0).at(-1);
+    if (attaque && this.voirAttaque) {
+      const b = el("button", "proche", `🎥 ${t("suivis.voirAttaque")}`);
+      b.type = "button";
+      b.addEventListener("click", () => this.voirAttaque?.(attaque.evenement));
       proches.push(b);
     }
     const corps = el("div", "corps-alerte");

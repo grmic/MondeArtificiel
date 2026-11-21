@@ -12,6 +12,8 @@ public enum TypeObjectif : byte
     AlerteSuivi = 3,
     /// <summary>Le prochain assaut d'une guerre (0.42.0) : le monde s'arrête juste après, la vue 3D le rejoue.</summary>
     ProchainAssaut = 4,
+    /// <summary>La prochaine attaque de bête (0.45.25) : le monde s'arrête juste après, la vue 3D la rejoue.</summary>
+    ProchaineAttaqueDeBete = 5,
 }
 
 /// <summary>

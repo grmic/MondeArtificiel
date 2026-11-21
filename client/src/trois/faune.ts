@@ -5,6 +5,7 @@ import { aPiedSec } from "./foule";
 import { CHAMPS_BETES, corpsDe, DETAILS, longueur, materiauBetes, type Espece, type Gabarit } from "./betes3d";
 import { envoyer } from "./envoi";
 import { enclosDe } from "./camp";
+import type { BeteJouee } from "./attaque";
 
 /**
  * Les bêtes vivantes de la vue 3D (0.44.0, choix C1 et E1). La simulation ne connaît que des nombres : le gibier de chaque case,
@@ -184,6 +185,9 @@ export class Faune3D {
   recuA = 0;
   /** Bêtes prises à la chasse depuis moins d'un jour, à montrer près de leur chasseur arrêté (0.44.1). */
   prises: { x: number; z: number; cap: number; espece: number }[] = [];
+  /** 0.45.25 : les bêtes d'une attaque rejouée, posées par le rejeu à chaque image, et le groupe du flux Camp qu'elles remplacent. */
+  jouees: BeteJouee[] = [];
+  masque: number | null = null;
   /** Bêtes proches de la caméra à cette image (x, z, rayon des pas), pour le tapis du sol. */
   readonly pietineurs: number[] = [];
 
@@ -395,7 +399,7 @@ export class Faune3D {
     this.pietineurs.length = 0;
     for (const g of this.groupes.values()) {
       const d = Math.hypot(g.cx - camera.x, g.cz - camera.z);
-      if (d > this.portee + g.rayon + 300) continue;
+      if (d > this.portee + g.rayon + 300 || g.id === this.masque) continue;
       const s = this.especes.get(g.espece.numero);
       if (!s || g.betes.length === 0) continue;
       this.comportement(g, s.gab, dt, ts, nuit, humains, nHumains, camera);
@@ -428,6 +432,22 @@ export class Faune3D {
       const z = p.z - Math.sin(p.cap) * (0.6 + L * 0.15);
       const r = this.rendu(p.espece, Math.hypot(x - camera.x, z - camera.z) < 60 ? 0 : 1);
       r?.ajouter(x - o.x, this.relief.hauteur(x, z), z - o.z, p.cap + Math.PI / 2, L, 0, 0, -1, 0, 0, 0.8, s.gab.hanche);
+    }
+    // Les bêtes d'une attaque rejouée (0.45.25) : le rejeu dit où elles sont et ce qu'elles font.
+    for (const j of this.jouees) {
+      const s = this.especes.get(j.espece);
+      if (!s) continue;
+      const L = longueur(s.e.forme, s.e.poids);
+      const db = Math.hypot(j.x - camera.x, j.z - camera.z);
+      if (db > this.portee) continue;
+      const r = this.rendu(j.espece, db < SEUILS[0] * Math.max(0.6, L / 2) ? 0 : 1);
+      if (!r) continue;
+      const surf = this.relief.surface(j.x, j.z);
+      const fond = Number.isNaN(surf.eau) ? 0 : surf.eau - surf.sol;
+      // Le grand nageur guette enfoncé dans l'eau, le dos et les yeux seuls dehors.
+      const y = j.plonge > 0 && fond > 0.2 ? surf.sol + (Math.max(surf.sol, surf.eau - s.gab.hanche * L * 0.85) - surf.sol) * j.plonge : surf.sol;
+      r.ajouter(j.x - o.x, y, j.z - o.z, j.cap, L, (j.parcours * DEUX_PI) / (s.gab.foulee * L), j.allure, j.tete, j.regard, j.couche, 1, s.gab.hanche);
+      if (db < 34 && this.pietineurs.length < 600) this.pietineurs.push(j.x, j.z, 0.12 + 0.18 * L);
     }
     for (const s of this.especes.values()) {
       for (const r of s.rendus) {

@@ -21,9 +21,9 @@ public sealed record SceneDto(long Secondes, double Facteur, int[] Humains)
     /// <summary>Rayon le plus grand qu'on peut demander, en cases.</summary>
     public const int RayonMax = 64;
 
-    public static SceneDto Depuis(ServiceMonde service, int x, int y, int rayon)
+    public static SceneDto Depuis(ServiceMonde service, int x, int y, int rayon, int[]? avec = null)
     {
-        var (secondes, humains) = service.Monde.Scene(x, y, Math.Clamp(rayon, 0, RayonMax));
+        var (secondes, humains) = service.Monde.Scene(x, y, Math.Clamp(rayon, 0, RayonMax), avec);
         var n = new int[humains.Count * ChampsParHumain];
         var k = 0;
         foreach (var h in humains)
@@ -128,4 +128,17 @@ public sealed record AssautDto(long Id, long Secondes, int X, int Y, int Assaill
             [.. a.Duels.SelectMany(d => new[] { d.Assaillant, d.Defenseur, (int)d.ArmeAssaillant, (int)d.ArmeDefenseur, (int)d.Issue })],
             [.. a.MortsDeBlessures])),
     ];
+}
+
+/// <summary>
+/// Une attaque de bête à rejouer dans la vue 3D (0.45.25) : la ligne du journal, l'instant, la case, l'espèce, la bête connue, la
+/// victime (et celui qu'on visait, quand la bête a pris un tout-petit), et le déroulé noté par la simulation. Reaction : 0 se fige,
+/// 1 se défend, 2 fuit ; Issue : 0 tuée, 1 emportée, 2 lâchée, 3 repoussée, 4 échappée ; ArmesAides : arme de chacun (−1 : un tison).
+/// </summary>
+public sealed record AttaqueVueDto(long Id, long Secondes, int X, int Y, int Espece, int Fauve, int Victime, int Cible, bool Mort, bool Deroule,
+    bool Dort, bool AuCamp, bool Eau, int Reaction, int ArmeVictime, int[] Aides, int[] ArmesAides, int[] Griffes, int Issue, bool BeteBlessee, int Tueur)
+{
+    public static AttaqueVueDto De(Monde.Simulation.Humains.AttaqueDeBete a) => new(a.EvenementId, a.Le, a.X, a.Y, a.Espece, a.FauveId, a.VictimeId, a.CibleId,
+        a.Mort, a.Deroule, a.Dort, a.AuCamp, a.Eau, (int)a.Reaction, a.ArmeVictime, a.Aides ?? [], a.ArmesAides ?? [], a.Griffes ?? [],
+        a.Deroule ? (int)a.Issue : a.Mort ? 0 : 4, a.BeteBlessee, a.TueurId);
 }

@@ -69,7 +69,7 @@ public sealed partial class MondeSimule
     /// Les vivants à moins de <paramref name="rayon"/> cases de (<paramref name="x"/>, <paramref name="y"/>), pour la vue 3D, et l'instant
     /// du dernier pas. Ne copie que ce qu'il faut : appelé quatre fois par seconde.
     /// </summary>
-    public (long Secondes, List<HumainScene> Humains) Scene(int x, int y, int rayon)
+    public (long Secondes, List<HumainScene> Humains) Scene(int x, int y, int rayon, IReadOnlyCollection<int>? avec = null)
     {
         lock (_verrou)
         {
@@ -90,9 +90,19 @@ public sealed partial class MondeSimule
             var gisants = new HashSet<int>();
             foreach (var assaut in _comportement.AssautsVus)
                 if (Math.Abs(assaut.X - x) <= rayon && Math.Abs(assaut.Y - y) <= rayon) gisants.UnionWith(assaut.Morts());
+            // 0.45.25 : de même, ceux qu'une bête a tués sans les emporter depuis moins de deux jours.
+            for (var k = _comportement.AttaquesRecentes.Count - 1; k >= 0; k--)
+            {
+                var a = _comportement.AttaquesRecentes[k];
+                if (maintenant - a.Le > AssautVu.Duree) break;
+                if (a.Mort && a.Issue != IssueAttaque.Emportee && Math.Abs(a.X - x) <= rayon && Math.Abs(a.Y - y) <= rayon) gisants.Add(a.VictimeId);
+            }
+            // 0.45.25 : ceux qu'un rejeu demande (la victime d'une attaque et ceux qui sont accourus), où qu'ils soient, morts compris.
+            var demandes = avec is { Count: > 0 } ? new HashSet<int>(avec.Take(64)) : null;
             foreach (var h in _humains)
             {
-                if (!h.EstVivant && !gisants.Contains(h.Id) || Math.Abs(h.X - x) > rayon || Math.Abs(h.Y - y) > rayon) continue;
+                var demande = demandes?.Contains(h.Id) == true;
+                if (!demande && (!h.EstVivant && !gisants.Contains(h.Id) || Math.Abs(h.X - x) > rayon || Math.Abs(h.Y - y) > rayon)) continue;
                 int versX = -1, versY = -1;
                 double avance = 0, parSeconde = 0;
                 if (!SurPlace.Contains(h.Activite))
