@@ -229,7 +229,8 @@ export class Nature3D {
     const rel = this.relief;
     const parSorte: Pose[][] = Array.from({ length: SORTES }, () => []);
     const n = COTE_BLOC / PAS;
-    const neige = (x: number, z: number) => (rel.temperatureEn(x, z) ?? 10) < 0;
+    // 0.45.26 : la neige tombée (simulation) poudre les conifères dès 2 cm et couche les fougères sous 20 cm.
+    const neige = (x: number, z: number) => rel.neigeEn(x, z) > 2;
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
         const gx = bx * n + i;
@@ -258,7 +259,7 @@ export class Nature3D {
         if (s.sol < 0.6 && sorte !== Sorte.Roseau && biome !== B.MANGROVE) continue;
         const pente = Math.abs(rel.hauteur(x + 2, z) - s.sol) + Math.abs(rel.hauteur(x, z + 2) - s.sol);
         if (pente > (sorte === Sorte.Rocher ? 3 : 1.6)) continue;
-        if (sorte === Sorte.Fougere && neige(x, z)) continue;
+        if (sorte === Sorte.Fougere && rel.neigeEn(x, z) > 20) continue;
         const [hmin, etendue] = TAILLES[sorte];
         const v = unite(hacher(gx, gz, 113));
         const pose: Pose = { x, y: s.sol - 0.1, z, echelle: hmin + etendue * v * v, angle: unite(hacher(gx, gz, 127)) * Math.PI * 2, r: 1, g: 1, b: 1 };

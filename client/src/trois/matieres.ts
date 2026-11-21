@@ -1,4 +1,4 @@
-import { ecorceBrulee, feuillageBrule, mouilleEn, terreTouchee } from "./meteo3d";
+import { ecorceBrulee, feuillageBrule, mouilleEn, neigeAuSol, terreTouchee } from "./meteo3d";
 import * as THREE from "three/webgpu";
 import {
   Fn, If, attribute, cameraPosition, dot, int, log2, positionWorld, smoothstep, clamp, cross, dFdx, dFdy, float, length, max, mix, normalWorldGeometry, normalize, positionGeometry, positionLocal,
@@ -213,17 +213,20 @@ export class Matieres {
     // Peu à peu (dès 20 m, entièrement au bout de la portée) : vu d'avion, le sol entre les arbres prend déjà la couleur du pays.
     const loinPays = pow(clamp(distance.sub(20).div(this.portee), 0, 1), 0.7);
     // 0.43.0 : terres brûlées (charbon qui reverdit), cendre, et braises là où le feu passe.
-    const touchee = terreTouchee(mix(pres, attribute("lointain", "vec3"), loinPays), positionWorld);
+    // 0.45.26 : la neige tombée (simulation) blanchit le sol, en plaques quand elle est mince.
+    const blanc = neigeAuSol(positionWorld, normalize(normalWorldGeometry).y);
+    const neige = texture(this.solsCouleur, uA).depth(int(Couche.Neige)).grad(gAx, gAy).rgb.mul(1.08);
+    const touchee = terreTouchee(mix(mix(pres, attribute("lointain", "vec3"), loinPays), neige, blanc), positionWorld);
     mat.colorNode = touchee.couleur;
     mat.emissiveNode = touchee.braises;
     // Sous l'eau d'une crue (0.43.1), le sol devient un miroir boueux, lisse.
-    mat.roughnessNode = mix(mix(resultat.a, float(0.3), mouille), float(0.06), touchee.eau);
+    mat.roughnessNode = mix(mix(mix(resultat.a, float(0.3), mouille), float(RUGOSITE[Couche.Neige]), blanc), float(0.06), touchee.eau);
     mat.normalNode = Fn(() => {
       const n = normalize(normalWorldGeometry);
       const tx = normalize(vec3(1, 0, 0).sub(n.mul(n.x)));
       const bz = cross(tx, n);
       const nt = normaleTangente();
-      const force = mix(float(1), float(0.4), mouille).mul(float(1).sub(touchee.eau.mul(0.9)));
+      const force = mix(float(1), float(0.4), mouille).mul(float(1).sub(touchee.eau.mul(0.9))).mul(float(1).sub(blanc.mul(0.6)));
       const w = normalize(tx.mul(nt.x.mul(force)).add(bz.mul(nt.y.mul(force))).add(n.mul(nt.z)));
       return transformNormalToView(w);
     })();

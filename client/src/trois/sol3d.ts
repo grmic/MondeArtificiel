@@ -258,7 +258,8 @@ export class Sol3D {
         if (!table) continue;
         const abondance = 0.35 + 0.9 * rel.plantesEn(x, z);
         const temperature = rel.temperatureEn(x, z) ?? 12;
-        const gel = temperature < 0;
+        // 0.45.26 : quelques centimètres de neige cachent ce qui pousse au ras du sol.
+        const gel = rel.neigeEn(x, z) > 3;
         let tirage = unite(hacher(gx, gz, 209));
         let sorte: Sorte | -1 = -1;
         for (const [s, d] of table) {

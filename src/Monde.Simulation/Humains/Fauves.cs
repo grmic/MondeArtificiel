@@ -216,17 +216,21 @@ public sealed partial class Comportement
                 if (expo <= 0) continue;
                 // Les espèces de la case, et les bêtes connues du voisinage qui ont pris goût aux humains.
                 var menaces = new List<(Bete Bete, Fauve? Connu, double Poids)>();
+                // Dans la neige (0.45.26), la bête qui va mieux que l'humain l'approche plus aisément, celle qui enfonce moins bien.
+                var dansLaNeige = NeigeSur(i) >= 0.5;
+                var allureHumain = dansLaNeige ? FacteurNeige(h, i, maintenant) : 1;
+                double ParLaNeige(Bete b) => dansLaNeige && !b.Eau ? Math.Clamp(MobiliteBeteSur(b, i) / allureHumain, 0.3, 3) : 1;
                 foreach (var (b, nombre, faim) in carnassiers)
                 {
                     if (b.Eau != (AlEau(h.Activite) && !AuCamp(h.Activite))) continue;
                     var moment = b.Eau ? (0.6 + 0.4 * nuit) * nageur : nuit;
-                    menaces.Add((b, null, nombre * Menace(b) * faim * moment));
+                    menaces.Add((b, null, nombre * Menace(b) * faim * moment * ParLaNeige(b)));
                 }
                 foreach (var f in connus)
                 {
                     var b = Faune.Get(f.Espece);
                     if (b.Eau != (AlEau(h.Activite) && !AuCamp(h.Activite))) continue;
-                    menaces.Add((b, f, Menace(b) * (0.5 + f.Audace) * 4 * f.Habitude * (b.Eau ? (0.6 + 0.4 * nuit) * nageur : nuit)));
+                    menaces.Add((b, f, Menace(b) * (0.5 + f.Audace) * 4 * f.Habitude * (b.Eau ? (0.6 + 0.4 * nuit) * nageur : nuit) * ParLaNeige(b)));
                 }
                 var total = menaces.Sum(m => m.Poids);
                 if (total <= 0) continue;

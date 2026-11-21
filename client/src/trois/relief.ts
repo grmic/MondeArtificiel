@@ -390,6 +390,27 @@ export class Relief {
   }
 
   /** Température du jour (midi) interpolée, en °C (null : inconnue). */
+  /** Neige au sol par case (0.45.26), codée 16 √cm comme le serveur ; null : pas encore reçue. */
+  private neige: Uint8Array | null = null;
+
+  definirNeige(epaisseur: Uint8Array | null): void {
+    this.neige = epaisseur && epaisseur.length === this.l * this.hc ? epaisseur : null;
+  }
+
+  /** Neige au sol en (x, z) du monde (cm), lissée entre les cases. */
+  neigeEn(x: number, z: number): number {
+    const t = this.neige;
+    if (!t) return 0;
+    const u = Math.min(this.l - 1, Math.max(0, x / this.m - 0.5));
+    const v = Math.min(this.hc - 1, Math.max(0, z / this.m - 0.5));
+    const iu = Math.floor(u);
+    const iv = Math.floor(v);
+    const fu = u - iu;
+    const fv = v - iv;
+    const lire = (a: number, b: number) => (t[Math.min(this.hc - 1, b) * this.l + Math.min(this.l - 1, a)] / 16) ** 2;
+    return (lire(iu, iv) * (1 - fu) + lire(iu + 1, iv) * fu) * (1 - fv) + (lire(iu, iv + 1) * (1 - fu) + lire(iu + 1, iv + 1) * fu) * fv;
+  }
+
   temperatureEn(x: number, z: number): number | null {
     const t = this.temperatures;
     if (!t) return null;
@@ -455,10 +476,10 @@ export class Relief {
       g += (LIT_L[1] - g) * e.lit;
       b += (LIT_L[2] - b) * e.lit;
     }
-    // Neige : là où il gèle à midi (et toujours sur les sommets enneigés), moins sur les parois.
-    const temp = this.temperatureEn(x, z);
+    // Neige éternelle des sommets enneigés, moins sur les parois. La neige qui tombe et tient (0.45.26) est peinte par le GPU
+    // d'après la simulation (meteo3d.neigeAuSol).
     const sommet = i >= 0 && this.biomes[i] === SOMMET ? 1 : 0;
-    const neige = Math.max(sommet * lisser(800, 1600, e.h), temp === null ? 0 : lisser(1, -3, temp)) * (1 - lisser(0.7, 0.95, pente)) * lisser(0.5, 2, e.h);
+    const neige = sommet * lisser(800, 1600, e.h) * (1 - lisser(0.7, 0.95, pente)) * lisser(0.5, 2, e.h);
     if (neige > 0) {
       r += (NEIGE_L[0] - r) * neige;
       g += (NEIGE_L[1] - g) * neige;
@@ -516,10 +537,9 @@ export class Relief {
     melanger(4, roc * (1 - humide));
     // Lit des rivières : boue mouillée.
     melanger(2, e.lit * 0.85);
-    // Neige (même règle que la couleur).
-    const temp = this.temperatureEn(x, z);
+    // Neige éternelle (même règle que la couleur).
     const sommet = b === SOMMET ? 1 : 0;
-    const neige = Math.max(sommet * lisser(800, 1600, e.h), temp === null ? 0 : lisser(1, -3, temp)) * (1 - lisser(0.7, 0.95, pente)) * lisser(0.5, 2, e.h);
+    const neige = sommet * lisser(800, 1600, e.h) * (1 - lisser(0.7, 0.95, pente)) * lisser(0.5, 2, e.h);
     melanger(6, neige);
     for (let c = 0; c < 7; c++) poids[kp + c] = w[c];
     // Mouillé : lit des rivières, sable que la vague vient de quitter, sol gorgé d'eau des marais et des mangroves.

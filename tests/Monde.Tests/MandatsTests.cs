@@ -374,7 +374,7 @@ public sealed class MandatsTests
             Assert.True(v39.Mandats is null or { Count: 0 });
             new DepotMonde(fichier).Enregistrer(v39, remplacer: true);
             Assert.Equal(DepotMonde.VersionSchema, DepotMonde.Decrire(fichier)!.Version);
-            Assert.Equal(63, DepotMonde.VersionSchema);
+            Assert.Equal(64, DepotMonde.VersionSchema);
         }
         finally
         {

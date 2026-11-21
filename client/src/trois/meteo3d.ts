@@ -20,6 +20,11 @@ export class MeteoGPU {
   /** Lumière du ciel que renvoie l'eau d'une crue (0.43.1) : réglée à chaque image d'après le ciel. */
   readonly uCielEau = uniform(new THREE.Vector3(0.3, 0.35, 0.45));
   private terres = new THREE.DataTexture(new Uint8Array(4), 1, 1);
+  /**
+   * La neige, case par case (0.45.26) : part de ce qui tombe en neige (r), neige au sol vue de loin (g, 0 à 1), épaisseur
+   * (b, codée 16 √cm comme le serveur), densité (a, kg/m³ ÷ 2).
+   */
+  private neige = new THREE.DataTexture(new Uint8Array(4), 1, 1);
   /** Taille couverte par la texture des régions et par celle de la carte (m). */
   private readonly uRegionsM = uniform(new THREE.Vector2(1, 1));
   private readonly uCarteM = uniform(new THREE.Vector2(1, 1));
@@ -38,8 +43,10 @@ export class MeteoGPU {
     this.regionsY = Math.ceil(hauteur / tailleRegion);
     this.regions.dispose();
     this.terres.dispose();
+    this.neige.dispose();
     this.regions = creer(this.regionsX, this.regionsY, true);
     this.terres = creer(largeur, hauteur, true);
+    this.neige = creer(largeur, hauteur, true);
     this.uRegionsM.value.set(this.regionsX * tailleRegion * metresParCase, this.regionsY * tailleRegion * metresParCase);
     this.uCarteM.value.set(largeur * metresParCase, hauteur * metresParCase);
   }
@@ -65,6 +72,29 @@ export class MeteoGPU {
     d.fill(0);
     remplir(d, this.largeur, this.hauteur);
     this.terres.needsUpdate = true;
+  }
+
+  /**
+   * La neige du moment (0.45.26) : épaisseur codée 16 √cm, densité ÷ 2, part de neige (0 à 255) par case. Le sol paraît blanc
+   * dès un ou deux centimètres, en plaques sous un simple saupoudrage.
+   */
+  definirNeige(epaisseur: Uint8Array, densite: Uint8Array, part: Uint8Array): void {
+    const d = this.neige.image.data as Uint8Array;
+    d.fill(0);
+    const n = Math.min(epaisseur.length, d.length / 4);
+    for (let i = 0; i < n; i++) {
+      const cm = (epaisseur[i] / 16) ** 2;
+      d[i * 4] = part[i] ?? 0;
+      d[i * 4 + 1] = Math.round(255 * Math.min(1, Math.max(0, (cm - 0.15) / 4)) ** 0.7);
+      d[i * 4 + 2] = epaisseur[i];
+      d[i * 4 + 3] = densite[i] ?? 0;
+    }
+    this.neige.needsUpdate = true;
+  }
+
+  /** Neige au point p du monde : part de neige qui tombe, neige au sol (0 à 1), épaisseur codée, densité codée (de 0 à 1). */
+  neigeEn(p: N<"vec2">): N<"vec4"> {
+    return texture(this.neige, p.div(this.uCarteM)).level(float(0));
   }
 
   /** Brûlé (0 à 1) de la case d'index i, lu sur le processeur (0.44.1 : les oiseaux fuient les terres noircies). */
@@ -122,6 +152,12 @@ export class Precipitations {
   private readonly uBoite = uniform(50);
   /** Cendre qui tombe d'une éruption (0 à 1, 0.43.1) : les flocons deviennent gris et tombent partout autour de la caméra. */
   readonly uCendre = uniform(0);
+  /**
+   * Neige mouillée (0 à 1, 0.45.26) : près de 0 °C, les flocons s'agglomèrent en gros paquets de 1 à 3 cm qui tombent plus vite ;
+   * par grand froid, la neige est fine et sèche, en petits cristaux qui flottent (Magono et Nakamura, 1965 ; Locatelli et Hobbs, 1974 :
+   * de 0,5 à 1,5 m/s selon la taille et le givre).
+   */
+  readonly uGros = uniform(0);
   private nombre = 0;
 
   constructor(vent: N<"vec2">) {
@@ -143,7 +179,7 @@ export class Precipitations {
     const i = float(instanceIndex);
     const B = this.uBoite;
     const H = B.mul(0.7);
-    const vitesse = neige ? alea(i, 4).mul(0.5).add(0.8) : alea(i, 4).mul(1.6).add(5.6);
+    const vitesse = neige ? alea(i, 4).mul(0.5).add(0.6).add(this.uGros.mul(0.5)) : alea(i, 4).mul(1.6).add(5.6);
     const chute = time.mul(vitesse);
     // Point de départ fixé dans le monde, ramené dans la boîte autour de la caméra.
     const bx = alea(i, 1).mul(B);
@@ -155,10 +191,17 @@ export class Precipitations {
     const y = cam.y.sub(H.mul(0.35)).add(mod(by.sub(chute).sub(cam.y), H));
     // Le vent penche la pluie (et emporte les flocons, qui tourbillonnent).
     const v = vent.mul(neige ? 2.5 : 4);
-    const flotte = neige ? vec2(sin(time.mul(1.3).add(i)).mul(0.4), cos(time.mul(1.1).add(i.mul(1.7))).mul(0.4)) : vec2(0, 0);
+    // Les flocons secs tournoient et dérivent plus que les gros paquets mouillés.
+    const ampleur = float(0.55).sub(this.uGros.mul(0.25));
+    const flotte = neige
+      ? vec2(sin(time.mul(alea(i, 8).mul(0.8).add(0.9)).add(i)).mul(ampleur), cos(time.mul(alea(i, 9).mul(0.7).add(0.8)).add(i.mul(1.7))).mul(ampleur))
+      : vec2(0, 0);
     const centre = vec3(x.add(flotte.x), y, z.add(flotte.y));
     const t = meteoGPU.tempsEn(centre.xz);
-    const force = neige ? max(t.g, this.uCendre) : t.r;
+    // 0.45.26 : la même averse tombe en pluie ou en neige selon le lieu (la température de la case, son altitude, l'air sec ou humide).
+    const tombe = max(t.r, t.g);
+    const part = meteoGPU.neigeEn(centre.xz).r;
+    const force = neige ? max(tombe.mul(part), this.uCendre) : tombe.mul(float(1).sub(part));
     // Une goutte sur deux cents par petite pluie, toutes sous l'averse.
     const garde = smoothstep(0, 0.15, force.sub(alea(i, 5)));
     const dist = length(centre.sub(cam));
@@ -166,8 +209,10 @@ export class Precipitations {
     const descente = normalize(vec3(v.x, vitesse.negate(), v.y));
     const versCam = normalize(cam.sub(centre));
     const droite = normalize(cross(descente, versCam));
-    const longueur = neige ? float(0.035) : alea(i, 6).mul(0.4).add(0.5);
-    const largeur = neige ? float(0.035) : float(0.008).add(dist.mul(0.0007));
+    // Flocons de 1 à 3 cm, plus gros près de 0 °C, et quelques gros paquets.
+    const flocon = alea(i, 6).mul(0.018).add(0.012).mul(this.uGros.mul(0.8).add(1)).mul(smoothstep(0.85, 0.86, alea(i, 7)).mul(0.6).add(1));
+    const longueur = neige ? flocon : alea(i, 6).mul(0.4).add(0.5);
+    const largeur = neige ? flocon : float(0.008).add(dist.mul(0.0007));
     const p = positionGeometry;
     const haut = neige ? vec3(0, 1, 0) : descente.negate();
     mat.positionNode = Fn(() => centre.add(droite.mul(p.x.mul(largeur).mul(garde))).add(haut.mul(p.y.sub(0.5).mul(longueur).mul(garde))))();
@@ -189,11 +234,13 @@ export class Precipitations {
   }
 
   /** Une image : on ne dessine les gouttes que s'il pleut (ou neige) près de la caméra. */
-  animer(pluieIci: number, neigeIci: number, lumiere: THREE.Color, cendre = 0): void {
+  animer(pluieIci: number, neigeIci: number, lumiere: THREE.Color, cendre = 0, gros = 0): void {
     this.uLumiere.value.set(lumiere.r, lumiere.g, lumiere.b);
     this.uCendre.value = cendre;
+    this.uGros.value = gros;
     this.geoPluie.instanceCount = pluieIci > 0.005 ? this.nombre : 0;
-    this.geoNeige.instanceCount = neigeIci > 0.005 || cendre > 0.005 ? Math.round(this.nombre * 0.6) : 0;
+    // Des flocons même en qualité Basse : ils tombent lentement, il en faut peu (0.45.26).
+    this.geoNeige.instanceCount = neigeIci > 0.005 || cendre > 0.005 ? Math.max(4000, Math.round(this.nombre * 0.8)) : 0;
   }
 }
 
@@ -293,6 +340,20 @@ export class Eclairs {
 }
 
 /** Sur le sol : plus sombre et brillant quand il est mouillé (sert aux matériaux du sol). */
+/**
+ * Neige au sol au point p (0 à 1, 0.45.26) : blanche partout dès quelques centimètres, en plaques sous un saupoudrage (elle tient
+ * d'abord dans les creux et à l'ombre des touffes), absente des parois trop raides (`haut` : composante verticale de la normale).
+ */
+export function neigeAuSol(p: N<"vec3">, haut: N<"float">): N<"float"> {
+  const g = meteoGPU.neigeEn(p.xz).g;
+  const x = p.x;
+  const z = p.z;
+  const grand = sin(x.mul(0.53).add(sin(z.mul(0.21)).mul(2))).mul(sin(z.mul(0.47).add(sin(x.mul(0.17)).mul(2)))).mul(0.5).add(0.5);
+  const fin = sin(x.mul(2.3).add(z.mul(1.7))).mul(sin(z.mul(2.9).sub(x.mul(1.1)))).mul(0.5).add(0.5);
+  const seuil = grand.mul(0.45).add(fin.mul(0.25));
+  return smoothstep(seuil, seuil.add(0.22), g).mul(smoothstep(0.42, 0.72, haut));
+}
+
 export function mouilleEn(p: N<"vec3">): N<"float"> {
   return clamp(meteoGPU.tempsEn(p.xz).b, 0, 1);
 }

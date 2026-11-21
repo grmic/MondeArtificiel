@@ -465,7 +465,8 @@ class Carte {
     const [densites, plaques, aiguilles] = ligne;
     const abondance = 0.35 + 0.9 * rel.plantesEn(wx, wz);
     const temperature = rel.temperatureEn(wx, wz) ?? 12;
-    const gel = temperature < 0;
+    // 0.45.26 : sous la neige tombée, plus de plantes au ras du sol.
+    const gel = rel.neigeEn(wx, wz) > 2;
     const saison = rel.saison;
     const mouille = Math.max(this.procheDeLEau(wx, wz), e.lit > 0.05 ? 1 : 0);
     const [usure, champ] = this.usureEn(wx, wz);

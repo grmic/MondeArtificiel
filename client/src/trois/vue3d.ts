@@ -34,6 +34,7 @@ import { RejeuAttaque, type AttaqueJson } from "./attaque";
 import { BOUTON, Manette, nomBouton, type EtatManette, type Famille } from "./manette";
 import { decrireFacteur } from "../horloge";
 import { Eclairs, Precipitations, meteoGPU } from "./meteo3d";
+import { TracesEtSouffle } from "./neige3d";
 import { Incendies3D } from "./incendies3d";
 import { Phenomenes3D } from "./phenomenes3d";
 import { etatA, lireAverses, regionDe, type Averse, type EnCoursJson, type EtatTemps, type TempsJson, type ZoneJson } from "../meteo";
@@ -220,6 +221,9 @@ export class Vue3D {
   private readonly feux: Feux3D;
   /** Temps et catastrophes (0.43.0) : pluie et neige, éclairs, incendies ; averses du jour et ciel du moment. */
   private readonly precipitations: Precipitations;
+  /** Pas dans la neige et buée du souffle (0.45.26). */
+  private readonly traces: TracesEtSouffle;
+  private secondesTraces = -1;
   private readonly eclairs: Eclairs;
   private readonly incendies: Incendies3D;
   private temps: TempsJson | null = null;
@@ -231,6 +235,11 @@ export class Vue3D {
   private orages: { x: number; z: number; force: number; rayon: number }[] = [];
   private pluieIci = 0;
   private neigeIci = 0;
+  /** Neige mouillée qui tombe ici (0 à 1) : gros flocons près de 0 °C (0.45.26). */
+  private grosFlocons = 0;
+  /** La neige de la simulation, case par case (0.45.26) : épaisseur codée 16 √cm, densité ÷ 2, part de neige (0 à 255). */
+  private neigeCases: { epaisseur: Uint8Array; densite: Uint8Array; part: Uint8Array; air: Int8Array; heure: number; signature: string; quelque: boolean } | null = null;
+  private neigeLueA = 0;
   private orageIci = 0;
   /**
    * Catastrophes autour (0.43.1) : ce qu'on relit du serveur, tempête et cendre sur la caméra (0 à 1), secousse d'un séisme (début,
@@ -405,6 +414,7 @@ export class Vue3D {
     this.foule = new Foule(this.relief);
     this.feux = new Feux3D(this.relief);
     this.precipitations = new Precipitations(this.vent.u);
+    this.traces = new TracesEtSouffle(this.relief);
     this.eclairs = new Eclairs(this.relief);
     this.incendies = new Incendies3D(this.relief, ctx.carte.largeur);
     this.phenomenes = new Phenomenes3D();
@@ -423,7 +433,7 @@ export class Vue3D {
     this.mer.renderOrder = 2;
     this.mer.frustumCulled = false;
     this.scene.add(this.terrain.groupe, this.nature.groupe, this.sol.groupe, ...(this.tapis ? [this.tapis.groupe] : []), this.foule.groupe, this.feux.groupe, this.proches.groupe, this.camp.groupe, this.faune.groupe, this.decor.groupe, this.mer,
-      this.precipitations.groupe, this.eclairs.groupe, this.incendies.groupe, this.phenomenes.groupe);
+      this.precipitations.groupe, this.traces.groupe, this.eclairs.groupe, this.incendies.groupe, this.phenomenes.groupe);
 
     this.qualite = (lireStockage("monde.qualite3d") as Qualite | null) ?? "moyenne";
     if (!(this.qualite in QUALITES)) this.qualite = "moyenne";
@@ -650,6 +660,7 @@ export class Vue3D {
         <datalist id="vivants3d"></datalist>
         <button type="submit">${t("trois.allerVoir")}</button>
         <select data-action="betes" title="${t("trois.betes.aide")}"><option value="">🐾 ${t("trois.betes.choisir")}</option></select>
+        <select data-action="neige" title="${t("trois.neige.aide")}"><option value="">❄ ${t("trois.neige.choisir")}</option><option value="tombe">${t("trois.neige.tombe")}</option><option value="sol">${t("trois.neige.sol")}</option></select>
         <button type="button" data-action="fiche" hidden></button>
         <button type="button" data-action="suivre" hidden></button>
         <button type="button" data-action="portrait" hidden></button>
@@ -701,6 +712,14 @@ export class Vue3D {
       betes.value = "";
       betes.blur();
       if (numero > 0) void this.allerVoirBete(numero, 0, -1, -1);
+    });
+    // 0.45.26 : aller voir la neige qui tombe, ou la neige au sol la plus proche.
+    const neige = q<HTMLSelectElement>('[data-action="neige"]');
+    neige.addEventListener("change", () => {
+      const sorte = neige.value;
+      neige.value = "";
+      neige.blur();
+      if (sorte === "tombe" || sorte === "sol") void this.allerVoirNeige(sorte);
     });
     q<HTMLButtonElement>('[data-action="fiche"]').addEventListener("click", () => {
       const id = this.ctx.ficheCourante();
@@ -928,6 +947,7 @@ export class Vue3D {
 
   /** Mini-carte : la caméra va au point choisi, en vol, assez haut pour voir alentour, avec le même regard. */
   private teleporter(x: number, z: number): void {
+    this.traces.vider();
     const sol = Math.max(0, this.relief.hauteur(x, z));
     const haut = Math.max(120, Math.min(2000, this.camera.position.y - Math.max(0, this.relief.hauteur(this.camera.position.x, this.camera.position.z))));
     this.camera.position.set(x, sol + haut, z);
@@ -1184,9 +1204,11 @@ export class Vue3D {
     void this.lireFeux();
     void this.lireTemperatures();
     void this.lireTemps();
+    void this.lireNeige();
     void this.lireEnCours();
     this.minuteurs.push(window.setInterval(() => void this.lireFeux(), 5000), window.setInterval(() => void this.lireTemperatures(), 15000),
-      window.setInterval(() => void this.lireTemps(), 5000), window.setInterval(() => void this.lireEnCours(), 5000));
+      window.setInterval(() => void this.lireTemps(), 5000), window.setInterval(() => void this.lireEnCours(), 5000),
+      window.setInterval(() => void this.lireNeige(), 5000));
     this.renderer.setAnimationLoop(() => this.image());
   }
 
@@ -2185,11 +2207,10 @@ export class Vue3D {
     const jourAn = temp.jour % 360;
     this.relief.saison = Math.floor(jourAn / 90);
     this.relief.dansSaison = (jourAn % 90) / 90;
-    // Les couleurs suivent la saison et la neige : refaites au changement de saison, ou chaque jour s'il gèle quelque part.
-    const gel = temp.midi.some((v) => v < 2);
-    // Couleurs gardées avec le relief : une par saison, ou une par jour quand il gèle quelque part (la neige change chaque jour).
-    void this.terrain.cache?.choisirCouleurs(gel ? `g${temp.jour}` : `s${Math.floor(temp.jour / 90)}`);
-    if (!premiere && (this.relief.saison !== this.saisonVue || gel)) {
+    // Les couleurs suivent la saison : refaites (et gardées avec le relief) une fois par saison. La neige tombée (0.45.26) est
+    // peinte par le GPU d'après la simulation : elle ne demande plus de refaire le relief.
+    void this.terrain.cache?.choisirCouleurs(`s${Math.floor(temp.jour / 90)}`);
+    if (!premiere && this.relief.saison !== this.saisonVue) {
       this.terrain.invalider();
       this.nature.invalider();
       this.sol.invalider();
@@ -2201,6 +2222,96 @@ export class Vue3D {
       this.tapis?.vider();
     }
     this.saisonVue = this.relief.saison;
+  }
+
+  /**
+   * La neige de la simulation (0.45.26) : relue à chaque heure du monde (elle tombe, se tasse et fond heure par heure), et au moins
+   * chaque minute. Les plantes basses et les arbres poudrés sont refaits quand la neige change de palier sur une case.
+   */
+  private async lireNeige(): Promise<void> {
+    const heure = Math.floor(this.secondesMonde() / 3600);
+    if (this.neigeCases && this.neigeCases.heure === heure && performance.now() - this.neigeLueA < 60000) return;
+    const n = await connexion.invoke<{ secondes: number; largeur: number; hauteur: number; epaisseur: string; densite: string; part: string; air: string }>("Neige").catch(() => null);
+    if (!n) return;
+    this.neigeLueA = performance.now();
+    const octets = (b: string) => (b ? Uint8Array.from(atob(b), (c) => c.charCodeAt(0)) : new Uint8Array(n.largeur * n.hauteur));
+    const epaisseur = octets(n.epaisseur);
+    const densite = octets(n.densite);
+    const part = octets(n.part);
+    const air = new Int8Array(octets(n.air).buffer);
+    // Paliers qui changent les plantes : poudré (2 cm), ras du sol caché (3 cm), fougères couchées (20 cm).
+    let signature = 0;
+    let quelque = false;
+    for (let i = 0; i < epaisseur.length; i++) {
+      if (epaisseur[i] > 0) quelque = true;
+      const cm = (epaisseur[i] / 16) ** 2;
+      const palier = cm > 20 ? 3 : cm > 3 ? 2 : cm > 2 ? 1 : 0;
+      if (palier) signature = (Math.imul(signature, 31) + i * 4 + palier) | 0;
+    }
+    const sig = String(signature);
+    const avant = this.neigeCases?.signature;
+    this.neigeCases = { epaisseur, densite, part, air, heure: Math.floor(n.secondes / 3600), signature: sig, quelque };
+    meteoGPU.definirNeige(epaisseur, densite, part);
+    this.relief.definirNeige(epaisseur);
+    if (avant !== undefined && avant !== sig) {
+      this.nature.invalider();
+      this.sol.invalider();
+      this.tapis?.invalider();
+    }
+  }
+
+  /**
+   * « Aller voir la neige » (0.45.26) : la case la plus proche où il neige en ce moment, ou celle où la neige tient au sol (2 cm
+   * au moins). On s'y pose à pied.
+   */
+  async allerVoirNeige(sorte: "tombe" | "sol"): Promise<void> {
+    if (!this.neigeCases) await this.lireNeige();
+    const nc = this.neigeCases;
+    const e = this.etatTemps;
+    const l = this.relief.l, m = this.relief.m;
+    const p = this.camera.position;
+    let meilleur = -1, d = Infinity;
+    if (nc) {
+      for (let i = 0; i < nc.epaisseur.length; i++) {
+        const x = i % l, y = Math.floor(i / l);
+        if (sorte === "sol") {
+          if (nc.epaisseur[i] < 23) continue;
+        } else {
+          if (!e || nc.part[i] < 128) continue;
+          const r = regionDe(e, x, y);
+          if (Math.max(e.pluie[r], e.neige[r]) * nc.part[i] / 255 < 0.05) continue;
+        }
+        const cx = (x + 0.5) * m, cz = (y + 0.5) * m;
+        const s = this.relief.surface(cx, cz);
+        if (!Number.isNaN(s.eau) && s.eau - s.sol > 0.5) continue;
+        const dd = (cx - p.x) ** 2 + (cz - p.z) ** 2;
+        if (dd < d) {
+          d = dd;
+          meilleur = i;
+        }
+      }
+    }
+    if (meilleur < 0) {
+      this.ctx.message(t(sorte === "sol" ? "trois.neige.aucuneSol" : "trois.neige.aucuneChute"));
+      return;
+    }
+    if (this.suivi) this.arreterSuivi();
+    if (this.suiviBete) this.arreterSuiviBete();
+    const cx = (meilleur % l + 0.5) * m, cz = (Math.floor(meilleur / l) + 0.5) * m;
+    this.teleporter(cx, cz);
+    this.camera.position.set(cx, Math.max(0, this.relief.hauteur(cx, cz)) + HAUTEUR_YEUX, cz);
+    this.changerMode("marche");
+    this.ctx.message(t("trois.neige.arrivee", { cm: nombre(Math.round(this.neigeCase(cx, cz).cm)) }));
+  }
+
+  /** La neige sur la case de (x, z) : épaisseur (cm), densité (kg/m³), part de ce qui tombe en neige (0 à 1). */
+  neigeCase(x: number, z: number): { cm: number; densite: number; part: number; air: number | null } {
+    const nc = this.neigeCases;
+    if (!nc) return { cm: 0, densite: 0, part: 0, air: null };
+    const l = this.relief.l, h = this.relief.hc, m = this.relief.m;
+    const cx = Math.min(l - 1, Math.max(0, Math.floor(x / m))), cz = Math.min(h - 1, Math.max(0, Math.floor(z / m)));
+    const i = cz * l + cx;
+    return { cm: (nc.epaisseur[i] / 16) ** 2, densite: nc.densite[i] * 2, part: nc.part[i] / 255, air: nc.air.length > i ? nc.air[i] : null };
   }
 
   /** Averses d'hier et d'aujourd'hui : relues au changement de jour, et chaque minute (un feu de foudre ajoute son orage). */
@@ -2245,6 +2356,8 @@ export class Vue3D {
     }
     const e = this.etatTemps;
     let pluie = 0, neige = 0, orage = 0;
+    // 0.45.26 : ce qui tombe ici, en pluie ou en neige selon la case (température, altitude, air sec).
+    const partIci = this.neigeCase(p.x, p.z).part;
     if (e) {
       // Moyenne pondérée des quatre régions voisines (comme la texture lissée que lisent les gouttes et les nuages).
       const u = p.x / (e.tailleRegion * this.relief.m) - 0.5, v = p.z / (e.tailleRegion * this.relief.m) - 0.5;
@@ -2252,16 +2365,19 @@ export class Vue3D {
       for (const [dx, dy, w] of [[0, 0, (1 - fx) * (1 - fy)], [1, 0, fx * (1 - fy)], [0, 1, (1 - fx) * fy], [1, 1, fx * fy]]) {
         const x = Math.min(e.regionsX - 1, Math.max(0, x0 + dx)), y = Math.min(e.regionsY - 1, Math.max(0, y0 + dy));
         const r = regionDe(e, x * e.tailleRegion, y * e.tailleRegion);
-        pluie += e.pluie[r] * w;
-        neige += e.neige[r] * w;
+        const tombe = Math.max(e.pluie[r], e.neige[r]);
+        pluie += tombe * (1 - partIci) * w;
+        neige += tombe * partIci * w;
         orage += e.orage[r] * w;
       }
     }
+    this.grosFlocons = partIci > 0 ? Math.min(1, Math.max(0, (1 - partIci) * 3)) : 0;
     const k = Math.min(1, dt / 4);
     this.pluieIci += (pluie - this.pluieIci) * k;
     this.neigeIci += (neige - this.neigeIci) * k;
     this.orageIci += (orage - this.orageIci) * k;
     this.ciel.couvert = Math.min(1, Math.max(this.pluieIci, this.neigeIci) * 1.6 + this.orageIci * 0.4);
+    this.ciel.neige = this.neigeIci;
     // Sous l'orage, le vent souffle en rafales (le vent du jour, renforcé).
     if (this.orageIci > 0.05) this.vent.u.value.multiplyScalar(1 + 1.8 * this.orageIci);
     this.mettreAJourCatastrophes(secondes, p, maintenant, dt);
@@ -2522,6 +2638,11 @@ export class Vue3D {
     this.avancerRejeu(dt);
     this.foule.facteur = this.facteur;
     this.foule.animer(dt, secondes, p);
+    {
+      const dtMonde = this.secondesTraces < 0 ? 0 : Math.max(0, secondes - this.secondesTraces);
+      this.secondesTraces = secondes;
+      this.traces.animer(this.foule, p, secondes, dtMonde, this.neigeIci, this.neigeCase(p.x, p.z).air, this.ciel.hemi.color, maintenant / 1000);
+    }
     if (maintenant - this.aPorteeA > 250) {
       this.aPorteeA = maintenant;
       this.aPortee = this.humainAPortee();
@@ -2544,7 +2665,7 @@ export class Vue3D {
     this.feux.animer(maintenant / 1000, p, 1 - this.ciel.clarte, this.exposition);
     // L'eau d'une crue renvoie la lumière du ciel (la couleur du ciel près de l'horizon, plus claire que la moyenne).
     meteoGPU.uCielEau.value.set(this.ciel.hemi.color.r, this.ciel.hemi.color.g, this.ciel.hemi.color.b).multiplyScalar(0.6 * this.ciel.hemi.intensity);
-    this.precipitations.animer(Math.max(this.pluieIci, this.tempeteIci), this.neigeIci, this.ciel.hemi.color, this.cendreIci);
+    this.precipitations.animer(Math.max(this.pluieIci, this.tempeteIci), this.neigeIci, this.ciel.hemi.color, this.cendreIci, this.grosFlocons);
     this.proches.pluie = Math.min(1, (this.pluieIci + this.neigeIci) * 1.5);
     this.eclairs.animer(maintenant / 1000, p, this.orages, this.exposition);
     const nuit = 1 - this.ciel.clarte * (1 - this.ciel.obscurite);
@@ -2706,6 +2827,15 @@ export class Vue3D {
       betes: nombre(this.faune.montrees),
       proche: (() => { const d = this.faune.plusProche(this.camera.position); return d < 0 ? t("trois.betes.aucune") : `${nombre(Math.round(d))} m`; })(),
       flux: this.faune.recuA > 0 ? nombre(Math.round((performance.now() - this.faune.recuA) / 1000)) : "?",
+      // 0.45.26 : la température, ce qui tombe et la neige au sol ici.
+      neige: (() => {
+        const p = this.camera.position;
+        const c = this.neigeCase(p.x, p.z);
+        const air = c.air === null ? "?" : nombre(c.air);
+        const quoi = this.neigeIci > 0.02 ? t("trois.neige.ilNeige") : this.pluieIci > 0.02 ? t("trois.neige.ilPleut") : t("trois.neige.rien");
+        const sol = c.cm < 10 ? nombre(Math.round(c.cm * 10) / 10, 1) : nombre(Math.round(c.cm));
+        return this.neigeCases?.quelque || this.neigeIci > 0.02 ? t("trois.neige.ligne", { air, quoi, sol }) : t("trois.neige.nullePart", { air, quoi });
+      })(),
     });
   }
 

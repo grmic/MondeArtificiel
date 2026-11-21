@@ -977,6 +977,9 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     /// <summary>Averses d'hier et d'aujourd'hui sur chaque région (pluie, neige, orage), pour la carte et la vue 3D (0.43.0).</summary>
     public TempsDto Temps() => TempsDto.Depuis(service.Monde);
 
+    /// <summary>La neige au sol et ce qui tombe en neige, case par case (0.45.26).</summary>
+    public NeigeDto Neige() => NeigeDto.Depuis(service.Monde);
+
     /// <summary>Catastrophes en cours et terres pas encore remises, pour le calque de la carte et la vue 3D (0.43.0).</summary>
     public EnCoursDto EnCours() => EnCoursDto.Depuis(service.Monde);
 

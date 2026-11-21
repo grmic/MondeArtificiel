@@ -57,6 +57,8 @@ export class Ciel {
    * mal sous un ciel couvert de pluie (de 10 à 30 % de la lumière directe), l'air se charge de brume.
    */
   couvert = 0;
+  /** Neige qui tombe sur la caméra (0 à 1, 0.45.26) : par forte chute, on ne voit guère à plus de quelques centaines de mètres. */
+  neige = 0;
   eclair = 0;
   /**
    * Catastrophes du ciel (0.43.1, E1) : part du soleil cachée par une éclipse (0 à 1), et voile d'un hiver volcanique ou d'impact
@@ -454,7 +456,8 @@ export class Ciel {
     const matin = apresLever < 4 ? 1 - apresLever / 4 : 0;
     const nuitBrume = this.clarte < 0.5 ? 0.5 : 0;
     this.uBrume.value = 0.00012 + 0.0008 * Math.max(matin, nuitBrume, 0.6 * this.couvert);
-    this.uVoile.value = (2.2e-5 * (1 + 6 * this.couvert) * (1 + 5 * this.hiver)) / (1 + haut / 4000);
+    // Visibilité dans la neige (loi de Koschmieder, V ≈ 3/σ) : 1 à 2 km sous une chute modérée, quelques centaines de mètres sous une forte.
+    this.uVoile.value = (2.2e-5 * (1 + 6 * this.couvert) * (1 + 5 * this.hiver)) / (1 + haut / 4000) + 0.004 * Math.pow(this.neige, 1.4);
   }
 
   /** Refait `n` lignes de la texture du ciel ; à la dernière, l'envoie au GPU et calcule la lumière du ciel. */

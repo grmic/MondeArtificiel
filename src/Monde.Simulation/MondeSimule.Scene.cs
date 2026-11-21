@@ -120,7 +120,7 @@ public sealed partial class MondeSimule
                     if (versX >= 0 && versY >= 0 && versX < Carte.Largeur && versY < Carte.Hauteur && (versX != h.X || versY != h.Y)
                         && Math.Abs(versX - h.X) <= 1 && Math.Abs(versY - h.Y) <= 1)
                     {
-                        var effort = Marche.Effort(Carte, h.X, h.Y, versX, versY);
+                        var effort = _comportement.EffortDe(h, h.X, h.Y, versX, versY, maintenant);
                         if (effort > 0)
                         {
                             avance = Math.Clamp(h.Progression / effort, 0, 1);

@@ -397,8 +397,11 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         var abri = AbriEn(h.X, h.Y) + Couverture(h);
         if (Installations.FoyerEn(h.X, h.Y) is not null) abri += ChaleurDuFeu;
         if (chaleurPartagee) abri += 0.3; // se tenir chaud avec son compagnon ou sa famille
-        var perte = Math.Max(0, TemperatureConfort - temperature) * 0.05 * Math.Max(0, 1 - abri);
+        // Dans la neige (0.45.26), la peau et le corps mal couverts perdent leur chaleur plus vite.
+        var perte = Math.Max(0, TemperatureConfort - (temperature - FroidDeLaNeige(h))) * 0.05 * Math.Max(0, 1 - abri);
         h.Froid += pas * (perte - ChaleurCorporelle);
+        // Pieds dans la neige (0.45.26).
+        PiedsGeles(h, pas, temperature);
 
         // Le désir monte chez les adultes en âge d'avoir des enfants, s'ils ne sont pas en détresse.
         // Une maladie légère (des vers, une infection de la peau) ne l'éteint pas.
@@ -1063,7 +1066,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // Sur une terre qui brûle, les bêtes débusquées fuient à découvert (Bird et al., 2005).
             var auFeu = TerreEnFeu(h);
             var chance = (0.1 + 0.3 * h.Personnalite.Adresse) * (1 + gain) * ecosysteme.Gibier[i] / 10_000.0 * (1 + 0.05 * h.CompagnonsDeLangue)
-                         * (auFeu ? 2 : 1) * AvecSesChiens(h);
+                         * (auFeu ? 2 : 1) * AvecSesChiens(h) * ChasseDansLaNeige(h, i);
             // Le boiteux ne rattrape plus la bête blessée ; le bras abîmé lance mal.
             if (h.Sequelle.Membre != Membre.Aucun)
                 chance *= (1 - 0.6 * Sequelles.Gene(h, Membre.Jambe, _maintenant)) * (1 - 0.5 * Sequelles.Gene(h, Membre.Bras, _maintenant));
@@ -1427,7 +1430,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
                 (bx, by) = (pas % carte.Largeur, pas / carte.Largeur);
             }
 
-            var effort = Marche.Effort(carte, h.X, h.Y, bx, by);
+            var effort = EffortDe(h, h.X, h.Y, bx, by, _maintenant);
             if (budget < effort)
             {
                 h.Progression = budget;

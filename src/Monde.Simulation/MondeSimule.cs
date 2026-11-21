@@ -61,6 +61,11 @@ public sealed record EtatMonde(ulong Graine, long Secondes, long Pas, double Fac
     /// <summary>Pousses des camps (voir <see cref="Ecosysteme.Rejets"/>) ; null : aucune.</summary>
     public ushort[]? Rejets { get; init; }
 
+    /// <summary>Neige au sol : équivalent en eau (mm) et épaisseur (cm) par case (voir <see cref="Neige"/>, 0.45.26) ; null : aucune.</summary>
+    public float[]? NeigeEau { get; init; }
+
+    public float[]? NeigeEpaisseur { get; init; }
+
     /// <summary>Réglages choisis à la création du monde (absents : réglages d'origine, voir <see cref="ConfigurationMonde.ParDefaut"/>).</summary>
     public ConfigurationMonde? Configuration { get; init; }
 
@@ -171,6 +176,9 @@ public sealed partial class MondeSimule
     private readonly Alea _alea;
     private readonly Comportement _comportement;
     private readonly Catastrophes _catastrophes;
+
+    /// <summary>Le manteau neigeux (0.45.26).</summary>
+    private readonly Neige _neige;
     private readonly List<AlerteCatastrophe> _alertes = [];
     private bool _pauseDemandee;
     // Plus aucun humain vivant : l'extinction n'est annoncée qu'une fois (un monde rechargé éteint ne l'annonce pas de nouveau).
@@ -262,6 +270,9 @@ public sealed partial class MondeSimule
             Numeros = _numeros, Generation = configuration.Generation, Comportement = _comportement, Communautes = _communautes,
         };
         _comportement.Catastrophes = _catastrophes;
+        _neige = new Neige(carte, _ecosysteme, etat.NeigeEau?.ToArray(), etat.NeigeEpaisseur?.ToArray());
+        _neige.Reprendre(etat.Secondes);
+        _comportement.Neige = _neige;
         _comportement.ChargerFauves(etat.Fauves, etat.FauvesManquants, etat.AttaquesDeBetes, etat.MortsDeBetes, etat.AttaquesRecentes);
         _decrets = new Decrets(etat.Decrets);
         _comportement.Decrets = _ecosysteme.Decrets = _decrets;
@@ -355,6 +366,8 @@ public sealed partial class MondeSimule
                     DegatsNature = _ecosysteme.Degats.ToArray(),
                     Limon = _ecosysteme.LimonAEnregistrer(),
                     Rejets = _ecosysteme.RejetsAEnregistrer(),
+                    NeigeEau = _neige.Quelque ? _neige.Eau.ToArray() : null,
+                    NeigeEpaisseur = _neige.Quelque ? _neige.Epaisseur.ToArray() : null,
                     Configuration = Configuration,
                     Guerres = _social.Guerres.Select(g => g.Copier()).ToList(),
                     Foyers = _installations.Foyers.ToList(),
@@ -662,6 +675,28 @@ public sealed partial class MondeSimule
         }
     }
 
+    /// <summary>
+    /// Neige au sol (0.45.26) : épaisseur (cm) et densité (kg/m³) de chaque case, et part de la précipitation qui tomberait en neige
+    /// sur chaque case à cet instant (0 à 255), et température de l'air (°C).
+    /// </summary>
+    public (float[] Epaisseur, float[] Eau, byte[] PartNeige, sbyte[] Air, long Secondes) CarteNeige()
+    {
+        lock (_verrou)
+        {
+            var part = new byte[_neige.Epaisseur.Length];
+            var air = new sbyte[part.Length];
+            var l = Carte.Largeur;
+            for (var i = 0; i < part.Length; i++)
+            {
+                var seuil = Averses.SeuilDeNeige(_ecosysteme.PluieEn(i));
+                var t = _comportement.TemperatureEn(i % l, i / l, _secondes);
+                part[i] = (byte)Math.Round(255 * Averses.PartDeNeige(t, seuil));
+                air[i] = (sbyte)Math.Clamp(Math.Round(t), -128, 127);
+            }
+            return (_neige.Epaisseur.ToArray(), _neige.Eau.ToArray(), part, air, _secondes);
+        }
+    }
+
     /// <summary>Dégâts des catastrophes sur chaque tuile (copie, sur 10 000 ; voir <see cref="Ecosysteme.Degats"/>).</summary>
     public ushort[] CarteDegats()
     {
@@ -906,6 +941,7 @@ public sealed partial class MondeSimule
         }
         if (_pas % (Calendrier.SecondesParHeure / SecondesParPas) == 0)
         {
+            _neige.Heure(_secondes, _comportement.TemperatureEn);
             _catastrophes.Heure(_humains, _secondes);
             _catastrophes.FeuxDeCamp(_installations, _humains, _secondes);
             _comportement.Raids(_humains, _secondes);

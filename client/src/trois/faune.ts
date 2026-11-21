@@ -516,8 +516,11 @@ export class Faune3D {
       }
       g.butJusqua = ts + 25 + 70 * unite(hacher(graine, 2));
     }
-    const vM = vitesseMarche(g.L);
-    const vC = vitesseCourse(g.L);
+    // 0.45.26 : la neige au sol freine la bête, d'autant plus qu'elle y enfonce au regard de la hauteur de son poitrail (comme dans
+    // la simulation : Telfer et Kelsall, 1984).
+    const freinNeige = allureDansLaNeige(e.poids, this.relief.neigeEn(meneuse.x, meneuse.z));
+    const vM = vitesseMarche(g.L) * freinNeige;
+    const vC = vitesseCourse(g.L) * freinNeige;
     for (let k = 0; k < g.betes.length; k++) {
       const b = g.betes[k];
       const L = g.L * b.taille;
@@ -745,6 +748,13 @@ export class Faune3D {
     for (const s of this.especes.values()) for (const r of s.rendus) if (r) n += r.n;
     return n;
   }
+}
+
+/** Ce que la neige laisse de l'allure d'une bête de ce poids (kg) : poitrail ≈ 0,17 m × kg^⅓, enfoncement d'environ 60 % de l'épaisseur. */
+export function allureDansLaNeige(poids: number, cm: number): number {
+  if (cm < 0.5) return 1;
+  const poitrail = 0.17 * Math.cbrt(Math.max(0.5, poids));
+  return 1 / (1 + 2.5 * Math.pow((cm * 0.006) / poitrail, 1.5));
 }
 
 /** Allure de marche (m/s) d'une bête de cette longueur : environ 1,2 m/s pour 2 m (ordres de grandeur des pistes fossiles). */

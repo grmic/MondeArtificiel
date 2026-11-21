@@ -16,7 +16,7 @@ namespace Monde.Stockage;
 public sealed partial class DepotMonde
 {
     /// <summary>Version du schéma, stockée dans PRAGMA user_version.</summary>
-    public const int VersionSchema = 63;
+    public const int VersionSchema = 64;
 
     private readonly string _connexion;
 
@@ -650,6 +650,8 @@ public sealed partial class DepotMonde
         if (actuelle < 62) MigrerVersion62(connexion, transaction);
         // Version 63 : prédateurs connus des humains (0.45.0).
         if (actuelle < 63) MigrerVersion63(connexion, transaction);
+        // Version 64 : neige au sol (0.45.26).
+        if (actuelle < 64) MigrerVersion64(connexion, transaction);
         Executer(connexion, transaction, $"PRAGMA user_version = {VersionSchema};");
         transaction.Commit();
     }
@@ -898,6 +900,7 @@ public sealed partial class DepotMonde
         var troupeaux = LireTroupeaux(commande);
         if (troupeaux.Count > 0) etat = etat with { Troupeaux = troupeaux };
         etat = LireFauves(commande, etat);
+        etat = LireNeige(commande, etat);
         if (oeuvres.Count > 0) etat = etat with { Oeuvres = oeuvres };
         if (foyers.Count > 0) etat = etat with { Foyers = foyers };
         if (huttes.Count > 0) etat = etat with { Huttes = huttes };
@@ -1123,7 +1126,7 @@ public sealed partial class DepotMonde
                 "DELETE FROM memoire_lieux; DELETE FROM liens; DELETE FROM pensees; DELETE FROM communautes; " +
                 "DELETE FROM climat; DELETE FROM relations_communautes; DELETE FROM griefs; DELETE FROM raisons; " +
                 "DELETE FROM offenses_communautes; DELETE FROM noms_communautes; DELETE FROM archives_communautes; " +
-                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions; DELETE FROM outremer; " + EffacerSavoirs + EffacerLangage + EffacerCultes + EffacerGestes);
+                "DELETE FROM catastrophes; DELETE FROM pathogenes; DELETE FROM guerres; DELETE FROM jardin; DELETE FROM exclusions; DELETE FROM outremer; DELETE FROM neige; " + EffacerSavoirs + EffacerLangage + EffacerCultes + EffacerGestes);
         }
 
         using (var commande = connexion.CreateCommand())
@@ -1321,6 +1324,7 @@ public sealed partial class DepotMonde
         EnregistrerRecitsCatastrophes(connexion, transaction, etat.RecitsCatastrophes ?? []);
         if (etat.Humains is not null) EnregistrerChamps(connexion, transaction, etat);
         if (etat.Humains is not null) EnregistrerFauves(connexion, transaction, etat);
+        if (etat.Humains is not null) EnregistrerNeige(connexion, transaction, etat);
         if (etat.Religions is not null || etat.Prieres is not null || etat.LieuxSacres is not null || etat.Propheties is not null)
             EnregistrerCultes(connexion, transaction, etat);
         if (etat.EffetsEntite is not null || etat.SouvenirsEntite is not null) EnregistrerGestes(connexion, transaction, etat);
