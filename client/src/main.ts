@@ -25,6 +25,7 @@ import { PanneauTerritoires } from "./territoires";
 import { PanneauParlerMonde } from "./parlermonde";
 import { PanneauRevelations } from "./revelations";
 import { placerSousLaBarre } from "./placement";
+import { Tiroir, type PanneauDuTiroir } from "./onglets";
 import { nombre, parOrdreAlphabetique, t } from "./langue";
 import type { Vue3D } from "./trois/vue3d";
 import type { AttaqueJson } from "./trois/attaque";
@@ -263,7 +264,6 @@ async function demarrer(): Promise<void> {
   }, (id) => ouvrirCommunaute(id));
   const territoires = new PanneauTerritoires(element("#panneauTerritoires"), vue, (id) => ouvrirCommunaute(id));
   const suivreCommunaute = (id: number, nom: string) => {
-    communautes?.fermer();
     journal.suivreCommunaute(id, nom);
   };
   const montrerTerres = (id: number) => {
@@ -281,48 +281,35 @@ async function demarrer(): Promise<void> {
   communautes.surChoix = (id) => territoires.choisir(id);
   element("#boutonTerritoires").addEventListener("click", () => territoires.basculer());
 
+  // Onglets (0.45.27) : toutes les fenêtres de droite vivent dans un même tiroir ; en ouvrir une ne ferme plus les autres,
+  // elle passe devant. Le bouton d'une fenêtre ouverte mais cachée la ramène devant ; devant, il la ferme comme avant.
+  const tiroir = new Tiroir(element("#alerte"));
+  const ranger = (selecteur: string, panneau: PanneauDuTiroir, bouton: string | null, avant?: () => void) => {
+    const racine = element(selecteur);
+    const b = bouton ? element<HTMLButtonElement>(bouton) : null;
+    tiroir.inscrire(racine, panneau, b);
+    b?.addEventListener("click", () => {
+      avant?.();
+      if (!tiroir.bouton(racine)) panneau.basculer();
+    });
+  };
+
   const catastrophes = new PanneauCatastrophes(element("#catastrophes"), vue, (id) => {
-    catastrophes.fermer();
     ouvrirCommunaute(id);
   }, (message) => (infos.textContent = message));
   const alertes = new BandeauAlertes(element("#alerte"), element("#boutonCatastrophes"), (id) => {
-    journal.fermer();
-    communautes?.fermer();
     alertes.vues();
     void catastrophes.ouvrir(id);
   });
-  element("#boutonCatastrophes").addEventListener("click", () => {
-    alertes.vues();
-    journal.fermer();
-    communautes?.fermer();
-    panneauMonde?.fermer();
-    configuration.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
-    catastrophes.basculer();
-  });
+  ranger("#catastrophes", catastrophes, "#boutonCatastrophes", () => alertes.vues());
 
   const panneauMonde = new PanneauMonde(element("#caracteristiques"), vue);
   const mesure = new OutilMesure(element<HTMLButtonElement>("#boutonMesure"), vue, (message) => (infos.textContent = message));
-  element("#boutonMonde").addEventListener("click", () => {
-    journal.fermer();
-    communautes?.fermer();
-    catastrophes.fermer();
-    configuration.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
-    panneauMonde.basculer();
-  });
+  ranger("#caracteristiques", panneauMonde, "#boutonMonde");
 
   const demographie = new PanneauDemographie(element("#demographie"), (id) => {
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
     void catastrophes.ouvrir(id);
   }, (id) => {
-    demographie.fermer();
     ouvrirCommunaute(id);
   });
   const decouvertes = new PanneauDecouvertes(element("#decouvertes"), (id) => void fiche.ouvrir(id));
@@ -330,19 +317,11 @@ async function demarrer(): Promise<void> {
     vue.selectionner(id);
     void fiche.ouvrir(id);
   }, (ids) => vue.surligner(ids), (id) => {
-    remarquables.fermer();
     ouvrirCommunaute(id);
   });
-  element("#boutonRemarquables").addEventListener("click", () => {
-    journal.fermer();
-    communautes?.fermer();
-    catastrophes.fermer();
-    panneauMonde.fermer();
-    configuration.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.basculer();
-  });
+  ranger("#demographie", demographie, "#boutonDemographie");
+  ranger("#decouvertes", decouvertes, "#boutonDecouvertes");
+  ranger("#remarquables", remarquables, "#boutonRemarquables");
   const prieres = new PanneauPrieres(element("#prieres"), (id) => {
     vue.selectionner(id);
     void fiche.ouvrir(id);
@@ -352,69 +331,28 @@ async function demarrer(): Promise<void> {
     void fiche.ouvrir(id);
   }, (lieux) => vue.marquerLieuxSacres(lieux));
   definirOuvrirCommunaute((id) => {
-    prieres.fermer();
-    religions.fermer();
     ouvrirCommunaute(id);
   });
-  // Prières et religions occupent la place des autres fenêtres latérales : en ouvrir une autre les ferme.
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
-    if (b.id !== "boutonPrieres") b.addEventListener("click", () => prieres.fermer());
-    if (b.id !== "boutonReligions") b.addEventListener("click", () => religions.fermer());
-  }
-  const fermerAutres = () => {
-    journal.fermer();
-    communautes?.fermer();
-    catastrophes.fermer();
-    panneauMonde.fermer();
-    configuration.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
-  };
+  ranger("#prieres", prieres, "#boutonPrieres");
+  ranger("#religions", religions, "#boutonReligions");
   const suivis = new PanneauSuivis(element("#suivis"), (id) => {
     vue.selectionner(id);
     void fiche.ouvrir(id);
   }, (id) => ouvrirCommunaute(id), (ids) => vue.surligner(ids));
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
-    if (b.id !== "boutonSuivis") b.addEventListener("click", () => suivis.fermer());
-  }
   const alertesSuivis = new AlertesSuivis(element("#alerte"), element("#boutonSuivis"), (id) => {
     vue.selectionner(id);
     void fiche.ouvrir(id);
   }, (id) => ouvrirCommunaute(id), () => suivis.ouvert);
   suivis.lier(alertesSuivis);
   new PanneauBilan(element("#bilanSaut"), (p) => {
-    fermerAutres();
     journal.voirPeriode(p);
   });
-  element("#boutonSuivis").addEventListener("click", () => {
-    fermerAutres();
-    prieres.fermer();
-    religions.fermer();
-    suivis.basculer();
-  });
-  element("#boutonPrieres").addEventListener("click", () => {
-    fermerAutres();
-    prieres.basculer();
-  });
-  element("#boutonReligions").addEventListener("click", () => {
-    fermerAutres();
-    religions.basculer();
-  });
+  ranger("#suivis", suivis, "#boutonSuivis");
   const entiteLlm = new PanneauEntiteLlm(element("#entiteLlm"), (id) => {
     vue.selectionner(id);
     void fiche.ouvrir(id);
   }, (id) => ouvrirCommunaute(id));
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
-    if (b.id !== "boutonEntiteLlm") b.addEventListener("click", () => entiteLlm.fermer());
-  }
-  element("#boutonEntiteLlm").addEventListener("click", () => {
-    fermerAutres();
-    prieres.fermer();
-    religions.fermer();
-    suivis.fermer();
-    entiteLlm.basculer();
-  });
+  ranger("#entiteLlm", entiteLlm, "#boutonEntiteLlm");
   // Dialogue direct avec un humain (0.36.2) : une fenêtre à part, qui laisse la fiche ouverte ; les appels des prières fortes.
   new FenetreDialogue(element("#dialogue"), (id) => {
     vue.selectionner(id);
@@ -425,57 +363,16 @@ async function demarrer(): Promise<void> {
     vue.selectionner(id);
     void fiche.ouvrir(id);
   }, (id) => ouvrirCommunaute(id));
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
-    if (b.id !== "boutonActesEntite") b.addEventListener("click", () => actesEntite.fermer());
-  }
+  ranger("#actesEntite", actesEntite, "#boutonActesEntite");
   // Parler au Monde (0.37.1).
   const parlerMonde = new PanneauParlerMonde(element("#parlerMonde"), (id) => {
     vue.selectionner(id);
     void fiche.ouvrir(id);
   });
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
-    if (b.id !== "boutonParlerMonde") b.addEventListener("click", () => parlerMonde.fermer());
-  }
-  element("#boutonParlerMonde").addEventListener("click", () => {
-    fermerAutres();
-    prieres.fermer();
-    religions.fermer();
-    suivis.fermer();
-    entiteLlm.fermer();
-    actesEntite.fermer();
-    parlerMonde.basculer();
-  });
+  ranger("#parlerMonde", parlerMonde, "#boutonParlerMonde");
   // Révélations de l'Entité (0.42.9).
   const revelations = new PanneauRevelations(element("#revelations"));
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#formGraine button")) {
-    if (b.id !== "boutonRevelations") b.addEventListener("click", () => revelations.fermer());
-  }
-  element("#boutonRevelations").addEventListener("click", () => {
-    fermerAutres();
-    prieres.fermer();
-    religions.fermer();
-    suivis.fermer();
-    entiteLlm.fermer();
-    actesEntite.fermer();
-    revelations.basculer();
-  });
-  element("#boutonActesEntite").addEventListener("click", () => {
-    fermerAutres();
-    prieres.fermer();
-    religions.fermer();
-    suivis.fermer();
-    entiteLlm.fermer();
-    actesEntite.basculer();
-  });
-  element("#boutonDecouvertes").addEventListener("click", () => {
-    journal.fermer();
-    communautes?.fermer();
-    catastrophes.fermer();
-    panneauMonde.fermer();
-    configuration.fermer();
-    demographie.fermer();
-    decouvertes.basculer();
-  });
+  ranger("#revelations", revelations, "#boutonRevelations");
   // Fenêtre Faune (0.44.2) : population de chaque espèce ; un clic sur une espèce la montre sur la carte (calque des animaux).
   // 0.45.1 : « Aller voir » une espèce ou une bête connue ouvre la vue 3D (si besoin) et la suit.
   const voirBete3d = async (espece: number, groupe: number, x: number, y: number) => {
@@ -503,22 +400,7 @@ async function demarrer(): Promise<void> {
   const faune = new PanneauFaune(element("#faune"), (numero) => void calques.montrerAnimaux(numero),
     (espece, groupe, x, y) => void voirBete3d(espece, groupe, x, y));
   faune.rejouer = (evenement) => void rejouerAttaque3d(evenement);
-  element("#boutonFaune").addEventListener("click", () => {
-    remarquables.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    faune.basculer();
-  });
-  element("#boutonDemographie").addEventListener("click", () => {
-    journal.fermer();
-    communautes?.fermer();
-    catastrophes.fermer();
-    panneauMonde.fermer();
-    configuration.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
-    demographie.basculer();
-  });
+  ranger("#faune", faune, "#boutonFaune");
 
   vue.quandClic((info) => {
     if (info && mesure.enCours) {
@@ -539,27 +421,8 @@ async function demarrer(): Promise<void> {
   };
   definirLiensNoms(idDuNom, (id) => void fiche.ouvrir(id), (id) => nomsParId.get(id) ?? "?");
   const journal = new PanneauJournal(element("#journal"), idDuNom, () => parOrdreAlphabetique([...new Set(nomsParId.values())], (n) => n), (id) => void fiche.ouvrir(id));
-  // Journal et communautés occupent la même place : ouvrir l'un ferme l'autre.
-  element("#boutonJournal").addEventListener("click", () => {
-    communautes?.fermer();
-    catastrophes.fermer();
-    panneauMonde.fermer();
-    configuration.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
-    journal.basculer();
-  });
-  element("#boutonCommunautes").addEventListener("click", () => {
-    journal.fermer();
-    catastrophes.fermer();
-    panneauMonde.fermer();
-    configuration.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
-    communautes?.basculer();
-  });
+  ranger("#journal", journal, "#boutonJournal");
+  ranger("#communautes", communautes, "#boutonCommunautes");
 
   demarrerConnexion(element("#statut"), async () => {
     await horloge.synchroniser();
@@ -665,28 +528,12 @@ async function demarrer(): Promise<void> {
   const configuration = new PanneauConfiguration(element("#configuration"), dialogueReinit,
     (reglages) => charger(reglages ?? undefined), (texte) => (infos.textContent = texte));
   const ouvrirConfiguration = (section: "sauvegardes" | "nouveau") => {
-    journal.fermer();
-    communautes?.fermer();
-    catastrophes.fermer();
-    panneauMonde.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
     element("#extinction").hidden = true;
     void configuration.ouvrir(section);
   };
   element("#extinctionRestaurer").addEventListener("click", () => ouvrirConfiguration("sauvegardes"));
   element("#extinctionNouveau").addEventListener("click", () => ouvrirConfiguration("nouveau"));
-  element("#boutonConfiguration").addEventListener("click", () => {
-    journal.fermer();
-    communautes?.fermer();
-    catastrophes.fermer();
-    panneauMonde.fermer();
-    demographie.fermer();
-    decouvertes.fermer();
-    remarquables.fermer();
-    configuration.basculer();
-  });
+  ranger("#configuration", configuration, "#boutonConfiguration");
 
   // Nouveau monde : demandé depuis la configuration, annoncé par le serveur à tous les navigateurs ouverts.
   connexion.on("MondeReinitialise", (graine: number) => {

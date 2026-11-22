@@ -619,3 +619,32 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 
 /* 0.45.14 : dialogue mené depuis la fenêtre : seules les cases des voix restent en bas de l'écran. */
 .rencontre3d.options-seules .sous-titres, .rencontre3d.options-seules form, .rencontre3d.options-seules .etat { display: none; }
+
+/* Tiroir à onglets (0.45.27) : les fenêtres de droite partagent un tiroir ; celles qui ne sont pas devant restent ouvertes, masquées. */
+.tiroir {
+  position: fixed; right: 12px; top: var(--sous-temps, 290px); bottom: 12px; width: min(380px, calc(100vw - 24px));
+  display: flex; flex-direction: column; border-radius: 10px; background: var(--panneau); overflow: hidden;
+}
+.tiroir[hidden] { display: none; }
+.tiroir .poignee { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; cursor: ew-resize; z-index: 1; touch-action: none; }
+.tiroir .poignee:hover, .tiroir.tire .poignee { background: rgba(143, 211, 160, 0.35); }
+.tiroir.tire { user-select: none; }
+.tiroir .onglets { display: flex; flex-wrap: wrap; gap: 3px; padding: 6px 8px 0 10px; border-bottom: 1px solid #2a3548; background: rgba(8, 12, 20, 0.55); }
+.tiroir .onglet {
+  display: flex; align-items: center; gap: 4px; padding: 3px 4px 3px 9px; border-radius: 6px 6px 0 0; cursor: pointer;
+  background: #1c2635; color: var(--discret); font-size: 0.8rem; white-space: nowrap; max-width: 100%;
+}
+.tiroir .onglet .nom { overflow: hidden; text-overflow: ellipsis; }
+.tiroir .onglet:hover { color: var(--texte); }
+.tiroir .onglet:focus-visible { outline: 2px solid #8fd3a0; outline-offset: -2px; }
+.tiroir .onglet.actif { background: #2a3a55; color: var(--texte); font-weight: 600; }
+.tiroir .onglet .croix { background: none; border: none; color: inherit; cursor: pointer; font-size: 0.95rem; line-height: 1; padding: 0 3px; opacity: 0.7; }
+.tiroir .onglet .croix:hover { opacity: 1; color: #ffb3a7; }
+.tiroir .pages { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.tiroir .pages > .panneau-lateral {
+  position: static; width: auto; max-height: none; flex: 1 1 auto; min-height: 0; border-radius: 0; background: none;
+}
+.tiroir .pages > .panneau-lateral.derriere { display: none; }
+/* Point vert sur les boutons de la barre dont la fenêtre a un onglet ouvert. */
+.barre button.onglet-ouvert { position: relative; }
+.barre button.onglet-ouvert::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: #8fd3a0; pointer-events: none; }

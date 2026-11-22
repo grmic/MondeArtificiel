@@ -27,6 +27,8 @@
   "barre.remarquablesAide": "Les humains hors du commun : intelligence, aptitudes, karma, croyance, découvertes, soins, œuvres, descendance, longévité",
   "barre.faune": "Faune",
   "barre.fauneAide": "Population animale par espèce : bêtes sauvages estimées, tendance sur un an, bêtes gardées",
+  "onglets.poigneeAide": "Tirer pour élargir ou rétrécir les fenêtres ; double-clic pour revenir à la largeur d'origine",
+  "onglets.fermerAide": "Fermer cet onglet (clic du milieu aussi)",
   "faune.titre": "Faune",
   "faune.aide": "Chaque espèce du monde, sauvage ou gardée. Cliquer un titre de colonne pour trier, un nom pour voir où vit l’espèce sur la carte.",
   "faune.resume": "{especes} espèces · environ {sauvages} bêtes sauvages · {gardees} bêtes gardées en {troupeaux} troupeaux",
