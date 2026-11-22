@@ -4,7 +4,7 @@
 
 Simulation d'une communauté humaine née d'un mythe fondateur. Application client-serveur : un serveur .NET 10 avec serveur HTTP intégré (Kestrel), et un client web ouvert dans le navigateur.
 
-Version 0.45.30 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine ou dans le cloud (ChatGPT, Claude, Mistral, Euria), voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
+Version 0.45.31 (affichée dans « Configuration »), auteur : MicG. Ce qui a changé à chaque version est résumé dans les [notes de version](#notes-de-version). Le bouton « 📖 Lire le guide » de la Configuration ouvre ce document dans la langue de l'interface, sans connexion à internet. Pour faire jouer l'Entité par un LLM installé sur votre machine ou dans le cloud (ChatGPT, Claude, Mistral, Euria), voir le [tutoriel](#tutoriel--faire-jouer-lentité-par-un-llm).
 
 ![Un monde à l'an 108 : 5 198 humains répartis en communautés sur quatre îles, avec la fenêtre du temps et la courbe de démographie](docs/capture-an108.png)
 
@@ -345,6 +345,7 @@ Le serveur n'écoute que sur `localhost:5080` (voir `src/Monde.Serveur/appsettin
 
 Les versions, de la plus récente à la plus ancienne. Le détail de chaque nouveauté est dans le guide ci-dessus.
 
+- **0.45.31** (22 nov. 2026) : **les rivières du Monde 3D coulent en chenaux** : une case de rivière n'est plus dessinée comme un plan d'eau de 800 m de large et 4 m de fond ; la rivière y passe en chenal de 40 à 300 m selon son débit, la terre restant à sec autour, comme dans la simulation où l'on y marche. Dans un delta de mangrove, les cases de rivière formaient un grand lac où les humains qui allaient aux champs pataugeaient (sur ce monde, 419 cases de rivière sur 430 étaient sous l'eau, 9 désormais). Simulation inchangée.
 - **0.45.30** (22 nov. 2026) : **carte 2D plus légère** : sans catastrophe en mouvement, la carte ne refait plus tout son dessin à chaque image (environ deux fois moins de travail pour le navigateur au repos) ; fumées et ondes des catastrophes dessinées à part. Client seulement.
 - **0.45.29** (22 nov. 2026) : **les fenêtres déplaçables à la souris** : chaque fenêtre se prend par sa barre de titre ; coin en bas à droite pour la taille ; place et taille retenues par le navigateur, double-clic pour la place d'origine, bouton « Remettre les fenêtres en place » dans la Configuration ; fenêtres gardées dans l'écran et aimantées aux bords.
 - **0.45.28** (22 nov. 2026) : **le temps passe vraiment plus vite** : une année d'un monde de 1 200 vivants en 4,8 min avec tous les cœurs (13,5 avant) et 15,5 min sur 1 cœur (52 avant), même histoire ; vitesse réelle moyennée sur 10 s avec la durée d'une année ; vitesse atteinte par réglage de cœurs dans la Configuration.

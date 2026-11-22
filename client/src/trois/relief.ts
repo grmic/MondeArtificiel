@@ -177,7 +177,10 @@ export class Relief {
       else if (b === PLAGE || b === MARAIS || b === MANGROVE) a *= 0.3;
       else if (b <= RIVIERE) a *= 0.25;
       this.amplitude[i] = a;
-      if (b === LAC || b === RIVIERE) {
+      // 0.45.31 : seuls les lacs remplissent leur case d'eau. Une case de rivière garde sa terre : la rivière y passe en chenal
+      // (voir tracerRivieres), comme la simulation, où l'on y marche (avant, la case entière était un plan d'eau de 4 m de fond, et
+      // un delta de cases de rivière devenait un grand lac où les humains pataugeaient).
+      if (b === LAC) {
         this.eau[i] = 1;
         this.niveau[i] = h;
       }
@@ -201,8 +204,19 @@ export class Relief {
       if (this.eau[a] && this.eau[b]) continue;
       const [ax, az] = decalage(a);
       const [bx, bz] = decalage(b);
-      const [la, pa] = largeur(terrain.debit[a]);
-      const [lb, pb] = largeur(Math.max(terrain.debit[a], terrain.debit[b] || terrain.debit[a]));
+      let [la, pa] = largeur(terrain.debit[a]);
+      let [lb, pb] = largeur(Math.max(terrain.debit[a], terrain.debit[b] || terrain.debit[a]));
+      // Une case que la carte marque comme rivière (0.45.31) porte un vrai cours d'eau, plus large qu'un ruisseau : chenal de 40 à
+      // 300 m selon le débit, profond de 1,5 à 4 m (les bras d'un delta), la terre restant à sec entre les bras.
+      if (this.biomes[a] === RIVIERE || this.biomes[b] === RIVIERE) {
+        const grand = (d: number): [number, number] => {
+          const q = Math.pow(10, (d - 1) / 40) - 1;
+          return [Math.min(150, 20 + 12 * q), Math.min(4, 1.5 + 0.35 * q)];
+        };
+        const ga = grand(terrain.debit[a]);
+        const gb = grand(Math.max(terrain.debit[a], terrain.debit[b] || terrain.debit[a]));
+        [la, pa, lb, pb] = [Math.max(la, ga[0]), Math.max(pa, ga[1]), Math.max(lb, gb[0]), Math.max(pb, gb[1])];
+      }
       const sa = this.hauteurDeBase(ax, az) - 1;
       const sb = Math.min(sa, this.hauteurDeBase(bx, bz) - 1);
       const indice = this.bras.length;
