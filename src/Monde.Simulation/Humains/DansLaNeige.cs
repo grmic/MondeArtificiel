@@ -121,11 +121,13 @@ public sealed partial class Comportement
     /// Ce que la neige retire à la température ressentie (°C) par l'humain qui s'y tient : de la neige qui fond sur la peau et sur
     /// ce qu'il porte, et le sol froid sous lui ; davantage couché ou assis dans la neige, à peine s'il est bien couvert.
     /// </summary>
-    private double FroidDeLaNeige(Humain h)
+    private double FroidDeLaNeige(Humain h, long maintenant)
     {
         if (!PiedsDansLaNeige(h, out var epaisseur)) return 0;
         var contact = Math.Min(1, epaisseur / 5);
-        var couche = h.Activite is Activite.Dormir or Activite.Repos or Activite.Veiller ? 1.6 : 1;
+        var couche = h.Activite is Activite.Dormir or Activite.Repos or Activite.Veiller or Activite.SAbriter ? 1.6 : 1;
+        // Assis ou couché sur une litière (0.45.32), on ne touche presque plus la neige.
+        if (couche > 1) contact *= 1 - 0.85 * LitiereSous(h, maintenant);
         return contact * couche * (3 + 2 * (1 - h.Personnalite.Endurance)) * (1 - 0.7 * Couverture(h));
     }
 

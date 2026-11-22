@@ -242,11 +242,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
     };
 
     /// <summary>Se serrer contre quelqu'un qu'on aime réchauffe autant que contre son compagnon.</summary>
-    private static bool AmiAuMemeEndroit(Humain h, IReadOnlyList<Humain> tous)
+    private bool AmiAuMemeEndroit(Humain h, IReadOnlyList<Humain> tous)
     {
+        // Par le froid (0.45.32), on dort serré avec tous ceux de la case qu'on ne déteste pas, pas seulement les intimes.
+        var serre = h.Activite is Activite.Dormir or Activite.SAbriter && h.Froid > 20;
         foreach (var l in h.Liens)
         {
-            if (l.Affection < 20) continue;
+            if (l.Affection < (serre ? 0 : 20)) continue;
             var a = tous[l.Id - 1];
             if (a.EstVivant && a.X == h.X && a.Y == h.Y) return true;
         }
@@ -386,7 +388,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         Depenser(h, FaimParPas * BesoinEnergie(h, maintenant) * pas);
         h.Soif += SoifParPas * pas;
         h.Fatigue += pas * (h.Activite == Activite.Dormir
-            ? -RecuperationSommeil
+            ? -RecuperationSommeil * SommeilSousLeFroid(h)
             : FatigueParPas * (1.2 - 0.4 * p.Endurance) * (h.Activite == Activite.Repos ? 0.5 : 1) * (enceinte ? 1.2 : 1));
 
         // Froid : la perte de chaleur dépend de l'écart au confort et de l'abri ; le corps en produit un peu.
@@ -395,10 +397,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // Au-delà de 28 °C, on transpire : la soif vient bien plus vite (jusqu'à un litre d'eau par heure d'effort).
         if (temperature > 28) h.Soif += pas * SoifParPas * (temperature - 28) / 8 * (h.Activite is Activite.Repos or Activite.Dormir ? 0.5 : 1);
         var abri = AbriEn(h.X, h.Y) + Couverture(h);
-        if (Installations.FoyerEn(h.X, h.Y) is not null) abri += ChaleurDuFeu;
-        if (chaleurPartagee) abri += 0.3; // se tenir chaud avec son compagnon ou sa famille
+        // 0.45.32 : le feu et les proches contre qui on se serre réchauffent de quelques degrés ; ils n'effacent plus le froid (avant,
+        // feu et famille comptaient pour 90 % d'abri : on dormait nu dans la neige à −14 °C sans avoir froid). Couché, une litière
+        // isole un peu du sol froid.
+        var gain = ChaleurDuFeuSur(h) + (chaleurPartagee ? ChaleurDesAutres(h, maintenant) : 0);
+        if (h.Activite is Activite.Dormir or Activite.Repos or Activite.SAbriter && temperature < TemperatureConfort) abri += 0.15 * LitiereSous(h, maintenant);
         // Dans la neige (0.45.26), la peau et le corps mal couverts perdent leur chaleur plus vite.
-        var perte = Math.Max(0, TemperatureConfort - (temperature - FroidDeLaNeige(h))) * 0.05 * Math.Max(0, 1 - abri);
+        var perte = Math.Max(0, TemperatureConfort - (temperature + gain - FroidDeLaNeige(h, maintenant))) * 0.05 * Math.Max(0, 1 - abri);
         h.Froid += pas * (perte - ChaleurCorporelle);
         // Pieds dans la neige (0.45.26).
         PiedsGeles(h, pas, temperature);
@@ -658,7 +663,7 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
         // (la fumée, l'eau qui monte, la terre qui gronde).
         if (h.Activite == Activite.Dormir)
         {
-            var reveil = h.Soif > 80 || h.Faim > 90 || h.Froid > 80 || h.Fatigue < 5 || (date.EstJour && h.Fatigue < 35)
+            var reveil = h.Soif > 80 || h.Faim > 90 || h.Froid > 80 || ReveilleParLeFroid(h) || h.Fatigue < 5 || (date.EstJour && h.Fatigue < 35)
                          || (danger is { } d && alea.Reel() < (d.Niveau == 2 ? 0.6 : 0.1));
             if (!reveil) return;
         }
@@ -1269,8 +1274,13 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
 
     private void AllerDormir(Humain h, Humain? partenaire)
     {
-        // Les prudents cherchent d'abord un abri, ou rejoignent l'autre pour dormir ensemble.
-        if (AbriEn(h.X, h.Y) < 0.3 && Installations.FoyerEn(h.X, h.Y) is null && h.Fatigue < 85 && h.Personnalite.Prudence > 0.4)
+        // Les prudents cherchent d'abord un abri, ou rejoignent l'autre pour dormir ensemble. Par une nuit rude (de la neige sous
+        // soi, un froid vif : 0.45.32), tout le monde, sauf l'épuisé, cherche mieux qu'un sol à découvert : une grotte, une hutte,
+        // un bois, ou le feu d'un camp, d'autant plus loin que le froid est fort.
+        var temperature = Temperature(h.X, h.Y, _maintenant);
+        var rude = NuitRude(h, temperature);
+        if (AbriEn(h.X, h.Y) < 0.3 && Installations.FoyerEn(h.X, h.Y) is null
+            && (rude ? h.Fatigue < 97 : h.Fatigue < 85 && h.Personnalite.Prudence > 0.4))
         {
             if (partenaire is not null && Distance(h.X, h.Y, partenaire.X, partenaire.Y) is > 0 and <= 4 && !(FinirCeQuOnCommence && LAutreVient(h, partenaire))
                 && (FinirCeQuOnCommence ? OuVaLAutre(h, partenaire) : (partenaire.X, partenaire.Y)) is var (ax, ay) && (ax != h.X || ay != h.Y))
@@ -1282,13 +1292,18 @@ public sealed partial class Comportement(Carte carte, Ecosysteme ecosysteme, Ale
             // L'abri choisi reste le but tant qu'on y va (0.42.4) : on ne change plus d'abri à chaque case.
             var abri = FinirCeQuOnCommence && h.Activite == Activite.ChercherAbri && h.CibleX >= 0 && AbriEn(h.CibleX, h.CibleY) >= 0.4
                 ? (h.CibleX, h.CibleY)
-                : Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 4, scoreMax: 0);
+                : rude
+                    ? Chercher(h, j => AbriEn(j) >= 0.4 || Installations.FoyerEn(j % carte.Largeur, j / carte.Largeur) is not null,
+                        j => Installations.FoyerEn(j % carte.Largeur, j / carte.Largeur) is not null ? 600 : 0,
+                        rayonMax: 4 + (int)Math.Round(6 * Math.Clamp((5 - temperature) / 15, 0, 1)), scoreMax: 600)
+                    : Chercher(h, j => AbriEn(j) >= 0.4, _ => 0, rayonMax: 4, scoreMax: 0);
             if (abri is { } a)
             {
                 Avancer(h, a.X, a.Y, Activite.ChercherAbri);
                 return;
             }
         }
+        if (h.Activite != Activite.Dormir) FaireSaLitiere(h, _maintenant);
         h.Activite = Activite.Dormir;
         h.CibleX = h.CibleY = -1;
         if (AbriEn(h.X, h.Y) >= 0.4) h.Memoire.Retenir(TypeLieu.Abri, h.X, h.Y, _maintenant, Aptitude(h));

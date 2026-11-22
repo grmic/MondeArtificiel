@@ -331,9 +331,10 @@ const ACCROUPI: Variante[] = [
 const COUCHE: Variante[] = [
   // Endormis, on dort surtout sur le côté (environ 55 %), puis sur le dos, rarement sur le ventre (Skarpsno et al. 2017).
   { nom: "cote", poids: () => 1.6 },
-  { nom: "dos", poids: (s) => (0.8 + (s.age < 2 ? 1 : 0)) * (1 - 0.75 * s.froid) },
+  // 0.45.32 : par le froid, jamais étendu sur le dos ni sur le ventre : on se recroqueville.
+  { nom: "dos", poids: (s) => (0.8 + (s.age < 2 ? 1 : 0)) * Math.max(0, 1 - 2 * s.froid) },
   { nom: "fusil", poids: (s) => 0.6 + (s.age < 12 ? 0.6 : 0) + 4 * s.froid + 1.5 * s.malade + 1.5 * s.peur },
-  { nom: "ventre", poids: (s) => (s.age < 1 || s.enceinte ? 0 : 0.2) * (1 - s.froid) },
+  { nom: "ventre", poids: (s) => (s.age < 1 || s.enceinte ? 0 : 0.2) * Math.max(0, 1 - 2 * s.froid) },
 ];
 const BRAS_DEBOUT: Variante[] = [
   { nom: "ballants", poids: (s) => 3 * (1 - repli(s)) ** 2 * (1 - 0.8 * s.malade) },

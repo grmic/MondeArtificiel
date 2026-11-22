@@ -156,6 +156,51 @@ public sealed class NeigeTests : IDisposable
     }
 
     [Fact]
+    public void DansLaNeige_OnSeFaitUneLitiere_EtLeFeuNEffacePlusLeFroid()
+    {
+        // 0.45.32 : une nuit d'hiver sous un grand froid, avec 30 cm de neige partout.
+        var n = Carte.Largeur * Carte.Hauteur;
+        var depart = MondeSimule.Nouveau(ConfigurationMonde.Nouvelle(42)) with
+        {
+            Secondes = 275 * Jour + 18 * Heure,
+            NeigeEau = Enumerable.Repeat(60f, n).ToArray(),
+            NeigeEpaisseur = Enumerable.Repeat(30f, n).ToArray(),
+        };
+        var monde = new MondeSimule(Carte, depart);
+        monde.Declencher(TypeCatastrophe.VagueDeFroid, 0, 0, -20);
+        monde.AvancerDe(12 * Heure);
+        var vivants = monde.Etat.Humains!.Where(h => h.EstVivant).ToList();
+        // Ceux qui ont dormi dehors se sont fait une litière, de qualité variable selon la personne et le lieu.
+        var avecLitiere = vivants.Where(h => h.LitiereLe > 0).ToList();
+        Assert.True(avecLitiere.Count >= vivants.Count / 2, $"{avecLitiere.Count} litières sur {vivants.Count}");
+        Assert.All(avecLitiere, h => Assert.InRange(h.Litiere, 0, 1));
+        Assert.True(avecLitiere.Select(h => Math.Round(h.Litiere, 2)).Distinct().Count() > 1);
+        // Nus, même près du feu et des leurs, ils ont froid : le feu réchauffe de quelques degrés, il n'annule plus le froid.
+        Assert.True(vivants.Average(h => h.Froid) > 10, $"froid moyen {vivants.Average(h => h.Froid)}");
+    }
+
+    [Fact]
+    public void LeFeu_ChauffeDeQuelquesDegres_SelonLaPlace()
+    {
+        var c = new Comportement(Carte, new Ecosysteme(Carte), new Alea(1));
+        var i = Plaine();
+        var (x, y) = (i % Carte.Largeur, i / Carte.Largeur);
+        Humain H(int id, double froid) => new()
+        {
+            Id = id, Nom = "A", Sexe = Sexe.Femme, Naissance = 0, Emplacement = 1, PartenaireId = 0, X = x, Y = y, Froid = froid,
+            Personnalite = new Personnalite(0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, new Intelligence(100, 100, 100, 100, 100, 100)),
+            Biologie = Biologie.ParDefaut(Sexe.Femme),
+        };
+        Assert.Equal(0, c.ChaleurDuFeuSur(H(1, 0)));
+        c.Installations.Allumer(x, y, 4, 0, 1, 0);
+        var chaleurs = Enumerable.Range(1, 40).Select(id => c.ChaleurDuFeuSur(H(id, 0))).ToList();
+        Assert.All(chaleurs, g => Assert.InRange(g, 1, 14));
+        Assert.True(chaleurs.Max() - chaleurs.Min() > 3);
+        // Qui a froid se rapproche.
+        Assert.True(c.ChaleurDuFeuSur(H(7, 80)) > c.ChaleurDuFeuSur(H(7, 0)));
+    }
+
+    [Fact]
     public void LaNeige_EstGardee_AvecLeMonde()
     {
         var n = Carte.Largeur * Carte.Hauteur;

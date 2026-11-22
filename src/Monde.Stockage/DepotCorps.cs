@@ -9,6 +9,7 @@ public sealed partial class DepotMonde
 {
     /// <summary>Ce qu'on garde du corps d'un humain, en JSON dans la colonne humains.corps (null : rien à garder).</summary>
     /// <remarks>
+    /// Depuis la 0.45.32 : la litière (case, qualité, quand).
     /// Depuis la 0.45.0 : où dort le tout-petit cette nuit et la nuit d'avant, la peur des bêtes et le lieu redouté.
     /// Depuis la 0.42.6 : corne de la plante (−1 : pas encore estimée), pieds meurtris, coup de soleil, piqûres, enduit de la peau
     /// (matière, jusqu'à quand, parure ou non) et chaussures portées (qualité, usure, recette).
@@ -16,7 +17,8 @@ public sealed partial class DepotMonde
     private sealed record Corps(double Grave, OrigineBlessure Origine, Membre Membre, double Debut, double Fixe, long Le, OrigineBlessure Cause,
         double Champs = 0, double Cal = -1, double Pieds = 0, double Soleil = 0, double Piqures = 0, int Enduit = 0, long EnduitJusqua = 0,
         bool EnduitPare = false, double ChQualite = 0, double ChUsure = 0, string? ChPieces = null,
-        int Couche = 0, int CoucheAvec = 0, int CouchePrec = 0, double PeurBetes = 0, long PeurBetesEvt = 0, int RedX = -1, int RedY = -1, long RedJusqua = 0, long CoucheNote = 0);
+        int Couche = 0, int CoucheAvec = 0, int CouchePrec = 0, double PeurBetes = 0, long PeurBetesEvt = 0, int RedX = -1, int RedY = -1, long RedJusqua = 0, long CoucheNote = 0,
+        int LitX = -1, int LitY = -1, double Lit = 0, long LitLe = 0);
 
     /// <summary>Migration vers la version 45 : séquelles des blessures graves, pousses des camps. Les mondes existants n'en ont pas.</summary>
     private static void MigrerVersion45(SqliteConnection connexion, SqliteTransaction transaction)
@@ -53,6 +55,7 @@ public sealed partial class DepotMonde
             h.PeurDesBetesEvenementId = c.PeurBetesEvt;
             (h.RedouteX, h.RedouteY, h.RedouteJusqua) = (c.RedX, c.RedY, c.RedJusqua);
             h.CoucherNoteLe = c.CoucheNote;
+            (h.LitiereX, h.LitiereY, h.Litiere, h.LitiereLe) = (c.LitX, c.LitY, double.IsFinite(c.Lit) ? Math.Clamp(c.Lit, 0, 1) : 0, c.LitLe);
         }
     }
 
@@ -85,11 +88,11 @@ public sealed partial class DepotMonde
             var ch = h.Chaussures;
             var rien = h.BlessureGrave <= 0 && s.Membre == Membre.Aucun && h.PartDesChamps <= 0 && h.Cal < 0 && h.Pieds <= 0 && h.CoupDeSoleil <= 0
                        && h.Piqures <= 0 && h.Enduit == Matiere.Aucune && ch is null && h.Coucher == Coucher.Aucune && h.CoucherPrecedent == Coucher.Aucune
-                       && h.PeurDesBetes <= 0 && h.PeurDesBetesEvenementId == 0 && h.RedouteJusqua == 0 && h.CoucherNoteLe == 0;
+                       && h.PeurDesBetes <= 0 && h.PeurDesBetesEvenementId == 0 && h.RedouteJusqua == 0 && h.CoucherNoteLe == 0 && h.LitiereLe == 0;
             c.Ligne(rien ? DBNull.Value : JsonSerializer.Serialize(new Corps(h.BlessureGrave, h.BlessureOrigine, s.Membre, s.Debut, s.Fixe, s.Le, s.Origine,
                 h.PartDesChamps, h.Cal, h.Pieds, h.CoupDeSoleil, h.Piqures, (int)h.Enduit, h.EnduitJusqua, h.EnduitPare, ch?.Qualite ?? 0, ch?.Usure ?? 0,
                 ch?.Pieces, (int)h.Coucher, h.CoucheAvecId, (int)h.CoucherPrecedent, h.PeurDesBetes, h.PeurDesBetesEvenementId, h.RedouteX, h.RedouteY,
-                h.RedouteJusqua, h.CoucherNoteLe)), h.Id);
+                h.RedouteJusqua, h.CoucherNoteLe, h.LitiereX, h.LitiereY, h.Litiere, h.LitiereLe)), h.Id);
             c.Fin();
         }
     }

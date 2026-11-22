@@ -87,6 +87,8 @@ export class CorpsProches {
    * le point). Sous la pluie, on rentre les épaules et on serre les bras comme dans le froid ; près du feu, la peur.
    */
   pluie = 0;
+  /** Température de l'air là où l'on regarde (°C), ou null (0.45.32). */
+  air: number | null = null;
   feuEn: (x: number, z: number) => number = () => 0;
   /**
    * Catastrophes (0.43.1, H1) : direction d'un phénomène du ciel (comète, aurore, éclipse, boule de feu) vers lequel la plupart
@@ -217,7 +219,8 @@ export class CorpsProches {
         // 0.45.0 : endormie, le tout-petit contre elle : couchée en cercle autour de lui (Ball, 2006).
         berceau: c.posture === "couche" && dort && enfant !== undefined && (enfant.s.coucher === 1 || enfant.s.coucher === 3),
         // F1 (0.41.8) : ce que vit l'humain ; la maladie pèse d'autant plus que la santé est basse.
-        froid: Math.max(lisser(15, 70, s.froid), dort || c.posture === "nage" ? 0 : this.pluie * 0.6), faim: s.faim / 100, fatigue: s.fatigue / 100,
+        // 0.45.32 : l'air froid aussi, même chez qui n'a pas froid dans la simulation (on ne dort pas étalé par −10 °C).
+        froid: Math.max(lisser(15, 70, s.froid), dort || c.posture === "nage" ? 0 : this.pluie * 0.6, this.air === null ? 0 : lisser(12, -2, this.air)), faim: s.faim / 100, fatigue: s.fatigue / 100,
         peur: Math.max(lisser(10, 70, s.peur), dort ? 0 : Math.max(this.feuEn(pl.x, pl.z) * 0.7, this.effroi)),
         malade: s.etat & 1 ? 0.6 + 0.4 * (1 - s.sante / 100) : lisser(60, 25, s.sante), enceinte: (s.etat & 2) !== 0,
         humeur: s.humeur, nevrosisme: s.nevrosisme, extraversion: s.extraversion, nage: s.nage,

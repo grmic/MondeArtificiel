@@ -7,7 +7,7 @@ Decouverte	244	C6B5678F0FF29C6D	Première fois au monde : Sesuheil pousse un gal
 Entraide	89	0955B45AE806ECD2	Sheisokei veille sur Sekaer, malade, et lui apporte à boire et à manger.
 FausseCouche	4	98E42686D8B6802B	Liaveku perd l'enfant qu'elle portait.
 Grossesse	31	76A7DCFEBA574079	Puthuvus attend un enfant de Nerail. Elle ne le sait pas encore.
-Journee	15840	CDCA51BFACF48E45	Journée de Thezabeil : a cueilli 3 fois, est allée vers l'eau 2 fois, a exploré 15 fois, a rejoint son compagnon 7 fois, s'est reposée 18 fois, a dormi 2 fois.
+Journee	15903	71A3A62EB807B632	Par la nuit froide, Tijaepas étale des fougères arrachées sur le sol pour y dormir.
 Lien	48	F4DE5215BCBDA19C	Thezabeil et Sesuheil se sont attachés l'un à l'autre.
 Maladie	70	4DA0436C9C63CEA4	Sekaer tombe malade : une dysenterie (personne ne sait la nommer).
 Mer	10	F0FF3A9ED7247F98	Vaemakaek aperçoit une île au loin, vers l'est, à quelque 22 km.

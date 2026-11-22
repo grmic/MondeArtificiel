@@ -7,6 +7,10 @@ import type { Relief } from "./relief";
 const TRACES_MAX = 4000;
 /** Bouffées de souffle visibles à la fois (une par humain proche). */
 const SOUFFLES_MAX = 80;
+/** Litières visibles à la fois (0.45.32). */
+const LITIERES_MAX = 120;
+/** Bit de l'état d'un humain : couché sur une litière (0.45.32). */
+const SUR_LITIERE = 1 << 25;
 
 interface Trace {
   x: number;
@@ -31,6 +35,11 @@ export class TracesEtSouffle {
   readonly groupe = new THREE.Group();
   private readonly traces: THREE.InstancedMesh;
   private readonly souffles: THREE.InstancedMesh;
+  /** 0.45.32 : la litière de branches, de fougères ou d'herbes sous qui dort par le froid. */
+  private readonly litieres: THREE.InstancedMesh;
+  private readonly matLitiere = new THREE.MeshBasicMaterial({
+    color: 0x4a4230, transparent: true, opacity: 0.92, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+  });
   private readonly matSouffle = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.2, depthWrite: false });
   private readonly matTrace = new THREE.MeshBasicMaterial({
     color: 0x7d8aa0, transparent: true, opacity: 0.5, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
@@ -50,7 +59,15 @@ export class TracesEtSouffle {
   constructor(private readonly relief: Relief) {
     this.traces = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.1, 0.25).rotateX(-Math.PI / 2), this.matTrace, TRACES_MAX);
     this.souffles = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), this.matSouffle, SOUFFLES_MAX);
-    for (const x of [this.traces, this.souffles]) {
+    // Un ovale aux bords irréguliers : des rameaux étalés, plus longs que larges.
+    const g = new THREE.CircleGeometry(0.5, 18);
+    const pos = g.attributes.position;
+    for (let k = 1; k < pos.count; k++) {
+      const f = 0.82 + 0.3 * unite(hacher(k, 311));
+      pos.setXY(k, pos.getX(k) * f, pos.getY(k) * f);
+    }
+    this.litieres = new THREE.InstancedMesh(g.rotateX(-Math.PI / 2), this.matLitiere, LITIERES_MAX);
+    for (const x of [this.traces, this.souffles, this.litieres]) {
       x.count = 0;
       x.frustumCulled = false;
       x.renderOrder = 4;
@@ -66,6 +83,7 @@ export class TracesEtSouffle {
     // Neige qui tombe : de l'ordre d'un centimètre par heure sous une chute modérée, quatre sous une forte (comme la simulation).
     if (neigeIci > 0.02 && dtMonde > 0) this.cumul += (0.3 + 4.5 * neigeIci * neigeIci) * Math.min(dtMonde, 7200) / 3600;
     let nS = 0;
+    let nL = 0;
     const froid = air === null ? 0 : Math.min(1, Math.max(0, (7 - air) / 9));
     for (const h of foule.tous()) {
       const dx = h.pied.x - camera.x, dz = h.pied.z - camera.z;
@@ -73,6 +91,14 @@ export class TracesEtSouffle {
       if (d2 > 150 * 150) continue;
       const etat = foule.etat(h.id);
       if (!etat) continue;
+      // La litière sous le dormeur : centrée sur le corps, dans le sens du corps, à sa taille.
+      if (etat.couche && h.s.etat & SUR_LITIERE && nL < LITIERES_MAX) {
+        const cx = (h.tete.x + h.pied.x) / 2, cz = (h.tete.z + h.pied.z) / 2;
+        const l = 0.55 * h.taille + 0.55, w = 0.75 + 0.15 * h.taille;
+        this.q.setFromAxisAngle(TracesEtSouffle.HAUT, h.cap);
+        this.m.compose(this.v.set(cx, Math.max(0, this.relief.hauteur(cx, cz)) + 0.02, cz), this.q, this.e.set(w, 1, l));
+        this.litieres.setMatrixAt(nL++, this.m);
+      }
       // Les pas : seulement en marchant debout, là où la neige tient.
       if (etat.enMarche && this.relief.neigeEn(h.pied.x, h.pied.z) >= 1) this.marcher(h.id, h.pied, h.cap, h.taille, secondes);
       else this.derniers.delete(h.id);
@@ -91,6 +117,9 @@ export class TracesEtSouffle {
         }
       }
     }
+    this.litieres.count = nL;
+    this.litieres.instanceMatrix.needsUpdate = nL > 0;
+    this.matLitiere.color.setRGB(0.29, 0.26, 0.19).multiply(lumiere);
     this.souffles.count = nS;
     this.souffles.instanceMatrix.needsUpdate = nS > 0;
     this.matSouffle.opacity = 0.16 * froid;

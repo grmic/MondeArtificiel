@@ -12,7 +12,7 @@ namespace Monde.Simulation;
 /// <param name="ParSeconde">Part du chemin vers cette case qu'il fait par seconde du monde, à son allure du moment.</param>
 /// <param name="Etat">Bits : 1 malade, 2 enceinte, 4 porte un bébé, 8 boite, 16 en mer, 32 porté par sa mère.</param>
 /// <param name="Etat">Bits : 1 malade, 2 enceinte, 4 porte un bébé, 8 boite, 16 en mer, 32 porté par sa mère, 64 allaite,
-/// 128 chasse (porte un épieu), 256 travaille aux champs (plus d'un tiers de ce qu'il mange en vient).</param>
+/// 128 chasse (porte un épieu), 256 travaille aux champs (plus d'un tiers de ce qu'il mange en vient) ; 1 &lt;&lt; 25 couché sur une litière.</param>
 /// <param name="Humeur">0 abattu, 1 triste, 2 serein, 3 content, 4 joyeux, 5 en deuil, 6 furieux, 7 déprimé.</param>
 /// <param name="Reserves">Réserves du corps (graisse), 0 à 100 (0.41.1 : maigreur ou embonpoint à l'affichage).</param>
 /// <param name="Endurance">Trait Endurance, 0 à 1 (0.41.1 : musculature à l'affichage).</param>
@@ -146,7 +146,9 @@ public sealed partial class MondeSimule
                     | (h.EstVivant && h.BlessureGrave >= 20 && Medecine.PlaieOuverte(h, maintenant) ? 1024 : 0)
                     | (int)ArmePortee(h) << 11
                     // 0.44.1 : une bête prise à la chasse depuis moins d'un jour (bit 14) et son espèce (bits 15 à 24).
-                    | (h.PriseLe > maintenant - Temps.Calendrier.SecondesParJour && h.PriseEspece is > 0 and < 1024 ? 1 << 14 | h.PriseEspece << 15 : 0);
+                    | (h.PriseLe > maintenant - Temps.Calendrier.SecondesParJour && h.PriseEspece is > 0 and < 1024 ? 1 << 14 | h.PriseEspece << 15 : 0)
+                    // 0.45.32 : couché sur une litière (bit 25).
+                    | (h.Activite is Activite.Dormir or Activite.SAbriter or Activite.Repos && Comportement.LitiereSous(h, _humains, maintenant) > 0.15 ? 1 << 25 : 0);
                 var humeur = h switch
                 {
                     { EstDeprime: true } => 7,

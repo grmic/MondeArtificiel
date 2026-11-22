@@ -646,7 +646,8 @@ public sealed partial class Comportement
         else
         {
             var temperature = Temperature(b.X, b.Y, maintenant);
-            var perte = Math.Max(0, TemperatureConfort - temperature) * 0.065 * Math.Max(0, 1 - AbriEn(b.X, b.Y) - (Installations.FoyerEn(b.X, b.Y) is null ? 0 : ChaleurDuFeu));
+            // 0.45.32 : le feu réchauffe de quelques degrés, comme pour les grands.
+            var perte = Math.Max(0, TemperatureConfort - (temperature + ChaleurDuFeuSur(b))) * 0.065 * Math.Max(0, 1 - AbriEn(b.X, b.Y));
             b.Froid = Math.Clamp(b.Froid + perte - 0.4, 0, 100);
         }
 

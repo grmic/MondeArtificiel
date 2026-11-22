@@ -631,6 +631,19 @@ public sealed class Humain
     /// <summary>Pieds meurtris, écorchés ou piqués d'épines (0 à 100).</summary>
     public double Pieds { get; set; }
 
+    /// <summary>
+    /// Litière où il dort (0.45.32) : branches, fougères ou herbes étalées sur le sol dégagé, sur la case (<see cref="LitiereX"/>,
+    /// <see cref="LitiereY"/>) ; sa qualité quand il l'a faite (0 à 1) et quand. −1 : aucune.
+    /// </summary>
+    public int LitiereX { get; set; } = -1;
+
+    public int LitiereY { get; set; } = -1;
+
+    public double Litiere { get; set; }
+
+    /// <summary>Quand il a fait sa dernière litière (0 : jamais).</summary>
+    public long LitiereLe { get; set; }
+
     /// <summary>Peau brûlée par le soleil (0 à 100).</summary>
     public double CoupDeSoleil { get; set; }
 

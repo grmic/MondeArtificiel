@@ -2667,6 +2667,7 @@ export class Vue3D {
     meteoGPU.uCielEau.value.set(this.ciel.hemi.color.r, this.ciel.hemi.color.g, this.ciel.hemi.color.b).multiplyScalar(0.6 * this.ciel.hemi.intensity);
     this.precipitations.animer(Math.max(this.pluieIci, this.tempeteIci), this.neigeIci, this.ciel.hemi.color, this.cendreIci, this.grosFlocons);
     this.proches.pluie = Math.min(1, (this.pluieIci + this.neigeIci) * 1.5);
+    this.proches.air = this.foule.air = this.neigeCase(p.x, p.z).air;
     this.eclairs.animer(maintenant / 1000, p, this.orages, this.exposition);
     const nuit = 1 - this.ciel.clarte * (1 - this.ciel.obscurite);
     this.phenomenes.animer(p, this.enCours, this.zones, this.ciel.direction, nuit, this.exposition, maintenant);

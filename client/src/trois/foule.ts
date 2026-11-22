@@ -146,7 +146,7 @@ export function porteurDe(s: HumainScene): number {
   return s.coucher > 0 && s.dortContre > 0 ? s.dortContre : s.mere;
 }
 
-function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Posture {
+function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean, assisAuFeu = false): Posture {
   if (s.activite === A.Mort) return "couche";
   // La nuit (0.45.0), contre sa mère ou contre celui à qui elle l'a confié ; à côté d'elle ou à l'écart, il dort seul sur le sol.
   // 0.45.11 : seulement un tout-petit (un monde enregistré avant pouvait garder la manière de coucher d'un enfant qui a grandi).
@@ -160,8 +160,11 @@ function posture(s: HumainScene, enMouvement: boolean, dansLEau: boolean): Postu
     case A.SAccoupler:
       // Faire l'amour : le couple allongé, enlacé, sans plus de détail ; entre adultes seulement à l'écran.
       return s.age >= 18 ? "enlace" : "assis";
-    case A.Dormir:
     case A.SAbriter:
+      // 0.45.32 : réveillé par le froid, on s'assoit près du feu, les bras autour des genoux.
+      if (assisAuFeu) return "assis";
+      return "couche";
+    case A.Dormir:
       return "couche";
     case A.Veiller:
     case A.VeillerEnfant:
@@ -193,7 +196,7 @@ export function aTerre(c: Corps): boolean {
 }
 
 /** Où se tient, dans sa case, quelqu'un qui ne marche pas : autour du camp, plus loin pour cueillir ou chasser. */
-function decalage(s: HumainScene, secondes: number, auFeu: boolean): [number, number] {
+function decalage(s: HumainScene, secondes: number, auFeu: boolean, froid: boolean): [number, number] {
   const angle0 = unite(hacher(s.id, 7)) * Math.PI * 2;
   const r0 = unite(hacher(s.id, 9));
   let rayon: number;
@@ -221,7 +224,8 @@ function decalage(s: HumainScene, secondes: number, auFeu: boolean): [number, nu
       break;
     case A.Dormir:
     case A.SAbriter:
-      rayon = 3 + r0 * 6;
+      // 0.45.32 : par le froid, on dort à un ou deux mètres du feu, ou serrés les uns contre les autres ; sinon on s'écarte.
+      rayon = froid ? (auFeu ? 1.3 + 0.9 * r0 : 0.8 + 1.6 * r0) : 3 + r0 * 6;
       break;
     case A.Cueillir:
     case A.Chasser:
@@ -450,6 +454,8 @@ export class Foule {
   /** Feux de camp (H1) : où ils sont (m) et sur quelles cases. */
   feux: { x: number; z: number }[] = [];
   private feuxCases = new Set<string>();
+  /** Température de l'air là où l'on regarde (°C, d'après la simulation), ou null tant qu'on ne la connaît pas (0.45.32). */
+  air: number | null = null;
   /** Temps des gestes écoulé (tours de parole) : secondes réelles, accélérées comme le monde (A1). */
   private horloge = 0;
   /** Vitesse du monde atteinte (secondes du monde par seconde réelle), donnée par la vue à chaque image. */
@@ -572,7 +578,7 @@ export class Foule {
     }
     const m = maniere(s.activite);
     if (m) return this.itineraire(c, m, ax, az, secondes);
-    const [ox, oz] = decalage(s, secondes, this.feuxCases.has(`${s.x},${s.y}`));
+    const [ox, oz] = decalage(s, secondes, this.feuxCases.has(`${s.x},${s.y}`), this.air !== null && this.air < 12);
     const [x, z] = this.aSec(c, ax + ox, az + oz, 0.05, s.id);
     return [x, z, false];
   }
@@ -761,7 +767,8 @@ export class Foule {
       const eau = fond > Math.max(0.35, 0.7 * c.taille);
       // Brasse de 0,5 à 0,8 cycle par seconde selon l'aisance (nageurs de loisir), nage du chien plus rapide et désordonnée.
       if (eau) c.phase += dt * accelere(this.facteur) * Math.PI * 2 * (s.nage >= SAIT_NAGER ? 0.5 + 0.3 * s.nage : 1.3 + 0.4 * unite(hacher(s.id, 229)));
-      c.posture = c.role?.geste ? "combat" : c.role ? (c.enMarche ? "marche" : "debout") : s.figurant?.posture ?? posture(s, c.enMarche, eau && !(s.etat & 16));
+      c.posture = c.role?.geste ? "combat" : c.role ? (c.enMarche ? "marche" : "debout") : s.figurant?.posture ?? posture(s, c.enMarche, eau && !(s.etat & 16),
+        s.activite === A.SAbriter && this.air !== null && this.air < 8 && this.feuxCases.has(`${s.x},${s.y}`));
       if (s.figurant && !c.role) {
         c.cap = s.figurant.cap;
         if (s.figurant.posture === "marche") c.phase += dt * 5;
@@ -959,12 +966,12 @@ export class Foule {
   }
 
   /** Où est un humain affiché (tête), son cap et s'il marche ; null s'il n'est pas dans la scène. */
-  etat(id: number): { tete: THREE.Vector3; cap: number; enMarche: boolean; taille: number } | null {
+  etat(id: number): { tete: THREE.Vector3; cap: number; enMarche: boolean; taille: number; couche: boolean } | null {
     const c = this.corps.get(id);
     if (!c || Number.isNaN(c.x)) return null;
     const pl = this.placement(c);
     const haut = aTerre(c) || c.posture === "nage" || c.posture === "porte" ? 0.25 : c.posture === "assis" || c.posture === "travail" ? 0.5 : c.posture === "accroupi" ? 0.6 : 0.85;
-    return { tete: new THREE.Vector3(pl.x, pl.y + c.taille * haut, pl.z), cap: pl.cap, enMarche: c.enMarche, taille: c.taille };
+    return { tete: new THREE.Vector3(pl.x, pl.y + c.taille * haut, pl.z), cap: pl.cap, enMarche: c.enMarche, taille: c.taille, couche: c.posture === "couche" || c.posture === "assis" };
   }
 
   get nombre(): number {
