@@ -52,10 +52,17 @@ export class CalqueMeteo {
   private largeur = 0;
   private hauteur = 0;
   private temps0 = performance.now();
+  private animesVides = true;
 
   constructor(hote: HTMLElement) {
     this.temps.addChild(this.pluieSprite, this.traits, this.eclairs);
-    this.catastrophes.addChild(this.terres, this.fumees, this.fronts, this.mouvants);
+    // Fumées et ronds animés sont redessinés à chaque image : chacun dans son propre groupe de rendu, pour que Pixi ne
+    // reconstruise que leurs instructions, et pas celles de toute la carte (humains compris) à chaque image.
+    const fumees = new Container({ isRenderGroup: true });
+    const mouvants = new Container({ isRenderGroup: true });
+    fumees.addChild(this.fumees);
+    mouvants.addChild(this.mouvants);
+    this.catastrophes.addChild(this.terres, fumees, this.fronts, mouvants);
     this.racine.addChild(this.catastrophes, this.temps);
     this.bandeau = document.createElement("div");
     this.bandeau.className = "bandeau-continent";
@@ -198,9 +205,13 @@ export class CalqueMeteo {
       this.eclairs.alpha = Math.sin(s * 9) > 0.6 || Math.sin(s * 2.3) > 0.97 ? 1 : 0.35;
     }
     const json = this.enCours;
+    // Rien d'animé : ne pas vider à chaque image des dessins déjà vides (Pixi reconstruirait quand même ses instructions).
+    const rien = !json || !this.catastrophes.visible || !json.zones.some((z) => z.active);
+    if (rien && this.animesVides) return;
     this.fumees.clear();
     this.mouvants.clear();
-    if (!json || !this.catastrophes.visible) return;
+    this.animesVides = rien;
+    if (rien) return;
     this.fronts.alpha = 0.75 + 0.25 * Math.sin(s * 11) * Math.sin(s * 4.7);
     for (const z of json.zones) {
       if (!z.active) continue;

@@ -4,7 +4,7 @@
 
 Simulation of a human community born from a founding myth. Client-server application: a .NET 10 server with a built-in HTTP server (Kestrel), and a web client opened in the browser.
 
-Version 0.45.29 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
+Version 0.45.30 (shown in "Configuration"), author: MicG. What changed in each version is summed up in the [release notes](#release-notes). The "📖 Read the guide" button in Configuration opens this document in the interface language, with no internet connection. To have an LLM installed on your machine or in the cloud (ChatGPT, Claude, Mistral, Euria) play the Entity, see the [tutorial](#tutorial-having-an-llm-play-the-entity).
 
 ![A world in year 108: 5,198 humans spread across communities on four islands, with the time window and the demographics curve](docs/capture-an108.png)
 
@@ -345,6 +345,7 @@ The server listens only on `localhost:5080` (see `src/Monde.Serveur/appsettings.
 
 Versions, newest first. Each new feature is described in detail in the guide above.
 
+- **0.45.30** (22 Nov 2026): **lighter 2D map**: with no moving disaster, the map no longer redoes its whole drawing at every frame (about half the work for the browser at rest); smoke and waves of disasters drawn separately. Client only.
 - **0.45.29** (22 Nov 2026): **windows that can be moved with the mouse**: each window is grabbed by its title bar; bottom-right corner for the size; place and size remembered by the browser, double-click for the original place, "Put the windows back in place" button in Settings; windows kept on screen and snapped to the edges.
 - **0.45.28** (22 Nov 2026): **time really passes faster**: one year of a 1,200-living world in 4.8 min with all cores (13.5 before) and 15.5 min on 1 core (52 before), same history; real speed averaged over 10 s with the length of a year; speed reached per cores setting in Settings.
 - **0.45.27** (22 Nov 2026): **windows arranged in tabs**: the right-hand windows share a tabbed drawer; opening a window no longer closes the others, which keep their scrolling and filters; green dot on the buttons of open windows; cross or middle click to close a tab; width adjustable by dragging the left edge, remembered per window. Also fixes Fauna that could overlap the Journal.
