@@ -3,6 +3,7 @@ import { connexion } from "./connexion";
 import { RubriqueJournalBase } from "./journalbase";
 import { el } from "./fiche";
 import { Guide } from "./guide";
+import { remettreToutesLesFenetres } from "./deplacable";
 import { choisirLangue, langue, languesDisponibles, nombre as ecrire, t } from "./langue";
 import { dureeReelleDUnAn } from "./horloge";
 
@@ -270,7 +271,12 @@ export class PanneauConfiguration {
     lireGuide.title = t("guide.aide");
     lireGuide.addEventListener("click", () => void (this.guide ??= new Guide()).ouvrir());
     const boutonsGuide = el("div", "boutons");
-    boutonsGuide.append(lireGuide);
+    // Fenêtres déplacées à la souris (0.45.29) : toutes reviennent à leur place et à leur taille d'origine.
+    const remettre = el("button", undefined, t("fenetres.remettre"));
+    remettre.type = "button";
+    remettre.title = t("fenetres.remettreAide");
+    remettre.addEventListener("click", () => remettreToutesLesFenetres());
+    boutonsGuide.append(lireGuide, remettre);
 
     this.corps.append(
       this.apropos,

@@ -648,3 +648,16 @@ body[data-llm-entite="non"] .que-ferait { display: none; }
 /* Point vert sur les boutons de la barre dont la fenêtre a un onglet ouvert. */
 .barre button.onglet-ouvert { position: relative; }
 .barre button.onglet-ouvert::after { content: ""; position: absolute; top: 2px; right: 2px; width: 6px; height: 6px; border-radius: 50%; background: #8fd3a0; pointer-events: none; }
+
+/* Fenêtres déplaçables (0.45.29) : barre de titre pour déplacer, coin en bas à droite pour la taille. */
+.deplacable .tete, .tiroir .onglets { cursor: grab; }
+.deplacable.en-deplacement, .deplacable.en-deplacement * { cursor: grabbing !important; user-select: none; }
+.deplacable .tete button, .deplacable .tete a, .deplacable .tete .lien, .tiroir .onglet { cursor: pointer; }
+.coin-taille {
+  position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 2; touch-action: none;
+  background: linear-gradient(135deg, transparent 50%, rgba(154, 167, 184, 0.45) 50%, rgba(154, 167, 184, 0.45) 60%, transparent 60%, transparent 72%, rgba(154, 167, 184, 0.45) 72%, rgba(154, 167, 184, 0.45) 82%, transparent 82%);
+  border-bottom-right-radius: 10px;
+}
+.coin-taille:hover { background-color: rgba(143, 211, 160, 0.25); }
+.deplacee, .en-deplacement { box-sizing: border-box; }
+.deplacee.temps { max-width: none; }

@@ -26,6 +26,7 @@ import { PanneauParlerMonde } from "./parlermonde";
 import { PanneauRevelations } from "./revelations";
 import { placerSousLaBarre } from "./placement";
 import { Tiroir, type PanneauDuTiroir } from "./onglets";
+import { rendreDeplacable } from "./deplacable";
 import { nombre, parOrdreAlphabetique, t } from "./langue";
 import type { Vue3D } from "./trois/vue3d";
 import type { AttaqueJson } from "./trois/attaque";
@@ -33,7 +34,11 @@ import "./style.css";
 
 const element = <T extends HTMLElement>(selecteur: string) => document.querySelector<T>(selecteur)!;
 const infos = element("#infos");
-placerSousLaBarre(element("header.barre"), element("#panneauTemps"), element<HTMLButtonElement>("#reduireTemps"));
+const placerFenetres = placerSousLaBarre(element("header.barre"), element("#panneauTemps"), element<HTMLButtonElement>("#reduireTemps"));
+// Fenêtres déplaçables à la souris (0.45.29) : barre de titre pour déplacer, coin en bas à droite pour la taille, place retenue.
+rendreDeplacable(element("#panneauTemps"), "temps", { change: placerFenetres });
+for (const [selecteur, id] of [["#fiche", "fiche"], ["#ficheCommunaute", "ficheCommunaute"], ["#dialogue", "dialogue"], ["#bilanSaut", "bilan"],
+  ["#panneauCalques", "calques"], ["#panneauTerritoires", "territoires"]] as const) rendreDeplacable(element(selecteur), id);
 
 const population = element("#population");
 const dialogueReinit = element<HTMLDialogElement>("#dialogueReinit");
@@ -284,6 +289,10 @@ async function demarrer(): Promise<void> {
   // Onglets (0.45.27) : toutes les fenêtres de droite vivent dans un même tiroir ; en ouvrir une ne ferme plus les autres,
   // elle passe devant. Le bouton d'une fenêtre ouverte mais cachée la ramène devant ; devant, il la ferme comme avant.
   const tiroir = new Tiroir(element("#alerte"));
+  rendreDeplacable(tiroir.element, "tiroir", {
+    poignee: (cible) => cible.closest(".onglets, .pages > .panneau-lateral > .tete") !== null,
+    largeur: (l) => tiroir.fixerLargeur(l),
+  });
   const ranger = (selecteur: string, panneau: PanneauDuTiroir, bouton: string | null, avant?: () => void) => {
     const racine = element(selecteur);
     const b = bouton ? element<HTMLButtonElement>(bouton) : null;

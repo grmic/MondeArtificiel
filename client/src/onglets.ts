@@ -176,6 +176,18 @@ export class Tiroir {
     this.dimensionner();
   }
 
+  /** Le tiroir à déplacer à la souris (0.45.29). */
+  get element(): HTMLElement {
+    return this.racine;
+  }
+
+  /** Largeur donnée par le coin du tiroir : retenue pour la fenêtre de devant, comme celle du bord gauche. */
+  fixerLargeur(l: number): void {
+    if (!this.devant) return;
+    this.racine.style.width = `${l}px`;
+    ecrireLargeur(this.devant.racine.id, l);
+  }
+
   private largeur(inscrit: Inscrit): number {
     return lireLargeur(inscrit.racine.id) ?? inscrit.largeurDefaut;
   }
@@ -188,12 +200,13 @@ export class Tiroir {
 
   /** Le bord gauche se tire pour élargir ou rétrécir le tiroir ; la largeur est retenue pour la fenêtre de devant. */
   private tirer(poignee: HTMLElement): void {
-    let depart: { x: number; largeur: number } | null = null;
+    let depart: { x: number; largeur: number; gauche: number } | null = null;
     poignee.addEventListener("pointerdown", (e) => {
       if (!this.devant) return;
       e.preventDefault();
       poignee.setPointerCapture(e.pointerId);
-      depart = { x: e.clientX, largeur: this.racine.getBoundingClientRect().width };
+      const r = this.racine.getBoundingClientRect();
+      depart = { x: e.clientX, largeur: r.width, gauche: r.left };
       this.racine.classList.add("tire");
     });
     poignee.addEventListener("pointermove", (e) => {
@@ -201,6 +214,8 @@ export class Tiroir {
       const max = Math.max(LARGEUR_MIN, window.innerWidth - MARGE);
       const l = Math.min(max, Math.max(LARGEUR_MIN, depart.largeur + depart.x - e.clientX));
       this.racine.style.width = `${l}px`;
+      // Déplacé à la souris (0.45.29), le tiroir est tenu par sa gauche : il faut la reculer pour qu'il grandisse vers la gauche.
+      if (this.racine.classList.contains("deplacee")) this.racine.style.left = `${Math.max(0, depart.gauche + depart.largeur - l)}px`;
     });
     const lacher = () => {
       if (!depart || !this.devant) return;

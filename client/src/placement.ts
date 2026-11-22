@@ -23,12 +23,13 @@ function ecrireReduit(oui: boolean): void {
   }
 }
 
-export function placerSousLaBarre(barre: HTMLElement, temps: HTMLElement, reduire: HTMLButtonElement): void {
+export function placerSousLaBarre(barre: HTMLElement, temps: HTMLElement, reduire: HTMLButtonElement): () => void {
   const racine = document.documentElement;
   const placer = () => {
     const sousBarre = Math.ceil(barre.getBoundingClientRect().bottom) + ECART;
     racine.style.setProperty("--sous-barre", `${sousBarre}px`);
-    const basTemps = temps.hidden ? sousBarre - ECART : Math.ceil(temps.getBoundingClientRect().bottom);
+    // Le contrôle du temps déplacé à la souris (0.45.29) ne repousse plus les fenêtres de droite.
+    const basTemps = temps.hidden || temps.classList.contains("deplacee") ? sousBarre - ECART : Math.ceil(temps.getBoundingClientRect().bottom);
     racine.style.setProperty("--sous-temps", `${basTemps + ECART}px`);
   };
   const appliquer = (reduit: boolean) => {
@@ -48,4 +49,5 @@ export function placerSousLaBarre(barre: HTMLElement, temps: HTMLElement, reduir
   observateur.observe(barre);
   observateur.observe(temps);
   window.addEventListener("resize", placer);
+  return placer;
 }
