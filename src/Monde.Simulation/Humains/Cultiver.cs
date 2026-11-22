@@ -88,12 +88,12 @@ public sealed partial class Comportement
     /// <summary>Il est sur une case où les siens ont semé : sa présence écarte les bêtes.</summary>
     private void Garder(Humain h)
     {
-        // Pas de parcelle sur sa case : rien à garder (même résultat, sans parcourir toutes les parcelles du monde).
-        if (!Champs.ParcelleSur(h.X, h.Y)) return;
+        // Seulement les parcelles de sa case, dans l'ordre de la liste (même résultat qu'en parcourant toutes les parcelles du monde).
         // Par indice : hors d'un pas simultané, ce qui est différé s'applique tout de suite.
-        for (var k = 0; k < Champs.Parcelles.Count; k++)
+        var ici = Champs.Parcelles.SurLaCase(h.X, h.Y);
+        for (var n = 0; n < ici.Count; n++)
         {
-            var p = Champs.Parcelles[k];
+            var p = Champs.Parcelles[ici[n]];
             if (p.X != h.X || p.Y != h.Y || p.Etat is EtatParcelle.Finie || p.VueLe >= _maintenant - Calendrier.SecondesParJour / 2) continue;
             if (p.SemeurId != h.Id && (h.CommunauteId == 0 || p.CommunauteId != h.CommunauteId)) continue;
             MarquerVue(p.Id);
@@ -117,8 +117,11 @@ public sealed partial class Comportement
         Parcelle? cible = null;
         var meilleure = int.MaxValue;
         var portee = RayonPerception(h);
-        foreach (var p in Champs.Parcelles)
+        // Seulement celles qui poussent ou sont mûres, dans l'ordre de la liste (même choix, égalités comprises).
+        var vivantes = Champs.Parcelles.Vivantes;
+        for (var n = 0; n < vivantes.Count; n++)
         {
+            var p = Champs.Parcelles[vivantes[n]];
             if (p.Etat is EtatParcelle.EnTerre or EtatParcelle.Finie) continue;
             var siens = p.SemeurId == h.Id || h.CommunauteId != 0 && p.CommunauteId == h.CommunauteId || p.SemeurId == h.PartenaireId;
             var d = Distance(h.X, h.Y, p.X, p.Y);

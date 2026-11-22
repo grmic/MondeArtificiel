@@ -114,25 +114,13 @@ public sealed record Troupeau(int Id, int Espece, int CommunauteId, int GardienI
 /// <summary>Les champs du monde : parcelles, lignées, et ce que chaque communauté en pense.</summary>
 public sealed class Champs
 {
-    public List<Parcelle> Parcelles { get; } = [];
+    public ListeParcelles Parcelles { get; } = new();
     public List<Lignee> Lignees { get; } = [];
     public Dictionary<int, IdeeDesChamps> Idees { get; } = [];
     /// <summary>Bêtes gardées (depuis la 0.33.1).</summary>
     public List<Troupeau> Troupeaux { get; } = [];
     private int _prochaineParcelle = 1;
 
-    // Nombre de parcelles par case (finies comprises) : une case sans parcelle se voit sans parcourir toute la liste.
-    // Les parcelles ne changent jamais de case ; la liste ne gagne ou ne perd de parcelles que dans Semer, Nettoyer et le constructeur.
-    private readonly Dictionary<(int X, int Y), int> _parCase = [];
-
-    /// <summary>Vrai s'il y a au moins une parcelle (même finie) sur la case.</summary>
-    public bool ParcelleSur(int x, int y) => _parCase.ContainsKey((x, y));
-
-    private void Recompter()
-    {
-        _parCase.Clear();
-        foreach (var p in Parcelles) _parCase[(p.X, p.Y)] = _parCase.GetValueOrDefault((p.X, p.Y)) + 1;
-    }
     private int _prochaineLignee = 1;
     private int _prochainTroupeau = 1;
 
@@ -145,7 +133,6 @@ public sealed class Champs
         Lignees.AddRange(lignees ?? []);
         foreach (var (c, i) in idees ?? []) Idees[c] = i;
         _prochaineParcelle = 1 + Parcelles.Select(p => p.Id).DefaultIfEmpty(0).Max();
-        Recompter();
         _prochaineLignee = 1 + Lignees.Select(l => l.Id).DefaultIfEmpty(0).Max();
     }
 
@@ -230,13 +217,108 @@ public sealed class Champs
             nouvelle = nouvelle with { Part = (part * semis) / (semis + levees) };
         }
         Parcelles.Add(nouvelle);
-        _parCase[(x, y)] = _parCase.GetValueOrDefault((x, y)) + 1;
         return nouvelle;
     }
 
     /// <summary>Retire les parcelles finies depuis plus d'un an (leurs graines tombées ne relèvent plus).</summary>
     public void Nettoyer(long maintenant)
     {
-        if (Parcelles.RemoveAll(p => p.Etat == EtatParcelle.Finie && maintenant - Math.Max(p.MureLe, p.SemeeLe) > 2 * Calendrier.SecondesParAn) > 0) Recompter();
+        Parcelles.RemoveAll(p => p.Etat == EtatParcelle.Finie && maintenant - Math.Max(p.MureLe, p.SemeeLe) > 2 * Calendrier.SecondesParAn);
+    }
+}
+
+/// <summary>
+/// La liste des parcelles du monde (0.45.28), qui tient à jour deux index pour ne pas la parcourir en entier à chaque pas de chaque
+/// humain : les parcelles de chaque case, et celles qui poussent ou sont mûres. Les index donnent les positions dans la liste, dans
+/// l'ordre croissant : les parcourir revient à parcourir la liste en sautant ce qui ne peut pas convenir, dans le même ordre (même
+/// résultat, mêmes tirages). Une parcelle ne change jamais de case ; si cela arrivait, les index seraient refaits.
+/// </summary>
+public sealed class ListeParcelles : System.Collections.ObjectModel.Collection<Parcelle>
+{
+    private readonly List<Parcelle> _liste;
+    private readonly Dictionary<(int X, int Y), List<int>> _parCase = [];
+    private readonly List<int> _vivantes = [];
+    private static readonly List<int> Aucune = [];
+
+    public ListeParcelles() : this([]) { }
+
+    private ListeParcelles(List<Parcelle> liste) : base(liste) => _liste = liste;
+
+    /// <summary>Positions, dans l'ordre, des parcelles de la case (finies comprises).</summary>
+    public IReadOnlyList<int> SurLaCase(int x, int y) => _parCase.TryGetValue((x, y), out var l) ? l : Aucune;
+
+    /// <summary>Positions, dans l'ordre, des parcelles qui poussent ou sont mûres.</summary>
+    public IReadOnlyList<int> Vivantes => _vivantes;
+
+    private static bool Vivante(Parcelle p) => p.Etat is EtatParcelle.Pousse or EtatParcelle.Mure;
+
+    public new List<Parcelle>.Enumerator GetEnumerator() => _liste.GetEnumerator();
+
+    public void AddRange(IEnumerable<Parcelle> parcelles)
+    {
+        foreach (var p in parcelles) Add(p);
+    }
+
+    public bool Exists(Predicate<Parcelle> condition) => _liste.Exists(condition);
+
+    public int FindIndex(Predicate<Parcelle> condition) => _liste.FindIndex(condition);
+
+    public int RemoveAll(Predicate<Parcelle> condition)
+    {
+        var n = _liste.RemoveAll(condition);
+        if (n > 0) Reindexer();
+        return n;
+    }
+
+    protected override void InsertItem(int index, Parcelle item)
+    {
+        base.InsertItem(index, item);
+        if (index != _liste.Count - 1)
+        {
+            Reindexer();
+            return;
+        }
+        Ajouter(index, item);
+    }
+
+    protected override void SetItem(int index, Parcelle item)
+    {
+        var avant = _liste[index];
+        base.SetItem(index, item);
+        if (avant.X != item.X || avant.Y != item.Y)
+        {
+            Reindexer();
+            return;
+        }
+        if (Vivante(avant) == Vivante(item)) return;
+        var i = _vivantes.BinarySearch(index);
+        if (Vivante(item)) { if (i < 0) _vivantes.Insert(~i, index); }
+        else if (i >= 0) _vivantes.RemoveAt(i);
+    }
+
+    protected override void RemoveItem(int index)
+    {
+        base.RemoveItem(index);
+        Reindexer();
+    }
+
+    protected override void ClearItems()
+    {
+        base.ClearItems();
+        Reindexer();
+    }
+
+    private void Ajouter(int index, Parcelle p)
+    {
+        if (!_parCase.TryGetValue((p.X, p.Y), out var l)) _parCase[(p.X, p.Y)] = l = [];
+        l.Add(index);
+        if (Vivante(p)) _vivantes.Add(index);
+    }
+
+    private void Reindexer()
+    {
+        _parCase.Clear();
+        _vivantes.Clear();
+        for (var i = 0; i < _liste.Count; i++) Ajouter(i, _liste[i]);
     }
 }

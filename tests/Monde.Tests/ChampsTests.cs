@@ -242,29 +242,43 @@ public sealed class ChampsTests(ITestOutputHelper sortie)
     }
 
     /// <summary>
-    /// 0.45.28 : le compte des parcelles par case suit les semis et le nettoyage, et ne se trompe pas sur une case voisine : la garde
-    /// des champs ne parcourt la liste que si l'humain se tient sur une case semée.
+    /// 0.45.28 : les index de la liste des parcelles (par case, et celles qui poussent ou sont mûres) suivent les semis, les
+    /// changements d'état et le nettoyage, et gardent l'ordre de la liste.
     /// </summary>
     [Fact]
-    public void ParcelleSur_SuitSemisEtNettoyage()
+    public void ListeParcelles_IndexSuiventLaListe()
     {
         var champs = new Champs();
         var l = champs.NouvelleLignee(Graminee(), 1, Midi, 1, 0);
-        Assert.False(champs.ParcelleSur(100, 100));
-        var p = champs.Semer(100, 100, l, 1, l.Tenaces, 1, 1, Midi, 0, 0, false, 0);
+        Assert.Empty(champs.Parcelles.SurLaCase(100, 100));
+        champs.Semer(100, 100, l, 1, l.Tenaces, 1, 1, Midi, 0, 0, false, 0);
         champs.Semer(100, 100, l, 1, l.Tenaces, 1, 1, Midi, 0, 0, false, 0); // même lignée tout juste semée : la même parcelle
-        Assert.True(champs.ParcelleSur(100, 100));
-        Assert.False(champs.ParcelleSur(101, 100));
-        Assert.Single(champs.Parcelles);
+        champs.Semer(5, 5, l, 1, l.Tenaces, 1, 1, Midi, 0, 0, false, 0);
+        var l2 = champs.NouvelleLignee(ABouture(), 1, Midi, 1, 0);
+        champs.Semer(100, 100, l2, 1, l2.Tenaces, 1, 1, Midi, 0, 0, false, 0);
+        Assert.Equal([0, 2], champs.Parcelles.SurLaCase(100, 100));
+        Assert.Equal([1], champs.Parcelles.SurLaCase(5, 5));
+        Assert.Empty(champs.Parcelles.SurLaCase(101, 100));
+        Assert.Empty(champs.Parcelles.Vivantes);
 
-        // Finie depuis plus de deux ans : retirée, la case redevient vide.
-        champs.Changer(champs.Parcelles[0] with { Etat = EtatParcelle.Finie, MureLe = Midi });
+        // Elles lèvent (dans le désordre) : l'index des vivantes reste trié ; la troisième finit.
+        champs.Parcelles[2] = champs.Parcelles[2] with { Etat = EtatParcelle.Pousse };
+        champs.Changer(champs.Parcelles[0] with { Etat = EtatParcelle.Mure });
+        champs.Parcelles[1] = champs.Parcelles[1] with { Etat = EtatParcelle.Pousse };
+        Assert.Equal([0, 1, 2], champs.Parcelles.Vivantes);
+        champs.Parcelles[1] = champs.Parcelles[1] with { Etat = EtatParcelle.Finie, MureLe = Midi };
+        Assert.Equal([0, 2], champs.Parcelles.Vivantes);
+
+        // Finie depuis plus de deux ans : retirée, les positions qui suivent se décalent.
         champs.Nettoyer(Midi + 2 * Calendrier.SecondesParAn + Jour);
-        Assert.Empty(champs.Parcelles);
-        Assert.False(champs.ParcelleSur(100, 100));
+        Assert.Equal(2, champs.Parcelles.Count);
+        Assert.Equal([0, 1], champs.Parcelles.SurLaCase(100, 100));
+        Assert.Empty(champs.Parcelles.SurLaCase(5, 5));
+        Assert.Equal([0, 1], champs.Parcelles.Vivantes);
 
         // Une parcelle chargée avec le monde compte aussi.
-        var rechargee = new Champs([p with { X = 7, Y = 9 }], champs.Lignees);
-        Assert.True(rechargee.ParcelleSur(7, 9));
+        var rechargee = new Champs([champs.Parcelles[1] with { X = 7, Y = 9 }], champs.Lignees);
+        Assert.Equal([0], rechargee.Parcelles.SurLaCase(7, 9));
+        Assert.Equal([0], rechargee.Parcelles.Vivantes);
     }
 }
