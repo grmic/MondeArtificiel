@@ -24,6 +24,7 @@ public sealed partial class ServiceMonde : IDisposable
     private const string ClePauseCatastrophe = "pause_catastrophe";
     private const string CleJournalQuotidien = "journal_quotidien";
     private const string CleCoeurs = "coeurs";
+    private const string CleVitessesCoeurs = "vitesses_coeurs";
     private const string CleClemence = "clemence";
     private const string CleEspritsFertiles = "esprits_fertiles";
     private const string CleFond = "fond";
@@ -95,6 +96,7 @@ public sealed partial class ServiceMonde : IDisposable
         _pauseSurCatastrophe = Depot.LireReglage(ClePauseCatastrophe) == "oui";
         _journalQuotidien = Depot.LireReglage(CleJournalQuotidien) == "oui";
         // Un cœur par défaut (le plus rapide mesuré sur une partie de 400 habitants) ; une valeur illisible ou hors limites aussi.
+        LireVitesses();
         _coeurs = int.TryParse(Depot.LireReglage(CleCoeurs), System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var c)
                   && c <= CoeursMachine ? c : 1;
         // Clémence du monde : 0 (le monde tel quel) par défaut, et pour une valeur illisible ou hors limites.
@@ -301,8 +303,61 @@ public sealed partial class ServiceMonde : IDisposable
     public double FacteurAtteint
     {
         get => Volatile.Read(ref _facteurAtteint);
-        set => Volatile.Write(ref _facteurAtteint, value);
+        set
+        {
+            Volatile.Write(ref _facteurAtteint, value);
+            // Remise à zéro (vitesse changée, pause, objectif…) : la mesure repart, sans garder les secondes d'avant.
+            if (value == 0) Interlocked.Increment(ref _mesureRepart);
+        }
     }
+
+    /// <summary>
+    /// Vitesse la plus récente mesurée sur cette machine pour chaque réglage des cœurs (0.45.28), quand le calcul allait aussi vite
+    /// qu'il pouvait : pour choisir le réglage en connaissance de cause. Clé : le réglage (0 = tous).
+    /// </summary>
+    public IReadOnlyList<VitesseMesuree> VitessesMesurees
+    {
+        get { lock (_vitesses) return [.. _vitesses.Values.OrderBy(v => v.Coeurs == 0 ? int.MaxValue : v.Coeurs)]; }
+    }
+
+    private readonly Dictionary<int, VitesseMesuree> _vitesses = [];
+    private DateTime _vitessesEcrites;
+
+    /// <summary>Note la vitesse atteinte à pleine charge avec le réglage de cœurs en cours ; gardée dans la base au plus une fois par minute.</summary>
+    public void NoterVitesse(double facteur, int vivants)
+    {
+        if (facteur <= 0 || double.IsNaN(facteur) || double.IsInfinity(facteur)) return;
+        string? json = null;
+        lock (_vitesses)
+        {
+            _vitesses[_coeurs] = new VitesseMesuree(_coeurs, facteur, vivants, DateTime.UtcNow);
+            if (DateTime.UtcNow - _vitessesEcrites >= TimeSpan.FromMinutes(1))
+            {
+                _vitessesEcrites = DateTime.UtcNow;
+                json = System.Text.Json.JsonSerializer.Serialize(_vitesses.Values.ToList());
+            }
+        }
+        if (json is not null) Depot.EcrireReglage(CleVitessesCoeurs, json);
+    }
+
+    private void LireVitesses()
+    {
+        try
+        {
+            if (Depot.LireReglage(CleVitessesCoeurs) is not { } json) return;
+            foreach (var v in System.Text.Json.JsonSerializer.Deserialize<List<VitesseMesuree>>(json) ?? [])
+                if (v.Coeurs >= 0 && v.Coeurs <= CoeursMachine && v.Facteur > 0) _vitesses[v.Coeurs] = v;
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // Réglage illisible : on mesurera de nouveau.
+        }
+    }
+
+    /// <summary>Change à chaque remise à zéro de <see cref="FacteurAtteint"/> : le moteur recommence alors sa moyenne.</summary>
+    public int MesureRepart => Volatile.Read(ref _mesureRepart);
+
+    private int _mesureRepart;
 
     /// <summary>Fichier où l'ancien monde est copié juste avant une réinitialisation.</summary>
     public string CheminCopieAvantReinitialisation =>
@@ -510,3 +565,6 @@ public sealed record ReglagesJournal(int ConserverAns, int QuotidienAns, bool Ef
         QuotidienAns > 0 ? maintenant - QuotidienAns * Calendrier.SecondesParAn : null,
         EffacerMarquants, EffacerSuivis);
 }
+
+/// <summary>Vitesse atteinte à pleine charge avec un réglage de cœurs (0 = tous), le nombre de vivants à ce moment, et quand (UTC).</summary>
+public sealed record VitesseMesuree(int Coeurs, double Facteur, int Vivants, DateTime Le);

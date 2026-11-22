@@ -81,6 +81,20 @@ export function decrireFacteur(facteur: number): string {
   return t("temps.facteur", { facteur: nombre, duree: t(`temps.unite.${nom}`, { n: quantite, q: texte }) });
 }
 
+/** Temps réel que prend une année du monde à cette vitesse : « 6,8 minutes », « 1,3 heure ». */
+export function dureeReelleDUnAn(facteur: number): string {
+  const secondes = (360 * 86_400) / facteur;
+  const unites: [number, string][] = [
+    [86_400, "jour"],
+    [3_600, "heure"],
+    [60, "minute"],
+    [1, "seconde"],
+  ];
+  const [taille, nom] = unites.find(([u]) => secondes >= u) ?? [1, "seconde"];
+  const quantite = secondes / taille;
+  return t(`temps.unite.${nom}`, { n: quantite, q: ecrire(quantite, quantite < 10 ? 1 : 0) });
+}
+
 /**
  * Commandes du temps : vitesses préréglées, vitesse libre, pas à pas, « aller jusqu'à » et réglage du redémarrage.
  * Prévient la carte des changements de lumière.
@@ -223,7 +237,9 @@ export class PanneauHorloge {
     // Vitesse réelle : utile seulement si la machine ne suit pas, ou pendant un « aller jusqu'à ».
     const atteint = this.el("#vitesseAtteinte");
     const enRetard = h.facteur > 0 && h.facteurAtteint > 0 && h.facteurAtteint < h.facteur * 0.9;
-    atteint.textContent = h.facteur > 0 && h.facteurAtteint > 0 ? t("temps.reelle", { vitesse: decrireFacteur(h.facteurAtteint) }) : "";
+    atteint.textContent = h.facteur > 0 && h.facteurAtteint > 0
+      ? `${t("temps.reelle", { vitesse: decrireFacteur(h.facteurAtteint) })} · ${t("temps.unAn", { duree: dureeReelleDUnAn(h.facteurAtteint) })}`
+      : "";
     if (h.deFond > 0) atteint.textContent = `${atteint.textContent}${atteint.textContent ? " · " : ""}${t("temps.deFond", { n: ecrire(h.deFond) })}`;
     atteint.classList.toggle("alerte", enRetard);
 

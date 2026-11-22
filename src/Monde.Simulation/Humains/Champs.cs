@@ -120,6 +120,19 @@ public sealed class Champs
     /// <summary>Bêtes gardées (depuis la 0.33.1).</summary>
     public List<Troupeau> Troupeaux { get; } = [];
     private int _prochaineParcelle = 1;
+
+    // Nombre de parcelles par case (finies comprises) : une case sans parcelle se voit sans parcourir toute la liste.
+    // Les parcelles ne changent jamais de case ; la liste ne gagne ou ne perd de parcelles que dans Semer, Nettoyer et le constructeur.
+    private readonly Dictionary<(int X, int Y), int> _parCase = [];
+
+    /// <summary>Vrai s'il y a au moins une parcelle (même finie) sur la case.</summary>
+    public bool ParcelleSur(int x, int y) => _parCase.ContainsKey((x, y));
+
+    private void Recompter()
+    {
+        _parCase.Clear();
+        foreach (var p in Parcelles) _parCase[(p.X, p.Y)] = _parCase.GetValueOrDefault((p.X, p.Y)) + 1;
+    }
     private int _prochaineLignee = 1;
     private int _prochainTroupeau = 1;
 
@@ -132,6 +145,7 @@ public sealed class Champs
         Lignees.AddRange(lignees ?? []);
         foreach (var (c, i) in idees ?? []) Idees[c] = i;
         _prochaineParcelle = 1 + Parcelles.Select(p => p.Id).DefaultIfEmpty(0).Max();
+        Recompter();
         _prochaineLignee = 1 + Lignees.Select(l => l.Id).DefaultIfEmpty(0).Max();
     }
 
@@ -216,10 +230,13 @@ public sealed class Champs
             nouvelle = nouvelle with { Part = (part * semis) / (semis + levees) };
         }
         Parcelles.Add(nouvelle);
+        _parCase[(x, y)] = _parCase.GetValueOrDefault((x, y)) + 1;
         return nouvelle;
     }
 
     /// <summary>Retire les parcelles finies depuis plus d'un an (leurs graines tombées ne relèvent plus).</summary>
-    public void Nettoyer(long maintenant) =>
-        Parcelles.RemoveAll(p => p.Etat == EtatParcelle.Finie && maintenant - Math.Max(p.MureLe, p.SemeeLe) > 2 * Calendrier.SecondesParAn);
+    public void Nettoyer(long maintenant)
+    {
+        if (Parcelles.RemoveAll(p => p.Etat == EtatParcelle.Finie && maintenant - Math.Max(p.MureLe, p.SemeeLe) > 2 * Calendrier.SecondesParAn) > 0) Recompter();
+    }
 }

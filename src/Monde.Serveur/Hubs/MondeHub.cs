@@ -46,7 +46,8 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     private async Task<HorlogeDto> AppliquerFacteur(double facteur)
     {
         service.Monde.ChangerFacteur(facteur);
-        if (facteur == 0) service.FacteurAtteint = 0;
+        // La moyenne de la vitesse réelle repart à chaque changement : sinon elle mêlerait dix secondes de l'ancienne vitesse.
+        service.FacteurAtteint = 0;
         service.Sauvegarder();
         return await DiffuserHorloge();
     }
@@ -274,6 +275,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     {
         if (seuil < 0 || seuil > 10_000_000) throw new HubException(L.T("erreur.fondSeuil"));
         service.Fond = (actif, seuil);
+        service.FacteurAtteint = 0; // la vitesse change avec les humains de fond : la mesure repart
         return ConfigurationDto.Depuis(service);
     }
 
@@ -307,6 +309,7 @@ public sealed class MondeHub(ServiceMonde service, ServiceCarte cartes, Entite.E
     {
         if (coeurs < 0 || coeurs > ServiceMonde.CoeursMachine) throw new HubException(L.T("erreur.coeurs", ("max", ServiceMonde.CoeursMachine)));
         service.Coeurs = coeurs;
+        service.FacteurAtteint = 0; // la vitesse mesurée était celle de l'ancien réglage
         return ConfigurationDto.Depuis(service);
     }
 

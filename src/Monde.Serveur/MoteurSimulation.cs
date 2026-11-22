@@ -21,7 +21,10 @@ public sealed class MoteurSimulation(
     private static readonly TimeSpan IntervalleSauvegardeSaut = TimeSpan.FromSeconds(30);
     // Le calcul se fait par tranches : entre deux, le monde est libre pour être lu (diffusion, fiches, sauvegarde).
     private static readonly TimeSpan Tranche = TimeSpan.FromMilliseconds(50);
-    private static readonly TimeSpan FenetreMesure = TimeSpan.FromSeconds(1);
+    // Vitesse réellement atteinte (0.45.28) : moyenne glissante sur les dix dernières secondes, affichée dès qu'une seconde est mesurée.
+    // Sur une seule seconde, elle sautait de ±40 % d'une lecture à l'autre (journées plus lourdes, sauvegardes), sans être fausse.
+    private static readonly TimeSpan FenetreMesure = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan MesureMinimale = TimeSpan.FromSeconds(1);
 
     protected override async Task ExecuteAsync(CancellationToken arret)
     {
@@ -33,9 +36,11 @@ public sealed class MoteurSimulation(
         var derniereDiffusion = TimeSpan.Zero;
         var derniereHorloge = TimeSpan.Zero;
         var derniereSauvegarde = TimeSpan.Zero;
-        var debutMesure = TimeSpan.Zero;
         var mondeMesure = service.Monde;
-        var secondesMesure = mondeMesure.Secondes;
+        var mesureRepart = service.MesureRepart;
+        // Relevés (instant réel, secondes du monde) des dix dernières secondes.
+        var releves = new Queue<(TimeSpan Reel, long Monde)>();
+        var derniereVitesseNotee = TimeSpan.Zero;
         long dernierEvenement = mondeMesure.JournalRecent().LastOrDefault()?.Id ?? 0;
 
         try
@@ -47,17 +52,34 @@ public sealed class MoteurSimulation(
                 var maintenant = chrono.Elapsed;
                 var monde = service.Monde;
 
-                // Vitesse réellement atteinte, mesurée sur environ une seconde.
+                // Vitesse réellement atteinte : moyenne sur les dix dernières secondes (moins juste après un changement de vitesse).
                 if (!ReferenceEquals(monde, mondeMesure))
                 {
-                    (mondeMesure, secondesMesure, debutMesure) = (monde, monde.Secondes, maintenant);
+                    mondeMesure = monde;
+                    releves.Clear();
                     dernierEvenement = 0; // monde réinitialisé : son journal repart de zéro
                 }
-                else if (maintenant - debutMesure >= FenetreMesure)
+                if (service.MesureRepart != mesureRepart)
                 {
-                    var secondes = monde.Secondes;
-                    service.FacteurAtteint = (secondes - secondesMesure) / (maintenant - debutMesure).TotalSeconds;
-                    (secondesMesure, debutMesure) = (secondes, maintenant);
+                    mesureRepart = service.MesureRepart;
+                    releves.Clear();
+                }
+                var secondes = monde.SecondesSansAttendre;
+                releves.Enqueue((maintenant, secondes));
+                while (releves.Count > 2 && maintenant - releves.Peek().Reel > FenetreMesure) releves.Dequeue();
+                var (reel0, monde0) = releves.Peek();
+                if (maintenant - reel0 >= MesureMinimale)
+                {
+                    var facteur = (secondes - monde0) / (maintenant - reel0).TotalSeconds;
+                    service.FacteurAtteint = facteur;
+                    if (facteur == 0) mesureRepart = service.MesureRepart; // monde arrêté : ce 0 n'est pas une remise à zéro demandée
+                    // Fenêtre pleine et calcul à pleine charge (la machine ne suit pas la vitesse demandée) : c'est la vitesse de ce réglage.
+                    if (maintenant - reel0 >= FenetreMesure - Cadence && maintenant - derniereVitesseNotee >= FenetreMesure && !monde.Retenu && !monde.EnDialogue)
+                    {
+                        derniereVitesseNotee = maintenant;
+                        var (_, _, demande, enRoute) = monde.Horloge;
+                        if (facteur > 0 && (enRoute is not null || facteur < demande * 0.9)) service.NoterVitesse(facteur, monde.VivantsDuJour);
+                    }
                 }
 
                 // Catastrophes et phénomènes : alerte aux navigateurs ; une catastrophe qui menace des humains a pu mettre le monde en pause.

@@ -330,6 +330,15 @@ public sealed partial class MondeSimule
 
     public long Secondes { get { lock (_verrou) return _secondes; } }
 
+    /// <summary>
+    /// Date du monde lue sans attendre la fin du calcul en cours (0.45.28) : peut avoir un pas de retard ; pour mesurer la vitesse
+    /// dix fois par seconde sans freiner le calcul.
+    /// </summary>
+    public long SecondesSansAttendre => Volatile.Read(ref _secondes);
+
+    /// <summary>Vivants comptés au début du dernier jour (lu sans attendre le calcul).</summary>
+    public int VivantsDuJour => _comportement.Population;
+
     /// <summary>Date, pas, vitesse et objectif lus ensemble, sans copier les humains (diffusion fréquente).</summary>
     public (long Secondes, long Pas, double Facteur, Objectif? Objectif) Horloge
     {

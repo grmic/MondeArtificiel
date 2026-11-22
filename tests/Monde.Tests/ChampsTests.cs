@@ -240,4 +240,31 @@ public sealed class ChampsTests(ITestOutputHelper sortie)
         Assert.Contains(nourricieres, e => e.Aliment!.SeDisperse);
         for (var k = 0; k < LaFlore.Especes.Count; k++) Assert.Equal(LaFlore.Especes[k].Aliment, autre.Especes[k].Aliment);
     }
+
+    /// <summary>
+    /// 0.45.28 : le compte des parcelles par case suit les semis et le nettoyage, et ne se trompe pas sur une case voisine : la garde
+    /// des champs ne parcourt la liste que si l'humain se tient sur une case semée.
+    /// </summary>
+    [Fact]
+    public void ParcelleSur_SuitSemisEtNettoyage()
+    {
+        var champs = new Champs();
+        var l = champs.NouvelleLignee(Graminee(), 1, Midi, 1, 0);
+        Assert.False(champs.ParcelleSur(100, 100));
+        var p = champs.Semer(100, 100, l, 1, l.Tenaces, 1, 1, Midi, 0, 0, false, 0);
+        champs.Semer(100, 100, l, 1, l.Tenaces, 1, 1, Midi, 0, 0, false, 0); // même lignée tout juste semée : la même parcelle
+        Assert.True(champs.ParcelleSur(100, 100));
+        Assert.False(champs.ParcelleSur(101, 100));
+        Assert.Single(champs.Parcelles);
+
+        // Finie depuis plus de deux ans : retirée, la case redevient vide.
+        champs.Changer(champs.Parcelles[0] with { Etat = EtatParcelle.Finie, MureLe = Midi });
+        champs.Nettoyer(Midi + 2 * Calendrier.SecondesParAn + Jour);
+        Assert.Empty(champs.Parcelles);
+        Assert.False(champs.ParcelleSur(100, 100));
+
+        // Une parcelle chargée avec le monde compte aussi.
+        var rechargee = new Champs([p with { X = 7, Y = 9 }], champs.Lignees);
+        Assert.True(rechargee.ParcelleSur(7, 9));
+    }
 }

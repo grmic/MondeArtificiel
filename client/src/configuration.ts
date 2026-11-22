@@ -3,7 +3,8 @@ import { connexion } from "./connexion";
 import { RubriqueJournalBase } from "./journalbase";
 import { el } from "./fiche";
 import { Guide } from "./guide";
-import { choisirLangue, langue, languesDisponibles, t } from "./langue";
+import { choisirLangue, langue, languesDisponibles, nombre as ecrire, t } from "./langue";
+import { dureeReelleDUnAn } from "./horloge";
 
 /** Réglages du monde courant et limites, renvoyés par le serveur. Largeur et hauteur en cases. */
 interface Configuration {
@@ -42,6 +43,16 @@ interface Configuration {
   fondSeuil: number;
   /** Les fondateurs sont arrivés avec une langue complète (0.37.0). */
   langageAvance: boolean;
+  /** Vitesse mesurée sur cette machine pour chaque réglage des cœurs, à pleine charge (0.45.28). */
+  vitesses: VitesseMesuree[];
+}
+
+/** Vitesse atteinte à pleine charge avec un réglage de cœurs (0 : tous), le nombre de vivants d'alors, et quand (ISO, UTC). */
+interface VitesseMesuree {
+  coeurs: number;
+  facteur: number;
+  vivants: number;
+  le: string;
 }
 
 /** Réglages d'un nouveau monde (graine null : au hasard). */
@@ -140,6 +151,8 @@ export class PanneauConfiguration {
     return { ligne, choix };
   })();
   private readonly messageCoeurs = el("p", "message-config");
+  /** Vitesses mesurées ici pour chaque réglage des cœurs (0.45.28). */
+  private readonly vitessesCoeurs = el("ul", "discret vitesses-coeurs");
   /** Humains de fond : la case, et le seuil de vivants (vide : toujours). */
   private readonly fond = (() => {
     const caseFond = el("input");
@@ -278,6 +291,7 @@ export class PanneauConfiguration {
       el("p", "discret", t("config.alertesAide")),
       el("h3", undefined, t("config.calcul")),
       this.coeurs.ligne,
+      this.vitessesCoeurs,
       el("p", "discret", t("config.calculAide")),
       this.messageCoeurs,
       this.fond.etiquette,
@@ -426,6 +440,21 @@ export class PanneauConfiguration {
     options.push(tous);
     this.coeurs.choix.replaceChildren(...options);
     this.coeurs.choix.value = String(c.coeurs === c.coeursMachine && c.coeursMachine > 1 ? 0 : c.coeurs);
+    this.remplirVitesses(c);
+  }
+
+  /** Sous le réglage : la durée d'une année mesurée ici pour chaque réglage déjà essayé, quand le calcul allait à fond. */
+  private remplirVitesses(c: Configuration): void {
+    const lignes = (c.vitesses ?? []).map((v) => {
+      const reglage = v.coeurs === 1 ? t("config.unCoeur") : v.coeurs === 0 ? t("config.tousCoeurs", { n: c.coeursMachine }) : t("config.nCoeurs", { n: v.coeurs });
+      return el("li", undefined, t("config.vitesseMesuree", {
+        reglage,
+        duree: dureeReelleDUnAn(v.facteur),
+        vivants: ecrire(v.vivants),
+        quand: new Date(v.le).toLocaleString(langue(), { dateStyle: "short", timeStyle: "short" }),
+      }));
+    });
+    this.vitessesCoeurs.replaceChildren(...(lignes.length > 0 ? [el("li", undefined, t("config.vitessesTitre")), ...lignes] : [el("li", undefined, t("config.vitessesAucune"))]));
   }
 
   private remplirFond(c: Configuration): void {

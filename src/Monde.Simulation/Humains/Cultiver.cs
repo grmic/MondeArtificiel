@@ -88,15 +88,23 @@ public sealed partial class Comportement
     /// <summary>Il est sur une case où les siens ont semé : sa présence écarte les bêtes.</summary>
     private void Garder(Humain h)
     {
+        // Pas de parcelle sur sa case : rien à garder (même résultat, sans parcourir toutes les parcelles du monde).
+        if (!Champs.ParcelleSur(h.X, h.Y)) return;
         // Par indice : hors d'un pas simultané, ce qui est différé s'applique tout de suite.
         for (var k = 0; k < Champs.Parcelles.Count; k++)
         {
             var p = Champs.Parcelles[k];
             if (p.X != h.X || p.Y != h.Y || p.Etat is EtatParcelle.Finie || p.VueLe >= _maintenant - Calendrier.SecondesParJour / 2) continue;
             if (p.SemeurId != h.Id && (h.CommunauteId == 0 || p.CommunauteId != h.CommunauteId)) continue;
-            var (id, le, champs) = (p.Id, _maintenant, Champs);
-            Tour.Differer(() => { if (champs.Parcelle(id) is { } q) champs.Changer(q with { VueLe = Math.Max(q.VueLe, le) }); });
+            MarquerVue(p.Id);
         }
+    }
+
+    // À part : la fermeture n'est créée que pour une parcelle vraiment gardée (avant, une par parcelle du monde, à chaque pas de chacun).
+    private void MarquerVue(int id)
+    {
+        var (le, champs) = (_maintenant, Champs);
+        Tour.Differer(() => { if (champs.Parcelle(id) is { } q) champs.Changer(q with { VueLe = Math.Max(q.VueLe, le) }); });
     }
 
     /// <summary>
