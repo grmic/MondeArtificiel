@@ -238,7 +238,11 @@ public sealed class ListeParcelles : System.Collections.ObjectModel.Collection<P
     private readonly List<Parcelle> _liste;
     private readonly Dictionary<(int X, int Y), List<int>> _parCase = [];
     private readonly List<int> _vivantes = [];
+    private readonly Dictionary<(int X, int Y), List<int>> _vivantesParBloc = [];
     private static readonly List<int> Aucune = [];
+
+    /// <summary>Côté d'un bloc de l'index des parcelles vivantes, en cases (découpage de l'index, sans effet sur le monde).</summary>
+    public const int CoteBloc = 16;
 
     public ListeParcelles() : this([]) { }
 
@@ -249,6 +253,12 @@ public sealed class ListeParcelles : System.Collections.ObjectModel.Collection<P
 
     /// <summary>Positions, dans l'ordre, des parcelles qui poussent ou sont mûres.</summary>
     public IReadOnlyList<int> Vivantes => _vivantes;
+
+    /// <summary>Bloc de l'index qui contient la coordonnée.</summary>
+    public static int Bloc(int c) => c >= 0 ? c / CoteBloc : (c + 1) / CoteBloc - 1;
+
+    /// <summary>Positions des parcelles qui poussent ou sont mûres dans le bloc (bx, by), dans un ordre quelconque.</summary>
+    public IReadOnlyList<int> VivantesDuBloc(int bx, int by) => _vivantesParBloc.TryGetValue((bx, by), out var l) ? l : Aucune;
 
     private static bool Vivante(Parcelle p) => p.Etat is EtatParcelle.Pousse or EtatParcelle.Mure;
 
@@ -292,8 +302,17 @@ public sealed class ListeParcelles : System.Collections.ObjectModel.Collection<P
         }
         if (Vivante(avant) == Vivante(item)) return;
         var i = _vivantes.BinarySearch(index);
-        if (Vivante(item)) { if (i < 0) _vivantes.Insert(~i, index); }
-        else if (i >= 0) _vivantes.RemoveAt(i);
+        if (Vivante(item))
+        {
+            if (i >= 0) return;
+            _vivantes.Insert(~i, index);
+            AjouterAuBloc(index, item);
+        }
+        else if (i >= 0)
+        {
+            _vivantes.RemoveAt(i);
+            if (_vivantesParBloc.TryGetValue((Bloc(item.X), Bloc(item.Y)), out var l)) l.Remove(index);
+        }
     }
 
     protected override void RemoveItem(int index)
@@ -312,13 +331,22 @@ public sealed class ListeParcelles : System.Collections.ObjectModel.Collection<P
     {
         if (!_parCase.TryGetValue((p.X, p.Y), out var l)) _parCase[(p.X, p.Y)] = l = [];
         l.Add(index);
-        if (Vivante(p)) _vivantes.Add(index);
+        if (!Vivante(p)) return;
+        _vivantes.Add(index);
+        AjouterAuBloc(index, p);
+    }
+
+    private void AjouterAuBloc(int index, Parcelle p)
+    {
+        if (!_vivantesParBloc.TryGetValue((Bloc(p.X), Bloc(p.Y)), out var l)) _vivantesParBloc[(Bloc(p.X), Bloc(p.Y))] = l = [];
+        l.Add(index);
     }
 
     private void Reindexer()
     {
         _parCase.Clear();
         _vivantes.Clear();
+        _vivantesParBloc.Clear();
         for (var i = 0; i < _liste.Count; i++) Ajouter(i, _liste[i]);
     }
 }

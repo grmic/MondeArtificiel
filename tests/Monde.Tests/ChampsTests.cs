@@ -266,8 +266,12 @@ public sealed class ChampsTests(ITestOutputHelper sortie)
         champs.Changer(champs.Parcelles[0] with { Etat = EtatParcelle.Mure });
         champs.Parcelles[1] = champs.Parcelles[1] with { Etat = EtatParcelle.Pousse };
         Assert.Equal([0, 1, 2], champs.Parcelles.Vivantes);
+        var bloc = ListeParcelles.Bloc(100);
+        Assert.Equal([0, 2], champs.Parcelles.VivantesDuBloc(bloc, bloc).Order());
+        Assert.Equal([1], champs.Parcelles.VivantesDuBloc(ListeParcelles.Bloc(5), ListeParcelles.Bloc(5)));
         champs.Parcelles[1] = champs.Parcelles[1] with { Etat = EtatParcelle.Finie, MureLe = Midi };
         Assert.Equal([0, 2], champs.Parcelles.Vivantes);
+        Assert.Empty(champs.Parcelles.VivantesDuBloc(ListeParcelles.Bloc(5), ListeParcelles.Bloc(5)));
 
         // Finie depuis plus de deux ans : retirée, les positions qui suivent se décalent.
         champs.Nettoyer(Midi + 2 * Calendrier.SecondesParAn + Jour);
@@ -275,10 +279,14 @@ public sealed class ChampsTests(ITestOutputHelper sortie)
         Assert.Equal([0, 1], champs.Parcelles.SurLaCase(100, 100));
         Assert.Empty(champs.Parcelles.SurLaCase(5, 5));
         Assert.Equal([0, 1], champs.Parcelles.Vivantes);
+        Assert.Equal([0, 1], champs.Parcelles.VivantesDuBloc(bloc, bloc).Order());
 
         // Une parcelle chargée avec le monde compte aussi.
         var rechargee = new Champs([champs.Parcelles[1] with { X = 7, Y = 9 }], champs.Lignees);
         Assert.Equal([0], rechargee.Parcelles.SurLaCase(7, 9));
         Assert.Equal([0], rechargee.Parcelles.Vivantes);
+        Assert.Equal([0], rechargee.Parcelles.VivantesDuBloc(0, 0));
+        Assert.Equal(-1, ListeParcelles.Bloc(-1));
+        Assert.Equal(1, ListeParcelles.Bloc(ListeParcelles.CoteBloc));
     }
 }

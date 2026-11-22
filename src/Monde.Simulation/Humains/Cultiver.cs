@@ -117,21 +117,31 @@ public sealed partial class Comportement
         Parcelle? cible = null;
         var meilleure = int.MaxValue;
         var portee = RayonPerception(h);
-        // Seulement celles qui poussent ou sont mûres, dans l'ordre de la liste (même choix, égalités comprises).
-        var vivantes = Champs.Parcelles.Vivantes;
-        for (var n = 0; n < vivantes.Count; n++)
+        // Seulement celles qui poussent ou sont mûres, dans les blocs à portée (40 cases au plus pour les siens). Aucun tirage au sort ici :
+        // garder la plus proche, et à distance égale la première de la liste, donne le même choix qu'en parcourant toute la liste.
+        var rayon = Math.Max(40, portee);
+        var meilleurRang = int.MaxValue;
+        var parcelles = Champs.Parcelles;
+        for (var bx = ListeParcelles.Bloc(h.X - rayon); bx <= ListeParcelles.Bloc(h.X + rayon); bx++)
+        for (var by = ListeParcelles.Bloc(h.Y - rayon); by <= ListeParcelles.Bloc(h.Y + rayon); by++)
         {
-            var p = Champs.Parcelles[vivantes[n]];
-            if (p.Etat is EtatParcelle.EnTerre or EtatParcelle.Finie) continue;
-            var siens = p.SemeurId == h.Id || h.CommunauteId != 0 && p.CommunauteId == h.CommunauteId || p.SemeurId == h.PartenaireId;
-            var d = Distance(h.X, h.Y, p.X, p.Y);
-            if (d >= meilleure || d > (siens ? 40 : portee)) continue;
-            var interet = p.Etat == EtatParcelle.Mure ? p.SurPied >= 0.5
-                : (sarcle || p.SemeurId == h.Id) && p.Herbes >= 0.3 && siens;
-            if (!interet) continue;
-            // Prendre chez un autre groupe, c'est voler : seulement affamé et tenté.
-            if (p.Etat == EtatParcelle.Mure && !PermisAuChamp(h, p, tous) && (h.Faim < 55 || TentationDeVoler(h) <= 0)) continue;
-            (cible, meilleure) = (p, d);
+            var bloc = parcelles.VivantesDuBloc(bx, by);
+            for (var n = 0; n < bloc.Count; n++)
+            {
+                var rang = bloc[n];
+                var p = parcelles[rang];
+                if (p.Etat is EtatParcelle.EnTerre or EtatParcelle.Finie) continue;
+                var d = Distance(h.X, h.Y, p.X, p.Y);
+                if (d > meilleure || d == meilleure && rang > meilleurRang || d > rayon) continue;
+                var siens = p.SemeurId == h.Id || h.CommunauteId != 0 && p.CommunauteId == h.CommunauteId || p.SemeurId == h.PartenaireId;
+                if (d > (siens ? 40 : portee)) continue;
+                var interet = p.Etat == EtatParcelle.Mure ? p.SurPied >= 0.5
+                    : (sarcle || p.SemeurId == h.Id) && p.Herbes >= 0.3 && siens;
+                if (!interet) continue;
+                // Prendre chez un autre groupe, c'est voler : seulement affamé et tenté.
+                if (p.Etat == EtatParcelle.Mure && !PermisAuChamp(h, p, tous) && (h.Faim < 55 || TentationDeVoler(h) <= 0)) continue;
+                (cible, meilleure, meilleurRang) = (p, d, rang);
+            }
         }
         if (cible is null) return false;
         if (meilleure > 0)
